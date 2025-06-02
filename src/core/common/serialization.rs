@@ -27,15 +27,9 @@ impl DataSerializer<String> for String {
     }
 }
 
-impl DataDeserializer<String> for String {
-    fn deserialize<R: Read>(reader: &mut R) -> Result<String, DbError> {
-        let len = u64::deserialize(reader)? as usize; // Deserialize length
-        let mut buffer = vec![0u8; len];
-        reader.read_exact(&mut buffer).map_err(DbError::IoError)?;
-        String::from_utf8(buffer)
-            .map_err(|e| DbError::DeserializationError(format!("UTF-8 conversion error: {}", e)))
-    }
-}
+// Max allowed length for a single serialized item (e.g., Vec<u8> or String content)
+// This is a safeguard against trying to allocate excessive memory due to corrupted length prefixes.
+const MAX_ALLOWED_ITEM_LENGTH: usize = 256 * 1024 * 1024; // 256 MiB
 
 // --- Vec<u8> Implementation ---
 impl DataSerializer<Vec<u8>> for Vec<u8> {
@@ -49,11 +43,35 @@ impl DataSerializer<Vec<u8>> for Vec<u8> {
 impl DataDeserializer<Vec<u8>> for Vec<u8> {
     fn deserialize<R: Read>(reader: &mut R) -> Result<Vec<u8>, DbError> {
         let len = u64::deserialize(reader)? as usize; // Deserialize length
+        if len > MAX_ALLOWED_ITEM_LENGTH {
+            return Err(DbError::StorageError(format!(
+                "Deserialized Vec<u8> length {} exceeds maximum allowed limit of {}",
+                len, MAX_ALLOWED_ITEM_LENGTH
+            )));
+        }
         let mut buffer = vec![0u8; len];
         reader.read_exact(&mut buffer).map_err(DbError::IoError)?;
         Ok(buffer)
     }
 }
+
+// This is now the sole implementation for DataDeserializer<String>
+impl DataDeserializer<String> for String {
+    fn deserialize<R: Read>(reader: &mut R) -> Result<String, DbError> {
+        let len = u64::deserialize(reader)? as usize; // Deserialize length
+        if len > MAX_ALLOWED_ITEM_LENGTH {
+            return Err(DbError::StorageError(format!(
+                "Deserialized String length {} exceeds maximum allowed limit of {}",
+                len, MAX_ALLOWED_ITEM_LENGTH
+            )));
+        }
+        let mut buffer = vec![0u8; len];
+        reader.read_exact(&mut buffer).map_err(DbError::IoError)?;
+        String::from_utf8(buffer)
+            .map_err(|e| DbError::DeserializationError(format!("UTF-8 conversion error: {}", e)))
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

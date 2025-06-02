@@ -117,9 +117,21 @@ This provides a basic, persistent key-value store implementation using a single 
     *   This means the entire dataset is loaded into memory upon startup if the file exists and contains data.
 
 *   **Persistence (`save_to_disk`)**:
-    *   Any operation that modifies the data (`put`, `delete`) triggers a full rewrite of the data file by calling `save_to_disk()`.
-    *   This method iterates over the entire `cache`, serializes each key-value pair, and writes them sequentially to the file using a `BufWriter`. The file is truncated before writing (opened with `truncate(true)` and `create(true)` options).
-    *   This approach is simple but inefficient for large datasets or frequent writes.
+    *   To ensure data integrity, especially in the event of a crash during a write operation, `save_to_disk` employs an atomic write strategy.
+    *   **Temporary File:** When saving, all data from the in-memory `cache` is first written to a new temporary file (e.g., `[original_filename].tmp`) in the same directory as the main database file. This uses a `BufWriter` for efficiency.
+    *   **Flush and Sync:** After all data is written to the temporary file, its `BufWriter` is flushed, and the underlying file is explicitly synced to disk (e.g., via `File::sync_all()`) to ensure all data is persisted.
+    *   **Atomic Rename:** If the write, flush, and sync operations to the temporary file are successful, the temporary file is then atomically renamed to the name of the main database file. This rename operation overwrites the original main database file, effectively committing the changes in a single, atomic step.
+    *   **Error Handling and Cleanup:** An RAII guard (`TempFileGuard`) is used to ensure that if any error occurs during the creation of, writing to, flushing, or syncing of the temporary file, the temporary file is automatically deleted. This prevents orphaned temporary files and ensures that the original database file remains untouched if the process is interrupted before the atomic rename.
+    *   This atomic write mechanism significantly mitigates data corruption by ensuring that the main database file always reflects a consistent state (either the old data or the completely new data).
+
+*   **Initialization (`new`) / Loading (`load_from_disk`)**:
+    *   When a `SimpleFileKvStore` is created, its `load_from_disk()` method is called to populate the in-memory `cache`. This method now includes recovery logic:
+        *   **Temporary File Check:** Before attempting to load from the main database file, the store checks for the existence of a corresponding temporary file (e.g., `[filename].tmp`).
+        *   **Recovery from Temporary File:** If a temporary file exists, it's considered potentially more up-to-date (due to an interrupted previous save). The store attempts to load data from this temporary file.
+            *   If loading from the temporary file is successful, the temporary file is then atomically renamed to the main database file. This completes the interrupted save operation. If this rename fails, an error is reported, and the temporary file is left for potential manual recovery.
+            *   If the temporary file is found but is corrupted (e.g., deserialization fails), it is deleted to prevent issues on subsequent loads. The store then proceeds to attempt loading from the main database file.
+        *   **Loading from Main File:** If no temporary file is found, or if loading from a temporary file failed and it was cleaned up, the store attempts to load from the main database file as before. If the main file is not found, it's treated as a new, empty store.
+    *   This recovery logic makes the store more resilient to crashes that might occur during `save_to_disk`.
 
 *   **Serialization Format (in the file):**
     *   Each key-value pair is stored sequentially. Keys and values are `Vec<u8>`.
@@ -128,8 +140,9 @@ This provides a basic, persistent key-value store implementation using a single 
     *   `load_from_disk` reads these pairs one by one. It first checks if the reader is at EOF using `fill_buf().is_empty()`. If not, it attempts to deserialize a key. If successful, it must find a value. Any premature EOF or deserialization error during this process is treated as a `DbError::StorageError`.
 
 *   **Error Handling:**
-    *   I/O errors during file operations are wrapped in `DbError::IoError` (e.g., by `File::open`, `writer.flush`).
-    *   Failures during the load loop (e.g., malformed data, unexpected EOF after a key or during a value) are typically wrapped into `DbError::StorageError` with a descriptive message.
+    *   I/O errors during file operations are wrapped in `DbError::IoError`.
+    *   Failures during the load loop (e.g., malformed data, unexpected EOF) are typically wrapped into `DbError::StorageError`.
+    *   **Deserialization Safety:** To enhance robustness against corrupted data files (which might specify excessively large lengths for keys or values), the `Vec<u8>::deserialize` and `String::deserialize` methods in `src/core/common/serialization.rs` now include a check against a `MAX_ALLOWED_ITEM_LENGTH`. If a deserialized length prefix exceeds this sanity limit (e.g., 256 MiB), a `DbError::StorageError` is returned, preventing potential excessive memory allocation and crashes. This is particularly relevant during `load_from_disk`.
 
 *   **Limitations for this initial version:**
     *   **Scalability:** Loads the entire database into memory. Not suitable for datasets larger than available RAM.
@@ -284,6 +297,7 @@ Concrete implementations of the `DataSerializer` and `DataDeserializer` traits a
     *   Similar to `String`, the vector's length (number of bytes) is first serialized as a `u64` (8 big-endian bytes).
     *   The raw bytes of the vector are then written to the stream.
     *   Deserialization reads the length, then reads that many bytes directly into a new `Vec<u8>`.
+*   **Safety Enhancement**: Both `String` and `Vec<u8>` deserialization routines incorporate a check against `MAX_ALLOWED_ITEM_LENGTH` (e.g., 256 MiB). If a serialized length prefix indicates an item larger than this threshold, deserialization is aborted, and a `DbError::StorageError` is returned. This prevents attempts to allocate excessive memory due to corrupted length information in the data file, significantly improving robustness against malformed data.
 
 ## 5. Detailed Design - Query Processor (`src/core/query`)
 
