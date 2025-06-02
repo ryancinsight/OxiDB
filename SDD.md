@@ -116,6 +116,37 @@ This provides a basic, persistent key-value store implementation using a single 
         *   If the file exists, its entire content is read using a `BufReader`. The method then deserializes key-value pairs sequentially and populates the in-memory `cache`.
     *   This means the entire dataset is loaded into memory upon startup if the file exists and contains data.
 
+*   **Write-Ahead Log (WAL) Mechanism**:
+    *   **Purpose**: To enhance data durability for `put`/`delete` operations and improve write performance by avoiding full file rewrites on each modification. The `save_to_disk` method still periodically persists the complete state to the main data file.
+    *   **Log Entry Format (`WalEntry`)**:
+        *   The `WalEntry` enum (`src/core/storage/engine/wal.rs`) defines the structure of log entries:
+            *   `Put { key: Vec<u8>, value: Vec<u8> }`: Represents a key-value insertion or update.
+            *   `Delete { key: Vec<u8> }`: Represents a key deletion.
+        *   On-disk serialization of each `WalEntry`:
+            1.  **Operation Type (1 byte)**: `0x01` for `Put`, `0x02` for `Delete`.
+            2.  **Serialized Key**: The key (`Vec<u8>`) is serialized using the standard length-prefixing format (length as `u64` + bytes).
+            3.  **Serialized Value (for Put only)**: The value (`Vec<u8>`) is serialized using the standard length-prefixing format. This part is omitted for `Delete` entries.
+            4.  **CRC32 Checksum (4 bytes)**: A CRC32 checksum of all preceding bytes in the entry (operation type + key + optional value) is appended to ensure integrity.
+    *   **`put` and `delete` Operations with WAL**:
+        *   When `put` or `delete` is called, the operation is no longer immediately written to the main data file by rewriting the entire dataset.
+        *   Instead, a corresponding `WalEntry` (`Put` or `Delete`) is created.
+        *   This `WalEntry` is serialized and appended to a dedicated WAL file (e.g., `[db_filename].wal`, where `[db_filename]` is the name of the main data file).
+        *   The WAL file write is flushed and synced to disk to ensure the log entry is durable.
+        *   After the WAL entry is successfully persisted, the in-memory `cache` is updated to reflect the change.
+        *   The `save_to_disk()` method is no longer called directly by `put` or `delete`.
+    *   **WAL Replay during `load_from_disk`**:
+        *   After the initial step of loading data from the main data file (or performing recovery from a `.tmp` file if one exists), the `load_from_disk` method proceeds to check for a WAL file.
+        *   If a `.wal` file associated with the database file exists, it signifies that there might be operations that haven't been persisted to the main data file yet.
+        *   Entries are read from the WAL file sequentially. For each entry:
+            *   The CRC32 checksum is verified.
+            *   The entry is deserialized.
+            *   The operation (`Put` or `Delete`) is replayed into the in-memory `cache`, bringing it up-to-date.
+        *   If corruption is detected (e.g., checksum mismatch, invalid entry format, deserialization error), the WAL replay process stops at that point. Data recovered from valid entries up to the point of corruption is kept. This prevents a corrupted WAL entry from halting the entire database load.
+    *   **WAL Truncation/Reset**:
+        *   The WAL file is not allowed to grow indefinitely.
+        *   After a successful `save_to_disk` operation (which writes the complete, current state of the in-memory `cache` to the main data file), the corresponding `.wal` file is deleted.
+        *   This is safe because all operations recorded in the WAL up to that point are now reflected in the main data file. Deleting the WAL prevents replay of already persisted operations and reclaims disk space.
+
 *   **Persistence (`save_to_disk`)**:
     *   To ensure data integrity, especially in the event of a crash during a write operation, `save_to_disk` employs an atomic write strategy.
     *   **Temporary File:** When saving, all data from the in-memory `cache` is first written to a new temporary file (e.g., `[original_filename].tmp`) in the same directory as the main database file. This uses a `BufWriter` for efficiency.
@@ -137,7 +168,7 @@ This provides a basic, persistent key-value store implementation using a single 
     *   Each key-value pair is stored sequentially. Keys and values are `Vec<u8>`.
     *   The key is serialized first: its length as a `u64` (big-endian, 8 bytes), followed by the key bytes. This uses `Vec<u8>::serialize()` which in turn uses `u64::serialize()` for the length.
     *   The value is serialized immediately after its corresponding key, using the same length-prefixing format.
-    *   `load_from_disk` reads these pairs one by one. It first checks if the reader is at EOF using `fill_buf().is_empty()`. If not, it attempts to deserialize a key. If successful, it must find a value. Any premature EOF or deserialization error during this process is treated as a `DbError::StorageError`.
+    *   `load_from_disk` reads these pairs one by one from the main data file. It first checks if the reader is at EOF using `fill_buf().is_empty()`. If not, it attempts to deserialize a key. If successful, it must find a value. Any premature EOF or deserialization error during this process is treated as a `DbError::StorageError`. After this, WAL replay occurs as described above.
 
 *   **Error Handling:**
     *   I/O errors during file operations are wrapped in `DbError::IoError`.
@@ -146,7 +177,7 @@ This provides a basic, persistent key-value store implementation using a single 
 
 *   **Limitations for this initial version:**
     *   **Scalability:** Loads the entire database into memory. Not suitable for datasets larger than available RAM.
-    *   **Write Performance:** Rewrites the entire file on every `put` or `delete` operation.
+    *   **Write Performance:** While individual `put`/`delete` operations are now faster due to WAL, `save_to_disk` still rewrites the entire dataset. The frequency of `save_to_disk` calls will influence overall write throughput characteristics.
     *   **Concurrency:** Not thread-safe for concurrent access.
     *   This implementation serves as a basic starting point for `oxidb`.
 

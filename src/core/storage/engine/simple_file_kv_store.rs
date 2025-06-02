@@ -5,19 +5,23 @@ use std::path::{Path, PathBuf};
 use crate::core::common::error::DbError;
 use crate::core::storage::engine::traits::KeyValueStore;
 use crate::core::common::traits::{DataSerializer, DataDeserializer};
+use crate::core::storage::engine::wal::{WalEntry, WalWriter};
 
 #[derive(Debug)] // Added Debug
 pub struct SimpleFileKvStore {
     file_path: PathBuf,
     cache: HashMap<Vec<u8>, Vec<u8>>,
+    wal_writer: WalWriter,
 }
 
 impl SimpleFileKvStore {
     pub fn new(path: impl AsRef<Path>) -> Result<Self, DbError> {
         let path_buf = path.as_ref().to_path_buf();
+        let wal_writer = WalWriter::new(&path_buf);
         let mut store = Self {
             file_path: path_buf,
             cache: HashMap::new(),
+            wal_writer,
         };
         // load_from_disk will handle non-existent files gracefully.
         store.load_from_disk()?;
@@ -98,7 +102,72 @@ impl SimpleFileKvStore {
         // If temporary file didn't exist, or loading from it failed and it was deleted,
         // attempt to load from the main database file.
         let main_file_path = self.file_path.clone();
-        self.read_data_into_cache(&main_file_path)
+        self.read_data_into_cache(&main_file_path)?; // Note: added ? here
+
+        // WAL Replay
+        let mut wal_file_path = self.file_path.to_path_buf();
+        let original_extension = wal_file_path.extension().map(|s| s.to_os_string());
+
+        if let Some(ext) = original_extension {
+            let mut new_ext = ext;
+            new_ext.push(".wal");
+            wal_file_path.set_extension(new_ext);
+        } else {
+            wal_file_path.set_extension("wal");
+        }
+
+        if wal_file_path.exists() {
+            let wal_file = match File::open(&wal_file_path) {
+                Ok(f) => f,
+                Err(e) if e.kind() == ErrorKind::NotFound => {
+                    // This case should ideally be caught by wal_file_path.exists()
+                    // but good to have as a safeguard.
+                    return Ok(());
+                }
+                Err(e) => return Err(DbError::IoError(e)),
+            };
+            let mut reader = BufReader::new(wal_file);
+
+            loop {
+                match WalEntry::deserialize(&mut reader) {
+                    Ok(entry) => {
+                        match entry {
+                            WalEntry::Put { key, value } => {
+                                self.cache.insert(key, value);
+                            }
+                            WalEntry::Delete { key } => {
+                                self.cache.remove(&key);
+                            }
+                        }
+                    }
+                    // Correctly match errors from WalEntry::deserialize
+                    Err(DbError::Serialization(msg)) => {
+                        // This covers "Invalid WAL entry size", "WAL entry checksum mismatch", "Unknown WAL operation type"
+                        eprintln!("WAL corruption detected (Serialization issue): {}. Replay stopped. Data up to this point is recovered.", msg);
+                        break;
+                    }
+                    // Match generic DeserializationError if that's a separate variant, otherwise covered by Serialization or other specific errors
+                    // For now, assuming Vec<u8>::deserialize might return a more generic DeserializationError
+                    Err(DbError::Deserialization(msg)) => { // Assuming this variant exists for Vec<u8> deserialization errors
+                        eprintln!("WAL data corruption detected (Deserialization issue): {}. Replay stopped. Data up to this point is recovered.", msg);
+                        break;
+                    }
+                    Err(DbError::IoError(ref e)) if e.kind() == ErrorKind::UnexpectedEof => {
+                        // Clean EOF when WalEntry::deserialize expects more data (e.g. for an operation type or checksum)
+                        // or if the file is empty/ends cleanly after the last full entry.
+                        // This can also be returned by reader.read_to_end() in WalEntry::deserialize if WAL is empty.
+                        break;
+                    }
+                    // Catch other specific DbError variants if necessary
+                    Err(e) => {
+                        // Other errors (e.g., unexpected IO errors not caught as UnexpectedEof)
+                        eprintln!("Error during WAL replay: {}. Replay stopped. Data up to this point is recovered.", e);
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(()) // End of load_from_disk
     }
 
     fn save_to_disk(&self) -> Result<(), DbError> {
@@ -155,14 +224,37 @@ impl SimpleFileKvStore {
         // but here it's fine as `temp_file_path` is what it tries to delete.
         // std::mem::forget(_temp_file_guard); // Alternative to a dedicated disarm method
 
+        // Delete WAL file after successful save to disk
+        let mut wal_file_path = self.file_path.to_path_buf();
+        let original_extension = wal_file_path.extension().map(|s| s.to_os_string());
+
+        if let Some(ext) = original_extension {
+            let mut new_ext = ext;
+            new_ext.push(".wal");
+            wal_file_path.set_extension(new_ext);
+        } else {
+            wal_file_path.set_extension("wal");
+        }
+
+        if wal_file_path.exists() {
+            if let Err(e) = std::fs::remove_file(&wal_file_path) {
+                eprintln!("Failed to delete WAL file {}: {}. Main data save was successful.", wal_file_path.display(), e);
+            }
+        }
+
         Ok(())
     }
 }
 
 impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
     fn put(&mut self, key: Vec<u8>, value: Vec<u8>) -> Result<(), DbError> {
+        let wal_entry = WalEntry::Put {
+            key: key.clone(), // Clone for WAL, original moved to cache
+            value: value.clone(), // Clone for WAL, original moved to cache
+        };
+        self.wal_writer.log_entry(&wal_entry)?;
         self.cache.insert(key, value);
-        self.save_to_disk()
+        Ok(())
     }
 
     fn get(&self, key: &Vec<u8>) -> Result<Option<Vec<u8>>, DbError> {
@@ -170,8 +262,10 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
     }
 
     fn delete(&mut self, key: &Vec<u8>) -> Result<bool, DbError> {
-        if self.cache.remove(key).is_some() {
-            self.save_to_disk()?;
+        if self.cache.contains_key(key) { // Check before creating WAL entry
+            let wal_entry = WalEntry::Delete { key: key.clone() }; // Clone for WAL
+            self.wal_writer.log_entry(&wal_entry)?;
+            self.cache.remove(key); // remove uses &Vec<u8>
             Ok(true)
         } else {
             Ok(false)
@@ -187,10 +281,13 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
 mod tests {
     use super::*;
     use tempfile::{NamedTempFile, Builder};
-    use std::fs::{write, remove_file, read}; // For manual file operations
+    use std::fs::{write, remove_file, read, File as StdFile}; // Renamed to avoid conflict with crate::core::storage::engine::File
+    use crate::core::storage::engine::wal::WalEntry;
+    use std::io::ErrorKind;
 
-    // Helper to create a file with specific key-value data
-    fn create_file_with_kv_data(path: &Path, data: &[(Vec<u8>, Vec<u8>)]) -> Result<(), DbError> {
+
+    // Helper to create a main DB file with specific key-value data
+    fn create_db_file_with_kv_data(path: &Path, data: &[(Vec<u8>, Vec<u8>)]) -> Result<(), DbError> {
         let file = OpenOptions::new().write(true).create(true).truncate(true).open(path).map_err(DbError::IoError)?;
         let mut writer = BufWriter::new(file);
         for (key, value) in data {
@@ -570,5 +667,256 @@ mod tests {
             },
             e => panic!("Unexpected error type for malformed value (EOF): {:?}", e),
         }
+    }
+
+    // Helper function to derive WAL path from DB path
+    fn derive_wal_path(db_path: &Path) -> PathBuf {
+        let mut wal_path = db_path.to_path_buf();
+        let original_extension = wal_path.extension().map(|s| s.to_os_string());
+        if let Some(ext) = original_extension {
+            let mut new_ext = ext;
+            new_ext.push(".wal");
+            wal_path.set_extension(new_ext);
+        } else {
+            wal_path.set_extension("wal");
+        }
+        wal_path
+    }
+
+    // Helper function to create a WAL file with specific entries
+    fn create_wal_file_with_entries(wal_path: &Path, entries: &[WalEntry]) -> Result<(), DbError> {
+        let wal_file_handle = OpenOptions::new().write(true).create(true).truncate(true).open(wal_path).map_err(DbError::IoError)?;
+        let mut writer = BufWriter::new(wal_file_handle);
+        for entry in entries {
+            entry.serialize(&mut writer)?;
+        }
+        writer.flush().map_err(DbError::IoError)?;
+        writer.get_ref().sync_all().map_err(DbError::IoError)?;
+        Ok(())
+    }
+
+    // Helper to read all entries from a WAL file
+    fn read_all_wal_entries(wal_path: &Path) -> Result<Vec<WalEntry>, DbError> {
+        let file = StdFile::open(wal_path).map_err(DbError::IoError)?;
+        let mut reader = BufReader::new(file);
+        let mut entries = Vec::new();
+        loop {
+            match WalEntry::deserialize(&mut reader) {
+                Ok(entry) => entries.push(entry),
+                Err(DbError::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => break,
+                Err(DbError::Serialization(s)) if s == "Invalid WAL entry size" && reader.buffer().is_empty() => break, // EOF on empty file or after last entry.
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(entries)
+    }
+
+
+    #[test]
+    fn test_put_writes_to_wal_and_cache() {
+        let db_file = NamedTempFile::new().unwrap();
+        let db_path = db_file.path();
+        let wal_path = derive_wal_path(db_path);
+
+        let mut store = SimpleFileKvStore::new(db_path).unwrap();
+        let key = b"wal_key1".to_vec();
+        let value = b"wal_value1".to_vec();
+        store.put(key.clone(), value.clone()).unwrap();
+
+        assert_eq!(store.get(&key).unwrap(), Some(value.clone()));
+        assert!(wal_path.exists());
+
+        let entries = read_all_wal_entries(&wal_path).unwrap();
+        assert_eq!(entries.len(), 1);
+        match &entries[0] {
+            WalEntry::Put { key: k, value: v } => {
+                assert_eq!(k, &key);
+                assert_eq!(v, &value);
+            }
+            _ => panic!("Expected Put entry"),
+        }
+    }
+
+    #[test]
+    fn test_delete_writes_to_wal_and_cache() {
+        let db_file = NamedTempFile::new().unwrap();
+        let db_path = db_file.path();
+        let wal_path = derive_wal_path(db_path);
+
+        let mut store = SimpleFileKvStore::new(db_path).unwrap();
+        let key = b"wal_del_key".to_vec();
+        let value = b"wal_del_value".to_vec();
+
+        store.put(key.clone(), value.clone()).unwrap();
+        store.delete(&key).unwrap();
+
+        assert_eq!(store.get(&key).unwrap(), None);
+        assert!(wal_path.exists());
+
+        let entries = read_all_wal_entries(&wal_path).unwrap();
+        assert_eq!(entries.len(), 2);
+        match &entries[0] {
+            WalEntry::Put { key: k, value: v } => {
+                assert_eq!(k, &key);
+                assert_eq!(v, &value);
+            }
+            _ => panic!("Expected Put entry as first entry"),
+        }
+        match &entries[1] {
+            WalEntry::Delete { key: k } => {
+                assert_eq!(k, &key);
+            }
+            _ => panic!("Expected Delete entry as second entry"),
+        }
+    }
+
+    #[test]
+    fn test_load_from_disk_no_wal() {
+        let db_file = NamedTempFile::new().unwrap();
+        let db_path = db_file.path();
+        let wal_path = derive_wal_path(db_path);
+
+        let key = b"main_data_key".to_vec();
+        let value = b"main_data_value".to_vec();
+
+        {
+            let mut store = SimpleFileKvStore::new(db_path).unwrap();
+            store.put(key.clone(), value.clone()).unwrap();
+            store.save_to_disk().unwrap(); // This should delete the WAL
+        }
+
+        assert!(!wal_path.exists(), "WAL file should not exist after save_to_disk");
+
+        let store = SimpleFileKvStore::new(db_path).unwrap();
+        assert_eq!(store.get(&key).unwrap(), Some(value));
+    }
+
+    #[test]
+    fn test_load_from_disk_with_wal_replay() {
+        let db_file = NamedTempFile::new().unwrap();
+        let db_path = db_file.path();
+        let wal_path = derive_wal_path(db_path);
+
+        let key1 = b"key1".to_vec();
+        let val1_initial = b"value1_initial".to_vec();
+        let val1_updated_wal = b"value1_updated_wal".to_vec();
+
+        let key2 = b"key2".to_vec();
+        let val2_wal = b"value2_wal".to_vec();
+
+        let key3 = b"key3".to_vec();
+        let val3_initial = b"value3_initial".to_vec();
+        let val3_wal = b"value3_wal_temp".to_vec(); // Will be deleted by WAL
+
+        // Phase 1: Save initial state to main disk file
+        {
+            let mut store = SimpleFileKvStore::new(db_path).unwrap();
+            store.put(key1.clone(), val1_initial.clone()).unwrap();
+            store.put(key3.clone(), val3_initial.clone()).unwrap();
+            store.save_to_disk().unwrap(); // key1, key3 in main file, WAL is cleared
+        }
+        assert!(!wal_path.exists());
+
+
+        // Phase 2: Perform operations that only go to WAL
+        {
+            let mut store = SimpleFileKvStore::new(db_path).unwrap(); // Loads from main file
+            assert_eq!(store.get(&key1).unwrap(), Some(val1_initial.clone()));
+            assert_eq!(store.get(&key3).unwrap(), Some(val3_initial.clone()));
+
+            store.put(key2.clone(), val2_wal.clone()).unwrap(); // Goes to WAL
+            store.put(key1.clone(), val1_updated_wal.clone()).unwrap(); // Update, goes to WAL
+            store.put(key3.clone(), val3_wal.clone()).unwrap(); // Re-add key3, goes to WAL
+            store.delete(&key3).unwrap(); // Delete key3, goes to WAL
+            // DO NOT CALL save_to_disk()
+        }
+        assert!(wal_path.exists());
+
+        // Phase 3: Load store, WAL replay should occur
+        let store = SimpleFileKvStore::new(db_path).unwrap();
+        assert_eq!(store.get(&key1).unwrap(), Some(val1_updated_wal.clone()));
+        assert_eq!(store.get(&key2).unwrap(), Some(val2_wal.clone()));
+        assert_eq!(store.get(&key3).unwrap(), None); // key3 deleted via WAL
+        
+        assert!(wal_path.exists(), "WAL file should still exist after load_from_disk");
+    }
+    
+    #[test]
+    fn test_wal_recovery_after_simulated_crash() {
+        let db_file = NamedTempFile::new().unwrap();
+        let db_path = db_file.path();
+        let wal_path = derive_wal_path(db_path);
+
+        let key_a = b"keyA".to_vec();
+        let val_a = b"valA".to_vec();
+        let key_b = b"keyB".to_vec();
+        let val_b = b"valB".to_vec();
+
+        {
+            let mut store = SimpleFileKvStore::new(db_path).unwrap();
+            store.put(key_a.clone(), val_a.clone()).unwrap();
+            store.put(key_b.clone(), val_b.clone()).unwrap();
+            // No save_to_disk, operations are only in WAL and cache
+        }
+        assert!(wal_path.exists());
+
+        // Simulate crash by creating a new store instance. load_from_disk will run.
+        let store_after_crash = SimpleFileKvStore::new(db_path).unwrap();
+        assert_eq!(store_after_crash.get(&key_a).unwrap(), Some(val_a.clone()));
+        assert_eq!(store_after_crash.get(&key_b).unwrap(), Some(val_b.clone()));
+    }
+
+    #[test]
+    fn test_wal_truncation_after_save_to_disk() {
+        let db_file = NamedTempFile::new().unwrap();
+        let db_path = db_file.path();
+        let wal_path = derive_wal_path(db_path);
+
+        let key = b"trunc_key".to_vec();
+        let value = b"trunc_val".to_vec();
+        {
+            let mut store = SimpleFileKvStore::new(db_path).unwrap();
+            store.put(key.clone(), value.clone()).unwrap();
+            assert!(wal_path.exists());
+            store.save_to_disk().unwrap();
+        }
+        
+        assert!(!wal_path.exists(), "WAL file should not exist after save_to_disk");
+
+        let store = SimpleFileKvStore::new(db_path).unwrap();
+        assert_eq!(store.get(&key).unwrap(), Some(value.clone()));
+    }
+
+    #[test]
+    fn test_wal_replay_stops_on_corruption() {
+        let db_file = NamedTempFile::new().unwrap(); // Main DB file (can be empty for this test)
+        let db_path = db_file.path();
+        let wal_path = derive_wal_path(db_path);
+
+        let key_good = b"key_good".to_vec();
+        let value_good = b"value_good".to_vec();
+        let key_bad = b"key_bad".to_vec();
+        let value_bad = b"value_bad".to_vec();
+
+        // Manually create WAL with corruption
+        {
+            let wal_file_handle = OpenOptions::new().write(true).create(true).truncate(true).open(&wal_path).unwrap();
+            let mut writer = BufWriter::new(wal_file_handle);
+            
+            // Valid entry
+            WalEntry::Put{ key: key_good.clone(), value: value_good.clone() }.serialize(&mut writer).unwrap();
+            
+            // Corrupted data (e.g. invalid operation type or bad checksum, simpler: just random bytes not forming a valid entry part)
+            writer.write_all(&[0xDE, 0xAD, 0xBE, 0xEF]).unwrap(); // Random bytes, will cause deserialization to fail
+            
+            // Another valid entry (should not be reached)
+            WalEntry::Put{ key: key_bad.clone(), value: value_bad.clone() }.serialize(&mut writer).unwrap();
+            writer.flush().unwrap();
+        }
+
+        let store = SimpleFileKvStore::new(db_path).unwrap(); // Triggers load_from_disk and WAL replay
+        
+        assert_eq!(store.get(&key_good).unwrap(), Some(value_good.clone()), "Should recover key before corruption");
+        assert_eq!(store.get(&key_bad).unwrap(), None, "Should not recover key after corruption");
     }
 }
