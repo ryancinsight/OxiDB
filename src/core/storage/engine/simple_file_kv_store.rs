@@ -15,6 +15,16 @@ pub struct SimpleFileKvStore {
 }
 
 impl SimpleFileKvStore {
+    /// Creates a new `SimpleFileKvStore` instance.
+    ///
+    /// The store is initialized from the data file at the given `path`.
+    /// If the file does not exist, an empty store is created.
+    /// This method also performs recovery from a Write-Ahead Log (WAL) if one exists,
+    /// ensuring that any previously uncommitted operations are applied.
+    ///
+    /// # Errors
+    /// Returns `DbError` if there are issues reading from the data file or WAL,
+    /// or if recovery procedures encounter an unrecoverable error.
     pub fn new(path: impl AsRef<Path>) -> Result<Self, DbError> {
         let path_buf = path.as_ref().to_path_buf();
         let wal_writer = WalWriter::new(&path_buf);
@@ -129,7 +139,7 @@ impl SimpleFileKvStore {
             let mut reader = BufReader::new(wal_file);
 
             loop {
-                match WalEntry::deserialize(&mut reader) {
+                match <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut reader) {
                     Ok(entry) => {
                         match entry {
                             WalEntry::Put { key, value } => {
@@ -140,27 +150,20 @@ impl SimpleFileKvStore {
                             }
                         }
                     }
-                    // Correctly match errors from WalEntry::deserialize
-                    Err(DbError::Serialization(msg)) => {
-                        // This covers "Invalid WAL entry size", "WAL entry checksum mismatch", "Unknown WAL operation type"
-                        eprintln!("WAL corruption detected (Serialization issue): {}. Replay stopped. Data up to this point is recovered.", msg);
+                    Err(DbError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                        // This indicates a clean end of the WAL file (or that it was empty).
+                        // No more entries to replay.
+                        break; 
+                    }
+                    Err(DbError::DeserializationError(msg)) => {
+                        // A deserialization error (e.g., checksum mismatch, unknown op type) implies WAL corruption.
+                        // Print an error and stop replay. Data recovered up to this point is kept.
+                        eprintln!("WAL corruption detected (Deserialization error): {}. Replay stopped. Data up to this point is recovered.", msg);
                         break;
                     }
-                    // Match generic DeserializationError if that's a separate variant, otherwise covered by Serialization or other specific errors
-                    // For now, assuming Vec<u8>::deserialize might return a more generic DeserializationError
-                    Err(DbError::Deserialization(msg)) => { // Assuming this variant exists for Vec<u8> deserialization errors
-                        eprintln!("WAL data corruption detected (Deserialization issue): {}. Replay stopped. Data up to this point is recovered.", msg);
-                        break;
-                    }
-                    Err(DbError::IoError(ref e)) if e.kind() == ErrorKind::UnexpectedEof => {
-                        // Clean EOF when WalEntry::deserialize expects more data (e.g. for an operation type or checksum)
-                        // or if the file is empty/ends cleanly after the last full entry.
-                        // This can also be returned by reader.read_to_end() in WalEntry::deserialize if WAL is empty.
-                        break;
-                    }
-                    // Catch other specific DbError variants if necessary
-                    Err(e) => {
-                        // Other errors (e.g., unexpected IO errors not caught as UnexpectedEof)
+                    Err(e) => { // Handles other DbError variants, including other critical IoErrors
+                        // Any other error during WAL replay (e.g., unexpected I/O error not being EOF)
+                        // is treated as a critical issue. Print an error and stop replay.
                         eprintln!("Error during WAL replay: {}. Replay stopped. Data up to this point is recovered.", e);
                         break;
                     }
@@ -170,7 +173,27 @@ impl SimpleFileKvStore {
         Ok(()) // End of load_from_disk
     }
 
-    fn save_to_disk(&self) -> Result<(), DbError> {
+    /// Saves the current in-memory state of the key-value store to disk.
+    ///
+    /// This operation involves:
+    /// 1. Writing all key-value pairs from the cache to a new temporary file.
+    /// 2. Flushing the temporary file's content to disk and ensuring it's synced.
+    /// 3. Atomically renaming the temporary file to replace the main data file.
+    ///    This ensures that the main data file is only updated if the entire save is successful.
+    /// 4. If the atomic rename is successful, the Write-Ahead Log (WAL) file is deleted,
+    ///    as its entries are now reflected in the main data file.
+    ///
+    /// A `TempFileGuard` is used to ensure that the temporary file is cleaned up
+    /// if any error occurs before the atomic rename.
+    ///
+    /// # Errors
+    /// Returns `DbError` if any part of the process fails, such as:
+    /// - I/O errors during file creation, writing, flushing, or syncing.
+    /// - Errors during serialization of keys or values.
+    /// - Failure to atomically rename the temporary file to the main data file.
+    /// - (Note: Failure to delete the WAL file after a successful save is reported via `eprintln!`
+    ///   but does not cause this method to return an error, as the main data is already safe.)
+    pub fn save_to_disk(&self) -> Result<(), DbError> {
         // 1. Construct Temporary File Path
         let temp_file_path = self.file_path.with_extension("tmp");
 
@@ -274,6 +297,23 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
 
     fn contains_key(&self, key: &Vec<u8>) -> Result<bool, DbError> {
         Ok(self.cache.contains_key(key))
+    }
+}
+
+/// Implements the `Drop` trait for `SimpleFileKvStore`.
+///
+/// When a `SimpleFileKvStore` instance goes out of scope, this `drop` method
+/// is called to ensure that any in-memory data is persisted to disk.
+/// It achieves this by calling `self.save_to_disk()`.
+///
+/// If `save_to_disk()` encounters an error during this process (e.g., an I/O error),
+/// the error is printed to `stderr` via `eprintln!`. This is a common pattern for
+/// handling fallible operations within `Drop`, as `drop` itself cannot return a `Result`.
+impl Drop for SimpleFileKvStore {
+    fn drop(&mut self) {
+        if let Err(e) = self.save_to_disk() {
+            eprintln!("Error saving data to disk during drop: {}", e);
+        }
     }
 }
 
@@ -435,13 +475,13 @@ mod tests {
 
         // Setup: Main file with initial data, temp file with newer data
         let initial_data = vec![(b"key1".to_vec(), b"value_initial".to_vec())];
-        create_file_with_kv_data(&main_db_path, &initial_data).unwrap();
+        create_db_file_with_kv_data(&main_db_path, &initial_data).unwrap();
 
         let temp_data = vec![
             (b"key1".to_vec(), b"value_new".to_vec()),
             (b"key2".to_vec(), b"value2".to_vec()),
         ];
-        create_file_with_kv_data(&temp_db_path, &temp_data).unwrap();
+        create_db_file_with_kv_data(&temp_db_path, &temp_data).unwrap();
 
         // Action: Create store, triggering load_from_disk
         let store = SimpleFileKvStore::new(&main_db_path).unwrap();
@@ -470,7 +510,7 @@ mod tests {
 
         // Setup: Main file with valid data
         let main_data = vec![(b"key_main".to_vec(), b"value_main".to_vec())];
-        create_file_with_kv_data(&main_db_path, &main_data).unwrap();
+        create_db_file_with_kv_data(&main_db_path, &main_data).unwrap();
 
         // Setup: Corrupted temp file
         write(&temp_db_path, b"this is corrupted data").unwrap();
@@ -517,7 +557,7 @@ mod tests {
 
         // Setup: Valid temp file with data
         let temp_data = vec![(b"key_temp".to_vec(), b"value_temp".to_vec())];
-        create_file_with_kv_data(&temp_db_path, &temp_data).unwrap();
+        create_db_file_with_kv_data(&temp_db_path, &temp_data).unwrap();
         assert!(temp_db_path.exists());
 
         // Action: Create store
@@ -688,7 +728,7 @@ mod tests {
         let wal_file_handle = OpenOptions::new().write(true).create(true).truncate(true).open(wal_path).map_err(DbError::IoError)?;
         let mut writer = BufWriter::new(wal_file_handle);
         for entry in entries {
-            entry.serialize(&mut writer)?;
+            <WalEntry as DataSerializer<WalEntry>>::serialize(entry, &mut writer)?;
         }
         writer.flush().map_err(DbError::IoError)?;
         writer.get_ref().sync_all().map_err(DbError::IoError)?;
@@ -701,11 +741,18 @@ mod tests {
         let mut reader = BufReader::new(file);
         let mut entries = Vec::new();
         loop {
-            match WalEntry::deserialize(&mut reader) {
+            match <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut reader) {
                 Ok(entry) => entries.push(entry),
-                Err(DbError::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => break,
-                Err(DbError::Serialization(s)) if s == "Invalid WAL entry size" && reader.buffer().is_empty() => break, // EOF on empty file or after last entry.
-                Err(e) => return Err(e),
+                Err(DbError::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => {
+                    // This is the expected way to detect EOF when reading sequentially.
+                    // It typically occurs when deserialize_from_reader tries to read the next op_type.
+                    break;
+                }
+                Err(e) => {
+                    // For test purposes, any other error during WAL reading is problematic.
+                    // This could include DeserializationError or other IoErrors.
+                    return Err(e);
+                }
             }
         }
         Ok(entries)
@@ -829,6 +876,7 @@ mod tests {
             store.put(key3.clone(), val3_wal.clone()).unwrap(); // Re-add key3, goes to WAL
             store.delete(&key3).unwrap(); // Delete key3, goes to WAL
             // DO NOT CALL save_to_disk()
+            std::mem::forget(store); // Prevent Drop from running to simulate unclean shutdown
         }
         assert!(wal_path.exists());
 
@@ -857,6 +905,7 @@ mod tests {
             store.put(key_a.clone(), val_a.clone()).unwrap();
             store.put(key_b.clone(), val_b.clone()).unwrap();
             // No save_to_disk, operations are only in WAL and cache
+            std::mem::forget(store); // Prevent Drop from running to simulate unclean shutdown
         }
         assert!(wal_path.exists());
 
@@ -904,13 +953,13 @@ mod tests {
             let mut writer = BufWriter::new(wal_file_handle);
             
             // Valid entry
-            WalEntry::Put{ key: key_good.clone(), value: value_good.clone() }.serialize(&mut writer).unwrap();
+            <WalEntry as DataSerializer<WalEntry>>::serialize(&WalEntry::Put{ key: key_good.clone(), value: value_good.clone() }, &mut writer).unwrap();
             
             // Corrupted data (e.g. invalid operation type or bad checksum, simpler: just random bytes not forming a valid entry part)
             writer.write_all(&[0xDE, 0xAD, 0xBE, 0xEF]).unwrap(); // Random bytes, will cause deserialization to fail
             
             // Another valid entry (should not be reached)
-            WalEntry::Put{ key: key_bad.clone(), value: value_bad.clone() }.serialize(&mut writer).unwrap();
+            <WalEntry as DataSerializer<WalEntry>>::serialize(&WalEntry::Put{ key: key_bad.clone(), value: value_bad.clone() }, &mut writer).unwrap();
             writer.flush().unwrap();
         }
 
@@ -918,5 +967,28 @@ mod tests {
         
         assert_eq!(store.get(&key_good).unwrap(), Some(value_good.clone()), "Should recover key before corruption");
         assert_eq!(store.get(&key_bad).unwrap(), None, "Should not recover key after corruption");
+    }
+
+    #[test]
+    fn test_drop_persists_data() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_path_buf();
+        let key1 = b"drop_key".to_vec();
+        let value1 = b"drop_value".to_vec();
+
+        {
+            let mut store = SimpleFileKvStore::new(&path).unwrap();
+            store.put(key1.clone(), value1.clone()).unwrap();
+            // Store goes out of scope here, Drop should be called.
+        }
+
+        // Re-load the store and check if data is persisted.
+        let reloaded_store = SimpleFileKvStore::new(&path).unwrap();
+        assert_eq!(reloaded_store.get(&key1).unwrap(), Some(value1));
+        assert_eq!(reloaded_store.cache.len(), 1);
+
+        // Also check that the WAL file is cleared after a successful save_to_disk (which drop calls)
+        let wal_path = derive_wal_path(&path);
+        assert!(!wal_path.exists(), "WAL file should not exist after successful drop/save.");
     }
 }
