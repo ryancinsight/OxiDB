@@ -3,6 +3,7 @@
 use crate::core::common::error::DbError;
 use crate::core::query::commands::Command;
 use crate::core::storage::engine::traits::KeyValueStore;
+use crate::core::transaction::{Transaction, TransactionState}; // Added import
 
 #[derive(Debug, PartialEq)] // Add PartialEq for testing
 pub enum ExecutionResult {
@@ -28,14 +29,41 @@ pub fn execute_command<S: KeyValueStore<Vec<u8>, Vec<u8>>>(
 ) -> Result<ExecutionResult, DbError> {
     match command {
         Command::Insert { key, value } => {
-            store.put(key, value)?;
-            Ok(ExecutionResult::Success)
+            let mut tx = Transaction::new(0); // Create a new transaction
+            match store.put(key, value, &tx) {
+                Ok(_) => {
+                    tx.state = TransactionState::Committed;
+                    // Here you might log the transaction state or pass it along.
+                    // For now, we just conceptually complete it.
+                    Ok(ExecutionResult::Success)
+                }
+                Err(e) => {
+                    tx.state = TransactionState::Aborted;
+                    // Log or handle aborted transaction if necessary.
+                    Err(e)
+                }
+            }
         }
         Command::Get { key } => {
+            // Get operations are typically read-only and might not require explicit transactions
+            // in the same way as writes, or they might participate in a larger read transaction context.
+            // For this iteration, no specific transactional logic is added here.
             store.get(&key).map(ExecutionResult::Value)
         }
         Command::Delete { key } => {
-            store.delete(&key).map(ExecutionResult::Deleted)
+            let mut tx = Transaction::new(0); // Create a new transaction
+            match store.delete(&key, &tx) {
+                Ok(deleted) => {
+                    tx.state = TransactionState::Committed;
+                    // Log or handle committed transaction.
+                    Ok(ExecutionResult::Deleted(deleted))
+                }
+                Err(e) => {
+                    tx.state = TransactionState::Aborted;
+                    // Log or handle aborted transaction.
+                    Err(e)
+                }
+            }
         }
     }
 }

@@ -1,12 +1,13 @@
 // Assuming DbError will be defined in crate::core::common::error
 // Adjust the path if error.rs is structured within a module e.g. crate::core::common::error::DbError
 use crate::core::common::error::DbError;
+use crate::core::transaction::Transaction;
 
 /// Trait for basic key-value store operations.
 pub trait KeyValueStore<K, V> {
     /// Inserts a key-value pair into the store.
     /// If the key already exists, its value is updated.
-    fn put(&mut self, key: K, value: V) -> Result<(), DbError>;
+    fn put(&mut self, key: K, value: V, transaction: &Transaction) -> Result<(), DbError>;
 
     /// Retrieves the value associated with a key.
     /// Returns `Ok(Some(value))` if the key exists, `Ok(None)` otherwise.
@@ -14,7 +15,7 @@ pub trait KeyValueStore<K, V> {
 
     /// Deletes a key-value pair from the store.
     /// Returns `Ok(true)` if the key was found and deleted, `Ok(false)` otherwise.
-    fn delete(&mut self, key: &K) -> Result<bool, DbError>;
+    fn delete(&mut self, key: &K, transaction: &Transaction) -> Result<bool, DbError>;
 
     /// Checks if a key exists in the store.
     fn contains_key(&self, key: &K) -> Result<bool, DbError>;

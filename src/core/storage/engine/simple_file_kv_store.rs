@@ -6,6 +6,7 @@ use crate::core::common::error::DbError;
 use crate::core::storage::engine::traits::KeyValueStore;
 use crate::core::common::traits::{DataSerializer, DataDeserializer};
 use crate::core::storage::engine::wal::{WalEntry, WalWriter};
+use crate::core::transaction::Transaction; // Added import
 
 #[derive(Debug)] // Added Debug
 pub struct SimpleFileKvStore {
@@ -270,12 +271,16 @@ impl SimpleFileKvStore {
 }
 
 impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
-    fn put(&mut self, key: Vec<u8>, value: Vec<u8>) -> Result<(), DbError> {
+    fn put(&mut self, key: Vec<u8>, value: Vec<u8>, _transaction: &Transaction) -> Result<(), DbError> {
+        // TODO: Use the transaction parameter, e.g., by logging it or using its state.
+        // For now, the transaction parameter is ignored.
         let wal_entry = WalEntry::Put {
-            key: key.clone(), // Clone for WAL, original moved to cache
-            value: value.clone(), // Clone for WAL, original moved to cache
+            key: key.clone(), 
+            value: value.clone(),
         };
+        // Log to WAL first
         self.wal_writer.log_entry(&wal_entry)?;
+        // Then update cache
         self.cache.insert(key, value);
         Ok(())
     }
@@ -284,15 +289,18 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         Ok(self.cache.get(key).cloned())
     }
 
-    fn delete(&mut self, key: &Vec<u8>) -> Result<bool, DbError> {
-        if self.cache.contains_key(key) { // Check before creating WAL entry
-            let wal_entry = WalEntry::Delete { key: key.clone() }; // Clone for WAL
-            self.wal_writer.log_entry(&wal_entry)?;
-            self.cache.remove(key); // remove uses &Vec<u8>
-            Ok(true)
-        } else {
-            Ok(false)
+    fn delete(&mut self, key: &Vec<u8>, _transaction: &Transaction) -> Result<bool, DbError> {
+        // TODO: Use the transaction parameter.
+        if !self.cache.contains_key(key) {
+            return Ok(false); // Key doesn't exist, nothing to delete
         }
+        
+        let wal_entry = WalEntry::Delete { key: key.clone() };
+        // Log to WAL first
+        self.wal_writer.log_entry(&wal_entry)?;
+        // Then update cache
+        self.cache.remove(key);
+        Ok(true)
     }
 
     fn contains_key(&self, key: &Vec<u8>) -> Result<bool, DbError> {
@@ -323,6 +331,7 @@ mod tests {
     use tempfile::{NamedTempFile, Builder};
     use std::fs::{write, remove_file, read, File as StdFile}; // Renamed to avoid conflict with crate::core::storage::engine::File
     use crate::core::storage::engine::wal::WalEntry;
+    use crate::core::transaction::Transaction; // Removed TransactionState
     use std::io::ErrorKind;
 
 
@@ -369,14 +378,15 @@ mod tests {
     fn test_put_and_get() {
         let temp_file = NamedTempFile::new().unwrap();
         let mut store = SimpleFileKvStore::new(temp_file.path()).unwrap();
+        let dummy_transaction = Transaction::new(0); // Dummy transaction
         let key1 = b"key1".to_vec();
         let value1 = b"value1".to_vec();
-        store.put(key1.clone(), value1.clone()).unwrap();
+        store.put(key1.clone(), value1.clone(), &dummy_transaction).unwrap();
         assert_eq!(store.get(&key1).unwrap(), Some(value1.clone()));
 
         let key2 = b"key2".to_vec();
         let value2 = b"value2_long".to_vec();
-        store.put(key2.clone(), value2.clone()).unwrap();
+        store.put(key2.clone(), value2.clone(), &dummy_transaction).unwrap();
         assert_eq!(store.get(&key2).unwrap(), Some(value2.clone()));
         assert_eq!(store.get(&key1).unwrap(), Some(value1.clone()));
     }
@@ -385,14 +395,15 @@ mod tests {
     fn test_put_update() {
         let temp_file = NamedTempFile::new().unwrap();
         let mut store = SimpleFileKvStore::new(temp_file.path()).unwrap();
+        let dummy_transaction = Transaction::new(0); // Dummy transaction
         let key1 = b"key1".to_vec();
         let value1 = b"value1".to_vec();
         let value1_updated = b"value1_updated".to_vec();
 
-        store.put(key1.clone(), value1.clone()).unwrap();
+        store.put(key1.clone(), value1.clone(), &dummy_transaction).unwrap();
         assert_eq!(store.get(&key1).unwrap(), Some(value1.clone()));
 
-        store.put(key1.clone(), value1_updated.clone()).unwrap();
+        store.put(key1.clone(), value1_updated.clone(), &dummy_transaction).unwrap();
         assert_eq!(store.get(&key1).unwrap(), Some(value1_updated.clone()));
     }
 
@@ -407,10 +418,11 @@ mod tests {
     fn test_delete() {
         let temp_file = NamedTempFile::new().unwrap();
         let mut store = SimpleFileKvStore::new(temp_file.path()).unwrap();
+        let dummy_transaction = Transaction::new(0); // Dummy transaction
         let key1 = b"key1".to_vec();
         let value1 = b"value1".to_vec();
-        store.put(key1.clone(), value1.clone()).unwrap();
-        assert!(store.delete(&key1).unwrap());
+        store.put(key1.clone(), value1.clone(), &dummy_transaction).unwrap();
+        assert!(store.delete(&key1, &dummy_transaction).unwrap());
         assert_eq!(store.get(&key1).unwrap(), None);
         assert!(!store.contains_key(&key1).unwrap());
     }
@@ -419,15 +431,17 @@ mod tests {
     fn test_delete_non_existent() {
         let temp_file = NamedTempFile::new().unwrap();
         let mut store = SimpleFileKvStore::new(temp_file.path()).unwrap();
-        assert!(!store.delete(&b"non_existent_key".to_vec()).unwrap());
+        let dummy_transaction = Transaction::new(0); // Dummy transaction
+        assert!(!store.delete(&b"non_existent_key".to_vec(), &dummy_transaction).unwrap());
     }
 
     #[test]
     fn test_contains_key() {
         let temp_file = NamedTempFile::new().unwrap();
         let mut store = SimpleFileKvStore::new(temp_file.path()).unwrap();
+        let dummy_transaction = Transaction::new(0); // Dummy transaction
         let key1 = b"key1".to_vec();
-        store.put(key1.clone(), b"value1".to_vec()).unwrap();
+        store.put(key1.clone(), b"value1".to_vec(), &dummy_transaction).unwrap();
         assert!(store.contains_key(&key1).unwrap());
         assert!(!store.contains_key(&b"non_existent_key".to_vec()).unwrap());
     }
@@ -436,11 +450,12 @@ mod tests {
     fn test_persistence() {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path().to_path_buf();
+        let dummy_transaction = Transaction::new(0); // Dummy transaction
         let key1 = b"persist_key".to_vec();
         let value1 = b"persist_value".to_vec();
         {
             let mut store = SimpleFileKvStore::new(&path).unwrap();
-            store.put(key1.clone(), value1.clone()).unwrap();
+            store.put(key1.clone(), value1.clone(), &dummy_transaction).unwrap();
         }
         let reloaded_store = SimpleFileKvStore::new(&path).unwrap();
         assert_eq!(reloaded_store.get(&key1).unwrap(), Some(value1));
@@ -454,9 +469,10 @@ mod tests {
         let temp_db_path = db_path.with_extension("tmp");
 
         let mut store = SimpleFileKvStore::new(&db_path).unwrap();
+        let dummy_transaction = Transaction::new(0); // Dummy transaction
         let key1 = b"key1".to_vec();
         let value1 = b"value1".to_vec();
-        store.put(key1.clone(), value1.clone()).unwrap(); // put calls save_to_disk
+        store.put(key1.clone(), value1.clone(), &dummy_transaction).unwrap(); // put calls save_to_disk
 
         // Verify main file has the data
         let reloaded_store = SimpleFileKvStore::new(&db_path).unwrap(); // Removed mut
@@ -616,7 +632,8 @@ mod tests {
         let value_orig = b"value_orig".to_vec();
         {
             let mut store = SimpleFileKvStore::new(&db_path).unwrap();
-            store.put(key_orig.clone(), value_orig.clone()).unwrap();
+            let dummy_transaction = Transaction::new(0); // Dummy transaction
+            store.put(key_orig.clone(), value_orig.clone(), &dummy_transaction).unwrap();
         } // Store is dropped, data saved.
 
         // Simulate a partial, failed save: create a .tmp file manually, as if a save crashed.
@@ -633,8 +650,9 @@ mod tests {
         let value_new = b"value_new".to_vec();
         {
             let mut store = SimpleFileKvStore::new(&db_path).unwrap(); // Loads original data
+            let dummy_transaction = Transaction::new(0); // Dummy transaction
             assert_eq!(store.get(&key_orig).unwrap(), Some(value_orig.clone()));
-            store.put(key_new.clone(), value_new.clone()).unwrap(); // This save should succeed
+            store.put(key_new.clone(), value_new.clone(), &dummy_transaction).unwrap(); // This save should succeed
         }
         
         // The store should now contain key_orig and key_new.
@@ -723,18 +741,6 @@ mod tests {
         wal_path
     }
 
-    // Helper function to create a WAL file with specific entries
-    fn create_wal_file_with_entries(wal_path: &Path, entries: &[WalEntry]) -> Result<(), DbError> {
-        let wal_file_handle = OpenOptions::new().write(true).create(true).truncate(true).open(wal_path).map_err(DbError::IoError)?;
-        let mut writer = BufWriter::new(wal_file_handle);
-        for entry in entries {
-            <WalEntry as DataSerializer<WalEntry>>::serialize(entry, &mut writer)?;
-        }
-        writer.flush().map_err(DbError::IoError)?;
-        writer.get_ref().sync_all().map_err(DbError::IoError)?;
-        Ok(())
-    }
-
     // Helper to read all entries from a WAL file
     fn read_all_wal_entries(wal_path: &Path) -> Result<Vec<WalEntry>, DbError> {
         let file = StdFile::open(wal_path).map_err(DbError::IoError)?;
@@ -764,11 +770,12 @@ mod tests {
         let db_file = NamedTempFile::new().unwrap();
         let db_path = db_file.path();
         let wal_path = derive_wal_path(db_path);
+        let dummy_transaction = Transaction::new(0); // Dummy transaction
 
         let mut store = SimpleFileKvStore::new(db_path).unwrap();
         let key = b"wal_key1".to_vec();
         let value = b"wal_value1".to_vec();
-        store.put(key.clone(), value.clone()).unwrap();
+        store.put(key.clone(), value.clone(), &dummy_transaction).unwrap();
 
         assert_eq!(store.get(&key).unwrap(), Some(value.clone()));
         assert!(wal_path.exists());
@@ -789,13 +796,14 @@ mod tests {
         let db_file = NamedTempFile::new().unwrap();
         let db_path = db_file.path();
         let wal_path = derive_wal_path(db_path);
+        let dummy_transaction = Transaction::new(0); // Dummy transaction
 
         let mut store = SimpleFileKvStore::new(db_path).unwrap();
         let key = b"wal_del_key".to_vec();
         let value = b"wal_del_value".to_vec();
 
-        store.put(key.clone(), value.clone()).unwrap();
-        store.delete(&key).unwrap();
+        store.put(key.clone(), value.clone(), &dummy_transaction).unwrap();
+        store.delete(&key, &dummy_transaction).unwrap();
 
         assert_eq!(store.get(&key).unwrap(), None);
         assert!(wal_path.exists());
@@ -825,10 +833,11 @@ mod tests {
 
         let key = b"main_data_key".to_vec();
         let value = b"main_data_value".to_vec();
+        let dummy_transaction = Transaction::new(0); // Dummy transaction
 
         {
             let mut store = SimpleFileKvStore::new(db_path).unwrap();
-            store.put(key.clone(), value.clone()).unwrap();
+            store.put(key.clone(), value.clone(), &dummy_transaction).unwrap();
             store.save_to_disk().unwrap(); // This should delete the WAL
         }
 
@@ -858,8 +867,9 @@ mod tests {
         // Phase 1: Save initial state to main disk file
         {
             let mut store = SimpleFileKvStore::new(db_path).unwrap();
-            store.put(key1.clone(), val1_initial.clone()).unwrap();
-            store.put(key3.clone(), val3_initial.clone()).unwrap();
+            let dummy_transaction = Transaction::new(0); // Dummy transaction
+            store.put(key1.clone(), val1_initial.clone(), &dummy_transaction).unwrap();
+            store.put(key3.clone(), val3_initial.clone(), &dummy_transaction).unwrap();
             store.save_to_disk().unwrap(); // key1, key3 in main file, WAL is cleared
         }
         assert!(!wal_path.exists());
@@ -868,13 +878,14 @@ mod tests {
         // Phase 2: Perform operations that only go to WAL
         {
             let mut store = SimpleFileKvStore::new(db_path).unwrap(); // Loads from main file
+            let dummy_transaction_p2 = Transaction::new(1); // Another dummy transaction for this phase
             assert_eq!(store.get(&key1).unwrap(), Some(val1_initial.clone()));
             assert_eq!(store.get(&key3).unwrap(), Some(val3_initial.clone()));
 
-            store.put(key2.clone(), val2_wal.clone()).unwrap(); // Goes to WAL
-            store.put(key1.clone(), val1_updated_wal.clone()).unwrap(); // Update, goes to WAL
-            store.put(key3.clone(), val3_wal.clone()).unwrap(); // Re-add key3, goes to WAL
-            store.delete(&key3).unwrap(); // Delete key3, goes to WAL
+            store.put(key2.clone(), val2_wal.clone(), &dummy_transaction_p2).unwrap(); // Goes to WAL
+            store.put(key1.clone(), val1_updated_wal.clone(), &dummy_transaction_p2).unwrap(); // Update, goes to WAL
+            store.put(key3.clone(), val3_wal.clone(), &dummy_transaction_p2).unwrap(); // Re-add key3, goes to WAL
+            store.delete(&key3, &dummy_transaction_p2).unwrap(); // Delete key3, goes to WAL
             // DO NOT CALL save_to_disk()
             std::mem::forget(store); // Prevent Drop from running to simulate unclean shutdown
         }
@@ -902,8 +913,9 @@ mod tests {
 
         {
             let mut store = SimpleFileKvStore::new(db_path).unwrap();
-            store.put(key_a.clone(), val_a.clone()).unwrap();
-            store.put(key_b.clone(), val_b.clone()).unwrap();
+            let dummy_transaction = Transaction::new(0); // Dummy transaction
+            store.put(key_a.clone(), val_a.clone(), &dummy_transaction).unwrap();
+            store.put(key_b.clone(), val_b.clone(), &dummy_transaction).unwrap();
             // No save_to_disk, operations are only in WAL and cache
             std::mem::forget(store); // Prevent Drop from running to simulate unclean shutdown
         }
@@ -923,9 +935,10 @@ mod tests {
 
         let key = b"trunc_key".to_vec();
         let value = b"trunc_val".to_vec();
+        let dummy_transaction = Transaction::new(0); // Dummy transaction
         {
             let mut store = SimpleFileKvStore::new(db_path).unwrap();
-            store.put(key.clone(), value.clone()).unwrap();
+            store.put(key.clone(), value.clone(), &dummy_transaction).unwrap();
             assert!(wal_path.exists());
             store.save_to_disk().unwrap();
         }
@@ -975,10 +988,11 @@ mod tests {
         let path = temp_file.path().to_path_buf();
         let key1 = b"drop_key".to_vec();
         let value1 = b"drop_value".to_vec();
+        let dummy_transaction = Transaction::new(0); // Dummy transaction
 
         {
             let mut store = SimpleFileKvStore::new(&path).unwrap();
-            store.put(key1.clone(), value1.clone()).unwrap();
+            store.put(key1.clone(), value1.clone(), &dummy_transaction).unwrap();
             // Store goes out of scope here, Drop should be called.
         }
 
@@ -990,5 +1004,93 @@ mod tests {
         // Also check that the WAL file is cleared after a successful save_to_disk (which drop calls)
         let wal_path = derive_wal_path(&path);
         assert!(!wal_path.exists(), "WAL file should not exist after successful drop/save.");
+    }
+
+    #[test]
+    fn test_put_atomicity_wal_failure() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join("test_put_atomicity.db");
+        let wal_path = derive_wal_path(&db_path);
+
+        // Create a directory where the WAL file should be, to cause WAL write to fail
+        std::fs::create_dir_all(&wal_path).unwrap_or_else(|e| panic!("Failed to create dir at WAL path {:?}: {}", wal_path, e));
+        assert!(wal_path.is_dir());
+
+        let mut store = SimpleFileKvStore::new(&db_path).expect("Store creation should succeed even if WAL path is a dir, as WAL is written lazily.");
+
+        let key = b"atomic_put_key".to_vec();
+        let value = b"atomic_put_value".to_vec();
+        let dummy_transaction = Transaction::new(0);
+
+        // Attempt to put, expecting failure from WAL
+        let result = store.put(key.clone(), value.clone(), &dummy_transaction);
+        
+        assert!(result.is_err(), "put operation should fail due to WAL error");
+        match result.unwrap_err() {
+            DbError::IoError(io_err) => {
+                // On Linux, this is "Is a directory (os error 21)"
+                // On Windows, it might be different, e.g. "Access is denied. (os error 5)" if trying to open dir as file
+                // For CI stability, we might not want to assert the exact OS error string/code.
+                // Just checking it's an IoError is a good start.
+                eprintln!("Confirmed IoError on put: {:?}", io_err); // For debugging in CI
+            }
+            other_err => panic!("Expected DbError::IoError, got {:?}", other_err),
+        }
+
+        // Assert that the cache does not contain the key
+        assert!(store.get(&key).unwrap().is_none(), "Cache should not contain key after failed WAL write for put.");
+        assert!(!store.cache.contains_key(&key), "Cache should not contain key directly.");
+
+        // Cleanup: remove the directory we created
+        let _ = std::fs::remove_dir_all(&wal_path);
+    }
+
+    #[test]
+    fn test_delete_atomicity_wal_failure() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join("test_delete_atomicity.db");
+        let wal_path = derive_wal_path(&db_path);
+        let dummy_transaction = Transaction::new(0);
+
+        let key = b"atomic_del_key".to_vec();
+        let value = b"atomic_del_value".to_vec();
+
+        // 1. Setup store and insert an item successfully
+        {
+            let mut store = SimpleFileKvStore::new(&db_path).unwrap();
+            store.put(key.clone(), value.clone(), &dummy_transaction).unwrap();
+            store.save_to_disk().unwrap(); // Ensure data is in main file, WAL is clear
+        }
+        
+        assert!(!wal_path.exists(), "WAL should be cleared by save_to_disk");
+
+        // 2. Create a directory where the WAL file should be, to cause next WAL write to fail
+        std::fs::create_dir_all(&wal_path).unwrap_or_else(|e| panic!("Failed to create dir at WAL path {:?}: {}", wal_path, e));
+        assert!(wal_path.is_dir());
+        
+        // 3. Re-open the store. It will load from the main file. WalWriter will point to the problematic path.
+        let mut store = SimpleFileKvStore::new(&db_path).unwrap();
+        assert!(store.get(&key).unwrap().is_some(), "Key should be present from main file load.");
+        assert!(store.cache.contains_key(&key), "Cache should contain key after load.");
+
+
+        // 4. Attempt to delete, expecting failure from WAL
+        let result = store.delete(&key, &dummy_transaction);
+
+        assert!(result.is_err(), "delete operation should fail due to WAL error");
+         match result.unwrap_err() {
+            DbError::IoError(io_err) => {
+                 eprintln!("Confirmed IoError on delete: {:?}", io_err); 
+            }
+            other_err => panic!("Expected DbError::IoError, got {:?}", other_err),
+        }
+
+        // 5. Assert that the cache still contains the key
+        assert!(store.get(&key).unwrap().is_some(), "Cache should still contain key after failed WAL write for delete.");
+        assert!(store.cache.contains_key(&key), "Cache should still contain key directly.");
+        assert_eq!(store.cache.get(&key), Some(&value), "Value should be the original value.");
+
+        // Cleanup: remove the directory we created
+        let _ = std::fs::remove_dir_all(&wal_path);
     }
 }
