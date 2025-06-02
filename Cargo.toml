@@ -8,4 +8,4 @@ edition = "2021"
 [dependencies]
 
 [dev-dependencies]
-tempfile = "3.3" # Using a common recent version
+tempfile = "3.8" # Or a more recent compatible version
