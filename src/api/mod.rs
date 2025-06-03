@@ -5,36 +5,37 @@
 
 use crate::core::common::error::DbError;
 use crate::core::query::commands::{Command, Key, Value};
-use crate::core::query::executor::{execute_command, ExecutionResult}; // Added ExecutionResult
+use crate::core::query::executor::{QueryExecutor, ExecutionResult}; // Corrected import
 use crate::core::query::parser::parse_query_string;
 use crate::core::storage::engine::simple_file_kv_store::SimpleFileKvStore;
 use std::path::Path;
 
 /// `Oxidb` is the primary structure providing the public API for the key-value store.
 ///
-/// It encapsulates a `SimpleFileKvStore` instance to manage data persistence
-/// and provides methods for common database operations like insert, get, and delete.
+/// It encapsulates a `QueryExecutor` instance to manage database operations,
+/// which in turn uses a `SimpleFileKvStore` for persistence.
 pub struct Oxidb {
-    store: SimpleFileKvStore,
+    executor: QueryExecutor<SimpleFileKvStore>,
 }
 
 impl Oxidb {
     /// Creates a new `Oxidb` instance or loads an existing one from the specified path.
     ///
-    /// This method initializes the underlying `SimpleFileKvStore`. If a database file
-    /// and/or WAL (Write-Ahead Log) file exists at the given path, they will be loaded.
-    /// Otherwise, new files will be created.
+    /// This method initializes the underlying `SimpleFileKvStore` and wraps it in a
+    /// `QueryExecutor`. If a database file and/or WAL (Write-Ahead Log) file exists
+    /// at the given path, they will be loaded by the store. Otherwise, new files
+    /// will be created.
     ///
     /// # Arguments
     /// * `path` - A path-like object (e.g., `&str`, `PathBuf`) specifying the location
     ///            of the database file.
     ///
     /// # Errors
-    /// Returns `DbError` if the store cannot be initialized, for example, due to
-    /// I/O errors or issues during WAL replay.
+    /// Returns `DbError` if the store cannot be initialized or the executor cannot be created.
     pub fn new(path: impl AsRef<Path>) -> Result<Self, DbError> {
         let store = SimpleFileKvStore::new(path)?;
-        Ok(Self { store })
+        let executor = QueryExecutor::new(store);
+        Ok(Self { executor })
     }
 
     /// Inserts a key-value pair into the database.
@@ -54,7 +55,7 @@ impl Oxidb {
     /// writing to the WAL.
     pub fn insert(&mut self, key: Key, value: Value) -> Result<(), DbError> {
         let command = Command::Insert { key, value };
-        match execute_command(&mut self.store, command) {
+        match self.executor.execute_command(command) { // Use self.executor
             Ok(ExecutionResult::Success) => Ok(()),
             Ok(unexpected_result) => Err(DbError::InternalError(format!(
                 "Insert: Expected Success, got {:?}",
@@ -77,7 +78,7 @@ impl Oxidb {
     /// * `Err(DbError)` if any other error occurs during the operation.
     pub fn get(&mut self, key: Key) -> Result<Option<Value>, DbError> {
         let command = Command::Get { key };
-        match execute_command(&mut self.store, command) {
+        match self.executor.execute_command(command) { // Use self.executor
             Ok(ExecutionResult::Value(value_option)) => Ok(value_option),
             Ok(unexpected_result) => Err(DbError::InternalError(format!(
                 "Get: Expected Value, got {:?}",
@@ -102,7 +103,7 @@ impl Oxidb {
     /// * `Err(DbError)` if the operation fails, for example, due to WAL write issues.
     pub fn delete(&mut self, key: Key) -> Result<bool, DbError> {
         let command = Command::Delete { key };
-        match execute_command(&mut self.store, command) {
+        match self.executor.execute_command(command) { // Use self.executor
             Ok(ExecutionResult::Deleted(status)) => Ok(status),
             Ok(unexpected_result) => Err(DbError::InternalError(format!(
                 "Delete: Expected Deleted, got {:?}",
@@ -127,7 +128,7 @@ impl Oxidb {
     /// Returns `DbError` if any part of the saving process fails (e.g., I/O errors,
     /// serialization issues). See `SimpleFileKvStore::save_to_disk` for more details.
     pub fn persist(&mut self) -> Result<(), DbError> {
-        self.store.save_to_disk()
+        self.executor.persist() // Use self.executor
     }
 
     /// Executes a raw query string against the database.
@@ -207,7 +208,7 @@ impl Oxidb {
     /// ```
     pub fn execute_query_str(&mut self, query_string: &str) -> Result<ExecutionResult, DbError> {
         match parse_query_string(query_string) {
-            Ok(command) => execute_command(&mut self.store, command),
+            Ok(command) => self.executor.execute_command(command), // Use self.executor
             Err(e) => Err(e),
         }
     }
@@ -215,10 +216,11 @@ impl Oxidb {
 
 #[cfg(test)]
 mod tests {
-    use super::*; // Imports Oxidb, Key, Value etc.
+    use super::*; // Imports Oxidb, Key, Value, ExecutionResult etc.
     use tempfile::NamedTempFile; // For creating temporary db files
     use std::path::PathBuf;
-    use crate::core::storage::engine::traits::KeyValueStore;
+    //KeyValueStore might not be needed here anymore if tests don't directly interact with store details that require this trait in scope.
+    // use crate::core::storage::engine::traits::KeyValueStore;
 
 
     // Helper function to create a NamedTempFile and return its path for tests
@@ -335,7 +337,8 @@ mod tests {
             // WAL file should exist if inserts happened.
             // (This check depends on SimpleFileKvStore's WAL behavior after insert)
             // For this test, we assume WAL is written to on put.
-            if db.store.contains_key(&key).unwrap() { // Check if key is in cache, implying a put happened
+            // Replace direct store access with API usage:
+            if db.get(key.clone()).unwrap().is_some() {
                  assert!(wal_path.exists(), "WAL file should exist after insert before persist.");
             }
 

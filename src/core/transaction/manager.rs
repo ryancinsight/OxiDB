@@ -39,6 +39,10 @@ impl TransactionManager {
         self.current_active_transaction_id.and_then(move |id| self.active_transactions.get_mut(&id))
     }
 
+    pub fn current_active_transaction_id(&self) -> Option<u64> {
+        self.current_active_transaction_id
+    }
+
     pub fn commit_transaction(&mut self) {
         if let Some(id) = self.current_active_transaction_id.take() { // take() sets current_active_transaction_id to None
             if let Some(mut transaction) = self.active_transactions.remove(&id) {

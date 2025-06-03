@@ -1,10 +1,12 @@
 // src/core/query/executor.rs
 
 use crate::core::common::error::DbError;
+use crate::core::storage::engine::simple_file_kv_store::SimpleFileKvStore; // Added import
 use crate::core::query::commands::Command;
 use crate::core::storage::engine::traits::KeyValueStore;
-use crate::core::transaction::{Transaction, TransactionState, UndoOperation, lock_manager::{LockManager, LockType}}; // Added LockType
+use crate::core::transaction::{lock_manager::{LockManager, LockType}}; // Added LockType
 use crate::core::transaction::manager::TransactionManager;
+use crate::core::transaction::transaction::{Transaction, TransactionState, UndoOperation};
 
 #[derive(Debug, PartialEq)]
 pub enum ExecutionResult {
@@ -177,11 +179,20 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     }
 }
 
+// Methods specific to QueryExecutor when the store is SimpleFileKvStore
+impl QueryExecutor<SimpleFileKvStore> {
+    pub fn persist(&mut self) -> Result<(), DbError> {
+        self.store.save_to_disk()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::query::commands::{Key, Value};
-    use crate::core::transaction::{TransactionState, UndoOperation, LockManager}; // Added LockManager for test setup if needed, though QueryExecutor::new handles it.
+    use crate::core::transaction::transaction::UndoOperation; // Corrected import path
+    use crate::core::transaction::TransactionState; // Corrected import path
+    use crate::core::transaction::lock_manager::LockManager; // Explicit import for LockManager if needed by tests directly
     use crate::core::storage::engine::simple_file_kv_store::SimpleFileKvStore;
     use crate::core::storage::engine::wal::WalEntry;
     use crate::core::common::traits::DataDeserializer;
@@ -192,8 +203,8 @@ mod tests {
 
 
     // Helper to derive WAL path from DB path, similar to SimpleFileKvStore's internal logic
-    fn derive_wal_path_for_test(db_path: &std::path::Path) -> PathBuf {
-        let mut wal_path = db_path.to_path_buf();
+    fn derive_wal_path_for_test(store: &SimpleFileKvStore) -> PathBuf {
+        let mut wal_path = store.file_path().to_path_buf();
         let original_extension = wal_path.extension().map(|s| s.to_os_string());
         if let Some(ext) = original_extension {
             let mut new_ext = ext;
@@ -384,7 +395,9 @@ mod tests {
         // Let's assume for now it might be visible, but the commit is what makes it permanent.
 
         // Commit transaction
-        executor.transaction_manager.commit_transaction();
+        let commit_result = executor.execute_command(Command::CommitTransaction);
+        assert!(commit_result.is_ok());
+        assert_eq!(commit_result.unwrap(), ExecutionResult::Success);
         assert!(executor.transaction_manager.get_active_transaction().is_none());
 
         // Verify data after commit
@@ -413,7 +426,9 @@ mod tests {
         executor.execute_command(insert_command).unwrap();
 
         // Rollback transaction
-        executor.transaction_manager.rollback_transaction();
+        let rollback_result = executor.execute_command(Command::RollbackTransaction);
+        assert!(rollback_result.is_ok());
+        assert_eq!(rollback_result.unwrap(), ExecutionResult::Success);
         assert!(executor.transaction_manager.get_active_transaction().is_none());
 
         // Verify data is not present after rollback (depends on store implementing rollback)
@@ -425,12 +440,12 @@ mod tests {
         // Assuming the store does not roll back, the data would be there.
         // If store supported rollback, this would be Value(None).
         // Current SimpleFileKvStore always writes through.
-        // So, this test as-is for SimpleFileKvStore will show the value is present.
+        // So, this test as-is for SimpleFileKvStore will show the value is present. // This comment is outdated.
         // This is acceptable as we are testing QueryExecutor's interaction with TransactionManager.
-        // The effect of rollback is up to the store.
-         assert_eq!(executor.execute_command(get_command).unwrap(), ExecutionResult::Value(Some(value)));
-        // To make this test pass with Value(None), SimpleFileKvStore would need modification.
-        // For now, we are asserting that the value is present because SimpleFileKvStore doesn't rollback.
+        // The effect of rollback is up to the store. // QueryExecutor now attempts to use store to revert.
+         assert_eq!(executor.execute_command(get_command).unwrap(), ExecutionResult::Value(None)); // Expect None because RevertInsert should delete.
+        // To make this test pass with Value(None), SimpleFileKvStore would need modification. // QueryExecutor handles this.
+        // For now, we are asserting that the value is present because SimpleFileKvStore doesn't rollback. // Outdated.
         // If store supported rollback, this would be:
         // assert_eq!(executor.execute_command(get_command).unwrap(), ExecutionResult::Value(None));
     }
@@ -460,7 +475,9 @@ mod tests {
         assert_eq!(result.unwrap(), ExecutionResult::Deleted(true));
 
         // Commit transaction
-        executor.transaction_manager.commit_transaction();
+        let commit_result = executor.execute_command(Command::CommitTransaction);
+        assert!(commit_result.is_ok());
+        assert_eq!(commit_result.unwrap(), ExecutionResult::Success);
         assert!(executor.transaction_manager.get_active_transaction().is_none());
 
         // Verify data is deleted after commit
@@ -493,7 +510,9 @@ mod tests {
         assert_eq!(result.unwrap(), ExecutionResult::Deleted(true));
         
         // Rollback transaction
-        executor.transaction_manager.rollback_transaction();
+        let rollback_result = executor.execute_command(Command::RollbackTransaction);
+        assert!(rollback_result.is_ok());
+        assert_eq!(rollback_result.unwrap(), ExecutionResult::Success);
         assert!(executor.transaction_manager.get_active_transaction().is_none());
 
         // Verify data is still present after rollback (assuming store doesn't roll back deletions)
@@ -546,7 +565,7 @@ mod tests {
         // e.g., get_active_transaction() returning None.
         
         // Verify WAL entry for commit
-        let wal_path = derive_wal_path_for_test(&executor.store.file_path); // Assuming store has file_path
+        let wal_path = derive_wal_path_for_test(&executor.store);
         let wal_entries = read_all_wal_entries_for_test(&wal_path).unwrap();
         
         assert_eq!(wal_entries.len(), 2, "Should be 1 Put and 1 Commit WAL entry");
@@ -609,19 +628,28 @@ mod tests {
         // Verify cache state after rollback
         assert_eq!(executor.execute_command(Command::Get { key: key_rb.clone() }).unwrap(), ExecutionResult::Value(None), "key_rb (RevertInsert) should be gone");
         assert_eq!(executor.execute_command(Command::Get { key: key_orig.clone() }).unwrap(), ExecutionResult::Value(Some(val_orig.clone())), "key_orig (RevertUpdate) should be back to original value");
-        assert_eq!(executor.execute_command(Command::Get { key: key_del.clone() }).unwrap(), ExecutionResult::Value(Some(val_del.clone())), "key_del (RevertDelete) should be restored");
+        assert_eq!(executor.execute_command(Command::Get { key: key_del.clone() }).unwrap(), ExecutionResult::Value(None), "key_del (inserted then deleted in tx) should not exist after rollback");
 
 
         // Verify WAL entry for rollback
-        let wal_path = derive_wal_path_for_test(&executor.store.file_path);
+        let wal_path = derive_wal_path_for_test(&executor.store);
         let wal_entries = read_all_wal_entries_for_test(&wal_path).unwrap();
         
         // Expected WAL: 1 initial insert (auto-commit), then 3 ops in tx, then 1 rollback marker
-        // Initial insert: Put { tx_id:0, key_orig, val_orig }
-        // TX operations: Put {tx_id, key_rb, val_rb}, Put {tx_id, key_orig, val_orig_updated}, Put {tx_id, key_del, val_del}, Delete {tx_id, key_del}
-        // Rollback marker: TransactionRollback { tx_id }
-        // Total: 1 (auto-commit) + 4 (tx ops) + 1 (rollback marker) = 6
-        assert_eq!(wal_entries.len(), 6, "WAL entries count mismatch");
+        // Initial insert: Put { tx_id:0, key_orig, val_orig } (1)
+        // TX operations:
+        //   Put {tx_id, key_rb, val_rb} (2)
+        //   Put {tx_id, key_orig, val_orig_updated} (3)
+        //   Put {tx_id, key_del, val_del} (4)
+        //   Delete {tx_id, key_del} (5)
+        // Rollback Undo operations (all use tx_id of the original transaction):
+        //   RevertDelete for key_del -> store.put(key_del, val_del) (6)
+        //   RevertInsert for key_del -> store.delete(key_del) (7)
+        //   RevertUpdate for key_orig -> store.put(key_orig, val_orig) (8)
+        //   RevertInsert for key_rb -> store.delete(key_rb) (9)
+        // Rollback marker: TransactionRollback { tx_id } (10)
+        // Total: 10
+        assert_eq!(wal_entries.len(), 10, "WAL entries count mismatch");
 
         // Check the last entry is TransactionRollback with correct tx_id
         match wal_entries.last().unwrap() {
@@ -684,7 +712,7 @@ mod tests {
         // Testing the internal state of active_transactions map for tx1's presence is a TransactionManager
         // unit test concern rather than QueryExecutor.
         // For QueryExecutor, we care that a new transaction context (tx2) is now active.
-        assert_eq!(executor.transaction_manager.current_active_transaction_id, Some(tx2.id));
+        assert_eq!(executor.transaction_manager.current_active_transaction_id(), Some(tx2.id));
 
         // Commit the second transaction (current one)
         executor.execute_command(Command::CommitTransaction).unwrap();
@@ -723,5 +751,44 @@ mod tests {
 
         // Check data persistence after commit
         assert_eq!(executor.execute_command(get_cmd).unwrap(), ExecutionResult::Value(Some(b"value_tx".to_vec())));
+    }
+
+    #[test]
+    fn test_shared_lock_concurrency() {
+        let mut executor = create_executor();
+        let key: Key = b"shared_lock_key".to_vec();
+        let value: Value = b"value".to_vec();
+
+        // Setup: Insert key K with value V (auto-commit)
+        let insert_command = Command::Insert { key: key.clone(), value: value.clone() };
+        assert_eq!(executor.execute_command(insert_command).unwrap(), ExecutionResult::Success);
+
+        // Tx1: BEGIN
+        assert_eq!(executor.execute_command(Command::BeginTransaction).unwrap(), ExecutionResult::Success);
+        let tx1_id = executor.transaction_manager.get_active_transaction().unwrap().id;
+
+        // Tx1: GET K
+        let get_command_tx1 = Command::Get { key: key.clone() };
+        assert_eq!(executor.execute_command(get_command_tx1).unwrap(), ExecutionResult::Value(Some(value.clone())));
+
+        // Tx2: BEGIN
+        // Note: Tx1 is still "active" in terms of holding locks in LockManager,
+        // but TransactionManager now considers Tx2 the "current active".
+        assert_eq!(executor.execute_command(Command::BeginTransaction).unwrap(), ExecutionResult::Success);
+        let tx2_id = executor.transaction_manager.get_active_transaction().unwrap().id;
+        assert_ne!(tx1_id, tx2_id, "Transaction IDs should be different");
+
+        // Tx2: GET K (should succeed as S locks are compatible)
+        let get_command_tx2 = Command::Get { key: key.clone() };
+        assert_eq!(executor.execute_command(get_command_tx2).unwrap(), ExecutionResult::Value(Some(value.clone())));
+
+        // Tx2: COMMIT (Tx2 is the currently active transaction)
+        assert_eq!(executor.execute_command(Command::CommitTransaction).unwrap(), ExecutionResult::Success);
+        
+        // At this point, Tx1's shared lock is still held in the LockManager because Tx1 was not
+        // the active transaction when a COMMIT was issued. This is an accepted artifact of
+        // the current simplified transaction management for this specific test, which focuses
+        // on the concurrent acquisition of shared locks.
+        // A separate test would be needed to ensure Tx1's locks are released if Tx1 was made active and then committed.
     }
 }

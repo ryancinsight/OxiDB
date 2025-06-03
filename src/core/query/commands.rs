@@ -7,7 +7,7 @@ pub type Value = Vec<u8>;
 
 /// Enum defining the different types of commands the database can execute.
 /// These are internal representations, not directly parsed from strings yet.
-#[derive(Debug, PartialEq)] // For testing and inspection
+#[derive(Debug, PartialEq, Clone)] // For testing and inspection
 pub enum Command {
     Insert { key: Key, value: Value },
     Get { key: Key },

@@ -226,52 +226,23 @@ impl DataDeserializer<WalEntry> for WalEntry {
 
         let entry = match operation_type {
             PUT_OPERATION => {
-                // Assuming Vec<u8> implements DataDeserializer<Vec<u8>>
-                let key = <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(reader).map_err(|e| {
-                    if let DbError::IoError(io_err) = e {
-                        if io_err.kind() == std::io::ErrorKind::UnexpectedEof {
-                            return DbError::IoError(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "Reached end of WAL stream while expecting key for PUT operation"));
-                        }
-                        DbError::IoError(io_err)
-                    } else {
-                        e
-                    }
-                })?;
-                let value = <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(reader).map_err(|e| {
-                     if let DbError::IoError(io_err) = e {
-                        if io_err.kind() == std::io::ErrorKind::UnexpectedEof {
-                            return DbError::IoError(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "Reached end of WAL stream while expecting value for PUT operation"));
-                        }
-                        DbError::IoError(io_err)
-                    } else {
-                        e
-                    }
-                })?;
-                // For checksumming, we need the raw bytes.
-                // The previous `key.serialize` was adding length prefix + data.
-                // This is problematic if `data_to_checksum` is expected to be just op_type + raw_key_bytes + raw_value_bytes.
-                // The `serialize` method of `WalEntry` does:
-                //   buffer.push(op_type);
-                //   key.serialize(&mut buffer)?; // This writes len + data for key
-                //   value.serialize(&mut buffer)?; // This writes len + data for value
-                //   hasher.update(&buffer); // buffer here contains op_type + len_key + key_bytes + len_value + value_bytes
-                // So, for checksum calculation in deserialize, we need to reconstruct this exact sequence.
-                // The current `data_to_checksum` starts with `vec![operation_type]`.
-                // We need to append the serialized form of key and value to it.
-
-                // For Put: op_type + tx_id + serialized_key + serialized_value
+                // Read transaction_id from the stream
                 let mut tx_id_bytes = [0u8; 8];
                 reader.read_exact(&mut tx_id_bytes).map_err(|e| map_eof_error(e, "transaction ID for PUT"))?;
                 let transaction_id = u64::from_le_bytes(tx_id_bytes);
+                // data_to_checksum already has op_type, now add tx_id bytes
                 data_to_checksum.extend_from_slice(&tx_id_bytes);
-                
+
+                // Then, read key from the stream
                 let key = <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(reader).map_err(|e| map_deserialization_eof(e, "key for PUT operation"))?;
-                let value = <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(reader).map_err(|e| map_deserialization_eof(e, "value for PUT operation"))?;
-                
+                // For checksum: get the serialized form of key (len + data) and add to data_to_checksum
                 let mut temp_key_bytes = Vec::new();
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(&key, &mut temp_key_bytes)?;
                 data_to_checksum.extend_from_slice(&temp_key_bytes);
 
+                // Then, read value from the stream
+                let value = <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(reader).map_err(|e| map_deserialization_eof(e, "value for PUT operation"))?;
+                // For checksum: get the serialized form of value (len + data) and add to data_to_checksum
                 let mut temp_value_bytes = Vec::new();
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(&value, &mut temp_value_bytes)?;
                 data_to_checksum.extend_from_slice(&temp_value_bytes);
@@ -279,18 +250,20 @@ impl DataDeserializer<WalEntry> for WalEntry {
                 WalEntry::Put { transaction_id, key, value }
             }
             DELETE_OPERATION => {
-                // For Delete: op_type + tx_id + serialized_key
+                // Read transaction_id from the stream
                 let mut tx_id_bytes = [0u8; 8];
                 reader.read_exact(&mut tx_id_bytes).map_err(|e| map_eof_error(e, "transaction ID for DELETE"))?;
                 let transaction_id = u64::from_le_bytes(tx_id_bytes);
+                // data_to_checksum already has op_type, now add tx_id bytes
                 data_to_checksum.extend_from_slice(&tx_id_bytes);
 
+                // Then, read key from the stream
                 let key = <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(reader).map_err(|e| map_deserialization_eof(e, "key for DELETE operation"))?;
-                
+                // For checksum: get the serialized form of key (len + data) and add to data_to_checksum
                 let mut temp_key_bytes = Vec::new();
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(&key, &mut temp_key_bytes)?;
                 data_to_checksum.extend_from_slice(&temp_key_bytes);
-
+                
                 WalEntry::Delete { transaction_id, key }
             }
             TRANSACTION_COMMIT_OPERATION => {

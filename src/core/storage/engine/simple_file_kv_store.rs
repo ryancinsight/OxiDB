@@ -39,6 +39,10 @@ impl SimpleFileKvStore {
         Ok(store)
     }
 
+    pub fn file_path(&self) -> &Path {
+        &self.file_path
+    }
+
     // Helper function to read data from a given path into the cache
     fn read_data_into_cache(&mut self, file_to_load: &Path) -> Result<(), DbError> {
         self.cache.clear();
