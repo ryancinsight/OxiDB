@@ -10,6 +10,7 @@ pub enum DbError {
     TransactionError(String),
     StorageError(String),
     InternalError(String), // For unexpected issues
+    NoActiveTransaction,
     // Add more variants as needed
 }
 
@@ -25,6 +26,7 @@ impl std::fmt::Display for DbError {
             DbError::TransactionError(s) => write!(f, "Transaction Error: {}", s),
             DbError::StorageError(s) => write!(f, "Storage Error: {}", s),
             DbError::InternalError(s) => write!(f, "Internal Error: {}", s),
+            DbError::NoActiveTransaction => write!(f, "No active transaction"),
         }
     }
 }

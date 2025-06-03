@@ -7,66 +7,51 @@ use crate::core::common::traits::{DataDeserializer, DataSerializer}; // Correcte
 
 const PUT_OPERATION: u8 = 0x01;
 const DELETE_OPERATION: u8 = 0x02;
+const TRANSACTION_COMMIT_OPERATION: u8 = 0x03;
+const TRANSACTION_ROLLBACK_OPERATION: u8 = 0x04;
 
 /// Represents an entry in the Write-Ahead Log (WAL).
-/// Each entry corresponds to a database operation (Put or Delete).
+#[derive(Debug, PartialEq)] // Added PartialEq for easier testing
 pub enum WalEntry {
     /// Represents a 'Put' operation with a key and a value.
-    Put { key: Vec<u8>, value: Vec<u8> },
+    Put { transaction_id: u64, key: Vec<u8>, value: Vec<u8> },
     /// Represents a 'Delete' operation with a key.
-    Delete { key: Vec<u8> },
+    Delete { transaction_id: u64, key: Vec<u8> },
+    /// Marks the commit of a transaction.
+    TransactionCommit { transaction_id: u64 },
+    /// Marks the rollback of a transaction.
+    TransactionRollback { transaction_id: u64 },
 }
 
 impl DataSerializer<WalEntry> for WalEntry {
     /// Serializes a `WalEntry` into a byte stream.
     /// The format is:
-    /// - Operation type (1 byte: 0x01 for Put, 0x02 for Delete)
-    /// - Key (length-prefixed Vec<u8>)
+    /// - Operation type (1 byte)
+    /// - Transaction ID (8 bytes, for Put, Delete, Commit, Rollback)
+    /// - Key (length-prefixed Vec<u8>, for Put, Delete)
     /// - Value (length-prefixed Vec<u8>, only for Put operation)
     /// - CRC32 checksum (4 bytes) of all preceding data in this entry.
     fn serialize<W: Write>(value: &WalEntry, writer: &mut W) -> Result<(), DbError> {
         let mut buffer = Vec::new(); // Buffer to hold data before checksum calculation
         match value {
-            WalEntry::Put { key, value } => {
+            WalEntry::Put { transaction_id, key, value } => {
                 buffer.push(PUT_OPERATION);
-                // Assuming Vec<u8> implements DataSerializer<Vec<u8>>
-                // and it's called like Trait::method(value, writer)
-                // However, the previous code `key.serialize(&mut buffer)?` suggests
-                // Vec<u8> might have an inherent serialize method or uses a different trait.
-                // Let's check how Vec<u8>::serialize is defined/used.
-                // For now, stick to the pattern from the original code if it compiled,
-                // which implies Vec<u8> has its own serialize method.
-                // If `key.serialize` refers to `DataSerializer::serialize`, it would need to be
-                // `<Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut buffer)?;`
-                // Or, if there's a blanket `impl<T: SomeOtherTrait> DataSerializer<T> for T`.
-                // The error was on `impl DataSerializer for WalEntry`, not on `key.serialize`.
-                // So, `key.serialize` must be something else, perhaps an inherent method from
-                // the `crate::core::common::serialization` which re-exports actual trait methods.
-
-                // Let's assume `key.serialize()` comes from `crate::core::common::serialization::DataSerializer`
-                // which was `use crate::core::common::serialization::{DataDeserializer, DataSerializer};`
-                // This might be a module providing helper functions that internally call the trait methods.
-                // Or, Vec<u8> itself implements a method `serialize`.
-                // Given `Vec::<u8>::deserialize(reader)` and `key.serialize(&mut buffer)`, these look like inherent methods
-                // or methods from a trait directly implemented by Vec<u8> and brought into scope.
-
-                // The `crate::core::common::serialization` file has:
-                // pub trait DataSerializer: Sized { fn serialize<W: Write>(&self, writer: &mut W) -> Result<(), DbError>; }
-                // pub trait DataDeserializer: Sized { type Item; fn deserialize<R: Read>(reader: &mut R) -> Result<Self::Item, DbError>; }
-                // impl DataSerializer for Vec<u8> { ... }
-                // impl DataDeserializer for Vec<u8> { type Item = Vec<u8>; ... }
-                // This was the *old* definition. The new one is `DataSerializer<T>`.
-
-                // The current `traits.rs` has `pub trait DataSerializer<T> { fn serialize<W: Write>(value: &T, writer: &mut W) -> Result<(), DbError>; }`
-                // If `Vec<u8>` is to be serialized using this, then we need an `impl DataSerializer<Vec<u8>> for Something`.
-                // It's likely `impl DataSerializer<Vec<u8>> for Vec<u8>`.
-                // Let's assume that's the case:
+                buffer.extend_from_slice(&transaction_id.to_le_bytes());
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut buffer)?;
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(value, &mut buffer)?;
             }
-            WalEntry::Delete { key } => {
+            WalEntry::Delete { transaction_id, key } => {
                 buffer.push(DELETE_OPERATION);
+                buffer.extend_from_slice(&transaction_id.to_le_bytes());
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut buffer)?;
+            }
+            WalEntry::TransactionCommit { transaction_id } => {
+                buffer.push(TRANSACTION_COMMIT_OPERATION);
+                buffer.extend_from_slice(&transaction_id.to_le_bytes());
+            }
+            WalEntry::TransactionRollback { transaction_id } => {
+                buffer.push(TRANSACTION_ROLLBACK_OPERATION);
+                buffer.extend_from_slice(&transaction_id.to_le_bytes());
             }
         }
 
@@ -88,93 +73,72 @@ mod tests {
     #[test]
     fn test_wal_entry_serialize_deserialize() {
         let put_entry = WalEntry::Put {
+            transaction_id: 1,
             key: b"test_key".to_vec(),
             value: b"test_value".to_vec(),
         };
         let delete_entry = WalEntry::Delete {
+            transaction_id: 2,
             key: b"test_key_delete".to_vec(),
         };
+        let commit_entry = WalEntry::TransactionCommit { transaction_id: 3 };
+        let rollback_entry = WalEntry::TransactionRollback { transaction_id: 4 };
 
-        let entries = vec![put_entry, delete_entry];
+        let entries = vec![put_entry, delete_entry, commit_entry, rollback_entry];
 
         for original_entry in entries {
             let mut buffer = Vec::new();
             <WalEntry as DataSerializer<WalEntry>>::serialize(&original_entry, &mut buffer).unwrap();
-
-            // Simulate reading the whole buffer as one entry for this specific old test
-            // by creating a new cursor for each entry.
-            // The new test `test_wal_entry_sequential_deserialization` will handle sequential reads.
-            let mut reader = Cursor::new(&buffer);
             
-            // Call deserialize to get the entry
+            let mut reader = Cursor::new(&buffer);
             let deserialized_entry = <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut reader).unwrap();
-
-            match (&original_entry, &deserialized_entry) {
-                (WalEntry::Put { key: ok, value: ov }, WalEntry::Put { key: dk, value: dv }) => {
-                    assert_eq!(ok, dk);
-                    assert_eq!(ov, dv);
-                }
-                (WalEntry::Delete { key: ok }, WalEntry::Delete { key: dk }) => {
-                    assert_eq!(ok, dk);
-                }
-                _ => panic!("Mismatched entry types after simulated deserialization"),
-            }
+            
+            // Using the PartialEq derived for WalEntry
+            assert_eq!(&original_entry, &deserialized_entry);
         }
     }
 
     #[test]
     fn test_wal_entry_sequential_deserialization() {
         let entry1 = WalEntry::Put {
+            transaction_id: 10,
             key: b"key1".to_vec(),
             value: b"value1".to_vec(),
         };
         let entry2 = WalEntry::Delete {
+            transaction_id: 11,
             key: b"key1".to_vec(),
         };
-        let entry3 = WalEntry::Put {
+        let entry3 = WalEntry::TransactionCommit { transaction_id: 11 };
+        let entry4 = WalEntry::Put {
+            transaction_id: 12,
             key: b"key2".to_vec(),
             value: b"value2_longer".to_vec(),
         };
+        let entry5 = WalEntry::TransactionRollback { transaction_id: 12 };
+
 
         let mut buffer = Vec::new();
         <WalEntry as DataSerializer<WalEntry>>::serialize(&entry1, &mut buffer).unwrap();
         <WalEntry as DataSerializer<WalEntry>>::serialize(&entry2, &mut buffer).unwrap();
         <WalEntry as DataSerializer<WalEntry>>::serialize(&entry3, &mut buffer).unwrap();
+        <WalEntry as DataSerializer<WalEntry>>::serialize(&entry4, &mut buffer).unwrap();
+        <WalEntry as DataSerializer<WalEntry>>::serialize(&entry5, &mut buffer).unwrap();
 
         let mut cursor = Cursor::new(&buffer);
 
-        // Deserialize first entry
-        match <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut cursor) {
-            Ok(WalEntry::Put { key, value }) => {
-                assert_eq!(key, b"key1".to_vec());
-                assert_eq!(value, b"value1".to_vec());
-            }
-            _ => panic!("Deserialization of entry1 failed or wrong type"),
-        }
-
-        // Deserialize second entry
-        match <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut cursor) {
-            Ok(WalEntry::Delete { key }) => {
-                assert_eq!(key, b"key1".to_vec());
-            }
-            _ => panic!("Deserialization of entry2 failed or wrong type"),
-        }
-
-        // Deserialize third entry
-        match <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut cursor) {
-            Ok(WalEntry::Put { key, value }) => {
-                assert_eq!(key, b"key2".to_vec());
-                assert_eq!(value, b"value2_longer".to_vec());
-            }
-            _ => panic!("Deserialization of entry3 failed or wrong type"),
-        }
-
+        assert_eq!(<WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut cursor).unwrap(), entry1);
+        assert_eq!(<WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut cursor).unwrap(), entry2);
+        assert_eq!(<WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut cursor).unwrap(), entry3);
+        assert_eq!(<WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut cursor).unwrap(), entry4);
+        assert_eq!(<WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut cursor).unwrap(), entry5);
+        
         // Try to deserialize again, expecting EOF
         match <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut cursor) {
             Err(DbError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 // This is the expected outcome
             }
-            Ok(_) => panic!("Expected EOF error, but got an entry"),
+            Ok(entry) => panic!("Expected EOF error, but got an entry: {:?}", entry),
             Err(e) => panic!("Expected EOF error, but got a different error: {:?}", e),
         }
     }
@@ -295,7 +259,15 @@ impl DataDeserializer<WalEntry> for WalEntry {
                 // The current `data_to_checksum` starts with `vec![operation_type]`.
                 // We need to append the serialized form of key and value to it.
 
-                // Re-serializing key and value to a temporary buffer to get their byte representation for checksum
+                // For Put: op_type + tx_id + serialized_key + serialized_value
+                let mut tx_id_bytes = [0u8; 8];
+                reader.read_exact(&mut tx_id_bytes).map_err(|e| map_eof_error(e, "transaction ID for PUT"))?;
+                let transaction_id = u64::from_le_bytes(tx_id_bytes);
+                data_to_checksum.extend_from_slice(&tx_id_bytes);
+                
+                let key = <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(reader).map_err(|e| map_deserialization_eof(e, "key for PUT operation"))?;
+                let value = <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(reader).map_err(|e| map_deserialization_eof(e, "value for PUT operation"))?;
+                
                 let mut temp_key_bytes = Vec::new();
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(&key, &mut temp_key_bytes)?;
                 data_to_checksum.extend_from_slice(&temp_key_bytes);
@@ -304,36 +276,44 @@ impl DataDeserializer<WalEntry> for WalEntry {
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(&value, &mut temp_value_bytes)?;
                 data_to_checksum.extend_from_slice(&temp_value_bytes);
                 
-                WalEntry::Put { key, value }
+                WalEntry::Put { transaction_id, key, value }
             }
             DELETE_OPERATION => {
-                let key = <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(reader).map_err(|e| {
-                    if let DbError::IoError(io_err) = e {
-                        if io_err.kind() == std::io::ErrorKind::UnexpectedEof {
-                            return DbError::IoError(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "Reached end of WAL stream while expecting key for DELETE operation"));
-                        }
-                        DbError::IoError(io_err)
-                    } else {
-                        e
-                    }
-                })?;
+                // For Delete: op_type + tx_id + serialized_key
+                let mut tx_id_bytes = [0u8; 8];
+                reader.read_exact(&mut tx_id_bytes).map_err(|e| map_eof_error(e, "transaction ID for DELETE"))?;
+                let transaction_id = u64::from_le_bytes(tx_id_bytes);
+                data_to_checksum.extend_from_slice(&tx_id_bytes);
+
+                let key = <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(reader).map_err(|e| map_deserialization_eof(e, "key for DELETE operation"))?;
+                
                 let mut temp_key_bytes = Vec::new();
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(&key, &mut temp_key_bytes)?;
                 data_to_checksum.extend_from_slice(&temp_key_bytes);
 
-                WalEntry::Delete { key }
+                WalEntry::Delete { transaction_id, key }
+            }
+            TRANSACTION_COMMIT_OPERATION => {
+                // For Commit: op_type + tx_id
+                let mut tx_id_bytes = [0u8; 8];
+                reader.read_exact(&mut tx_id_bytes).map_err(|e| map_eof_error(e, "transaction ID for COMMIT"))?;
+                let transaction_id = u64::from_le_bytes(tx_id_bytes);
+                data_to_checksum.extend_from_slice(&tx_id_bytes);
+                WalEntry::TransactionCommit { transaction_id }
+            }
+            TRANSACTION_ROLLBACK_OPERATION => {
+                // For Rollback: op_type + tx_id
+                let mut tx_id_bytes = [0u8; 8];
+                reader.read_exact(&mut tx_id_bytes).map_err(|e| map_eof_error(e, "transaction ID for ROLLBACK"))?;
+                let transaction_id = u64::from_le_bytes(tx_id_bytes);
+                data_to_checksum.extend_from_slice(&tx_id_bytes);
+                WalEntry::TransactionRollback { transaction_id }
             }
             _ => return Err(DbError::DeserializationError(format!("Unknown WAL operation type: {}", operation_type))),
         };
 
         let mut checksum_bytes = [0u8; 4];
-        reader.read_exact(&mut checksum_bytes).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::UnexpectedEof {
-                DbError::IoError(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "Reached end of WAL stream while expecting checksum"))
-            } else {
-                DbError::IoError(e)
-            }
-        })?;
+        reader.read_exact(&mut checksum_bytes).map_err(|e| map_eof_error(e, "checksum"))?;
         let expected_checksum = u32::from_le_bytes(checksum_bytes);
 
         let mut hasher = Hasher::new();
@@ -348,11 +328,26 @@ impl DataDeserializer<WalEntry> for WalEntry {
     }
 }
 
-// Remove the standalone `deserialize_from_reader` as its logic is now part of the trait impl.
-// The `impl WalEntry { ... }` block for `deserialize_from_reader` is now combined into `impl DataDeserializer<WalEntry> for WalEntry`.
-// However, the original `deserialize_from_reader` was defined within `impl WalEntry { ... }`.
-// To make it part of the trait, we move the body of `deserialize_from_reader` into the trait's `deserialize` method.
-// The `impl WalEntry { fn deserialize_from_reader ... }` definition needs to be removed if we don't want duplication.
-// For now, I'll modify the existing `deserialize_from_reader` to fit the trait and then make it the trait impl.
-// The diff above already moved `deserialize_from_reader`'s body into `DataDeserializer::deserialize`.
-// The original inherent method `WalEntry::deserialize_from_reader` is effectively replaced by the trait implementation.
+// Helper function to map EOF errors for deserialization steps
+fn map_eof_error(e: std::io::Error, context: &str) -> DbError {
+    if e.kind() == std::io::ErrorKind::UnexpectedEof {
+        DbError::IoError(std::io::Error::new(
+            std::io::ErrorKind::UnexpectedEof,
+            format!("Reached end of WAL stream while expecting {}", context),
+        ))
+    } else {
+        DbError::IoError(e)
+    }
+}
+
+fn map_deserialization_eof(e: DbError, context: &str) -> DbError {
+    if let DbError::IoError(io_err) = &e {
+        if io_err.kind() == std::io::ErrorKind::UnexpectedEof {
+            return DbError::IoError(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                format!("Reached end of WAL stream while expecting {}", context),
+            ));
+        }
+    }
+    e // Return original error if not an EOF related to Vec<u8> deserialization
+}

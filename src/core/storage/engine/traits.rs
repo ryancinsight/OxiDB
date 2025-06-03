@@ -20,6 +20,9 @@ pub trait KeyValueStore<K, V> {
     /// Checks if a key exists in the store.
     fn contains_key(&self, key: &K) -> Result<bool, DbError>;
 
+    /// Logs a raw WAL entry. Used for transaction commit/rollback markers.
+    fn log_wal_entry(&mut self, entry: &crate::core::storage::engine::wal::WalEntry) -> Result<(), DbError>;
+
     // Other potential methods:
     // fn scan(&self, key_prefix: &K) -> Result<Vec<(K, V)>, DbError>;
     // fn clear(&mut self) -> Result<(), DbError>;

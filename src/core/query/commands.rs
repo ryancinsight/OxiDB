@@ -12,6 +12,10 @@ pub enum Command {
     Insert { key: Key, value: Value },
     Get { key: Key },
     Delete { key: Key },
+    // Transaction control commands
+    BeginTransaction,
+    CommitTransaction,
+    RollbackTransaction,
     // Potentially others later, like:
     // Update { key: Key, value: Value },
     // Scan { prefix: Option<Key> },

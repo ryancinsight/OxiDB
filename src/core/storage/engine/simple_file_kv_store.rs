@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use std::fs::{File, OpenOptions, rename}; // Added rename
-use std::io::{BufReader, BufWriter, Write, ErrorKind, BufRead}; // Added BufRead
+use std::collections::{HashMap, HashSet}; // Added HashSet
+use std::fs::{File, OpenOptions, rename};
+use std::io::{BufReader, BufWriter, Write, ErrorKind, BufRead};
 use std::path::{Path, PathBuf};
 use crate::core::common::error::DbError;
 use crate::core::storage::engine::traits::KeyValueStore;
@@ -139,36 +139,54 @@ impl SimpleFileKvStore {
             };
             let mut reader = BufReader::new(wal_file);
 
+            let mut transaction_operations: HashMap<u64, Vec<WalEntry>> = HashMap::new();
+            let mut committed_transactions: HashSet<u64> = HashSet::new();
+            let mut rolled_back_transactions: HashSet<u64> = HashSet::new();
+
+            // First Pass: Populate data structures
             loop {
                 match <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut reader) {
                     Ok(entry) => {
-                        match entry {
-                            WalEntry::Put { key, value } => {
-                                self.cache.insert(key, value);
+                        match &entry {
+                            WalEntry::Put { transaction_id, .. } | WalEntry::Delete { transaction_id, .. } => {
+                                transaction_operations.entry(*transaction_id).or_default().push(entry);
                             }
-                            WalEntry::Delete { key } => {
-                                self.cache.remove(&key);
+                            WalEntry::TransactionCommit { transaction_id } => {
+                                committed_transactions.insert(*transaction_id);
+                            }
+                            WalEntry::TransactionRollback { transaction_id } => {
+                                rolled_back_transactions.insert(*transaction_id);
                             }
                         }
                     }
-                    Err(DbError::IoError(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                        // This indicates a clean end of the WAL file (or that it was empty).
-                        // No more entries to replay.
-                        break; 
-                    }
+                    Err(DbError::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => break, // Clean EOF
                     Err(DbError::DeserializationError(msg)) => {
-                        // A deserialization error (e.g., checksum mismatch, unknown op type) implies WAL corruption.
-                        // Print an error and stop replay. Data recovered up to this point is kept.
                         eprintln!("WAL corruption detected (Deserialization error): {}. Replay stopped. Data up to this point is recovered.", msg);
-                        break;
+                        break; // Stop on corruption
                     }
-                    Err(e) => { // Handles other DbError variants, including other critical IoErrors
-                        // Any other error during WAL replay (e.g., unexpected I/O error not being EOF)
-                        // is treated as a critical issue. Print an error and stop replay.
+                    Err(e) => {
                         eprintln!("Error during WAL replay: {}. Replay stopped. Data up to this point is recovered.", e);
-                        break;
+                        break; // Stop on other critical errors
                     }
                 }
+            }
+
+            // Second Pass: Apply committed operations
+            for (tx_id, operations) in transaction_operations {
+                if committed_transactions.contains(&tx_id) && !rolled_back_transactions.contains(&tx_id) {
+                    for entry in operations {
+                        match entry {
+                            WalEntry::Put { key, value, .. } => { // transaction_id already known
+                                self.cache.insert(key, value);
+                            }
+                            WalEntry::Delete { key, .. } => { // transaction_id already known
+                                self.cache.remove(&key);
+                            }
+                            _ => {} // TransactionCommit/Rollback entries are not operations themselves
+                        }
+                    }
+                }
+                // Operations for transactions not committed or explicitly rolled back are ignored.
             }
         }
         Ok(()) // End of load_from_disk
@@ -271,10 +289,9 @@ impl SimpleFileKvStore {
 }
 
 impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
-    fn put(&mut self, key: Vec<u8>, value: Vec<u8>, _transaction: &Transaction) -> Result<(), DbError> {
-        // TODO: Use the transaction parameter, e.g., by logging it or using its state.
-        // For now, the transaction parameter is ignored.
+    fn put(&mut self, key: Vec<u8>, value: Vec<u8>, transaction: &Transaction) -> Result<(), DbError> {
         let wal_entry = WalEntry::Put {
+            transaction_id: transaction.id,
             key: key.clone(), 
             value: value.clone(),
         };
@@ -289,13 +306,15 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         Ok(self.cache.get(key).cloned())
     }
 
-    fn delete(&mut self, key: &Vec<u8>, _transaction: &Transaction) -> Result<bool, DbError> {
-        // TODO: Use the transaction parameter.
+    fn delete(&mut self, key: &Vec<u8>, transaction: &Transaction) -> Result<bool, DbError> {
         if !self.cache.contains_key(key) {
             return Ok(false); // Key doesn't exist, nothing to delete
         }
         
-        let wal_entry = WalEntry::Delete { key: key.clone() };
+        let wal_entry = WalEntry::Delete {
+            transaction_id: transaction.id,
+            key: key.clone(),
+        };
         // Log to WAL first
         self.wal_writer.log_entry(&wal_entry)?;
         // Then update cache
@@ -305,6 +324,10 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
 
     fn contains_key(&self, key: &Vec<u8>) -> Result<bool, DbError> {
         Ok(self.cache.contains_key(key))
+    }
+
+    fn log_wal_entry(&mut self, entry: &WalEntry) -> Result<(), DbError> {
+        self.wal_writer.log_entry(entry)
     }
 }
 
@@ -329,10 +352,11 @@ impl Drop for SimpleFileKvStore {
 mod tests {
     use super::*;
     use tempfile::{NamedTempFile, Builder};
-    use std::fs::{write, remove_file, read, File as StdFile}; // Renamed to avoid conflict with crate::core::storage::engine::File
+    use std::fs::{write, remove_file, read, File as StdFile}; 
     use crate::core::storage::engine::wal::WalEntry;
-    use crate::core::transaction::Transaction; // Removed TransactionState
+    use crate::core::transaction::Transaction;
     use std::io::ErrorKind;
+    use std::collections::HashSet; // For test setup if needed
 
 
     // Helper to create a main DB file with specific key-value data
@@ -783,7 +807,8 @@ mod tests {
         let entries = read_all_wal_entries(&wal_path).unwrap();
         assert_eq!(entries.len(), 1);
         match &entries[0] {
-            WalEntry::Put { key: k, value: v } => {
+            WalEntry::Put { transaction_id, key: k, value: v } => {
+                assert_eq!(*transaction_id, 0); // From dummy_transaction
                 assert_eq!(k, &key);
                 assert_eq!(v, &value);
             }
@@ -796,14 +821,15 @@ mod tests {
         let db_file = NamedTempFile::new().unwrap();
         let db_path = db_file.path();
         let wal_path = derive_wal_path(db_path);
-        let dummy_transaction = Transaction::new(0); // Dummy transaction
+        let dummy_transaction_put = Transaction::new(0); // Dummy for put
+        let dummy_transaction_delete = Transaction::new(1); // Dummy for delete
 
         let mut store = SimpleFileKvStore::new(db_path).unwrap();
         let key = b"wal_del_key".to_vec();
         let value = b"wal_del_value".to_vec();
 
-        store.put(key.clone(), value.clone(), &dummy_transaction).unwrap();
-        store.delete(&key, &dummy_transaction).unwrap();
+        store.put(key.clone(), value.clone(), &dummy_transaction_put).unwrap();
+        store.delete(&key, &dummy_transaction_delete).unwrap();
 
         assert_eq!(store.get(&key).unwrap(), None);
         assert!(wal_path.exists());
@@ -811,14 +837,16 @@ mod tests {
         let entries = read_all_wal_entries(&wal_path).unwrap();
         assert_eq!(entries.len(), 2);
         match &entries[0] {
-            WalEntry::Put { key: k, value: v } => {
+            WalEntry::Put { transaction_id, key: k, value: v } => {
+                assert_eq!(*transaction_id, 0);
                 assert_eq!(k, &key);
                 assert_eq!(v, &value);
             }
             _ => panic!("Expected Put entry as first entry"),
         }
         match &entries[1] {
-            WalEntry::Delete { key: k } => {
+            WalEntry::Delete { transaction_id, key: k } => {
+                assert_eq!(*transaction_id, 1);
                 assert_eq!(k, &key);
             }
             _ => panic!("Expected Delete entry as second entry"),
@@ -853,79 +881,137 @@ mod tests {
         let db_path = db_file.path();
         let wal_path = derive_wal_path(db_path);
 
-        let key1 = b"key1".to_vec();
-        let val1_initial = b"value1_initial".to_vec();
-        let val1_updated_wal = b"value1_updated_wal".to_vec();
+        // Initial data in main file (key0=val0_main)
+        let key0 = b"key0".to_vec();
+        let val0_main = b"val0_main".to_vec();
+        create_db_file_with_kv_data(db_path, &[(key0.clone(), val0_main.clone())]).unwrap();
 
-        let key2 = b"key2".to_vec();
-        let val2_wal = b"value2_wal".to_vec();
+        // Setup WAL entries for different transactions
+        let wal_writer = WalWriter::new(db_path);
 
-        let key3 = b"key3".to_vec();
-        let val3_initial = b"value3_initial".to_vec();
-        let val3_wal = b"value3_wal_temp".to_vec(); // Will be deleted by WAL
+        // Transaction 1: Committed (key1=val1, key0 deleted)
+        wal_writer.log_entry(&WalEntry::Put { transaction_id: 1, key: b"key1".to_vec(), value: b"val1".to_vec() }).unwrap();
+        wal_writer.log_entry(&WalEntry::Delete { transaction_id: 1, key: key0.clone() }).unwrap();
+        wal_writer.log_entry(&WalEntry::TransactionCommit { transaction_id: 1 }).unwrap();
 
-        // Phase 1: Save initial state to main disk file
-        {
-            let mut store = SimpleFileKvStore::new(db_path).unwrap();
-            let dummy_transaction = Transaction::new(0); // Dummy transaction
-            store.put(key1.clone(), val1_initial.clone(), &dummy_transaction).unwrap();
-            store.put(key3.clone(), val3_initial.clone(), &dummy_transaction).unwrap();
-            store.save_to_disk().unwrap(); // key1, key3 in main file, WAL is cleared
-        }
-        assert!(!wal_path.exists());
+        // Transaction 2: Rolled back (key2=val2)
+        wal_writer.log_entry(&WalEntry::Put { transaction_id: 2, key: b"key2".to_vec(), value: b"val2".to_vec() }).unwrap();
+        wal_writer.log_entry(&WalEntry::TransactionRollback { transaction_id: 2 }).unwrap();
 
-
-        // Phase 2: Perform operations that only go to WAL
-        {
-            let mut store = SimpleFileKvStore::new(db_path).unwrap(); // Loads from main file
-            let dummy_transaction_p2 = Transaction::new(1); // Another dummy transaction for this phase
-            assert_eq!(store.get(&key1).unwrap(), Some(val1_initial.clone()));
-            assert_eq!(store.get(&key3).unwrap(), Some(val3_initial.clone()));
-
-            store.put(key2.clone(), val2_wal.clone(), &dummy_transaction_p2).unwrap(); // Goes to WAL
-            store.put(key1.clone(), val1_updated_wal.clone(), &dummy_transaction_p2).unwrap(); // Update, goes to WAL
-            store.put(key3.clone(), val3_wal.clone(), &dummy_transaction_p2).unwrap(); // Re-add key3, goes to WAL
-            store.delete(&key3, &dummy_transaction_p2).unwrap(); // Delete key3, goes to WAL
-            // DO NOT CALL save_to_disk()
-            std::mem::forget(store); // Prevent Drop from running to simulate unclean shutdown
-        }
-        assert!(wal_path.exists());
-
-        // Phase 3: Load store, WAL replay should occur
-        let store = SimpleFileKvStore::new(db_path).unwrap();
-        assert_eq!(store.get(&key1).unwrap(), Some(val1_updated_wal.clone()));
-        assert_eq!(store.get(&key2).unwrap(), Some(val2_wal.clone()));
-        assert_eq!(store.get(&key3).unwrap(), None); // key3 deleted via WAL
+        // Transaction 3: Incomplete (key3=val3)
+        wal_writer.log_entry(&WalEntry::Put { transaction_id: 3, key: b"key3".to_vec(), value: b"val3".to_vec() }).unwrap();
         
+        // Transaction 4: Committed then rolled back (key4=val4) - should be rolled back
+        wal_writer.log_entry(&WalEntry::Put { transaction_id: 4, key: b"key4".to_vec(), value: b"val4".to_vec() }).unwrap();
+        wal_writer.log_entry(&WalEntry::TransactionCommit { transaction_id: 4 }).unwrap();
+        wal_writer.log_entry(&WalEntry::TransactionRollback { transaction_id: 4 }).unwrap();
+
+        // Transaction 5: Rolled back then committed (key5=val5) - should be rolled back (rollback usually final)
+        // This scenario is less common but tests defensive logic.
+        wal_writer.log_entry(&WalEntry::Put { transaction_id: 5, key: b"key5".to_vec(), value: b"val5".to_vec() }).unwrap();
+        wal_writer.log_entry(&WalEntry::TransactionRollback { transaction_id: 5 }).unwrap();
+        wal_writer.log_entry(&WalEntry::TransactionCommit { transaction_id: 5 }).unwrap(); // Commit after rollback
+
+        // Action: Load store, triggering WAL replay
+        let store = SimpleFileKvStore::new(db_path).unwrap();
+
+        // Assertions:
+        // Initial data (key0) should be gone due to committed TX1
+        assert_eq!(store.get(&key0).unwrap(), None, "key0 should be deleted by committed TX1");
+        // TX1 data
+        assert_eq!(store.get(&b"key1".to_vec()).unwrap(), Some(b"val1".to_vec()), "key1 from committed TX1 should exist");
+        // TX2 data (rolled back)
+        assert_eq!(store.get(&b"key2".to_vec()).unwrap(), None, "key2 from rolled back TX2 should not exist");
+        // TX3 data (incomplete)
+        assert_eq!(store.get(&b"key3".to_vec()).unwrap(), None, "key3 from incomplete TX3 should not exist");
+        // TX4 data (committed then rolled back)
+        assert_eq!(store.get(&b"key4".to_vec()).unwrap(), None, "key4 from committed then rolled back TX4 should not exist");
+        // TX5 data (rolled back then committed)
+        assert_eq!(store.get(&b"key5".to_vec()).unwrap(), None, "key5 from rolled back then committed TX5 should not exist");
+
         assert!(wal_path.exists(), "WAL file should still exist after load_from_disk");
     }
     
     #[test]
-    fn test_wal_recovery_after_simulated_crash() {
+    fn test_wal_recovery_after_simulated_crash() { // Incomplete transaction
         let db_file = NamedTempFile::new().unwrap();
         let db_path = db_file.path();
         let wal_path = derive_wal_path(db_path);
 
-        let key_a = b"keyA".to_vec();
-        let val_a = b"valA".to_vec();
-        let key_b = b"keyB".to_vec();
-        let val_b = b"valB".to_vec();
+        let key_a = b"keyA_crash".to_vec();
+        let val_a = b"valA_crash".to_vec();
+        let key_b = b"keyB_crash".to_vec();
+        let val_b = b"valB_crash".to_vec();
 
         {
             let mut store = SimpleFileKvStore::new(db_path).unwrap();
-            let dummy_transaction = Transaction::new(0); // Dummy transaction
-            store.put(key_a.clone(), val_a.clone(), &dummy_transaction).unwrap();
-            store.put(key_b.clone(), val_b.clone(), &dummy_transaction).unwrap();
-            // No save_to_disk, operations are only in WAL and cache
-            std::mem::forget(store); // Prevent Drop from running to simulate unclean shutdown
+            // Operations for transaction ID 100 (incomplete)
+            store.put(key_a.clone(), val_a.clone(), &Transaction::new(100)).unwrap();
+            store.put(key_b.clone(), val_b.clone(), &Transaction::new(100)).unwrap();
+            // No TransactionCommit for tx_id 100
+            std::mem::forget(store); // Simulate crash
         }
         assert!(wal_path.exists());
 
         // Simulate crash by creating a new store instance. load_from_disk will run.
         let store_after_crash = SimpleFileKvStore::new(db_path).unwrap();
-        assert_eq!(store_after_crash.get(&key_a).unwrap(), Some(val_a.clone()));
-        assert_eq!(store_after_crash.get(&key_b).unwrap(), Some(val_b.clone()));
+        // Operations from incomplete transaction 100 should NOT be in the cache.
+        assert_eq!(store_after_crash.get(&key_a).unwrap(), None, "key_a from incomplete tx should not exist");
+        assert_eq!(store_after_crash.get(&key_b).unwrap(), None, "key_b from incomplete tx should not exist");
     }
+
+    #[test]
+    fn test_wal_recovery_commit_then_rollback_same_tx() {
+        let db_file = NamedTempFile::new().unwrap();
+        let db_path = db_file.path();
+        let wal_writer = WalWriter::new(db_path);
+
+        // Transaction 1: Puts, then Commit, then Rollback
+        wal_writer.log_entry(&WalEntry::Put { transaction_id: 1, key: b"key_cr".to_vec(), value: b"val_cr".to_vec() }).unwrap();
+        wal_writer.log_entry(&WalEntry::TransactionCommit { transaction_id: 1 }).unwrap();
+        wal_writer.log_entry(&WalEntry::TransactionRollback { transaction_id: 1 }).unwrap(); // Rollback after commit
+
+        let store = SimpleFileKvStore::new(db_path).unwrap();
+        assert_eq!(store.get(&b"key_cr".to_vec()).unwrap(), None, "Data from tx committed then rolled back should not exist");
+    }
+    
+    #[test]
+    fn test_wal_recovery_multiple_interleaved_transactions() {
+        let db_file = NamedTempFile::new().unwrap();
+        let db_path = db_file.path();
+        let wal_writer = WalWriter::new(db_path);
+
+        // TX 10 (Committed)
+        wal_writer.log_entry(&WalEntry::Put { transaction_id: 10, key: b"key10_1".to_vec(), value: b"val10_1".to_vec() }).unwrap();
+        
+        // TX 20 (Incomplete)
+        wal_writer.log_entry(&WalEntry::Put { transaction_id: 20, key: b"key20_1".to_vec(), value: b"val20_1".to_vec() }).unwrap();
+        
+        // TX 10 (Committed)
+        wal_writer.log_entry(&WalEntry::Put { transaction_id: 10, key: b"key10_2".to_vec(), value: b"val10_2".to_vec() }).unwrap();
+        wal_writer.log_entry(&WalEntry::TransactionCommit { transaction_id: 10 }).unwrap();
+
+        // TX 30 (Rolled Back)
+        wal_writer.log_entry(&WalEntry::Put { transaction_id: 30, key: b"key30_1".to_vec(), value: b"val30_1".to_vec() }).unwrap();
+        wal_writer.log_entry(&WalEntry::TransactionRollback { transaction_id: 30 }).unwrap();
+        
+        // TX 20 (Still Incomplete) - another operation
+        wal_writer.log_entry(&WalEntry::Delete { transaction_id: 20, key: b"some_other_key".to_vec() }).unwrap();
+
+        let store = SimpleFileKvStore::new(db_path).unwrap();
+
+        // Check TX 10 (Committed)
+        assert_eq!(store.get(&b"key10_1".to_vec()).unwrap(), Some(b"val10_1".to_vec()));
+        assert_eq!(store.get(&b"key10_2".to_vec()).unwrap(), Some(b"val10_2".to_vec()));
+
+        // Check TX 20 (Incomplete)
+        assert_eq!(store.get(&b"key20_1".to_vec()).unwrap(), None);
+        assert_eq!(store.get(&b"some_other_key".to_vec()).unwrap(), None); // Assuming it wasn't in main file
+
+        // Check TX 30 (Rolled Back)
+        assert_eq!(store.get(&b"key30_1".to_vec()).unwrap(), None);
+    }
+
 
     #[test]
     fn test_wal_truncation_after_save_to_disk() {
@@ -966,13 +1052,13 @@ mod tests {
             let mut writer = BufWriter::new(wal_file_handle);
             
             // Valid entry
-            <WalEntry as DataSerializer<WalEntry>>::serialize(&WalEntry::Put{ key: key_good.clone(), value: value_good.clone() }, &mut writer).unwrap();
+            <WalEntry as DataSerializer<WalEntry>>::serialize(&WalEntry::Put{ transaction_id: 0, key: key_good.clone(), value: value_good.clone() }, &mut writer).unwrap();
             
             // Corrupted data (e.g. invalid operation type or bad checksum, simpler: just random bytes not forming a valid entry part)
             writer.write_all(&[0xDE, 0xAD, 0xBE, 0xEF]).unwrap(); // Random bytes, will cause deserialization to fail
             
             // Another valid entry (should not be reached)
-            <WalEntry as DataSerializer<WalEntry>>::serialize(&WalEntry::Put{ key: key_bad.clone(), value: value_bad.clone() }, &mut writer).unwrap();
+            <WalEntry as DataSerializer<WalEntry>>::serialize(&WalEntry::Put{ transaction_id: 1, key: key_bad.clone(), value: value_bad.clone() }, &mut writer).unwrap();
             writer.flush().unwrap();
         }
 

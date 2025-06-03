@@ -168,6 +168,27 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, DbError> {
                 Err(DbError::InvalidQuery(format!("DELETE command expects 1 argument, got {}", tokens.len() - 1)))
             }
         }
+        "BEGIN" => {
+            if tokens.len() == 1 {
+                Ok(Command::BeginTransaction)
+            } else {
+                Err(DbError::InvalidQuery(format!("BEGIN command expects 0 arguments, got {}", tokens.len() - 1)))
+            }
+        }
+        "COMMIT" => {
+            if tokens.len() == 1 {
+                Ok(Command::CommitTransaction)
+            } else {
+                Err(DbError::InvalidQuery(format!("COMMIT command expects 0 arguments, got {}", tokens.len() - 1)))
+            }
+        }
+        "ROLLBACK" => {
+            if tokens.len() == 1 {
+                Ok(Command::RollbackTransaction)
+            } else {
+                Err(DbError::InvalidQuery(format!("ROLLBACK command expects 0 arguments, got {}", tokens.len() - 1)))
+            }
+        }
         _ => Err(DbError::InvalidQuery(format!("Unknown command: {}", tokens[0]))),
     }
 }
@@ -387,6 +408,77 @@ mod tests {
                 assert!(msg.contains("Unexpected quote in token: key"));
             }
             _ => panic!("Expected InvalidQuery error for unexpected quote"),
+        }
+    }
+
+    // Tests for transaction commands
+    #[test]
+    fn test_parse_begin_transaction() {
+        let result = parse_query_string("BEGIN");
+        assert_eq!(result, Ok(Command::BeginTransaction));
+    }
+
+    #[test]
+    fn test_parse_begin_transaction_case_insensitive() {
+        let result = parse_query_string("begin");
+        assert_eq!(result, Ok(Command::BeginTransaction));
+    }
+
+    #[test]
+    fn test_parse_commit_transaction() {
+        let result = parse_query_string("COMMIT");
+        assert_eq!(result, Ok(Command::CommitTransaction));
+    }
+
+    #[test]
+    fn test_parse_commit_transaction_case_insensitive() {
+        let result = parse_query_string("commit");
+        assert_eq!(result, Ok(Command::CommitTransaction));
+    }
+
+    #[test]
+    fn test_parse_rollback_transaction() {
+        let result = parse_query_string("ROLLBACK");
+        assert_eq!(result, Ok(Command::RollbackTransaction));
+    }
+
+    #[test]
+    fn test_parse_rollback_transaction_case_insensitive() {
+        let result = parse_query_string("rollback");
+        assert_eq!(result, Ok(Command::RollbackTransaction));
+    }
+
+    #[test]
+    fn test_parse_begin_with_args_error() {
+        let result = parse_query_string("BEGIN WORK");
+        match result {
+            Err(DbError::InvalidQuery(msg)) => {
+                assert_eq!(msg, "BEGIN command expects 0 arguments, got 1")
+            }
+            _ => panic!("Expected InvalidQuery error for BEGIN with arguments"),
+        }
+    }
+
+    #[test]
+    fn test_parse_commit_with_args_error() {
+        let result = parse_query_string("COMMIT NOW");
+        match result {
+            Err(DbError::InvalidQuery(msg)) => {
+                assert_eq!(msg, "COMMIT command expects 0 arguments, got 1")
+            }
+            _ => panic!("Expected InvalidQuery error for COMMIT with arguments"),
+        }
+    }
+
+    #[test]
+    fn test_parse_rollback_with_args_error() {
+        let result = parse_query_string("ROLLBACK SAVEPOINT A");
+        match result {
+            Err(DbError::InvalidQuery(msg)) => {
+                // The tokenizer will create "SAVEPOINT" and "A" as separate tokens
+                assert_eq!(msg, "ROLLBACK command expects 0 arguments, got 2")
+            }
+            _ => panic!("Expected InvalidQuery error for ROLLBACK with arguments"),
         }
     }
 }
