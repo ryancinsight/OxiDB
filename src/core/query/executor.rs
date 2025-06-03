@@ -824,4 +824,48 @@ mod tests {
         // Cleanup Tx2
         assert_eq!(executor.execute_command(Command::RollbackTransaction).unwrap(), ExecutionResult::Success);
     }
+
+#[test]
+fn test_shared_lock_prevents_exclusive_lock() {
+    // Initial setup
+    let mut executor = create_executor();
+    let key: Key = b"shared_prevents_exclusive_key".to_vec();
+    let value: Value = b"value".to_vec();
+
+    // Insert initial key-value pair (auto-commit)
+    let insert_initial_command = Command::Insert { key: key.clone(), value: value.clone() };
+    assert_eq!(executor.execute_command(insert_initial_command).unwrap(), ExecutionResult::Success);
+
+    // Transaction 1 (Tx1)
+    assert_eq!(executor.execute_command(Command::BeginTransaction).unwrap(), ExecutionResult::Success);
+    let tx1_id = executor.transaction_manager.current_active_transaction_id().unwrap();
+
+    // Tx1: GET K (acquires shared lock)
+    let get_command_tx1 = Command::Get { key: key.clone() };
+    assert_eq!(executor.execute_command(get_command_tx1).unwrap(), ExecutionResult::Value(Some(value.clone())));
+
+    // Transaction 2 (Tx2)
+    assert_eq!(executor.execute_command(Command::BeginTransaction).unwrap(), ExecutionResult::Success);
+    let tx2_id = executor.transaction_manager.current_active_transaction_id().unwrap();
+    assert_ne!(tx1_id, tx2_id, "Transaction IDs should be different");
+
+    // Tx2: Attempt to INSERT K (requires exclusive lock)
+    let insert_command_tx2 = Command::Insert { key: key.clone(), value: b"new_value".to_vec() };
+    let result_tx2 = executor.execute_command(insert_command_tx2);
+
+    // Assert Lock Conflict for Tx2
+    match result_tx2 {
+        Err(DbError::LockConflict { key: err_key, current_tx: err_current_tx, locked_by_tx: err_locked_by_tx }) => {
+            assert_eq!(err_key, key);
+            assert_eq!(err_current_tx, tx2_id);
+            assert_eq!(err_locked_by_tx, Some(tx1_id));
+        }
+        _ => panic!("Expected DbError::LockConflict, got {:?}", result_tx2),
+    }
+
+    // Cleanup Tx2 (currently active)
+    assert_eq!(executor.execute_command(Command::RollbackTransaction).unwrap(), ExecutionResult::Success);
+
+    // Tx1's locks will be released when the executor is dropped.
+}
 }
