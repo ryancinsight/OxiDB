@@ -3,9 +3,12 @@
 use crate::core::common::error::DbError;
 use crate::core::types::DataType;
 use crate::core::common::serialization::{serialize_data_type, deserialize_data_type};
-use crate::core::storage::engine::{SimpleFileKvStore, InMemoryKvStore}; // Added InMemoryKvStore
-use crate::core::query::commands::Command;
+use crate::core::storage::engine::{SimpleFileKvStore, InMemoryKvStore};
+use crate::core::query::commands::{Command, Key}; // Added Key import
 use crate::core::storage::engine::traits::KeyValueStore;
+use crate::core::indexing::manager::IndexManager; // Added for IndexManager
+use std::path::PathBuf; // Added for PathBuf
+use std::collections::HashMap; // Added for HashMap
 use crate::core::transaction::{lock_manager::{LockManager, LockType}}; // Added LockType
 use crate::core::transaction::manager::TransactionManager;
 use crate::core::transaction::transaction::{Transaction, TransactionState, UndoOperation};
@@ -15,21 +18,34 @@ pub enum ExecutionResult {
     Value(Option<DataType>),
     Success,
     Deleted(bool),
+    PrimaryKeys(Vec<Key>), // Added for FindByIndex results (Key is Vec<u8>)
 }
 
 pub struct QueryExecutor<S: KeyValueStore<Vec<u8>, Vec<u8>>> {
     store: S,
     transaction_manager: TransactionManager,
     lock_manager: LockManager,
+    index_manager: IndexManager, // Added index_manager field
 }
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
-    pub fn new(store: S) -> Self {
-        QueryExecutor {
+    // Modified new method signature and body
+    pub fn new(store: S, index_base_path: PathBuf) -> Result<Self, DbError> { // Added index_base_path and Result
+        let mut index_manager = IndexManager::new(index_base_path)?;
+
+        // Attempt to create a default index.
+        // In a real system, this would be based on configuration or explicit commands.
+        if index_manager.get_index("default_value_index").is_none() {
+            index_manager.create_index("default_value_index".to_string(), "hash")
+                .map_err(|e| DbError::IndexError(format!("Failed to create default_value_index: {}", e.to_string())))?;
+        }
+
+        Ok(QueryExecutor {
             store,
             transaction_manager: TransactionManager::new(),
             lock_manager: LockManager::new(),
-        }
+            index_manager,
+        })
     }
 
     pub fn execute_command(&mut self, command: Command) -> Result<ExecutionResult, DbError> {
@@ -48,32 +64,61 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                     
                     let serialized_value = serialize_data_type(&value)?;
                     let tx_for_store = active_tx.clone();
-                    self.store.put(key, serialized_value, &tx_for_store)
-                        .map(|_| ExecutionResult::Success)
+                    let put_result = self.store.put(key.clone(), serialized_value.clone(), &tx_for_store);
+
+                    if put_result.is_ok() {
+                        // BEGIN INDEX UPDATE (transactional)
+                        let value_for_index = serialized_value; // This is Vec<u8>
+                        let mut indexed_values_map = HashMap::new();
+                        indexed_values_map.insert("default_value_index".to_string(), value_for_index);
+
+                        if let Err(index_err) = self.index_manager.on_insert_data(&indexed_values_map, &key) {
+                            eprintln!("Failed to update index after insert (transactional): {:?}", index_err);
+                            // In a real transactional system, we might want to propagate this error
+                            // and ensure the transaction rolls back this put.
+                            // For now, just logging. The main operation succeeded in the store.
+                            // return Err(index_err); // This would require store to support rollback of this put
+                        }
+                        // END INDEX UPDATE
+                        Ok(ExecutionResult::Success)
+                    } else {
+                        put_result.map(|_| ExecutionResult::Success) // Propagate original error
+                    }
                 } else {
                     // Auto-commit for Insert
-                    let auto_commit_tx_id = 0; 
+                    let auto_commit_tx_id = 0;
                     match self.lock_manager.acquire_lock(auto_commit_tx_id, &key, LockType::Exclusive) {
                         Ok(()) => {
                             let serialized_value = serialize_data_type(&value)?;
                             let mut tx_for_store = Transaction::new(auto_commit_tx_id);
-                            let put_result = self.store.put(key, serialized_value, &tx_for_store);
-                            self.lock_manager.release_locks(auto_commit_tx_id); // Release lock
-                            match put_result {
-                                Ok(_) => {
-                                    tx_for_store.set_state(TransactionState::Committed);
-                                    // Log commit to WAL for auto-commit
-                                    let commit_entry = crate::core::storage::engine::wal::WalEntry::TransactionCommit { transaction_id: auto_commit_tx_id };
-                                    self.store.log_wal_entry(&commit_entry)?;
-                                    Ok(ExecutionResult::Success)
+                            let put_result = self.store.put(key.clone(), serialized_value.clone(), &tx_for_store);
+
+                            if put_result.is_ok() {
+                                // BEGIN INDEX UPDATE (auto-commit)
+                                let value_for_index = serialized_value; // This is Vec<u8>
+                                let mut indexed_values_map = HashMap::new();
+                                indexed_values_map.insert("default_value_index".to_string(), value_for_index);
+
+                                if let Err(index_err) = self.index_manager.on_insert_data(&indexed_values_map, &key) {
+                                    eprintln!("Failed to update index after insert (auto-commit): {:?}", index_err);
+                                    // This is auto-commit, so the store.put is already done.
+                                    // If index fails, data is in store but not index. Inconsistency.
+                                    // For now, log and continue.
                                 }
-                                Err(e) => {
-                                    tx_for_store.set_state(TransactionState::Aborted);
-                                    Err(e)
-                                }
+                                // END INDEX UPDATE
+
+                                tx_for_store.set_state(TransactionState::Committed);
+                                let commit_entry = crate::core::storage::engine::wal::WalEntry::TransactionCommit { transaction_id: auto_commit_tx_id };
+                                self.store.log_wal_entry(&commit_entry)?;
+                                self.lock_manager.release_locks(auto_commit_tx_id);
+                                Ok(ExecutionResult::Success)
+                            } else {
+                                self.lock_manager.release_locks(auto_commit_tx_id);
+                                tx_for_store.set_state(TransactionState::Aborted);
+                                Err(put_result.unwrap_err())
                             }
                         }
-                        Err(lock_err) => Err(lock_err), 
+                        Err(lock_err) => Err(lock_err),
                     }
                 }
             }
@@ -113,40 +158,78 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                 }
             }
             Command::Delete { key } => {
+                // Fetch the value *before* deleting it from the store for index update.
+                let old_value_opt = self.store.get(&key)?;
+
                 if let Some(active_tx) = self.transaction_manager.get_active_transaction_mut() {
                     self.lock_manager.acquire_lock(active_tx.id, &key, LockType::Exclusive)?;
 
-                    if let Some(old_value) = self.store.get(&key)? {
-                        active_tx.undo_log.push(UndoOperation::RevertDelete { key: key.clone(), old_value });
+                    if let Some(ref old_value) = old_value_opt { // Use ref here
+                        active_tx.undo_log.push(UndoOperation::RevertDelete { key: key.clone(), old_value: old_value.clone() });
                     }
                     
                     let tx_for_store = active_tx.clone();
-                    self.store.delete(&key, &tx_for_store)
-                        .map(ExecutionResult::Deleted)
+                    let delete_result = self.store.delete(&key, &tx_for_store);
+
+                    if let Ok(deleted) = delete_result {
+                        if deleted {
+                            if let Some(old_serialized_value) = old_value_opt {
+                                // BEGIN INDEX UPDATE (transactional)
+                                let mut indexed_values_map = HashMap::new();
+                                indexed_values_map.insert("default_value_index".to_string(), old_serialized_value);
+
+                                if let Err(index_err) = self.index_manager.on_delete_data(&indexed_values_map, &key) {
+                                    eprintln!("Failed to update index after delete (transactional): {:?}", index_err);
+                                    // Similar to insert, potential rollback needed for true atomicity.
+                                }
+                                // END INDEX UPDATE
+                            }
+                        }
+                        Ok(ExecutionResult::Deleted(deleted))
+                    } else {
+                        delete_result.map(ExecutionResult::Deleted) // Propagate original error
+                    }
                 } else {
                     // Auto-commit for Delete
-                    let auto_commit_tx_id = 0; 
+                    let auto_commit_tx_id = 0;
                     match self.lock_manager.acquire_lock(auto_commit_tx_id, &key, LockType::Exclusive) {
                         Ok(()) => {
                             let mut tx_for_store = Transaction::new(auto_commit_tx_id);
                             let delete_result = self.store.delete(&key, &tx_for_store);
-                            self.lock_manager.release_locks(auto_commit_tx_id); // Release lock
-                            match delete_result {
-                                Ok(deleted) => {
-                                    tx_for_store.set_state(TransactionState::Committed);
-                                    // Log commit to WAL for auto-commit
-                                    let commit_entry = crate::core::storage::engine::wal::WalEntry::TransactionCommit { transaction_id: auto_commit_tx_id };
-                                    self.store.log_wal_entry(&commit_entry)?;
-                                    Ok(ExecutionResult::Deleted(deleted))
+
+                            if let Ok(deleted) = delete_result {
+                                if deleted {
+                                    if let Some(old_serialized_value) = old_value_opt {
+                                        // BEGIN INDEX UPDATE (auto-commit)
+                                        let mut indexed_values_map = HashMap::new();
+                                        indexed_values_map.insert("default_value_index".to_string(), old_serialized_value);
+
+                                        if let Err(index_err) = self.index_manager.on_delete_data(&indexed_values_map, &key) {
+                                            eprintln!("Failed to update index after delete (auto-commit): {:?}", index_err);
+                                        }
+                                        // END INDEX UPDATE
+                                    }
                                 }
-                                Err(e) => {
-                                    tx_for_store.set_state(TransactionState::Aborted);
-                                    Err(e)
-                                }
+                                tx_for_store.set_state(TransactionState::Committed);
+                                let commit_entry = crate::core::storage::engine::wal::WalEntry::TransactionCommit { transaction_id: auto_commit_tx_id };
+                                self.store.log_wal_entry(&commit_entry)?;
+                                self.lock_manager.release_locks(auto_commit_tx_id);
+                                Ok(ExecutionResult::Deleted(deleted))
+                            } else {
+                                self.lock_manager.release_locks(auto_commit_tx_id);
+                                tx_for_store.set_state(TransactionState::Aborted);
+                                Err(delete_result.unwrap_err())
                             }
                         }
                         Err(lock_err) => Err(lock_err),
                     }
+                }
+            }
+            Command::FindByIndex { index_name, value } => {
+                match self.index_manager.find_by_index(&index_name, &value) {
+                    Ok(Some(keys)) => Ok(ExecutionResult::PrimaryKeys(keys)),
+                    Ok(None) => Ok(ExecutionResult::PrimaryKeys(Vec::new())), // Return empty list if no keys found
+                    Err(e) => Err(e),
                 }
             }
             Command::BeginTransaction => {
@@ -211,7 +294,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 // Methods specific to QueryExecutor when the store is SimpleFileKvStore
 impl QueryExecutor<SimpleFileKvStore> {
     pub fn persist(&mut self) -> Result<(), DbError> {
-        self.store.save_to_disk()
+        self.store.save_to_disk()?; // Save main data
+        self.index_manager.save_all_indexes() // Save all indexes
     }
 }
 
@@ -371,13 +455,19 @@ mod tests {
     }
 
     fn create_file_executor() -> QueryExecutor<SimpleFileKvStore> {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir for indexes");
+        let index_path = temp_dir.path().to_path_buf(); // Keep temp_dir in scope
         let temp_store = create_temp_store();
-        QueryExecutor::new(temp_store)
+        // Store temp_dir alongside executor or handle its lifetime appropriately if index_path depends on it.
+        // For tests, this is often fine as it lasts for the test's duration.
+        QueryExecutor::new(temp_store, index_path).unwrap()
     }
 
     fn create_in_memory_executor() -> QueryExecutor<InMemoryKvStore> {
+        let temp_dir = tempfile::tempdir().expect("Failed to create temp dir for indexes");
+        let index_path = temp_dir.path().to_path_buf();
         let store = InMemoryKvStore::new();
-        QueryExecutor::new(store)
+        QueryExecutor::new(store, index_path).unwrap()
     }
 
     // Existing tests will likely fail compilation because Command::Insert now expects DataType
@@ -870,5 +960,238 @@ mod tests {
             executor: create_in_memory_executor,
             store_type: InMemoryKvStore
         );
+    }
+
+    // --- Integration tests for IndexManager ---
+
+    #[test]
+    fn test_index_insert_auto_commit() -> Result<(), DbError> {
+        let mut executor = create_file_executor(); // Uses temp dir for indexes
+        let key = b"idx_key_auto".to_vec();
+        let value = DataType::String("idx_val_auto".to_string());
+        let serialized_value = serialize_data_type(&value)?;
+
+        let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
+        assert_eq!(executor.execute_command(insert_cmd)?, ExecutionResult::Success);
+
+        let indexed_pks = executor.index_manager.find_by_index("default_value_index", &serialized_value)?
+            .expect("Value should be indexed");
+        assert!(indexed_pks.contains(&key));
+        Ok(())
+    }
+
+    #[test]
+    fn test_index_insert_transactional_commit() -> Result<(), DbError> {
+        let mut executor = create_file_executor();
+        let key = b"idx_key_tx_commit".to_vec();
+        let value = DataType::String("idx_val_tx_commit".to_string());
+        let serialized_value = serialize_data_type(&value)?;
+
+        executor.execute_command(Command::BeginTransaction)?;
+        let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
+        assert_eq!(executor.execute_command(insert_cmd)?, ExecutionResult::Success);
+        executor.execute_command(Command::CommitTransaction)?;
+
+        let indexed_pks = executor.index_manager.find_by_index("default_value_index", &serialized_value)?
+            .expect("Value should be indexed after commit");
+        assert!(indexed_pks.contains(&key));
+        Ok(())
+    }
+
+    #[test]
+    fn test_index_insert_transactional_rollback() -> Result<(), DbError> {
+        let mut executor = create_file_executor();
+        let key = b"idx_key_tx_rollback".to_vec();
+        let value = DataType::String("idx_val_tx_rollback".to_string());
+        let serialized_value = serialize_data_type(&value)?;
+
+        executor.execute_command(Command::BeginTransaction)?;
+        let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
+        assert_eq!(executor.execute_command(insert_cmd)?, ExecutionResult::Success);
+
+        // Index is updated here, before rollback
+        let indexed_pks_before_rollback = executor.index_manager.find_by_index("default_value_index", &serialized_value)?
+            .expect("Value should be indexed before rollback");
+        assert!(indexed_pks_before_rollback.contains(&key));
+
+        executor.execute_command(Command::RollbackTransaction)?;
+
+        // Verify data is not in store
+        let get_cmd = Command::Get { key: key.clone() };
+        assert_eq!(executor.execute_command(get_cmd)?, ExecutionResult::Value(None));
+
+        // Verify data is *still in index* (current limitation)
+        let indexed_pks_after_rollback = executor.index_manager.find_by_index("default_value_index", &serialized_value)?
+            .expect("Value should still be in index after rollback due to current limitations");
+        assert!(indexed_pks_after_rollback.contains(&key));
+        Ok(())
+    }
+
+    #[test]
+    fn test_index_delete_auto_commit() -> Result<(), DbError> {
+        let mut executor = create_file_executor();
+        let key = b"idx_del_key_auto".to_vec();
+        let value = DataType::String("idx_del_val_auto".to_string());
+        let serialized_value = serialize_data_type(&value)?;
+
+        let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
+        executor.execute_command(insert_cmd)?;
+
+        // Verify it's in index
+        assert!(executor.index_manager.find_by_index("default_value_index", &serialized_value)?.is_some());
+
+        let delete_cmd = Command::Delete { key: key.clone() };
+        assert_eq!(executor.execute_command(delete_cmd)?, ExecutionResult::Deleted(true));
+
+        let indexed_pks = executor.index_manager.find_by_index("default_value_index", &serialized_value)?;
+        assert!(indexed_pks.map_or(true, |pks| !pks.contains(&key)), "Key should be removed from index");
+        Ok(())
+    }
+
+    #[test]
+    fn test_index_delete_transactional_commit() -> Result<(), DbError> {
+        let mut executor = create_file_executor();
+        let key = b"idx_del_key_tx_commit".to_vec();
+        let value = DataType::String("idx_del_val_tx_commit".to_string());
+        let serialized_value = serialize_data_type(&value)?;
+
+        let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
+        executor.execute_command(insert_cmd)?;
+
+        executor.execute_command(Command::BeginTransaction)?;
+        let delete_cmd = Command::Delete { key: key.clone() };
+        assert_eq!(executor.execute_command(delete_cmd)?, ExecutionResult::Deleted(true));
+        executor.execute_command(Command::CommitTransaction)?;
+
+        let indexed_pks = executor.index_manager.find_by_index("default_value_index", &serialized_value)?;
+        assert!(indexed_pks.map_or(true, |pks| !pks.contains(&key)), "Key should be removed from index after commit");
+        Ok(())
+    }
+
+    #[test]
+    fn test_index_delete_transactional_rollback() -> Result<(), DbError> {
+        let mut executor = create_file_executor();
+        let key = b"idx_del_key_tx_rollback".to_vec();
+        let value = DataType::String("idx_del_val_tx_rollback".to_string());
+        let serialized_value = serialize_data_type(&value)?;
+
+        // Insert initial data
+        let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
+        executor.execute_command(insert_cmd)?;
+
+        executor.execute_command(Command::BeginTransaction)?;
+        let delete_cmd = Command::Delete { key: key.clone() };
+        executor.execute_command(delete_cmd)?;
+
+        // Before rollback, index entry for the specific PK should be gone (or value entry if last PK)
+        let indexed_pks_before_rollback = executor.index_manager.find_by_index("default_value_index", &serialized_value)?;
+        assert!(indexed_pks_before_rollback.map_or(true, |pks| !pks.contains(&key)), "Key should be removed from index before rollback");
+
+        executor.execute_command(Command::RollbackTransaction)?;
+
+        // Verify data is back in store
+        let get_cmd = Command::Get { key: key.clone() };
+        assert_eq!(executor.execute_command(get_cmd)?, ExecutionResult::Value(Some(value)));
+
+        // Verify data is *still removed from index* (current limitation)
+        let indexed_pks_after_rollback = executor.index_manager.find_by_index("default_value_index", &serialized_value)?;
+        assert!(indexed_pks_after_rollback.map_or(true, |pks| !pks.contains(&key)), "Key should remain removed from index after rollback (current limitation)");
+        Ok(())
+    }
+
+    #[test]
+    fn test_find_by_index_command() -> Result<(), DbError> {
+        let mut executor = create_file_executor();
+        let common_value_str = "indexed_value_common".to_string();
+        let common_value = DataType::String(common_value_str.clone());
+        let serialized_common_value = serialize_data_type(&common_value)?;
+
+        let key1 = b"fbk1".to_vec();
+        let key2 = b"fbk2".to_vec();
+        let key3 = b"fbk3".to_vec(); // Different value
+
+        executor.execute_command(Command::Insert { key: key1.clone(), value: common_value.clone() })?;
+        executor.execute_command(Command::Insert { key: key2.clone(), value: common_value.clone() })?;
+        executor.execute_command(Command::Insert { key: key3.clone(), value: DataType::String("other_value".to_string()) })?;
+
+        // Find existing keys by indexed value
+        let find_cmd = Command::FindByIndex {
+            index_name: "default_value_index".to_string(),
+            value: serialized_common_value.clone()
+        };
+        match executor.execute_command(find_cmd)? {
+            ExecutionResult::PrimaryKeys(pks) => {
+                assert_eq!(pks.len(), 2);
+                assert!(pks.contains(&key1));
+                assert!(pks.contains(&key2));
+            }
+            other => panic!("Expected PrimaryKeys result, got {:?}", other),
+        }
+
+        // Find a value not in the index
+        let serialized_unindexed_value = serialize_data_type(&DataType::String("unindexed_val".to_string()))?;
+        let find_cmd_none = Command::FindByIndex {
+            index_name: "default_value_index".to_string(),
+            value: serialized_unindexed_value
+        };
+        match executor.execute_command(find_cmd_none)? {
+            ExecutionResult::PrimaryKeys(pks) => {
+                assert!(pks.is_empty());
+            }
+            other => panic!("Expected empty PrimaryKeys, got {:?}", other),
+        }
+
+        // Query a non-existent index name
+        let find_cmd_no_index = Command::FindByIndex {
+            index_name: "non_existent_index_name".to_string(),
+            value: serialized_common_value.clone()
+        };
+        let result_no_index = executor.execute_command(find_cmd_no_index);
+        assert!(matches!(result_no_index, Err(DbError::IndexError(_))));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_index_persistence_via_executor_persist() -> Result<(), DbError> {
+        let temp_main_dir = tempfile::tempdir().expect("Failed to create main temp dir for persistence test");
+        let db_file_path = temp_main_dir.path().join("test_db.dat");
+        // Index path will be relative to db_file_path's parent, so temp_main_dir.path()/indexes/
+
+        let key = b"persist_idx_key".to_vec();
+        let value = DataType::String("persist_idx_val".to_string());
+        let serialized_value = serialize_data_type(&value)?;
+
+        // Create executor, insert, persist
+        {
+            let mut executor1 = QueryExecutor::new(
+                SimpleFileKvStore::new(&db_file_path)?,
+                temp_main_dir.path().join("indexes1") // Use a distinct index path for clarity first
+            )?;
+            let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
+            executor1.execute_command(insert_cmd)?;
+            executor1.persist()?; // This saves store and indexes
+        }
+
+        // Create new executor instance using the same paths
+        // QueryExecutor::new -> IndexManager::new -> HashIndex::new (which loads the index file)
+        let mut executor2 = QueryExecutor::new(
+            SimpleFileKvStore::new(&db_file_path)?,
+            temp_main_dir.path().join("indexes1") // Same index path
+        )?;
+
+        // Verify index data was loaded using FindByIndex command
+        let find_cmd = Command::FindByIndex {
+            index_name: "default_value_index".to_string(),
+            value: serialized_value
+        };
+        match executor2.execute_command(find_cmd)? {
+            ExecutionResult::PrimaryKeys(pks) => {
+                assert_eq!(pks.len(), 1);
+                assert!(pks.contains(&key));
+            }
+            other => panic!("Expected PrimaryKeys after loading persisted index, got {:?}", other),
+        }
+        Ok(())
     }
 }

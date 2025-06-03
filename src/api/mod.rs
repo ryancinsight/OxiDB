@@ -35,8 +35,24 @@ impl Oxidb {
     /// # Errors
     /// Returns `DbError` if the store cannot be initialized or the executor cannot be created.
     pub fn new(path: impl AsRef<Path>) -> Result<Self, DbError> {
-        let store = SimpleFileKvStore::new(path)?;
-        let executor = QueryExecutor::new(store);
+        let db_file_path = path.as_ref(); // This is path to the DB FILE
+        let store = SimpleFileKvStore::new(db_file_path)?;
+
+        // Define a path for indexes: a directory named "indexes" in the same directory as the db file.
+        let mut index_base_dir = db_file_path.to_path_buf();
+        index_base_dir.pop(); // Removes the filename, leaving the parent directory.
+                              // If db_file_path was "foo.db", index_base_dir is now "".
+                              // If db_file_path was "/tmp/foo.db", index_base_dir is now "/tmp".
+
+        // Handle cases where db_file_path might not have a parent (e.g., it's just "foo.db")
+        // In such a case, `pop` makes the path empty. We'd want "indexes/" in CWD.
+        // Path::parent() returns Option<&Path>. If None, it means it's a root or prefix.
+        // A simpler way might be:
+        let parent_dir = db_file_path.parent().unwrap_or_else(|| Path::new(".")); // Default to current dir if no parent
+        index_base_dir = parent_dir.to_path_buf();
+        index_base_dir.push("indexes");
+
+        let executor = QueryExecutor::new(store, index_base_dir)?;
         Ok(Self { executor })
     }
 
@@ -170,6 +186,7 @@ impl Oxidb {
     /// ```rust
     /// use oxidb::api::Oxidb;
     /// use oxidb::core::query::executor::ExecutionResult;
+    /// use oxidb::core::types::DataType; // Ensure DataType is in scope for matching
     /// use tempfile::NamedTempFile;
     ///
     /// let temp_file = NamedTempFile::new().unwrap();
@@ -184,22 +201,22 @@ impl Oxidb {
     ///
     /// // Get the value
     /// match db.execute_query_str("GET my_key") {
-    ///     Ok(ExecutionResult::Value(Some(value))) => {
-    ///         assert_eq!(value, b"my_value".to_vec());
-    ///         println!("Got value: {:?}", String::from_utf8_lossy(&value));
+    ///     Ok(ExecutionResult::Value(Some(DataType::String(s)))) => {
+    ///         assert_eq!(s, "my_value");
+    ///         println!("Got value: {:?}", s);
     ///     },
     ///     Ok(ExecutionResult::Value(None)) => println!("Key not found."),
     ///     Err(e) => eprintln!("Get failed: {:?}", e),
-    ///     _ => {} // Other ExecutionResult variants
+    ///     other => panic!("Unexpected result for GET my_key: {:?}", other)
     /// }
     ///
     /// // Insert a value with spaces
     /// db.execute_query_str("INSERT user \"Alice Wonderland\"").unwrap();
     /// match db.execute_query_str("GET user") {
-    ///     Ok(ExecutionResult::Value(Some(value))) => {
-    ///          assert_eq!(value, b"Alice Wonderland".to_vec());
+    ///     Ok(ExecutionResult::Value(Some(DataType::String(s)))) => {
+    ///          assert_eq!(s, "Alice Wonderland");
     ///     },
-    ///     _ => panic!("Should have found user Alice"),
+    ///     other => panic!("Should have found user Alice, got {:?}", other),
     /// }
     ///
     /// // Delete the value

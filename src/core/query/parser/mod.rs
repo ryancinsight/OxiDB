@@ -38,6 +38,7 @@ use crate::core::types::DataType;
 /// ```rust
 /// use oxidb::core::query::parser::parse_query_string;
 /// use oxidb::core::query::commands::Command;
+/// use oxidb::core::types::DataType; // Added for DataType matching
 /// use oxidb::core::common::error::DbError;
 ///
 /// // Example: GET command
@@ -52,7 +53,7 @@ use crate::core::types::DataType;
 /// match parse_query_string(insert_query) {
 ///     Ok(Command::Insert { key, value }) => {
 ///         assert_eq!(key, "my_key".as_bytes().to_vec());
-///         assert_eq!(value, "my_value".as_bytes().to_vec());
+///         assert_eq!(value, DataType::String("my_value".to_string()));
 ///     },
 ///     _ => panic!("INSERT query failed"),
 /// }
@@ -62,7 +63,7 @@ use crate::core::types::DataType;
 /// match parse_query_string(insert_quoted_query) {
 ///     Ok(Command::Insert { key, value }) => {
 ///         assert_eq!(key, "user_name".as_bytes().to_vec());
-///         assert_eq!(value, "Alice Wonderland".as_bytes().to_vec());
+///         assert_eq!(value, DataType::String("Alice Wonderland".to_string()));
 ///     },
 ///     _ => panic!("INSERT with quoted value query failed"),
 /// }

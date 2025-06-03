@@ -10,6 +10,8 @@ pub enum DbError {
     TransactionError(String),
     StorageError(String),
     InternalError(String), // For unexpected issues
+    IndexError(String),    // Errors related to index operations
+    LockError(String),     // Errors related to RwLock or other synchronization primitives
     NoActiveTransaction,
     LockConflict { key: Vec<u8>, current_tx: u64, locked_by_tx: Option<u64> },
     LockAcquisitionTimeout { key: Vec<u8>, current_tx: u64 },
@@ -36,6 +38,8 @@ impl PartialEq for DbError {
             (DbError::TransactionError(s1), DbError::TransactionError(s2)) => s1 == s2,
             (DbError::StorageError(s1), DbError::StorageError(s2)) => s1 == s2,
             (DbError::InternalError(s1), DbError::InternalError(s2)) => s1 == s2,
+            (DbError::IndexError(s1), DbError::IndexError(s2)) => s1 == s2,
+            (DbError::LockError(s1), DbError::LockError(s2)) => s1 == s2,
             (DbError::NoActiveTransaction, DbError::NoActiveTransaction) => true,
             (DbError::LockConflict { key: k1, current_tx: ct1, locked_by_tx: lbt1 },
              DbError::LockConflict { key: k2, current_tx: ct2, locked_by_tx: lbt2 }) => {
@@ -62,6 +66,8 @@ impl std::fmt::Display for DbError {
             DbError::TransactionError(s) => write!(f, "Transaction Error: {}", s),
             DbError::StorageError(s) => write!(f, "Storage Error: {}", s),
             DbError::InternalError(s) => write!(f, "Internal Error: {}", s),
+            DbError::IndexError(s) => write!(f, "Index Error: {}", s),
+            DbError::LockError(s) => write!(f, "Lock Error: {}", s),
             DbError::NoActiveTransaction => write!(f, "No active transaction"),
             DbError::LockConflict { key, current_tx, locked_by_tx } => {
                 write!(f, "Lock conflict for key {:?} on transaction {}. Locked by transaction {:?}", key, current_tx, locked_by_tx)

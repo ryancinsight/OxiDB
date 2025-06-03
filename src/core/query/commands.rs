@@ -18,6 +18,7 @@ pub enum Command {
     BeginTransaction,
     CommitTransaction,
     RollbackTransaction,
+    FindByIndex { index_name: String, value: Value }, // Find by secondary index
     // Potentially others later, like:
     // Update { key: Key, value: Value },
     // Scan { prefix: Option<Key> },
