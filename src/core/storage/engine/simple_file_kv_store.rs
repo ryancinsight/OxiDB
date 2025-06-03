@@ -59,10 +59,10 @@ impl SimpleFileKvStore {
                 break; // Clean EOF
             }
 
-            let key = Vec::<u8>::deserialize(&mut reader)
+            let key = <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(&mut reader)
                 .map_err(|e| DbError::StorageError(format!("Failed to deserialize key from {}: {}", file_to_load.display(), e)))?;
             
-            let value = Vec::<u8>::deserialize(&mut reader)
+            let value = <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(&mut reader)
                 .map_err(|e| DbError::StorageError(format!("Failed to deserialize value for key {:?} from {}: {}", String::from_utf8_lossy(&key), file_to_load.display(), e)))?;
             
             self.cache.insert(key, value);
@@ -243,9 +243,9 @@ impl SimpleFileKvStore {
         let mut writer = BufWriter::new(temp_file);
 
         for (key, value) in &self.cache {
-            Vec::<u8>::serialize(key, &mut writer)
+            <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut writer)
                 .map_err(|e| DbError::StorageError(format!("Failed to serialize key: {}", e)))?;
-            Vec::<u8>::serialize(value, &mut writer)
+            <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(value, &mut writer)
                 .map_err(|e| DbError::StorageError(format!("Failed to serialize value: {}", e)))?;
         }
 
@@ -368,8 +368,8 @@ mod tests {
         let file = OpenOptions::new().write(true).create(true).truncate(true).open(path).map_err(DbError::IoError)?;
         let mut writer = BufWriter::new(file);
         for (key, value) in data {
-            Vec::<u8>::serialize(key, &mut writer)?; // Assuming DataSerializer is in scope via super::*
-            Vec::<u8>::serialize(value, &mut writer)?;
+            <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut writer)?;
+            <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(value, &mut writer)?;
         }
         writer.flush().map_err(DbError::IoError)?;
         writer.get_ref().sync_all().map_err(DbError::IoError)?; // Ensure data is on disk
@@ -500,10 +500,11 @@ mod tests {
         let dummy_transaction = Transaction::new(0); // Dummy transaction
         let key1 = b"key1".to_vec();
         let value1 = b"value1".to_vec();
-        store.put(key1.clone(), value1.clone(), &dummy_transaction).unwrap(); // put calls save_to_disk
+        store.put(key1.clone(), value1.clone(), &dummy_transaction).unwrap();
+        store.save_to_disk().unwrap(); // Explicitly save to disk
 
         // Verify main file has the data
-        let reloaded_store = SimpleFileKvStore::new(&db_path).unwrap(); // Removed mut
+        let reloaded_store = SimpleFileKvStore::new(&db_path).unwrap();
         assert_eq!(reloaded_store.get(&key1).unwrap(), Some(value1.clone()));
         assert_eq!(reloaded_store.cache.len(), 1);
 
@@ -575,8 +576,8 @@ mod tests {
             // Iterate by reference to avoid consuming main_data, in case it's needed later
             // (though not strictly necessary in this specific test as it's the last use)
             for (k, v) in &main_data { 
-                Vec::<u8>::serialize(k, &mut writer).unwrap();
-                Vec::<u8>::serialize(v, &mut writer).unwrap();
+                <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(k, &mut writer).unwrap();
+                <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(v, &mut writer).unwrap();
             }
             writer.flush().unwrap(); // Ensure all data is written to content
             drop(writer); // Explicitly drop writer before content is moved
@@ -737,7 +738,7 @@ mod tests {
         let mut file_content = Vec::new();
         let key = b"mykey".to_vec();
         // Write a valid key
-        Vec::<u8>::serialize(&key, &mut file_content).unwrap(); 
+        <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(&key, &mut file_content).unwrap();
         // Malformed: Valid length prefix for value, but not enough bytes for the value itself
         let value_len_bytes = (10u64).to_be_bytes(); // Expect 10 bytes for value
         file_content.extend_from_slice(&value_len_bytes);
@@ -1057,12 +1058,17 @@ mod tests {
             
             // Valid entry
             <WalEntry as DataSerializer<WalEntry>>::serialize(&WalEntry::Put{ transaction_id: 0, key: key_good.clone(), value: value_good.clone() }, &mut writer).unwrap();
+            // Explicitly add a commit entry for the good transaction
+            <WalEntry as DataSerializer<WalEntry>>::serialize(&WalEntry::TransactionCommit{ transaction_id: 0 }, &mut writer).unwrap();
+            writer.flush().unwrap(); // Ensure the good entry and its commit are written
             
-            // Corrupted data (e.g. invalid operation type or bad checksum, simpler: just random bytes not forming a valid entry part)
-            writer.write_all(&[0xDE, 0xAD, 0xBE, 0xEF]).unwrap(); // Random bytes, will cause deserialization to fail
+            // Corrupted data
+            writer.write_all(&[0xDE, 0xAD, 0xBE, 0xEF]).unwrap(); // Random bytes
+            writer.flush().unwrap(); // Flush corruption
             
-            // Another valid entry (should not be reached)
+            // Another valid entry (should not be reached by deserializer if corruption handling is correct)
             <WalEntry as DataSerializer<WalEntry>>::serialize(&WalEntry::Put{ transaction_id: 1, key: key_bad.clone(), value: value_bad.clone() }, &mut writer).unwrap();
+            <WalEntry as DataSerializer<WalEntry>>::serialize(&WalEntry::TransactionCommit{ transaction_id: 1 }, &mut writer).unwrap();
             writer.flush().unwrap();
         }
 

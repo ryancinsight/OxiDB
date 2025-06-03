@@ -36,14 +36,14 @@ mod tests {
         let mut db = Oxidb::new(temp_file.path()).expect("Failed to create Oxidb instance");
 
         let key1 = b"int_key1".to_vec();
-        let value1 = b"int_value1".to_vec();
+        let value1_str = "int_value1".to_string();
 
         // Insert
-        assert!(db.insert(key1.clone(), value1.clone()).is_ok());
+        assert!(db.insert(key1.clone(), value1_str.clone()).is_ok());
 
         // Get
         match db.get(key1.clone()) {
-            Ok(Some(v)) => assert_eq!(v, value1),
+            Ok(Some(v_str)) => assert_eq!(v_str, value1_str),
             Ok(None) => panic!("Key not found after insert"),
             Err(e) => panic!("Error during get: {:?}", e),
         }
@@ -64,10 +64,10 @@ mod tests {
 
         // Test inserting another key to make sure the DB is still usable
         let key2 = b"int_key2".to_vec();
-        let value2 = b"int_value2".to_vec();
-        assert!(db.insert(key2.clone(), value2.clone()).is_ok());
+        let value2_str = "int_value2".to_string();
+        assert!(db.insert(key2.clone(), value2_str.clone()).is_ok());
         match db.get(key2.clone()) {
-            Ok(Some(v)) => assert_eq!(v, value2),
+            Ok(Some(v_str)) => assert_eq!(v_str, value2_str),
             _ => panic!("Second key not processed correctly"),
         }
     }
@@ -101,16 +101,16 @@ mod tests {
         let wal_path = derive_wal_path_for_lib_test(&db_path);
 
         let key_a = b"key_a_wal_restart".to_vec();
-        let val_a_initial = b"val_a_initial".to_vec();
-        let val_a_updated = b"val_a_updated".to_vec();
+        let val_a_initial_str = "val_a_initial".to_string();
+        let val_a_updated_str = "val_a_updated".to_string();
         let key_b = b"key_b_wal_restart".to_vec();
-        let val_b = b"val_b".to_vec();
+        let val_b_str = "val_b".to_string();
 
         {
             let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb (instance 1)");
-            db.insert(key_a.clone(), val_a_initial.clone()).unwrap();
-            db.insert(key_b.clone(), val_b.clone()).unwrap();
-            db.insert(key_a.clone(), val_a_updated.clone()).unwrap(); // Update key A
+            db.insert(key_a.clone(), val_a_initial_str.clone()).unwrap();
+            db.insert(key_b.clone(), val_b_str.clone()).unwrap();
+            db.insert(key_a.clone(), val_a_updated_str.clone()).unwrap(); // Update key A
             db.delete(key_b.clone()).unwrap(); // Delete key B
             
             // At this point, after several operations, the WAL file should exist.
@@ -126,7 +126,7 @@ mod tests {
             let mut db_restarted = Oxidb::new(&db_path).expect("Failed to create Oxidb (instance 2)");
             
             // Verify operations
-            assert_eq!(db_restarted.get(key_a.clone()).unwrap(), Some(val_a_updated.clone()), "Key A should have updated value");
+            assert_eq!(db_restarted.get(key_a.clone()).unwrap(), Some(val_a_updated_str.clone()), "Key A should have updated value");
             assert_eq!(db_restarted.get(key_b.clone()).unwrap(), None, "Key B should be deleted");
 
             // Persist the replayed data
@@ -144,31 +144,31 @@ mod tests {
         let db_path = temp_db_file.path();
 
         let key_c = b"key_c_persist".to_vec();
-        let val_c = b"val_c".to_vec();
+        let val_c_str = "val_c".to_string();
         let key_d = b"key_d_persist".to_vec();
-        let val_d = b"val_d".to_vec();
+        let val_d_str = "val_d".to_string();
 
         // Instance 1
         {
             let mut db1 = Oxidb::new(db_path).expect("Failed to create Oxidb (instance 1)");
-            db1.insert(key_c.clone(), val_c.clone()).unwrap();
+            db1.insert(key_c.clone(), val_c_str.clone()).unwrap();
             db1.persist().unwrap();
         }
 
         // Instance 2
         {
             let mut db2 = Oxidb::new(db_path).expect("Failed to create Oxidb (instance 2)");
-            assert_eq!(db2.get(key_c.clone()).unwrap(), Some(val_c.clone()), "Key C should be present in instance 2");
+            assert_eq!(db2.get(key_c.clone()).unwrap(), Some(val_c_str.clone()), "Key C should be present in instance 2");
             
-            db2.insert(key_d.clone(), val_d.clone()).unwrap();
+            db2.insert(key_d.clone(), val_d_str.clone()).unwrap();
             db2.persist().unwrap();
         }
 
         // Instance 3
         {
             let mut db3 = Oxidb::new(db_path).expect("Failed to create Oxidb (instance 3)");
-            assert_eq!(db3.get(key_c.clone()).unwrap(), Some(val_c.clone()), "Key C should be present in instance 3");
-            assert_eq!(db3.get(key_d.clone()).unwrap(), Some(val_d.clone()), "Key D should be present in instance 3");
+            assert_eq!(db3.get(key_c.clone()).unwrap(), Some(val_c_str.clone()), "Key C should be present in instance 3");
+            assert_eq!(db3.get(key_d.clone()).unwrap(), Some(val_d_str.clone()), "Key D should be present in instance 3");
         }
     }
 }

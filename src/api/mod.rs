@@ -4,7 +4,9 @@
 //! It exposes the `Oxidb` struct, which is the main entry point for database operations.
 
 use crate::core::common::error::DbError;
-use crate::core::query::commands::{Command, Key, Value};
+use crate::core::query::commands::{Command, Key}; // Value removed
+use crate::core::types::DataType; // Added
+use serde_json; // Added for JsonBlob stringification
 use crate::core::query::executor::{QueryExecutor, ExecutionResult}; // Corrected import
 use crate::core::query::parser::parse_query_string;
 use crate::core::storage::engine::simple_file_kv_store::SimpleFileKvStore;
@@ -48,13 +50,13 @@ impl Oxidb {
     ///
     /// # Arguments
     /// * `key` - The key (`Vec<u8>`) to insert.
-    /// * `value` - The value (`Vec<u8>`) to associate with the key.
+    /// * `value` - The value (`String`) to associate with the key. This will be stored as `DataType::String`.
     ///
     /// # Errors
     /// Returns `DbError` if the operation fails, for instance, due to issues
     /// writing to the WAL.
-    pub fn insert(&mut self, key: Key, value: Value) -> Result<(), DbError> {
-        let command = Command::Insert { key, value };
+    pub fn insert(&mut self, key: Key, value: String) -> Result<(), DbError> {
+        let command = Command::Insert { key, value: DataType::String(value) };
         match self.executor.execute_command(command) { // Use self.executor
             Ok(ExecutionResult::Success) => Ok(()),
             Ok(unexpected_result) => Err(DbError::InternalError(format!(
@@ -73,13 +75,24 @@ impl Oxidb {
     /// * `key` - The key (`Vec<u8>`) whose value is to be retrieved.
     ///
     /// # Returns
-    /// * `Ok(Some(Value))` if the key is found, containing the associated value.
+    /// * `Ok(Some(String))` if the key is found, containing the string representation of the associated value.
     /// * `Ok(None)` if the key is not found.
     /// * `Err(DbError)` if any other error occurs during the operation.
-    pub fn get(&mut self, key: Key) -> Result<Option<Value>, DbError> {
+    pub fn get(&mut self, key: Key) -> Result<Option<String>, DbError> {
         let command = Command::Get { key };
         match self.executor.execute_command(command) { // Use self.executor
-            Ok(ExecutionResult::Value(value_option)) => Ok(value_option),
+            Ok(ExecutionResult::Value(data_type_option)) => {
+                // Convert DataType option to String option
+                Ok(data_type_option.map(|dt| match dt {
+                    DataType::Integer(i) => i.to_string(),
+                    DataType::String(s) => s,
+                    DataType::Boolean(b) => b.to_string(),
+                    DataType::JsonBlob(json_val) => {
+                        serde_json::to_string(&json_val)
+                            .unwrap_or_else(|e| format!("Error serializing JsonBlob: {}", e))
+                    }
+                }))
+            }
             Ok(unexpected_result) => Err(DbError::InternalError(format!(
                 "Get: Expected Value, got {:?}",
                 unexpected_result
@@ -235,16 +248,16 @@ mod tests {
         let mut db = Oxidb::new(&db_path).unwrap();
 
         let key = b"api_key_1".to_vec();
-        let value = b"api_value_1".to_vec();
+        let value_str = "api_value_1".to_string();
 
-        // Test insert
-        let insert_result = db.insert(key.clone(), value.clone());
+        // Test insert (now takes String)
+        let insert_result = db.insert(key.clone(), value_str.clone());
         assert!(insert_result.is_ok());
 
-        // Test get
+        // Test get (now returns Option<String>)
         let get_result = db.get(key.clone());
         assert!(get_result.is_ok());
-        assert_eq!(get_result.unwrap(), Some(value));
+        assert_eq!(get_result.unwrap(), Some(value_str));
     }
 
     #[test]
@@ -254,7 +267,7 @@ mod tests {
         let key = b"api_non_existent".to_vec();
         let get_result = db.get(key);
         assert!(get_result.is_ok());
-        assert_eq!(get_result.unwrap(), None);
+        assert_eq!(get_result.unwrap(), None); // Stays None
     }
 
     #[test]
@@ -262,12 +275,12 @@ mod tests {
         let db_path = get_temp_db_path();
         let mut db = Oxidb::new(&db_path).unwrap();
         let key = b"api_delete_key".to_vec();
-        let value = b"api_delete_value".to_vec();
+        let value_str = "api_delete_value".to_string();
 
-        db.insert(key.clone(), value.clone()).unwrap();
+        db.insert(key.clone(), value_str.clone()).unwrap();
         let get_inserted_result = db.get(key.clone());
         assert!(get_inserted_result.is_ok());
-        assert_eq!(get_inserted_result.unwrap(), Some(value)); // Verify insert
+        assert_eq!(get_inserted_result.unwrap(), Some(value_str)); // Verify insert
 
         let delete_result = db.delete(key.clone());
         assert!(delete_result.is_ok());
@@ -294,18 +307,18 @@ mod tests {
         let db_path = get_temp_db_path();
         let mut db = Oxidb::new(&db_path).unwrap();
         let key = b"api_update_key".to_vec();
-        let value1 = b"value1".to_vec();
-        let value2 = b"value2".to_vec();
+        let value1_str = "value1".to_string();
+        let value2_str = "value2".to_string();
 
-        db.insert(key.clone(), value1.clone()).unwrap();
+        db.insert(key.clone(), value1_str.clone()).unwrap();
         let get_v1_result = db.get(key.clone());
         assert!(get_v1_result.is_ok());
-        assert_eq!(get_v1_result.unwrap(), Some(value1));
+        assert_eq!(get_v1_result.unwrap(), Some(value1_str));
 
-        db.insert(key.clone(), value2.clone()).unwrap(); // This is an update
+        db.insert(key.clone(), value2_str.clone()).unwrap(); // This is an update
         let get_v2_result = db.get(key.clone());
         assert!(get_v2_result.is_ok());
-        assert_eq!(get_v2_result.unwrap(), Some(value2));
+        assert_eq!(get_v2_result.unwrap(), Some(value2_str));
     }
 
     // Helper function to derive WAL path from DB path for testing
@@ -328,11 +341,11 @@ mod tests {
         let wal_path = derive_wal_path_for_test(&db_path);
 
         let key = b"persist_key".to_vec();
-        let value = b"persist_value".to_vec();
+        let value_str = "persist_value".to_string(); // Changed to String
 
         {
             let mut db = Oxidb::new(&db_path).unwrap();
-            db.insert(key.clone(), value.clone()).unwrap();
+            db.insert(key.clone(), value_str.clone()).unwrap(); // Use String value
             // Data is in WAL and cache. Main file might be empty or have old data.
             // WAL file should exist if inserts happened.
             // (This check depends on SimpleFileKvStore's WAL behavior after insert)
@@ -354,7 +367,7 @@ mod tests {
         let mut reloaded_db = Oxidb::new(&db_path).unwrap();
         let get_result = reloaded_db.get(key.clone());
         assert!(get_result.is_ok());
-        assert_eq!(get_result.unwrap(), Some(value));
+        assert_eq!(get_result.unwrap(), Some(value_str)); // Assert against String value
     }
 
     // Tests for execute_query_str
@@ -362,12 +375,14 @@ mod tests {
     fn test_execute_query_str_get_ok() {
         let db_path = get_temp_db_path();
         let mut db = Oxidb::new(&db_path).unwrap();
-        db.insert(b"mykey".to_vec(), b"myvalue".to_vec()).unwrap();
+        // Insert using the API's insert which now takes String and stores as DataType::String
+        db.insert(b"mykey".to_vec(), "myvalue".to_string()).unwrap();
 
         let result = db.execute_query_str("GET mykey");
         match result {
-            Ok(ExecutionResult::Value(Some(val))) => assert_eq!(val, b"myvalue".to_vec()),
-            _ => panic!("Expected Value(Some(...)), got {:?}", result),
+            // Expecting DataType::String from the executor
+            Ok(ExecutionResult::Value(Some(DataType::String(val_str)))) => assert_eq!(val_str, "myvalue"),
+            _ => panic!("Expected Value(Some(DataType::String(...))), got {:?}", result),
         }
     }
 
@@ -386,24 +401,54 @@ mod tests {
     fn test_execute_query_str_insert_ok() {
         let db_path = get_temp_db_path();
         let mut db = Oxidb::new(&db_path).unwrap();
+        // The parser will turn "newvalue" into DataType::String("newvalue")
         let result = db.execute_query_str("INSERT newkey newvalue");
         match result {
             Ok(ExecutionResult::Success) => {} // Expected
             _ => panic!("Expected Success, got {:?}", result),
         }
-        assert_eq!(db.get(b"newkey".to_vec()).unwrap(), Some(b"newvalue".to_vec()));
+        // db.get now returns Option<String>
+        assert_eq!(db.get(b"newkey".to_vec()).unwrap(), Some("newvalue".to_string()));
     }
 
     #[test]
     fn test_execute_query_str_insert_with_quotes_ok() {
         let db_path = get_temp_db_path();
         let mut db = Oxidb::new(&db_path).unwrap();
+        // Parser turns "\"quoted value\"" into DataType::String("quoted value")
         let result = db.execute_query_str("INSERT qkey \"quoted value\"");
         match result {
             Ok(ExecutionResult::Success) => {} // Expected
             _ => panic!("Expected Success, got {:?}", result),
         }
-        assert_eq!(db.get(b"qkey".to_vec()).unwrap(), Some(b"quoted value".to_vec()));
+        assert_eq!(db.get(b"qkey".to_vec()).unwrap(), Some("quoted value".to_string()));
+    }
+
+    #[test]
+    fn test_execute_query_str_insert_integer_via_parser() {
+        let db_path = get_temp_db_path();
+        let mut db = Oxidb::new(&db_path).unwrap();
+        // Parser turns "123" into DataType::Integer(123)
+        let result = db.execute_query_str("INSERT intkey 123");
+        match result {
+            Ok(ExecutionResult::Success) => {} // Expected
+            _ => panic!("Expected Success, got {:?}", result),
+        }
+        // db.get now returns Option<String>
+        assert_eq!(db.get(b"intkey".to_vec()).unwrap(), Some("123".to_string()));
+    }
+
+    #[test]
+    fn test_execute_query_str_insert_boolean_via_parser() {
+        let db_path = get_temp_db_path();
+        let mut db = Oxidb::new(&db_path).unwrap();
+        // Parser turns "true" into DataType::Boolean(true)
+        let result = db.execute_query_str("INSERT boolkey true");
+        match result {
+            Ok(ExecutionResult::Success) => {} // Expected
+            _ => panic!("Expected Success, got {:?}", result),
+        }
+        assert_eq!(db.get(b"boolkey".to_vec()).unwrap(), Some("true".to_string()));
     }
 
 
@@ -411,7 +456,7 @@ mod tests {
     fn test_execute_query_str_delete_ok() {
         let db_path = get_temp_db_path();
         let mut db = Oxidb::new(&db_path).unwrap();
-        db.insert(b"delkey".to_vec(), b"delvalue".to_vec()).unwrap();
+        db.insert(b"delkey".to_vec(), "delvalue".to_string()).unwrap(); // Use String for insert
         let result = db.execute_query_str("DELETE delkey");
         match result {
             Ok(ExecutionResult::Deleted(true)) => {} // Expected

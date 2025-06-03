@@ -11,7 +11,7 @@ const TRANSACTION_COMMIT_OPERATION: u8 = 0x03;
 const TRANSACTION_ROLLBACK_OPERATION: u8 = 0x04;
 
 /// Represents an entry in the Write-Ahead Log (WAL).
-#[derive(Debug, PartialEq)] // Added PartialEq for easier testing
+#[derive(Debug, PartialEq, Clone)] // Added Clone
 pub enum WalEntry {
     /// Represents a 'Put' operation with a key and a value.
     Put { transaction_id: u64, key: Vec<u8>, value: Vec<u8> },

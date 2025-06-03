@@ -4,7 +4,8 @@
 //! It handles tokenization, command identification, and argument extraction for supported database operations.
 
 use crate::core::common::error::DbError;
-use crate::core::query::commands::{Command, Key, Value};
+use crate::core::query::commands::{Command, Key}; // Value alias removed as Command::Insert will use DataType
+use crate::core::types::DataType;
 
 /// Parses a raw query string into a `Command` object.
 ///
@@ -154,8 +155,20 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, DbError> {
         "INSERT" => {
             if tokens.len() == 3 {
                 let key: Key = tokens[1].as_bytes().to_vec();
-                let value: Value = tokens[2].as_bytes().to_vec();
-                Ok(Command::Insert { key, value })
+                let value_str = &tokens[2]; // This is a String
+
+                let data_type_value = if value_str.eq_ignore_ascii_case("true") {
+                    DataType::Boolean(true)
+                } else if value_str.eq_ignore_ascii_case("false") {
+                    DataType::Boolean(false)
+                } else if let Ok(num) = value_str.parse::<i64>() {
+                    DataType::Integer(num)
+                } else {
+                    // Default to String if not boolean or integer
+                    // The tokenizer already handles quotes, so value_str is the content.
+                    DataType::String(value_str.clone())
+                };
+                Ok(Command::Insert { key, value: data_type_value })
             } else {
                 Err(DbError::InvalidQuery(format!("INSERT command expects 2 arguments, got {}", tokens.len() - 1)))
             }
@@ -222,7 +235,8 @@ mod tests {
         match result {
             Ok(Command::Insert { key, value }) => {
                 assert_eq!(key, "mykey".as_bytes().to_vec());
-                assert_eq!(value, "myvalue".as_bytes().to_vec());
+                // Now expects DataType::String for "myvalue"
+                assert_eq!(value, DataType::String("myvalue".to_string()));
             }
             _ => panic!("Expected INSERT command"),
         }
@@ -234,7 +248,8 @@ mod tests {
         match result {
             Ok(Command::Insert { key, value }) => {
                 assert_eq!(key, "mykey".as_bytes().to_vec());
-                assert_eq!(value, "my value with spaces".as_bytes().to_vec());
+                // Expects DataType::String
+                assert_eq!(value, DataType::String("my value with spaces".to_string()));
             }
             _ => panic!("Expected INSERT command"),
         }
@@ -246,9 +261,89 @@ mod tests {
         match result {
             Ok(Command::Insert { key, value }) => {
                 assert_eq!(key, "mykey".as_bytes().to_vec());
-                assert_eq!(value, "my value with spaces".as_bytes().to_vec());
+                // Expects DataType::String
+                assert_eq!(value, DataType::String("my value with spaces".to_string()));
             }
             _ => panic!("Expected INSERT command"),
+        }
+    }
+
+    // New tests for DataType parsing
+    #[test]
+    fn test_parse_insert_integer() {
+        let result = parse_query_string("INSERT mykey 12345");
+        match result {
+            Ok(Command::Insert { key, value }) => {
+                assert_eq!(key, "mykey".as_bytes().to_vec());
+                assert_eq!(value, DataType::Integer(12345));
+            }
+            _ => panic!("Expected INSERT command with Integer"),
+        }
+    }
+
+    #[test]
+    fn test_parse_insert_negative_integer() {
+        let result = parse_query_string("INSERT mykey -50");
+        match result {
+            Ok(Command::Insert { key, value }) => {
+                assert_eq!(key, "mykey".as_bytes().to_vec());
+                assert_eq!(value, DataType::Integer(-50));
+            }
+            _ => panic!("Expected INSERT command with negative Integer"),
+        }
+    }
+
+    #[test]
+    fn test_parse_insert_boolean_true() {
+        let result = parse_query_string("INSERT mykey true");
+        match result {
+            Ok(Command::Insert { key, value }) => {
+                assert_eq!(key, "mykey".as_bytes().to_vec());
+                assert_eq!(value, DataType::Boolean(true));
+            }
+            _ => panic!("Expected INSERT command with Boolean true"),
+        }
+    }
+
+    #[test]
+    fn test_parse_insert_boolean_false_mixed_case() {
+        let result = parse_query_string("INSERT mykey FaLsE");
+        match result {
+            Ok(Command::Insert { key, value }) => {
+                assert_eq!(key, "mykey".as_bytes().to_vec());
+                assert_eq!(value, DataType::Boolean(false));
+            }
+            _ => panic!("Expected INSERT command with Boolean false"),
+        }
+    }
+
+    #[test]
+    fn test_parse_insert_string_that_looks_like_number() {
+        // "12345" but quoted, so should be string. Or if it's not parsable as i64 (e.g. too long)
+        // The current logic for INSERT does not distinguish between `INSERT k 123` and `INSERT k "123"` for type.
+        // If it's `123` (unquoted token), it will become Integer.
+        // If it's `"123"` (quoted token), the token `123` will also become Integer.
+        // To force a string that looks like a number, it must not be parsable as i64, or we need more advanced syntax.
+        // For now, a number-like string that is actually a string:
+        let result = parse_query_string("INSERT mykey 123.45"); // Not an i64, so String
+        match result {
+            Ok(Command::Insert { key, value }) => {
+                assert_eq!(key, "mykey".as_bytes().to_vec());
+                assert_eq!(value, DataType::String("123.45".to_string()));
+            }
+            _ => panic!("Expected INSERT command with String value"),
+        }
+    }
+
+    #[test]
+    fn test_parse_insert_string_that_looks_like_boolean() {
+        let result = parse_query_string("INSERT mykey \"true story\""); // Quoted, content is "true story"
+        match result {
+            Ok(Command::Insert { key, value }) => {
+                assert_eq!(key, "mykey".as_bytes().to_vec());
+                assert_eq!(value, DataType::String("true story".to_string()));
+            }
+            _ => panic!("Expected INSERT command with String value"),
         }
     }
 
@@ -387,9 +482,10 @@ mod tests {
         match result {
             Ok(Command::Insert { key, value }) => {
                 assert_eq!(key, "key".as_bytes().to_vec());
-                assert_eq!(value, "".as_bytes().to_vec());
+                // Empty string is not boolean, not int, so DataType::String("")
+                assert_eq!(value, DataType::String("".to_string()));
             }
-            _ => panic!("Expected INSERT command with empty value"),
+            _ => panic!("Expected INSERT command with empty string value"),
         }
     }
 

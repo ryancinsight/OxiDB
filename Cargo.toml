@@ -7,6 +7,8 @@ edition = "2021"
 
 [dependencies]
 crc32fast = "1.4.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 [dev-dependencies]
 tempfile = "3.8" # Or a more recent compatible version

@@ -1,153 +1,112 @@
-use std::io::{Read, Write};
-use crate::core::common::traits::{DataSerializer, DataDeserializer};
-use crate::core::common::error::DbError;
+// src/core/common/serialization.rs
 
-// --- u64 Implementation ---
-impl DataSerializer<u64> for u64 {
-    fn serialize<W: Write>(value: &u64, writer: &mut W) -> Result<(), DbError> {
-        writer.write_all(&value.to_be_bytes()).map_err(DbError::IoError)
+use crate::core::types::DataType;
+use crate::core::common::error::DbError; // Already present
+use serde_json;
+use crate::core::common::traits::{DataSerializer, DataDeserializer}; // Added
+use std::io::{Read, Write}; // Added
+
+/// Serializes a DataType into a Vec<u8> using JSON.
+pub fn serialize_data_type(data_type: &DataType) -> Result<Vec<u8>, DbError> {
+    serde_json::to_vec(data_type).map_err(|e| DbError::SerializationError(e.to_string()))
+}
+
+/// Deserializes a Vec<u8> (expected to be JSON) into a DataType.
+pub fn deserialize_data_type(bytes: &[u8]) -> Result<DataType, DbError> {
+    serde_json::from_slice(bytes).map_err(|e| DbError::DeserializationError(e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::types::DataType;
+    use serde_json::json;
+
+    #[test]
+    fn test_serialize_deserialize_integer() {
+        let original = DataType::Integer(12345);
+        let serialized = serialize_data_type(&original).unwrap();
+        let deserialized = deserialize_data_type(&serialized).unwrap();
+        assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn test_serialize_deserialize_string() {
+        let original = DataType::String("hello world".to_string());
+        let serialized = serialize_data_type(&original).unwrap();
+        let deserialized = deserialize_data_type(&serialized).unwrap();
+        assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn test_serialize_deserialize_boolean() {
+        let original = DataType::Boolean(true);
+        let serialized = serialize_data_type(&original).unwrap();
+        let deserialized = deserialize_data_type(&serialized).unwrap();
+        assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn test_serialize_deserialize_json_blob() {
+        let original = DataType::JsonBlob(json!({ "name": "oxidb", "version": 0.1 }));
+        let serialized = serialize_data_type(&original).unwrap();
+        let deserialized = deserialize_data_type(&serialized).unwrap();
+        assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn test_deserialize_invalid_data() {
+        let bytes = b"this is not valid json";
+        let result = deserialize_data_type(bytes);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            DbError::DeserializationError(msg) => {
+                assert!(msg.contains("expected value at line 1 column 1"));
+            }
+            _ => panic!("Expected DeserializationError"),
+        }
+    }
+    
+    #[test]
+    fn test_deserialize_wrong_json_structure() {
+        // This JSON is valid, but doesn't match the DataType enum structure
+        let bytes = br#"{"type": "UnknownType", "value": "some_value"}"#;
+        let result = deserialize_data_type(bytes);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            DbError::DeserializationError(msg) => {
+                // The exact error message might vary based on serde's internal logic
+                // It might complain about missing fields for any of the DataType variants
+                // or an unknown variant.
+                println!("Deserialization error for wrong structure: {}", msg); // For debugging
+                assert!(msg.contains("missing field") || msg.contains("unknown variant"));
+            }
+            _ => panic!("Expected DeserializationError for wrong JSON structure"),
+        }
     }
 }
 
-impl DataDeserializer<u64> for u64 {
-    fn deserialize<R: Read>(reader: &mut R) -> Result<u64, DbError> {
-        let mut bytes = [0u8; 8];
-        reader.read_exact(&mut bytes).map_err(DbError::IoError)?;
-        Ok(u64::from_be_bytes(bytes))
-    }
-}
-
-// --- String Implementation ---
-impl DataSerializer<String> for String {
-    fn serialize<W: Write>(value: &String, writer: &mut W) -> Result<(), DbError> {
-        let bytes = value.as_bytes();
-        let len = bytes.len() as u64;
-        u64::serialize(&len, writer)?; // Serialize length
-        writer.write_all(bytes).map_err(DbError::IoError) // Serialize bytes
-    }
-}
-
-// Max allowed length for a single serialized item (e.g., Vec<u8> or String content)
-// This is a safeguard against trying to allocate excessive memory due to corrupted length prefixes.
-const MAX_ALLOWED_ITEM_LENGTH: usize = 256 * 1024 * 1024; // 256 MiB
-
-// --- Vec<u8> Implementation ---
+// Implementations for Vec<u8>
 impl DataSerializer<Vec<u8>> for Vec<u8> {
     fn serialize<W: Write>(value: &Vec<u8>, writer: &mut W) -> Result<(), DbError> {
         let len = value.len() as u64;
-        u64::serialize(&len, writer)?; // Serialize length
-        writer.write_all(value).map_err(DbError::IoError) // Serialize bytes
+        writer.write_all(&len.to_be_bytes())?; // Relies on From<std::io::Error> for DbError
+        writer.write_all(value)?;
+        Ok(())
     }
 }
 
 impl DataDeserializer<Vec<u8>> for Vec<u8> {
     fn deserialize<R: Read>(reader: &mut R) -> Result<Vec<u8>, DbError> {
-        let len = u64::deserialize(reader)? as usize; // Deserialize length
-        if len > MAX_ALLOWED_ITEM_LENGTH {
-            return Err(DbError::StorageError(format!(
-                "Deserialized Vec<u8> length {} exceeds maximum allowed limit of {}",
-                len, MAX_ALLOWED_ITEM_LENGTH
-            )));
+        let mut len_bytes = [0u8; 8];
+        reader.read_exact(&mut len_bytes)?; // Relies on From<std::io::Error> for DbError
+        let len = u64::from_be_bytes(len_bytes) as usize;
+        // Basic protection against extremely large allocations
+        if len > 1_000_000_000 { // 1GB limit, adjust as needed
+            return Err(DbError::DeserializationError(format!("Vec<u8> length {} exceeds maximum allowed size", len)));
         }
         let mut buffer = vec![0u8; len];
-        reader.read_exact(&mut buffer).map_err(DbError::IoError)?;
+        reader.read_exact(&mut buffer)?;
         Ok(buffer)
-    }
-}
-
-// This is now the sole implementation for DataDeserializer<String>
-impl DataDeserializer<String> for String {
-    fn deserialize<R: Read>(reader: &mut R) -> Result<String, DbError> {
-        let len = u64::deserialize(reader)? as usize; // Deserialize length
-        if len > MAX_ALLOWED_ITEM_LENGTH {
-            return Err(DbError::StorageError(format!(
-                "Deserialized String length {} exceeds maximum allowed limit of {}",
-                len, MAX_ALLOWED_ITEM_LENGTH
-            )));
-        }
-        let mut buffer = vec![0u8; len];
-        reader.read_exact(&mut buffer).map_err(DbError::IoError)?;
-        String::from_utf8(buffer)
-            .map_err(|e| DbError::DeserializationError(format!("UTF-8 conversion error: {}", e)))
-    }
-}
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Cursor; // Ensure Cursor is imported for tests
-
-    fn test_round_trip<T>(value: &T) -> Result<(), DbError>
-    where
-        T: DataSerializer<T> + DataDeserializer<T> + PartialEq + std::fmt::Debug,
-    {
-        let mut buffer = Vec::new();
-        T::serialize(value, &mut buffer)?;
-        let deserialized = T::deserialize(&mut Cursor::new(buffer))?;
-        assert_eq!(*value, deserialized);
-        Ok(())
-    }
-
-    #[test]
-    fn u64_round_trip() {
-        test_round_trip(&0u64).unwrap();
-        test_round_trip(&1234567890123456789u64).unwrap();
-        test_round_trip(&u64::MAX).unwrap();
-    }
-
-    #[test]
-    fn string_round_trip() {
-        test_round_trip(&String::from("hello world")).unwrap();
-        test_round_trip(&String::from("")).unwrap();
-        test_round_trip(&String::from("a").repeat(1000)).unwrap();
-    }
-
-    #[test]
-    fn vec_u8_round_trip() {
-        test_round_trip(&vec![1, 2, 3, 4, 5]).unwrap();
-        test_round_trip(&Vec::<u8>::new()).unwrap();
-        test_round_trip(&vec![0u8; 1000]).unwrap();
-    }
-
-    #[test]
-    fn string_deserialize_insufficient_data_for_length() {
-        let bytes = vec![0,0,0,0,0,0,0]; // 7 bytes, not enough for u64 length
-        let result = String::deserialize(&mut Cursor::new(bytes));
-        // Expect an IoError from read_exact within u64::deserialize
-        match result {
-            Err(DbError::IoError(e)) => {
-                assert_eq!(e.kind(), std::io::ErrorKind::UnexpectedEof);
-            }
-            _ => panic!("Expected IoError for insufficient length data"),
-        }
-    }
-    
-    #[test]
-    fn string_deserialize_insufficient_data_for_content() {
-        let mut bytes = Vec::new();
-        let len: u64 = 10;
-        u64::serialize(&len, &mut bytes).unwrap(); // Length is 10 (8 bytes)
-        bytes.extend_from_slice(b"short"); // Content is "short" (5 bytes)
-        // Total bytes: 8 (for len) + 5 (for "short") = 13 bytes.
-        // Reader will try to read 10 bytes for content but only 5 are available after length.
-        let result = String::deserialize(&mut Cursor::new(bytes));
-         match result {
-            Err(DbError::IoError(e)) => {
-                assert_eq!(e.kind(), std::io::ErrorKind::UnexpectedEof);
-            }
-            _ => panic!("Expected IoError for insufficient content data"),
-        }
-    }
-
-    #[test]
-    fn string_deserialize_invalid_utf8() {
-        let mut bytes = Vec::new();
-        let invalid_utf8: Vec<u8> = vec![0xC3, 0x28]; // Invalid UTF-8 sequence (an isolated start byte)
-        let len = invalid_utf8.len() as u64;
-        u64::serialize(&len, &mut bytes).unwrap();
-        bytes.extend_from_slice(&invalid_utf8);
-        let result = String::deserialize(&mut Cursor::new(bytes));
-        assert!(matches!(result, Err(DbError::DeserializationError(_))));
     }
 }

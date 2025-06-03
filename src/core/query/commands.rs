@@ -1,5 +1,7 @@
 // src/core/query/commands.rs
 
+use crate::core::types::DataType;
+
 /// Represents a key for operations.
 pub type Key = Vec<u8>;
 /// Represents a value for operations.
@@ -9,7 +11,7 @@ pub type Value = Vec<u8>;
 /// These are internal representations, not directly parsed from strings yet.
 #[derive(Debug, PartialEq, Clone)] // For testing and inspection
 pub enum Command {
-    Insert { key: Key, value: Value },
+    Insert { key: Key, value: DataType },
     Get { key: Key },
     Delete { key: Key },
     // Transaction control commands
