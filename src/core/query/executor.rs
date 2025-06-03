@@ -791,4 +791,37 @@ mod tests {
         // on the concurrent acquisition of shared locks.
         // A separate test would be needed to ensure Tx1's locks are released if Tx1 was made active and then committed.
     }
+
+    #[test]
+    fn test_exclusive_lock_prevents_shared_read() {
+        let mut executor = create_executor();
+        let key: Key = b"exclusive_prevents_shared_key".to_vec();
+        let value: Value = b"value".to_vec();
+
+        // Transaction 1
+        assert_eq!(executor.execute_command(Command::BeginTransaction).unwrap(), ExecutionResult::Success);
+        let tx1_id = executor.transaction_manager.current_active_transaction_id().unwrap();
+        let insert_command = Command::Insert { key: key.clone(), value: value.clone() };
+        assert_eq!(executor.execute_command(insert_command).unwrap(), ExecutionResult::Success);
+
+        // Transaction 2
+        assert_eq!(executor.execute_command(Command::BeginTransaction).unwrap(), ExecutionResult::Success);
+        let tx2_id = executor.transaction_manager.current_active_transaction_id().unwrap();
+        assert_ne!(tx1_id, tx2_id, "Transaction IDs should be different");
+
+        let get_command_tx2 = Command::Get { key: key.clone() };
+        let result_tx2 = executor.execute_command(get_command_tx2);
+
+        match result_tx2 {
+            Err(DbError::LockConflict { key: err_key, current_tx: err_current_tx, locked_by_tx: err_locked_by_tx }) => {
+                assert_eq!(err_key, key);
+                assert_eq!(err_current_tx, tx2_id);
+                assert_eq!(err_locked_by_tx, Some(tx1_id));
+            }
+            _ => panic!("Expected DbError::LockConflict, got {:?}", result_tx2),
+        }
+
+        // Cleanup Tx2
+        assert_eq!(executor.execute_command(Command::RollbackTransaction).unwrap(), ExecutionResult::Success);
+    }
 }
