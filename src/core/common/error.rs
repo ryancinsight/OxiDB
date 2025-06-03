@@ -11,6 +11,8 @@ pub enum DbError {
     StorageError(String),
     InternalError(String), // For unexpected issues
     NoActiveTransaction,
+    LockConflict { key: Vec<u8>, current_tx: u64, locked_by_tx: Option<u64> },
+    LockAcquisitionTimeout { key: Vec<u8>, current_tx: u64 },
     // Add more variants as needed
 }
 
@@ -27,6 +29,12 @@ impl std::fmt::Display for DbError {
             DbError::StorageError(s) => write!(f, "Storage Error: {}", s),
             DbError::InternalError(s) => write!(f, "Internal Error: {}", s),
             DbError::NoActiveTransaction => write!(f, "No active transaction"),
+            DbError::LockConflict { key, current_tx, locked_by_tx } => {
+                write!(f, "Lock conflict for key {:?} on transaction {}. Locked by transaction {:?}", key, current_tx, locked_by_tx)
+            }
+            DbError::LockAcquisitionTimeout { key, current_tx } => {
+                write!(f, "Lock acquisition timeout for key {:?} on transaction {}", key, current_tx)
+            }
         }
     }
 }

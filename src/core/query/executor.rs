@@ -3,7 +3,7 @@
 use crate::core::common::error::DbError;
 use crate::core::query::commands::Command;
 use crate::core::storage::engine::traits::KeyValueStore;
-use crate::core::transaction::{Transaction, TransactionState, UndoOperation}; // Added UndoOperation
+use crate::core::transaction::{Transaction, TransactionState, UndoOperation, lock_manager::{LockManager, LockType}}; // Added LockType
 use crate::core::transaction::manager::TransactionManager;
 
 #[derive(Debug, PartialEq)]
@@ -16,6 +16,7 @@ pub enum ExecutionResult {
 pub struct QueryExecutor<S: KeyValueStore<Vec<u8>, Vec<u8>>> {
     store: S,
     transaction_manager: TransactionManager,
+    lock_manager: LockManager,
 }
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
@@ -23,6 +24,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         QueryExecutor {
             store,
             transaction_manager: TransactionManager::new(),
+            lock_manager: LockManager::new(),
         }
     }
 
@@ -30,6 +32,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         match command {
             Command::Insert { key, value } => {
                 if let Some(active_tx) = self.transaction_manager.get_active_transaction_mut() {
+                    self.lock_manager.acquire_lock(active_tx.id, &key, LockType::Exclusive)?;
+                    
                     let current_value = self.store.get(&key)?;
                     let undo_op = if let Some(old_val) = current_value {
                         UndoOperation::RevertUpdate { key: key.clone(), old_value: old_val }
@@ -38,50 +42,79 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                     };
                     active_tx.undo_log.push(undo_op);
                     
-                    // Clone necessary parts of active_tx for store operation, as active_tx is mutably borrowed.
                     let tx_for_store = active_tx.clone();
                     self.store.put(key, value, &tx_for_store)
                         .map(|_| ExecutionResult::Success)
                 } else {
-                    // Auto-commit: Create a temporary transaction
-                    let mut tx = Transaction::new(0); // Use ID 0 for auto-commit
-                    match self.store.put(key, value, &tx) {
-                        Ok(_) => {
-                            tx.set_state(TransactionState::Committed);
-                            Ok(ExecutionResult::Success)
+                    // Auto-commit for Insert
+                    let auto_commit_tx_id = 0; 
+                    match self.lock_manager.acquire_lock(auto_commit_tx_id, &key, LockType::Exclusive) {
+                        Ok(()) => {
+                            let mut tx_for_store = Transaction::new(auto_commit_tx_id);
+                            let put_result = self.store.put(key, value, &tx_for_store);
+                            self.lock_manager.release_locks(auto_commit_tx_id); // Release lock
+                            match put_result {
+                                Ok(_) => {
+                                    tx_for_store.set_state(TransactionState::Committed);
+                                    Ok(ExecutionResult::Success)
+                                }
+                                Err(e) => {
+                                    tx_for_store.set_state(TransactionState::Aborted);
+                                    Err(e)
+                                }
+                            }
                         }
-                        Err(e) => {
-                            tx.set_state(TransactionState::Aborted);
-                            Err(e)
-                        }
+                        Err(lock_err) => Err(lock_err), 
                     }
                 }
             }
             Command::Get { key } => {
-                self.store.get(&key).map(ExecutionResult::Value)
+                if let Some(active_tx) = self.transaction_manager.get_active_transaction() { 
+                    self.lock_manager.acquire_lock(active_tx.id, &key, LockType::Shared)?;
+                    self.store.get(&key).map(ExecutionResult::Value)
+                } else { // Auto-commit for Get
+                    let auto_commit_tx_id = 0; 
+                    match self.lock_manager.acquire_lock(auto_commit_tx_id, &key, LockType::Shared) {
+                        Ok(()) => {
+                            let get_result = self.store.get(&key);
+                            self.lock_manager.release_locks(auto_commit_tx_id); // Release lock
+                            get_result.map(ExecutionResult::Value)
+                        }
+                        Err(lock_err) => Err(lock_err), 
+                    }
+                }
             }
             Command::Delete { key } => {
                 if let Some(active_tx) = self.transaction_manager.get_active_transaction_mut() {
+                    self.lock_manager.acquire_lock(active_tx.id, &key, LockType::Exclusive)?;
+
                     if let Some(old_value) = self.store.get(&key)? {
                         active_tx.undo_log.push(UndoOperation::RevertDelete { key: key.clone(), old_value });
                     }
-                    // If key doesn't exist, no undo op needed, delete will return false.
                     
                     let tx_for_store = active_tx.clone();
                     self.store.delete(&key, &tx_for_store)
                         .map(ExecutionResult::Deleted)
                 } else {
-                    // Auto-commit: Create a temporary transaction
-                    let mut tx = Transaction::new(0); // Use ID 0 for auto-commit
-                    match self.store.delete(&key, &tx) {
-                        Ok(deleted) => {
-                            tx.set_state(TransactionState::Committed);
-                            Ok(ExecutionResult::Deleted(deleted))
+                    // Auto-commit for Delete
+                    let auto_commit_tx_id = 0; 
+                    match self.lock_manager.acquire_lock(auto_commit_tx_id, &key, LockType::Exclusive) {
+                        Ok(()) => {
+                            let mut tx_for_store = Transaction::new(auto_commit_tx_id);
+                            let delete_result = self.store.delete(&key, &tx_for_store);
+                            self.lock_manager.release_locks(auto_commit_tx_id); // Release lock
+                            match delete_result {
+                                Ok(deleted) => {
+                                    tx_for_store.set_state(TransactionState::Committed);
+                                    Ok(ExecutionResult::Deleted(deleted))
+                                }
+                                Err(e) => {
+                                    tx_for_store.set_state(TransactionState::Aborted);
+                                    Err(e)
+                                }
+                            }
                         }
-                        Err(e) => {
-                            tx.set_state(TransactionState::Aborted);
-                            Err(e)
-                        }
+                        Err(lock_err) => Err(lock_err),
                     }
                 }
             }
@@ -91,13 +124,17 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             }
             Command::CommitTransaction => {
                 if let Some(active_tx) = self.transaction_manager.get_active_transaction_mut() {
-                    let tx_id = active_tx.id;
-                    active_tx.undo_log.clear(); // Clear undo log on commit
+                    let tx_id_to_release = active_tx.id;
+                    // The undo_log is typically cleared as part of the commit process by the transaction manager
+                    // or after successful commit. Here, it's cleared before, which is fine.
+                    active_tx.undo_log.clear(); 
 
-                    let commit_entry = crate::core::storage::engine::wal::WalEntry::TransactionCommit { transaction_id: tx_id };
+                    // Log commit to WAL before releasing locks or finalizing commit in manager
+                    let commit_entry = crate::core::storage::engine::wal::WalEntry::TransactionCommit { transaction_id: tx_id_to_release };
                     self.store.log_wal_entry(&commit_entry)?;
                     
-                    self.transaction_manager.commit_transaction();
+                    self.lock_manager.release_locks(tx_id_to_release);
+                    self.transaction_manager.commit_transaction(); // This will remove the tx from active list
                     Ok(ExecutionResult::Success)
                 } else {
                     Err(DbError::NoActiveTransaction)
@@ -105,9 +142,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             }
             Command::RollbackTransaction => {
                 if let Some(mut active_tx) = self.transaction_manager.get_active_transaction_mut() {
-                    let tx_id = active_tx.id;
-                     // Create a temporary transaction for undo operations to avoid using the one being rolled back.
-                    let temp_transaction_for_undo = Transaction::new(tx_id); // State is Active
+                    let tx_id_to_release = active_tx.id;
+                    
+                    // Perform undo operations first
+                    let temp_transaction_for_undo = Transaction::new(tx_id_to_release); // State is Active
 
                     for undo_op in active_tx.undo_log.iter().rev() { // Iterate in reverse
                         match undo_op {
@@ -124,10 +162,12 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                     }
                     active_tx.undo_log.clear(); // Clear after processing
 
-                    let rollback_entry = crate::core::storage::engine::wal::WalEntry::TransactionRollback { transaction_id: tx_id };
+                    // Log rollback to WAL before releasing locks or finalizing rollback in manager
+                    let rollback_entry = crate::core::storage::engine::wal::WalEntry::TransactionRollback { transaction_id: tx_id_to_release };
                     self.store.log_wal_entry(&rollback_entry)?;
 
-                    self.transaction_manager.rollback_transaction();
+                    self.lock_manager.release_locks(tx_id_to_release);
+                    self.transaction_manager.rollback_transaction(); // This will remove the tx from active list
                     Ok(ExecutionResult::Success)
                 } else {
                     Err(DbError::NoActiveTransaction)
@@ -141,7 +181,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 mod tests {
     use super::*;
     use crate::core::query::commands::{Key, Value};
-    use crate::core::transaction::{TransactionState, UndoOperation};
+    use crate::core::transaction::{TransactionState, UndoOperation, LockManager}; // Added LockManager for test setup if needed, though QueryExecutor::new handles it.
     use crate::core::storage::engine::simple_file_kv_store::SimpleFileKvStore;
     use crate::core::storage::engine::wal::WalEntry;
     use crate::core::common::traits::DataDeserializer;
@@ -198,7 +238,9 @@ mod tests {
     }
 
     fn create_executor() -> QueryExecutor<SimpleFileKvStore> {
-        QueryExecutor::new(create_temp_store())
+        let temp_store = create_temp_store();
+        // QueryExecutor::new now initializes LockManager internally.
+        QueryExecutor::new(temp_store)
     }
 
     #[test]
