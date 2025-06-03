@@ -9,7 +9,7 @@ use crate::core::types::DataType; // Added
 use serde_json; // Added for JsonBlob stringification
 use crate::core::query::executor::{QueryExecutor, ExecutionResult}; // Corrected import
 use crate::core::query::parser::parse_query_string;
-use crate::core::storage::engine::simple_file_kv_store::SimpleFileKvStore;
+use crate::core::storage::engine::SimpleFileKvStore;
 use std::path::Path;
 
 /// `Oxidb` is the primary structure providing the public API for the key-value store.

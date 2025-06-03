@@ -3,7 +3,7 @@
 use crate::core::common::error::DbError;
 use crate::core::types::DataType;
 use crate::core::common::serialization::{serialize_data_type, deserialize_data_type};
-use crate::core::storage::engine::simple_file_kv_store::SimpleFileKvStore; // Added import
+use crate::core::storage::engine::{SimpleFileKvStore, InMemoryKvStore}; // Added InMemoryKvStore
 use crate::core::query::commands::Command;
 use crate::core::storage::engine::traits::KeyValueStore;
 use crate::core::transaction::{lock_manager::{LockManager, LockType}}; // Added LockType
@@ -218,23 +218,120 @@ impl QueryExecutor<SimpleFileKvStore> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // The Value alias from commands might conflict or be confusing as Command::Insert now takes DataType.
-    // For new tests, we'll use DataType directly. Old tests might need adjustment later.
-    use crate::core::query::commands::Key; // Value alias removed for clarity in new tests
-    use crate::core::types::DataType; // Ensure DataType is in scope for tests
-    use serde_json::json; // For JsonBlob test
-
-    use crate::core::transaction::transaction::UndoOperation; // Corrected import path
-    use crate::core::transaction::TransactionState; // Corrected import path
-    use crate::core::transaction::lock_manager::LockManager; // Explicit import for LockManager if needed by tests directly
-    use crate::core::storage::engine::simple_file_kv_store::SimpleFileKvStore;
+    use crate::core::query::commands::Key;
+    use crate::core::types::DataType;
+    use serde_json::json;
+    use crate::core::transaction::TransactionState;
+    use crate::core::storage::engine::{SimpleFileKvStore, InMemoryKvStore, traits::KeyValueStore};
     use crate::core::storage::engine::wal::WalEntry;
     use crate::core::common::traits::DataDeserializer;
     use tempfile::NamedTempFile;
     use std::fs::File as StdFile;
     use std::io::{BufReader, ErrorKind as IoErrorKind};
     use std::path::PathBuf;
+    use paste::paste; // Added paste
 
+    // Helper functions (original test logic, now generic)
+    fn run_test_get_non_existent<S: KeyValueStore<Vec<u8>, Vec<u8>>>(executor: &mut QueryExecutor<S>) {
+        let key: Key = b"non_existent_key".to_vec();
+        let get_command = Command::Get { key: key.clone() };
+        let result = executor.execute_command(get_command);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ExecutionResult::Value(None));
+    }
+
+    fn run_test_insert_and_get_integer<S: KeyValueStore<Vec<u8>, Vec<u8>>>(executor: &mut QueryExecutor<S>) {
+        let key: Key = b"int_key".to_vec();
+        let value = DataType::Integer(12345);
+        let insert_command = Command::Insert { key: key.clone(), value: value.clone() };
+        assert_eq!(executor.execute_command(insert_command).unwrap(), ExecutionResult::Success);
+        let get_command = Command::Get { key: key.clone() };
+        assert_eq!(executor.execute_command(get_command).unwrap(), ExecutionResult::Value(Some(value)));
+    }
+
+    fn run_test_insert_and_get_string<S: KeyValueStore<Vec<u8>, Vec<u8>>>(executor: &mut QueryExecutor<S>) {
+        let key: Key = b"str_key".to_vec();
+        let value = DataType::String("hello world".to_string());
+
+        let insert_command = Command::Insert { key: key.clone(), value: value.clone() };
+        assert_eq!(executor.execute_command(insert_command).unwrap(), ExecutionResult::Success);
+
+        let get_command = Command::Get { key: key.clone() };
+        assert_eq!(executor.execute_command(get_command).unwrap(), ExecutionResult::Value(Some(value)));
+    }
+
+    fn run_test_insert_delete_get<S: KeyValueStore<Vec<u8>, Vec<u8>>>(executor: &mut QueryExecutor<S>) {
+        let key: Key = b"test_key_2".to_vec();
+        let value = DataType::String("test_value_2".to_string());
+
+        let insert_command = Command::Insert { key: key.clone(), value: value.clone() };
+        executor.execute_command(insert_command).unwrap();
+
+        let delete_command = Command::Delete { key: key.clone() };
+        let result = executor.execute_command(delete_command);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ExecutionResult::Deleted(true));
+
+        let get_command = Command::Get { key: key.clone() };
+        let result = executor.execute_command(get_command);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ExecutionResult::Value(None));
+    }
+
+    fn run_test_begin_transaction_command<S: KeyValueStore<Vec<u8>, Vec<u8>>>(executor: &mut QueryExecutor<S>) {
+        let begin_cmd = Command::BeginTransaction;
+
+        let result = executor.execute_command(begin_cmd);
+        assert_eq!(result, Ok(ExecutionResult::Success));
+
+        let active_tx = executor.transaction_manager.get_active_transaction();
+        assert!(active_tx.is_some());
+        let tx = active_tx.unwrap();
+        assert_eq!(tx.state, TransactionState::Active);
+        assert!(tx.id > 0);
+    }
+
+    fn run_test_insert_with_active_transaction<S: KeyValueStore<Vec<u8>, Vec<u8>>>(executor: &mut QueryExecutor<S>) {
+        let key = b"tx_key_1".to_vec();
+        let value = DataType::String("tx_value_1".to_string());
+
+        let tx = executor.transaction_manager.begin_transaction();
+        assert!(executor.transaction_manager.get_active_transaction().is_some());
+        assert_eq!(executor.transaction_manager.get_active_transaction().unwrap().id, tx.id);
+
+        let insert_command = Command::Insert { key: key.clone(), value: value.clone() };
+        let result = executor.execute_command(insert_command);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ExecutionResult::Success);
+
+        let commit_result = executor.execute_command(Command::CommitTransaction);
+        assert!(commit_result.is_ok());
+        assert_eq!(commit_result.unwrap(), ExecutionResult::Success);
+        assert!(executor.transaction_manager.get_active_transaction().is_none());
+
+        let get_command = Command::Get { key: key.clone() };
+        assert_eq!(executor.execute_command(get_command).unwrap(), ExecutionResult::Value(Some(value)));
+    }
+
+    fn run_test_insert_rollback_transaction<S: KeyValueStore<Vec<u8>, Vec<u8>>>(executor: &mut QueryExecutor<S>) {
+        let key = b"tx_key_rollback".to_vec();
+        let value = DataType::String("tx_value_rollback".to_string());
+
+        let tx = executor.transaction_manager.begin_transaction();
+        assert!(executor.transaction_manager.get_active_transaction().is_some());
+        assert_eq!(executor.transaction_manager.get_active_transaction().unwrap().id, tx.id);
+
+        let insert_command = Command::Insert { key: key.clone(), value: value.clone() };
+        executor.execute_command(insert_command).unwrap();
+
+        let rollback_result = executor.execute_command(Command::RollbackTransaction);
+        assert!(rollback_result.is_ok());
+        assert_eq!(rollback_result.unwrap(), ExecutionResult::Success);
+        assert!(executor.transaction_manager.get_active_transaction().is_none());
+
+        let get_command = Command::Get { key: key.clone() };
+        assert_eq!(executor.execute_command(get_command).unwrap(), ExecutionResult::Value(None));
+    }
 
     // Helper to derive WAL path from DB path, similar to SimpleFileKvStore's internal logic
     fn derive_wal_path_for_test(store: &SimpleFileKvStore) -> PathBuf {
@@ -273,9 +370,14 @@ mod tests {
         SimpleFileKvStore::new(temp_file.path()).expect("Failed to create SimpleFileKvStore")
     }
 
-    fn create_executor() -> QueryExecutor<SimpleFileKvStore> {
+    fn create_file_executor() -> QueryExecutor<SimpleFileKvStore> {
         let temp_store = create_temp_store();
         QueryExecutor::new(temp_store)
+    }
+
+    fn create_in_memory_executor() -> QueryExecutor<InMemoryKvStore> {
+        let store = InMemoryKvStore::new();
+        QueryExecutor::new(store)
     }
 
     // Existing tests will likely fail compilation because Command::Insert now expects DataType
@@ -303,47 +405,10 @@ mod tests {
     */
     // ... other old tests also need similar adjustments ...
 
-    #[test]
-    fn test_get_non_existent() { // This test should still work as it deals with None
-        let mut executor = create_executor();
-        let key: Key = b"non_existent_key".to_vec();
-
-        let get_command = Command::Get { key: key.clone() };
-        let result = executor.execute_command(get_command);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), ExecutionResult::Value(None));
-    }
-
     // --- New tests for DataType ---
     #[test]
-    fn test_insert_and_get_integer() {
-        let mut executor = create_executor();
-        let key: Key = b"int_key".to_vec();
-        let value = DataType::Integer(12345);
-
-        let insert_command = Command::Insert { key: key.clone(), value: value.clone() };
-        assert_eq!(executor.execute_command(insert_command).unwrap(), ExecutionResult::Success);
-
-        let get_command = Command::Get { key: key.clone() };
-        assert_eq!(executor.execute_command(get_command).unwrap(), ExecutionResult::Value(Some(value)));
-    }
-
-    #[test]
-    fn test_insert_and_get_string() {
-        let mut executor = create_executor();
-        let key: Key = b"str_key".to_vec();
-        let value = DataType::String("hello world".to_string());
-
-        let insert_command = Command::Insert { key: key.clone(), value: value.clone() };
-        assert_eq!(executor.execute_command(insert_command).unwrap(), ExecutionResult::Success);
-
-        let get_command = Command::Get { key: key.clone() };
-        assert_eq!(executor.execute_command(get_command).unwrap(), ExecutionResult::Value(Some(value)));
-    }
-
-    #[test]
-    fn test_insert_and_get_boolean() {
-        let mut executor = create_executor();
+    fn test_insert_and_get_boolean() { // This test remains as is, not part of the initial refactor batch
+        let mut executor = create_file_executor();
         let key: Key = b"bool_key".to_vec();
         let value = DataType::Boolean(true);
 
@@ -356,7 +421,7 @@ mod tests {
 
     #[test]
     fn test_insert_and_get_json_blob() {
-        let mut executor = create_executor();
+        let mut executor = create_file_executor();
         let key: Key = b"json_key".to_vec();
         let value = DataType::JsonBlob(json!({ "name": "oxidb", "version": 0.1 }));
 
@@ -369,7 +434,7 @@ mod tests {
 
     #[test]
     fn test_get_malformed_data_deserialization_error() {
-        let mut executor = create_executor();
+        let mut executor = create_file_executor();
         let key: Key = b"malformed_key".to_vec();
         let malformed_bytes: Vec<u8> = b"this is not valid json for DataType".to_vec();
 
@@ -396,28 +461,8 @@ mod tests {
     // The subtask is to add new tests, so these are noted as needing future attention.
 
     #[test]
-    fn test_insert_delete_get() { // This test needs update for DataType
-        let mut executor = create_executor();
-        let key: Key = b"test_key_2".to_vec();
-        let value = DataType::String("test_value_2".to_string()); // Use DataType
-
-        let insert_command = Command::Insert { key: key.clone(), value: value.clone() };
-        executor.execute_command(insert_command).unwrap();
-
-        let delete_command = Command::Delete { key: key.clone() };
-        let result = executor.execute_command(delete_command);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), ExecutionResult::Deleted(true));
-
-        let get_command = Command::Get { key: key.clone() };
-        let result = executor.execute_command(get_command);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), ExecutionResult::Value(None));
-    }
-
-    #[test]
-    fn test_delete_non_existent() { // Should be fine
-        let mut executor = create_executor();
+    fn test_delete_non_existent() { // This test remains as is
+        let mut executor = create_file_executor();
         let key: Key = b"non_existent_delete_key".to_vec();
 
         let delete_command = Command::Delete { key: key.clone() };
@@ -428,7 +473,7 @@ mod tests {
 
     #[test]
     fn test_insert_update_get() { // Needs update for DataType
-        let mut executor = create_executor();
+        let mut executor = create_file_executor();
         let key: Key = b"test_key_3".to_vec();
         let value1 = DataType::String("initial_value".to_string());
         let value2 = DataType::String("updated_value".to_string());
@@ -448,7 +493,7 @@ mod tests {
 
     #[test]
     fn test_delete_results() { // Needs update for DataType
-        let mut executor = create_executor();
+        let mut executor = create_file_executor();
         let key: Key = b"delete_me".to_vec();
         let value = DataType::String("some_data".to_string());
 
@@ -473,55 +518,8 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_with_active_transaction() { // Needs update for DataType
-        let mut executor = create_executor();
-        let key = b"tx_key_1".to_vec();
-        let value = DataType::String("tx_value_1".to_string());
-
-        let tx = executor.transaction_manager.begin_transaction();
-        assert!(executor.transaction_manager.get_active_transaction().is_some());
-        assert_eq!(executor.transaction_manager.get_active_transaction().unwrap().id, tx.id);
-
-        let insert_command = Command::Insert { key: key.clone(), value: value.clone() };
-        let result = executor.execute_command(insert_command);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), ExecutionResult::Success);
-
-        let commit_result = executor.execute_command(Command::CommitTransaction);
-        assert!(commit_result.is_ok());
-        assert_eq!(commit_result.unwrap(), ExecutionResult::Success);
-        assert!(executor.transaction_manager.get_active_transaction().is_none());
-
-        let get_command = Command::Get { key: key.clone() };
-        assert_eq!(executor.execute_command(get_command).unwrap(), ExecutionResult::Value(Some(value)));
-    }
-
-    #[test]
-    fn test_insert_rollback_transaction() { // Needs update for DataType for `value` and undo log implications
-        let mut executor = create_executor();
-        let key = b"tx_key_rollback".to_vec();
-        let value = DataType::String("tx_value_rollback".to_string()); // Use DataType
-
-        let tx = executor.transaction_manager.begin_transaction();
-        assert!(executor.transaction_manager.get_active_transaction().is_some());
-        assert_eq!(executor.transaction_manager.get_active_transaction().unwrap().id, tx.id);
-        
-        let insert_command = Command::Insert { key: key.clone(), value: value.clone() };
-        executor.execute_command(insert_command).unwrap();
-
-        let rollback_result = executor.execute_command(Command::RollbackTransaction);
-        assert!(rollback_result.is_ok());
-        assert_eq!(rollback_result.unwrap(), ExecutionResult::Success);
-        assert!(executor.transaction_manager.get_active_transaction().is_none());
-
-        // UndoOperation::RevertInsert stores key. self.store.delete(key,...) is called. This part is fine.
-        let get_command = Command::Get { key: key.clone() };
-        assert_eq!(executor.execute_command(get_command).unwrap(), ExecutionResult::Value(None));
-    }
-
-    #[test]
-    fn test_delete_with_active_transaction_commit() { // Needs update for DataType
-        let mut executor = create_executor();
+    fn test_delete_with_active_transaction_commit() { // This test remains as is
+        let mut executor = create_file_executor();
         let key = b"tx_delete_commit_key".to_vec();
         let value = DataType::String("tx_delete_commit_value".to_string());
 
@@ -550,7 +548,7 @@ mod tests {
 
     #[test]
     fn test_delete_with_active_transaction_rollback() { // Needs update for DataType and undo log
-        let mut executor = create_executor();
+        let mut executor = create_file_executor();
         let key = b"tx_delete_rollback_key".to_vec();
         let value = DataType::String("tx_delete_rollback_value".to_string()); // Use DataType
 
@@ -580,23 +578,8 @@ mod tests {
     }
 
     #[test]
-    fn test_begin_transaction_command() { // Should be fine
-        let mut executor = create_executor();
-        let begin_cmd = Command::BeginTransaction;
-        
-        let result = executor.execute_command(begin_cmd);
-        assert_eq!(result, Ok(ExecutionResult::Success));
-        
-        let active_tx = executor.transaction_manager.get_active_transaction();
-        assert!(active_tx.is_some());
-        let tx = active_tx.unwrap();
-        assert_eq!(tx.state, TransactionState::Active);
-        assert!(tx.id > 0);
-    }
-
-    #[test]
-    fn test_commit_transaction_command_with_active_tx() { // Needs update for DataType
-        let mut executor = create_executor();
+    fn test_commit_transaction_command_with_active_tx() { // This test remains as is (WAL specific)
+        let mut executor = create_file_executor();
         
         executor.execute_command(Command::BeginTransaction).unwrap();
         let active_tx_before_commit = executor.transaction_manager.get_active_transaction().unwrap();
@@ -634,7 +617,7 @@ mod tests {
 
     #[test]
     fn test_rollback_transaction_command_with_active_tx_logs_wal_and_reverts_cache() { // Needs DataType updates and careful check of undo logic
-        let mut executor = create_executor();
+        let mut executor = create_file_executor();
         let key_orig = b"key_orig".to_vec();
         let val_orig = DataType::String("val_orig".to_string());
         let key_rb = b"key_rollback_wal".to_vec();
@@ -698,21 +681,21 @@ mod tests {
 
     #[test]
     fn test_commit_transaction_command_no_active_tx() { // Should be fine
-        let mut executor = create_executor();
+        let mut executor = create_file_executor();
         let commit_cmd = Command::CommitTransaction;
         assert!(matches!(executor.execute_command(commit_cmd), Err(DbError::NoActiveTransaction)));
     }
 
     #[test]
     fn test_rollback_transaction_command_no_active_tx() { // Should be fine
-        let mut executor = create_executor();
+        let mut executor = create_file_executor();
         let rollback_cmd = Command::RollbackTransaction;
         assert!(matches!(executor.execute_command(rollback_cmd), Err(DbError::NoActiveTransaction)));
     }
 
     #[test]
     fn test_multiple_begin_commands() { // Needs DataType update
-        let mut executor = create_executor();
+        let mut executor = create_file_executor();
 
         executor.execute_command(Command::BeginTransaction).unwrap();
         let tx1 = executor.transaction_manager.get_active_transaction().unwrap().clone();
@@ -734,7 +717,7 @@ mod tests {
     
     #[test]
     fn test_operations_use_active_transaction_after_begin() { // Needs DataType update
-        let mut executor = create_executor();
+        let mut executor = create_file_executor();
 
         executor.execute_command(Command::BeginTransaction).unwrap();
         // let active_tx_id = executor.transaction_manager.get_active_transaction().unwrap().id; // Not directly used in asserts
@@ -754,7 +737,7 @@ mod tests {
 
     #[test]
     fn test_shared_lock_concurrency() { // Needs DataType update
-        let mut executor = create_executor();
+        let mut executor = create_file_executor();
         let key: Key = b"shared_lock_key".to_vec();
         let value = DataType::String("value".to_string());
 
@@ -779,7 +762,7 @@ mod tests {
 
     #[test]
     fn test_exclusive_lock_prevents_shared_read() { // Needs DataType update
-        let mut executor = create_executor();
+        let mut executor = create_file_executor();
         let key: Key = b"exclusive_prevents_shared_key".to_vec();
         let value = DataType::String("value".to_string());
 
@@ -809,7 +792,7 @@ mod tests {
 
     #[test]
     fn test_shared_lock_prevents_exclusive_lock() { // Needs DataType update
-        let mut executor = create_executor();
+        let mut executor = create_file_executor();
         let key: Key = b"shared_prevents_exclusive_key".to_vec();
         let value = DataType::String("value".to_string());
 
@@ -838,5 +821,54 @@ mod tests {
             _ => panic!("Expected DbError::LockConflict, got {:?}", result_tx2),
         }
         assert_eq!(executor.execute_command(Command::RollbackTransaction).unwrap(), ExecutionResult::Success);
+    }
+
+    // The smoke test for in-memory executor can be removed as its logic is covered by generic tests now.
+    // #[test]
+    // fn test_in_memory_executor_insert_and_get() { ... }
+
+    macro_rules! define_executor_tests {
+        ($($test_name:ident),* $(,)? ; executor: $executor_creator:ident, store_type: $store_type:ty) => {
+            $(
+                paste::paste! {
+                    #[test]
+                    fn [<$test_name _ $store_type:lower>]() {
+                        [<run_ $test_name>](&mut $executor_creator());
+                    }
+                }
+            )*
+        }
+    }
+
+    mod file_store_tests {
+        use super::*;
+        define_executor_tests!(
+            test_get_non_existent,
+            test_insert_and_get_integer,
+            test_insert_and_get_string,
+            test_insert_delete_get,
+            test_begin_transaction_command,
+            test_insert_with_active_transaction,
+            test_insert_rollback_transaction,
+            ;
+            executor: create_file_executor,
+            store_type: SimpleFileKvStore
+        );
+    }
+
+    mod in_memory_store_tests {
+        use super::*;
+        define_executor_tests!(
+            test_get_non_existent,
+            test_insert_and_get_integer,
+            test_insert_and_get_string,
+            test_insert_delete_get,
+            test_begin_transaction_command,
+            test_insert_with_active_transaction,
+            test_insert_rollback_transaction,
+            ;
+            executor: create_in_memory_executor,
+            store_type: InMemoryKvStore
+        );
     }
 }
