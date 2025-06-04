@@ -47,7 +47,8 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
                 // 3. The version must not be expired, OR if it is expired:
                 //    a. The expiring transaction ID must be greater than the snapshot ID (i.e., expired in the future), OR
                 //    b. The expiring transaction ID must NOT be in the set of committed transaction IDs (i.e., the deletion is not committed).
-                if version.created_tx_id <= snapshot_id && committed_ids.contains(&version.created_tx_id) {
+                // MODIFIED visibility rule:
+                if version.created_tx_id <= snapshot_id && (version.created_tx_id == snapshot_id || committed_ids.contains(&version.created_tx_id)) {
                     match version.expired_tx_id {
                         None => return Ok(Some(version.value.clone())), // Not expired, visible
                         Some(expired_id) => {

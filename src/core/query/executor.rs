@@ -21,6 +21,7 @@ pub enum ExecutionResult {
     Values(Vec<DataType>), // Changed from PrimaryKeys(Vec<Key>)
 }
 
+#[derive(Debug)]
 pub struct QueryExecutor<S: KeyValueStore<Vec<u8>, Vec<u8>>> {
     pub(crate) store: S,
     pub(crate) transaction_manager: TransactionManager,

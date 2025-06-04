@@ -28,6 +28,8 @@ pub enum DbError {
     LockConflict { key: Vec<u8>, current_tx: u64, locked_by_tx: Option<u64> },
     #[error("Lock acquisition timeout for key {key:?} on transaction {current_tx}")]
     LockAcquisitionTimeout { key: Vec<u8>, current_tx: u64 },
+    #[error("Configuration error: {0}")]
+    ConfigError(String),
     // Add more variants as needed
 }
 
@@ -53,6 +55,7 @@ impl PartialEq for DbError {
              DbError::LockAcquisitionTimeout { key: k2, current_tx: ct2 }) => {
                 k1 == k2 && ct1 == ct2
             }
+            (DbError::ConfigError(s1), DbError::ConfigError(s2)) => s1 == s2,
             _ => false, // Different variants are not equal
         }
     }

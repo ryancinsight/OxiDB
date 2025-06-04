@@ -155,12 +155,15 @@ impl WalWriter {
     /// by appending ".wal" to its extension (e.g., "data.db" -> "data.db.wal")
     /// or by setting the extension to "wal" if the DB file has no extension.
     pub fn new(db_file_path: &Path) -> Self {
-        let wal_file_path = db_file_path.with_extension(
-            db_file_path.extension()
-                .map(|ext| ext.to_str().unwrap_or("").to_owned() + ".wal")
-                .unwrap_or_else(|| "wal".to_string())
-        );
-        WalWriter { wal_file_path }
+        let mut wal_file_path_buf = db_file_path.to_path_buf();
+        let original_extension = wal_file_path_buf.extension().and_then(std::ffi::OsStr::to_str);
+
+        if let Some(ext_str) = original_extension {
+            wal_file_path_buf.set_extension(format!("{}.wal", ext_str));
+        } else {
+            wal_file_path_buf.set_extension("wal");
+        }
+        WalWriter { wal_file_path: wal_file_path_buf }
     }
 
     /// Logs a `WalEntry` to the WAL file.

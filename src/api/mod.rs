@@ -4,18 +4,20 @@
 //! It exposes the `Oxidb` struct, which is the main entry point for database operations.
 
 use crate::core::common::error::DbError;
+use crate::core::config::Config; // Added
 use crate::core::query::commands::{Command, Key}; // Value removed
 use crate::core::types::DataType; // Added
 use serde_json; // Added for JsonBlob stringification
 use crate::core::query::executor::{QueryExecutor, ExecutionResult}; // Corrected import
 use crate::core::query::parser::parse_query_string;
 use crate::core::storage::engine::SimpleFileKvStore;
-use std::path::Path;
+use std::path::{Path, PathBuf}; // PathBuf added
 
 /// `Oxidb` is the primary structure providing the public API for the key-value store.
 ///
 /// It encapsulates a `QueryExecutor` instance to manage database operations,
 /// which in turn uses a `SimpleFileKvStore` for persistence.
+#[derive(Debug)]
 pub struct Oxidb {
     executor: QueryExecutor<SimpleFileKvStore>,
 }
@@ -29,31 +31,50 @@ impl Oxidb {
     /// will be created.
     ///
     /// # Arguments
-    /// * `path` - A path-like object (e.g., `&str`, `PathBuf`) specifying the location
-    ///            of the database file.
+    /// * `config` - Configuration for the database.
     ///
     /// # Errors
     /// Returns `DbError` if the store cannot be initialized or the executor cannot be created.
-    pub fn new(path: impl AsRef<Path>) -> Result<Self, DbError> {
-        let db_file_path = path.as_ref(); // This is path to the DB FILE
-        let store = SimpleFileKvStore::new(db_file_path)?;
-
-        // Define a path for indexes: a directory named "indexes" in the same directory as the db file.
-        let mut index_base_dir = db_file_path.to_path_buf();
-        index_base_dir.pop(); // Removes the filename, leaving the parent directory.
-                              // If db_file_path was "foo.db", index_base_dir is now "".
-                              // If db_file_path was "/tmp/foo.db", index_base_dir is now "/tmp".
-
-        // Handle cases where db_file_path might not have a parent (e.g., it's just "foo.db")
-        // In such a case, `pop` makes the path empty. We'd want "indexes/" in CWD.
-        // Path::parent() returns Option<&Path>. If None, it means it's a root or prefix.
-        // A simpler way might be:
-        let parent_dir = db_file_path.parent().unwrap_or_else(|| Path::new(".")); // Default to current dir if no parent
-        index_base_dir = parent_dir.to_path_buf();
-        index_base_dir.push("indexes");
-
-        let executor = QueryExecutor::new(store, index_base_dir)?;
+    pub fn new_with_config(config: Config) -> Result<Self, DbError> {
+        let store = SimpleFileKvStore::new(config.database_path())?;
+        let executor = QueryExecutor::new(store, config.index_path())?;
         Ok(Self { executor })
+    }
+
+    /// Creates a new `Oxidb` instance or loads an existing one from the specified path,
+    /// using default configuration for other settings.
+    ///
+    /// # Arguments
+    /// * `db_path` - A path-like object (e.g., `&str`, `PathBuf`) specifying the location
+    ///            of the database file. This will override `database_file_path` in the default config.
+    ///
+    /// # Errors
+    /// Returns `DbError` if the store cannot be initialized or the executor cannot be created.
+    pub fn new(db_path: impl AsRef<Path>) -> Result<Self, DbError> {
+        let mut config = Config::default();
+        config.database_file_path = db_path.as_ref().to_string_lossy().into_owned();
+        // index_base_path will remain its default relative to the execution directory ("oxidb_indexes/")
+        // or could be made relative to db_path if desired, for example:
+        // if let Some(parent) = db_path.as_ref().parent() {
+        //     config.index_base_path = parent.join("oxidb_indexes/").to_string_lossy().into_owned();
+        // } else {
+        //     config.index_base_path = "oxidb_indexes/".to_string();
+        // }
+        Self::new_with_config(config)
+    }
+
+    /// Creates a new `Oxidb` instance or loads an existing one using a configuration file.
+    ///
+    /// If the configuration file does not exist, default settings will be used.
+    ///
+    /// # Arguments
+    /// * `config_path` - Path to the TOML configuration file.
+    ///
+    /// # Errors
+    /// Returns `DbError` if the configuration file cannot be read/parsed or if the store cannot be initialized.
+    pub fn new_from_config_file(config_path: impl AsRef<Path>) -> Result<Self, DbError> {
+        let config = Config::load_from_file(config_path.as_ref())?;
+        Self::new_with_config(config)
     }
 
     /// Inserts a key-value pair into the database.

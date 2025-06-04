@@ -171,4 +171,108 @@ mod tests {
             assert_eq!(db3.get(key_d.clone()).unwrap(), Some(val_d_str.clone()), "Key D should be present in instance 3");
         }
     }
+
+   #[test]
+   fn test_oxidb_new_from_config_file_custom_paths() {
+       use crate::Oxidb;
+       // use crate::core::config::Config; // Not needed for this test's direct logic
+       use std::fs::{self, File};
+       use std::io::Write;
+       use tempfile::tempdir;
+
+       let dir = tempdir().unwrap();
+       let custom_db_path = dir.path().join("custom.db");
+       let custom_indexes_path = dir.path().join("custom_idx/");
+       let config_file_path = dir.path().join("Oxidb.toml");
+
+       // It's crucial to use raw string literals or escape backslashes for Windows paths in TOML
+       let config_content = format!(
+           r#"
+           database_file_path = "{}"
+           index_base_path = "{}"
+           "#,
+           custom_db_path.to_str().unwrap().replace("\\", "/"),
+           custom_indexes_path.to_str().unwrap().replace("\\", "/")
+       );
+
+       let mut file = File::create(&config_file_path).unwrap();
+       writeln!(file, "{}", config_content).unwrap();
+
+       let mut db = Oxidb::new_from_config_file(&config_file_path).expect("Failed to create Oxidb from config file");
+
+       let key = b"test_key".to_vec();
+       let value = "test_value".to_string();
+       db.insert(key.clone(), value.clone()).unwrap();
+       db.persist().unwrap();
+       drop(db);
+
+       assert!(custom_db_path.exists(), "Custom database file '{}' should exist", custom_db_path.display());
+       assert!(custom_indexes_path.exists(), "Custom index base path directory '{}' should exist", custom_indexes_path.display());
+
+       let default_index_file = custom_indexes_path.join("default_value_index.idx");
+       assert!(default_index_file.exists(), "Default index file '{}' should exist in custom index path", default_index_file.display());
+   }
+
+   #[test]
+   fn test_oxidb_new_from_missing_config_file_uses_defaults() {
+       use crate::Oxidb;
+       use tempfile::tempdir;
+       use std::path::Path;
+       use std::fs; // Added for cleanup
+
+       let dir = tempdir().unwrap(); // Provides a clean directory for the test
+       let current_test_dir = dir.path();
+
+       let non_existent_config_path = current_test_dir.join("non_existent.toml");
+
+       // Define default paths relative to the temporary test directory
+       let default_db_path = current_test_dir.join("oxidb.db");
+       let default_indexes_path = current_test_dir.join("oxidb_indexes/");
+
+        // Change CWD for this test to ensure default paths are created inside tempdir
+        let original_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(current_test_dir).unwrap();
+
+       let mut db = Oxidb::new_from_config_file(&non_existent_config_path).expect("Failed to create Oxidb with non-existent config");
+
+       let key = b"test_key_defaults".to_vec();
+       let value = "test_value_defaults".to_string();
+       db.insert(key.clone(), value.clone()).unwrap();
+       db.persist().unwrap();
+       drop(db);
+
+       assert!(default_db_path.exists(), "Default database file '{}' should exist", default_db_path.display());
+       assert!(default_indexes_path.exists(), "Default index base path directory '{}' should exist", default_indexes_path.display());
+
+       let default_index_file = default_indexes_path.join("default_value_index.idx");
+       assert!(default_index_file.exists(), "Default index file '{}' should exist in default index path", default_index_file.display());
+
+       // Restore CWD
+       std::env::set_current_dir(original_cwd).unwrap();
+
+       // Cleanup is handled by tempdir drop. Explicit removal inside tempdir is not strictly necessary
+       // but shown here if not using tempdir for default path creation.
+       // if default_db_path.exists() { fs::remove_file(&default_db_path).unwrap(); }
+       // if default_indexes_path.exists() { fs::remove_dir_all(&default_indexes_path).unwrap(); }
+   }
+
+   #[test]
+   fn test_oxidb_new_from_malformed_config_file_returns_error() {
+       use crate::Oxidb;
+       use std::fs::File;
+       use std::io::Write;
+       use tempfile::NamedTempFile;
+
+       let mut temp_config_file = NamedTempFile::new().unwrap();
+       writeln!(temp_config_file, "this is not valid toml").unwrap();
+
+       let result = Oxidb::new_from_config_file(temp_config_file.path());
+       assert!(result.is_err());
+       match result.unwrap_err() {
+           crate::DbError::ConfigError(msg) => {
+               assert!(msg.contains("Failed to parse config file"));
+           }
+           e => panic!("Expected ConfigError, got {:?}", e),
+       }
+   }
 }
