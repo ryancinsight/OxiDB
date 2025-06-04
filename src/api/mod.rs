@@ -11,7 +11,7 @@ use serde_json; // Added for JsonBlob stringification
 use crate::core::query::executor::{QueryExecutor, ExecutionResult}; // Corrected import
 use crate::core::query::parser::parse_query_string;
 use crate::core::storage::engine::SimpleFileKvStore;
-use std::path::{Path, PathBuf}; // PathBuf added
+use std::path::Path; // Removed PathBuf
 
 /// `Oxidb` is the primary structure providing the public API for the key-value store.
 ///
@@ -124,6 +124,12 @@ impl Oxidb {
                     DataType::Integer(i) => i.to_string(),
                     DataType::String(s) => s,
                     DataType::Boolean(b) => b.to_string(),
+                    DataType::Float(f) => f.to_string(), // Added Float
+                    DataType::Null => "NULL".to_string(), // Added Null
+                    DataType::Map(map_val) => { // Added Map
+                        serde_json::to_string(&map_val)
+                            .unwrap_or_else(|e| format!("Error serializing Map: {}", e))
+                    }
                     DataType::JsonBlob(json_val) => {
                         serde_json::to_string(&json_val)
                             .unwrap_or_else(|e| format!("Error serializing JsonBlob: {}", e))

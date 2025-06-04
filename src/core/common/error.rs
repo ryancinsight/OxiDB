@@ -30,6 +30,14 @@ pub enum DbError {
     LockAcquisitionTimeout { key: Vec<u8>, current_tx: u64 },
     #[error("Configuration error: {0}")]
     ConfigError(String),
+    #[error("Unsupported Operation: {0}")]
+    UnsupportedOperation(String),
+    #[error("Type Error: {0}")]
+    TypeError(String),
+    #[error("Internal Engine Error: {0}")] // Added Internal variant
+    Internal(String),
+    #[error("Feature Not Implemented: {0}")] // Added NotImplemented variant
+    NotImplemented(String),
     // Add more variants as needed
 }
 
@@ -56,6 +64,10 @@ impl PartialEq for DbError {
                 k1 == k2 && ct1 == ct2
             }
             (DbError::ConfigError(s1), DbError::ConfigError(s2)) => s1 == s2,
+            (DbError::UnsupportedOperation(s1), DbError::UnsupportedOperation(s2)) => s1 == s2,
+            (DbError::TypeError(s1), DbError::TypeError(s2)) => s1 == s2,
+            (DbError::Internal(s1), DbError::Internal(s2)) => s1 == s2, // Added for Internal
+            (DbError::NotImplemented(s1), DbError::NotImplemented(s2)) => s1 == s2, // Added for NotImplemented
             _ => false, // Different variants are not equal
         }
     }

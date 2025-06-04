@@ -3,15 +3,19 @@
 use crate::core::common::error::DbError;
 use crate::core::types::DataType;
 use crate::core::common::serialization::{serialize_data_type, deserialize_data_type};
-use crate::core::storage::engine::{SimpleFileKvStore, InMemoryKvStore};
+use crate::core::storage::engine::SimpleFileKvStore; // Removed InMemoryKvStore
 use crate::core::query::commands::{Command, Key, SelectColumnSpec}; // Added Key import, SelectColumnSpec
 use crate::core::storage::engine::traits::KeyValueStore;
 use crate::core::indexing::manager::IndexManager; // Added for IndexManager
 use std::path::PathBuf; // Added for PathBuf
 use std::collections::{HashMap, HashSet}; // Added HashSet
+use std::sync::Arc; // Added for Arc<IndexManager>
 use crate::core::transaction::{lock_manager::{LockManager, LockType}}; // Added LockType
 use crate::core::transaction::manager::TransactionManager;
 use crate::core::transaction::transaction::{Transaction, TransactionState, UndoOperation};
+use crate::core::optimizer::QueryPlanNode; // Added import
+use crate::core::execution::ExecutionOperator; // Added import
+use crate::core::execution::Tuple; // Added import
 
 #[derive(Debug, PartialEq)]
 pub enum ExecutionResult {
@@ -26,7 +30,7 @@ pub struct QueryExecutor<S: KeyValueStore<Vec<u8>, Vec<u8>>> {
     pub(crate) store: S,
     pub(crate) transaction_manager: TransactionManager,
     pub(crate) lock_manager: LockManager,
-    pub(crate) index_manager: IndexManager, // Added index_manager field
+    pub(crate) index_manager: Arc<IndexManager>, // Changed to Arc<IndexManager>
 }
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
@@ -49,7 +53,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             store,
             transaction_manager,
             lock_manager: LockManager::new(),
-            index_manager,
+            index_manager: Arc::new(index_manager), // Wrap in Arc
         })
     }
 
@@ -571,7 +575,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                             if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
                                 active_tx_mut.undo_log.push(UndoOperation::RevertUpdate {
                                     key: key.clone(),
-                                    old_value: original_value_for_undo
+                                    old_value: original_value_for_undo.clone() // Clone here
                                 });
 
                                 // TODO: Index Undo/Redo logging for RevertUpdate

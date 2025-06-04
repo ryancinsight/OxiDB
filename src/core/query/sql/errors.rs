@@ -8,6 +8,8 @@ pub enum SqlTokenizerError {
     InvalidCharacter(char, usize),
     #[error("Could not parse number at position {0}")]
     InvalidNumber(usize),
+    #[error("Unexpected end of input at position {0}")]
+    UnexpectedEOF(usize), // Added variant
 }
 
 #[derive(Debug, Error, PartialEq)]

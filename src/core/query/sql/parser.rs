@@ -1,7 +1,7 @@
 use super::ast::{
     Assignment, AstLiteralValue, Condition, SelectColumn, SelectStatement, Statement, UpdateStatement,
 };
-use super::errors::{SqlParseError, SqlTokenizerError};
+use super::errors::SqlParseError; // Removed SqlTokenizerError
 use super::tokenizer::Token;
 
 pub struct SqlParser {
@@ -37,7 +37,7 @@ impl SqlParser {
             });
         }
 
-        statement // Return the successfully parsed statement
+        Ok(statement) // Return the successfully parsed statement
     }
 
     fn parse_select_statement(&mut self) -> Result<Statement, SqlParseError> {

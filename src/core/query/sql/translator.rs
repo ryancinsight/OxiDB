@@ -1,5 +1,5 @@
 use crate::core::common::error::DbError;
-use crate::core::query::commands::{self, Command, SelectColumnSpec, SqlCondition, SqlAssignment};
+use crate::core::query::commands::{self, Command}; // Removed SelectColumnSpec, SqlCondition, SqlAssignment
 use crate::core::types::DataType;
 use super::ast;
 

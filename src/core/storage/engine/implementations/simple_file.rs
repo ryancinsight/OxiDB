@@ -456,6 +456,11 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         // Actual GC would involve compacting the data file, which is complex.
         Ok(())
     }
+
+    fn scan(&self) -> Result<Vec<(Vec<u8>, Vec<u8>)>, DbError>
+        where Vec<u8>: Clone, Vec<u8>: Clone {
+        unimplemented!("Scan operation is not yet implemented for SimpleFileKvStore");
+    }
 }
 
 /// Implements the `Drop` trait for `SimpleFileKvStore`.

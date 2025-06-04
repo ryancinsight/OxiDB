@@ -107,26 +107,55 @@ impl<'a> Tokenizer<'a> {
         let mut end_idx = start_idx;
         let mut has_decimal = false;
 
-        while let Some((idx, ch)) = self.chars.peek() {
-            if ch.is_digit(10) {
-                end_idx = *idx;
-                self.chars.next();
-            } else if *ch == '.' && !has_decimal {
-                // Allow one decimal point
-                if self.chars.clone().nth(1).map_or(false, |(_, next_ch)| next_ch.is_digit(10)) {
-                    has_decimal = true;
-                    end_idx = *idx;
-                    self.chars.next();
+        // The first character is consumed here. It's known to be a digit,
+        // or a '.' followed by a digit (checked by the caller, `tokenize`).
+        if let Some((idx, first_ch)) = self.chars.next() {
+            end_idx = idx;
+            if first_ch == '.' {
+                has_decimal = true;
+            }
+        } else {
+            // This case should ideally not be reached if `tokenize` calls this correctly.
+            return Err(SqlTokenizerError::UnexpectedEOF(start_idx));
+        }
+
+        loop {
+            // Peek at the next character. `.cloned()` is important to avoid holding a borrow.
+            let next_char_info = self.chars.peek().cloned();
+
+            if let Some((idx_peek, ch_peek)) = next_char_info {
+                if ch_peek.is_digit(10) {
+                    end_idx = idx_peek;
+                    self.chars.next(); // Consume the digit
+                } else if ch_peek == '.' && !has_decimal {
+                    // It's a '.', and we haven't seen one yet. Check if it's part of the number.
+                    // Clone the main iterator to look ahead without consuming from it yet.
+                    let mut temp_iter = self.chars.clone();
+                    temp_iter.next(); // In the temp_iter, consume the '.' character we just peeked.
+
+                    // Now, peek at the character *after* the '.' in the temp_iter.
+                    if temp_iter.peek().map_or(false, |&(_, next_next_ch)| next_next_ch.is_digit(10)) {
+                        // The '.' is followed by a digit, so it's part of this number.
+                        has_decimal = true;
+                        end_idx = idx_peek; // The current character ('.') is part of the number.
+                        self.chars.next(); // Consume the '.' from the main iterator.
+                    } else {
+                        // The '.' is not followed by a digit. The number ends before this '.'.
+                        break;
+                    }
                 } else {
-                     // If '.' is not followed by a digit, it might be an operator or end of number.
+                    // Not a digit or not a valid decimal point (e.g., second '.'). End of number.
                     break;
                 }
             } else {
+                // No more characters. End of number.
                 break;
             }
         }
+
         let num_str = &self.input[start_idx..=end_idx];
-        self.current_pos = end_idx + 1;
+        // self.current_pos is updated by the main loop's skip_whitespace and peek logic,
+        // or by read_identifier_or_keyword. Here we just return the token.
         Ok(Token::NumericLiteral(num_str.to_string()))
     }
 

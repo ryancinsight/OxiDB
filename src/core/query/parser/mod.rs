@@ -11,7 +11,7 @@ use crate::core::types::DataType;
 
 // Imports for the new SQL parser integration
 use crate::core::query::sql::{self, tokenizer::Tokenizer, parser::SqlParser};
-use crate::core::query::sql::errors::{SqlParseError, SqlTokenizerError};
+// Removed unused SqlParseError, SqlTokenizerError from here as they are used via sql_parse_error.to_string()
 
 
 /// Parses a raw query string into a `Command` object.
