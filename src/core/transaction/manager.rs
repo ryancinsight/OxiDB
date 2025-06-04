@@ -66,6 +66,22 @@ impl TransactionManager {
         self.committed_tx_ids.clone()
     }
 
+    // Method to explicitly add a transaction ID to the committed list.
+    // This is useful for auto-commit scenarios handled outside of begin/commit commands.
+    pub fn add_committed_tx_id(&mut self, tx_id: u64) {
+        // Could add a check to ensure it's not already there or respect order,
+        // but for auto-commit ID 0, it's likely fine.
+        // For simplicity, just push. If order matters for binary_search in is_committed,
+        // and auto-commit IDs can be arbitrary, this might need sorting or a Set.
+        // Given current usage (ID 0), direct push and then sort/dedup if needed is an option.
+        // Or, ensure `is_committed` handles potential disorder if non-monotonic IDs are added.
+        if !self.committed_tx_ids.contains(&tx_id) { // Avoid duplicates for sanity
+             self.committed_tx_ids.push(tx_id);
+             // If order is strictly required for is_committed's binary_search, sort here.
+             // self.committed_tx_ids.sort_unstable();
+        }
+    }
+
     pub fn get_oldest_active_tx_id(&self) -> Option<u64> {
         self.active_transactions.values().map(|tx| tx.id).min()
     }

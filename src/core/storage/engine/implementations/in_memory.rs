@@ -20,12 +20,21 @@ impl InMemoryKvStore {
 
 impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
     fn put(&mut self, key: Vec<u8>, value: Vec<u8>, transaction: &Transaction) -> Result<(), DbError> {
-        let versioned_value = VersionedValue {
+        let versions = self.data.entry(key).or_default();
+        // Mark the latest existing visible version (if any) as expired by this transaction.
+        for version in versions.iter_mut().rev() {
+            if version.expired_tx_id.is_none() {
+                version.expired_tx_id = Some(transaction.id);
+                break; // Only expire the most recent version
+            }
+        }
+
+        let new_version = VersionedValue {
             value,
             created_tx_id: transaction.id,
             expired_tx_id: None,
         };
-        self.data.entry(key).or_default().push(versioned_value);
+        versions.push(new_version);
         Ok(())
     }
 

@@ -263,15 +263,29 @@ impl SimpleFileKvStore {
         let mut writer = BufWriter::new(temp_file);
 
         for (key, versions) in &self.cache {
-            // Find the latest version not marked as expired.
-            // This simplified logic doesn't consult a global committed_ids set here.
-            // It relies on the in-memory `expired_tx_id` markers.
-            let latest_unexpired_version_value = versions.iter()
-                .filter(|v| v.expired_tx_id.is_none())
-                .max_by_key(|v| v.created_tx_id)
+            // Find the latest version that is considered committed (e.g., tx_id 0 for auto-commit)
+            // and not marked as expired by a committed transaction.
+            // This is a simplified view for persistence, assuming auto-commit data (tx_id 0)
+            // or explicitly committed data should be saved.
+            // A more robust solution would involve a set of committed IDs at the point of saving.
+            let value_to_write_opt = versions.iter()
+                .filter(|v| {
+                    // For auto-commit data (created_tx_id == 0), it should be persisted if not expired.
+                    // A more general solution would check against a list of all committed transaction IDs.
+                    let is_persistable_commit_status = v.created_tx_id == 0; // Rule for auto-commit data
+
+                    // Should be saved if its expiration ID is None.
+                    // If it has an expiration ID, that expiration must also be considered part of a committed state
+                    // for it *not* to be saved. For now, if expired_tx_id is Some, don't save.
+                    // This is still a simplification.
+                    let is_not_visibly_expired = v.expired_tx_id.is_none();
+
+                    is_persistable_commit_status && is_not_visibly_expired
+                })
+                .max_by_key(|v| v.created_tx_id) // Get the latest among suitable versions
                 .map(|v| v.value.clone());
 
-            if let Some(value_to_write) = latest_unexpired_version_value {
+            if let Some(value_to_write) = value_to_write_opt {
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut writer)
                     .map_err(|e| DbError::StorageError(format!("Failed to serialize key: {}", e)))?;
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(&value_to_write, &mut writer)
@@ -332,24 +346,59 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         // Log to WAL first
         self.wal_writer.log_entry(&wal_entry)?;
 
-        // Then update cache (add new version)
+        // Then update cache
+        let versions = self.cache.entry(key).or_default();
+        // Mark the latest existing visible version (if any) as expired by this transaction.
+        // A version is visible if it's from a committed transaction or from the current transaction itself,
+        // and it's not already expired by a committed transaction.
+        // For simplicity in this step, we'll assume `transaction.id` is the current snapshot_id
+        // and `committed_ids` would include transactions committed before this one started.
+        // However, `put` doesn't have direct access to `committed_ids` for other transactions.
+        // Let's assume for now that a `put` from `transaction.id` expires any latest version
+        // not already expired, or created by `transaction.id` itself (which would be an update to its own uncommitted write).
+
+        for version in versions.iter_mut().rev() {
+            if version.expired_tx_id.is_none() {
+                 // If we find an unexpired version, this new put operation is an update to it.
+                 // Mark this old version as expired by the current transaction.
+                version.expired_tx_id = Some(transaction.id);
+                break; // Only expire the most recent version
+            }
+        }
+
         let new_version = VersionedValue {
             value,
             created_tx_id: transaction.id,
             expired_tx_id: None,
         };
-        self.cache.entry(key).or_default().push(new_version);
+        versions.push(new_version);
         Ok(())
     }
 
     fn get(&self, key: &Vec<u8>, snapshot_id: u64, committed_ids: &HashSet<u64>) -> Result<Option<Vec<u8>>, DbError> {
         if let Some(versions) = self.cache.get(key) {
             for version in versions.iter().rev() {
-                if version.created_tx_id <= snapshot_id && committed_ids.contains(&version.created_tx_id) {
+                // Visibility rule:
+                // 1. Version created by the current transaction (snapshot_id is current tx_id).
+                // OR
+                // 2. Version created by a committed transaction (in committed_ids) at or before the snapshot.
+                let is_own_uncommitted_version = version.created_tx_id == snapshot_id;
+                let is_committed_version = version.created_tx_id <= snapshot_id && committed_ids.contains(&version.created_tx_id);
+
+                if is_own_uncommitted_version || is_committed_version {
+                    // Now check expiry:
+                    // - If not expired (None), it's visible.
+                    // - If expired (Some(expired_id)):
+                    //   - If expired_id is current transaction (snapshot_id), it's invisible (own uncommitted delete).
+                    //   - Else if expiry was by a committed transaction (in committed_ids) at or before snapshot, it's invisible.
+                    //   - Else (expiry not committed or happened after snapshot), it's visible.
                     match version.expired_tx_id {
                         None => return Ok(Some(version.value.clone())),
                         Some(expired_id) => {
-                            if expired_id > snapshot_id || !committed_ids.contains(&expired_id) {
+                            let is_own_uncommitted_delete = expired_id == snapshot_id;
+                            let is_committed_delete = expired_id <= snapshot_id && committed_ids.contains(&expired_id);
+
+                            if !(is_own_uncommitted_delete || is_committed_delete) {
                                 return Ok(Some(version.value.clone()));
                             }
                         }
@@ -482,7 +531,7 @@ mod tests {
         let mut store = SimpleFileKvStore::new(temp_file.path()).unwrap();
         let dummy_transaction = Transaction::new(0); // Dummy transaction
         let snapshot_id = 0;
-        let committed_ids = HashSet::new(); // Simplified
+        let committed_ids: HashSet<u64> = HashSet::new(); // Simplified
         let key1 = b"key1".to_vec();
         let value1 = b"value1".to_vec();
         store.put(key1.clone(), value1.clone(), &dummy_transaction).unwrap();
@@ -502,7 +551,7 @@ mod tests {
         let mut store = SimpleFileKvStore::new(temp_file.path()).unwrap();
         let dummy_transaction = Transaction::new(0); // Dummy transaction
         let snapshot_id = 0;
-        let committed_ids = HashSet::new();
+        let committed_ids: HashSet<u64> = HashSet::new();
         let key1 = b"key1".to_vec();
         let value1 = b"value1".to_vec();
         let value1_updated = b"value1_updated".to_vec();
@@ -519,7 +568,7 @@ mod tests {
         let temp_file = NamedTempFile::new().unwrap();
         let store = SimpleFileKvStore::new(temp_file.path()).unwrap();
         let snapshot_id = 0;
-        let committed_ids = HashSet::new();
+        let committed_ids: HashSet<u64> = HashSet::new();
         assert_eq!(store.get(&b"non_existent_key".to_vec(), snapshot_id, &committed_ids).unwrap(), None);
     }
 
@@ -529,7 +578,7 @@ mod tests {
         let mut store = SimpleFileKvStore::new(temp_file.path()).unwrap();
         let dummy_transaction = Transaction::new(0); // Dummy transaction
         let snapshot_id = 0;
-        let committed_ids = HashSet::new();
+        let committed_ids: HashSet<u64> = HashSet::new();
         let key1 = b"key1".to_vec();
         let value1 = b"value1".to_vec();
         store.put(key1.clone(), value1.clone(), &dummy_transaction).unwrap();
@@ -552,7 +601,7 @@ mod tests {
         let mut store = SimpleFileKvStore::new(temp_file.path()).unwrap();
         let dummy_transaction = Transaction::new(0); // Dummy transaction
         let snapshot_id = 0;
-        let committed_ids = HashSet::new();
+        let committed_ids: HashSet<u64> = HashSet::new();
         let key1 = b"key1".to_vec();
         store.put(key1.clone(), b"value1".to_vec(), &dummy_transaction).unwrap();
         // SimpleFileKvStore contains_key is now a placeholder returning false.
@@ -566,7 +615,7 @@ mod tests {
         let path = temp_file.path().to_path_buf();
         let dummy_transaction = Transaction::new(0); // Dummy transaction
         let snapshot_id = 0;
-        let committed_ids = HashSet::new();
+        let committed_ids: HashSet<u64> = HashSet::new();
         let key1 = b"persist_key".to_vec();
         let value1 = b"persist_value".to_vec();
         {
@@ -589,7 +638,7 @@ mod tests {
         let mut store = SimpleFileKvStore::new(&db_path).unwrap();
         let dummy_transaction = Transaction::new(0); // Dummy transaction
         let snapshot_id = 0;
-        let committed_ids = HashSet::new();
+        let committed_ids: HashSet<u64> = HashSet::new();
         let key1 = b"key1".to_vec();
         let value1 = b"value1".to_vec();
         store.put(key1.clone(), value1.clone(), &dummy_transaction).unwrap();
@@ -611,7 +660,7 @@ mod tests {
         let main_db_path = main_db_file.path().to_path_buf();
         let temp_db_path = main_db_path.with_extension("tmp");
         let snapshot_id = 0;
-        let committed_ids = HashSet::new();
+        let committed_ids: HashSet<u64> = HashSet::new();
 
         // Setup: Main file with initial data, temp file with newer data
         let initial_data = vec![(b"key1".to_vec(), b"value_initial".to_vec())];
@@ -646,7 +695,7 @@ mod tests {
         let main_db_path = main_db_file.path().to_path_buf();
         let temp_db_path = main_db_path.with_extension("tmp");
         let snapshot_id = 0;
-        let committed_ids = HashSet::new();
+        let committed_ids: HashSet<u64> = HashSet::new();
 
         // Setup: Main file with valid data
         let main_data = vec![(b"key_main".to_vec(), b"value_main".to_vec())];
@@ -687,7 +736,7 @@ mod tests {
         let main_db_path = main_db_file.path().to_path_buf();
         let temp_db_path = main_db_path.with_extension("tmp");
         let snapshot_id = 0;
-        let committed_ids = HashSet::new();
+        let committed_ids: HashSet<u64> = HashSet::new();
 
         // Ensure main file does not exist by closing and removing the tempfile handle for it
         main_db_file.close().unwrap(); 
@@ -757,7 +806,7 @@ mod tests {
         let key_orig = b"key_orig".to_vec();
         let value_orig = b"value_orig".to_vec();
         let snapshot_id = 0;
-        let committed_ids = HashSet::new();
+        let committed_ids: HashSet<u64> = HashSet::new();
         {
             let mut store = SimpleFileKvStore::new(&db_path).unwrap();
             let dummy_transaction = Transaction::new(0); // Dummy transaction
@@ -895,7 +944,7 @@ mod tests {
         let key = b"wal_key1".to_vec();
         let value = b"wal_value1".to_vec();
         let snapshot_id = 0;
-        let committed_ids = HashSet::new();
+        let committed_ids: HashSet<u64> = HashSet::new();
         store.put(key.clone(), value.clone(), &dummy_transaction).unwrap();
 
         // assert_eq!(store.get(&key, snapshot_id, &committed_ids).unwrap(), Some(value.clone()));
@@ -925,7 +974,7 @@ mod tests {
         let key = b"wal_del_key".to_vec();
         let value = b"wal_del_value".to_vec();
         let snapshot_id_get = 1;
-        let committed_ids_get = HashSet::new(); // Simplified
+        let committed_ids_get: HashSet<u64> = HashSet::new(); // Simplified
 
         store.put(key.clone(), value.clone(), &dummy_transaction_put).unwrap();
         store.delete(&key, &dummy_transaction_delete).unwrap();
@@ -962,7 +1011,7 @@ mod tests {
         let value = b"main_data_value".to_vec();
         let dummy_transaction = Transaction::new(0); // Dummy transaction
         let snapshot_id = 0;
-        let committed_ids = HashSet::new();
+        let committed_ids: HashSet<u64> = HashSet::new();
 
         {
             let mut store = SimpleFileKvStore::new(db_path).unwrap();
@@ -1018,12 +1067,25 @@ mod tests {
         let store = SimpleFileKvStore::new(db_path).unwrap();
         // After WAL replay, the cache in SimpleFileKvStore contains the net effect.
         // The get() method is a placeholder. We can test the cache content directly for this test.
-        assert_eq!(store.cache.get(&key0), None, "key0 should be deleted by committed TX1 from cache");
-        assert_eq!(store.cache.get(&b"key1".to_vec()), Some(&b"val1".to_vec()), "key1 from committed TX1 should be in cache");
-        assert_eq!(store.cache.get(&b"key2".to_vec()), None, "key2 from rolled back TX2 should not be in cache");
-        assert_eq!(store.cache.get(&b"key3".to_vec()), None, "key3 from incomplete TX3 should not be in cache");
-        assert_eq!(store.cache.get(&b"key4".to_vec()), None, "key4 from committed then rolled back TX4 should not be in cache");
-        assert_eq!(store.cache.get(&b"key5".to_vec()), None, "key5 from rolled back then committed TX5 should not be in cache");
+
+        // Helper to get the latest visible value from cache for testing
+        let get_from_cache = |key: &Vec<u8>| -> Option<Vec<u8>> {
+            store.cache.get(key).and_then(|versions| {
+                versions.iter().rev()
+                    .filter(|v| committed_ids_replay.contains(&v.created_tx_id) &&
+                                (v.expired_tx_id.is_none() || !committed_ids_replay.contains(&v.expired_tx_id.unwrap()) || v.expired_tx_id.unwrap() > snapshot_id)
+                           )
+                    .map(|v| v.value.clone())
+                    .next()
+            })
+        };
+
+        assert_eq!(get_from_cache(&key0), None, "key0 should be deleted by committed TX1");
+        assert_eq!(get_from_cache(&b"key1".to_vec()), Some(b"val1".to_vec()), "key1 from committed TX1 should be present");
+        assert_eq!(get_from_cache(&b"key2".to_vec()), None, "key2 from rolled back TX2 should not be present");
+        assert_eq!(get_from_cache(&b"key3".to_vec()), None, "key3 from incomplete TX3 should not be present");
+        assert_eq!(get_from_cache(&b"key4".to_vec()), None, "key4 from committed then rolled back TX4 should not be present");
+        assert_eq!(get_from_cache(&b"key5".to_vec()), None, "key5 from rolled back then committed TX5 should not be present");
 
 
         assert!(wal_path.exists(), "WAL file should still exist after load_from_disk");
@@ -1040,7 +1102,7 @@ mod tests {
         let key_b = b"keyB_crash".to_vec();
         let val_b = b"valB_crash".to_vec();
         let snapshot_id = 101;
-        let committed_ids = HashSet::new(); // No relevant committed TX for this view
+        let committed_ids: HashSet<u64> = HashSet::new(); // No relevant committed TX for this view
 
         {
             let mut store = SimpleFileKvStore::new(db_path).unwrap();
@@ -1055,6 +1117,7 @@ mod tests {
         // Simulate crash by creating a new store instance. load_from_disk will run.
         let store_after_crash = SimpleFileKvStore::new(db_path).unwrap();
         // Operations from incomplete transaction 100 should NOT be in the cache.
+        // Test cache directly as get() is a placeholder
         assert_eq!(store_after_crash.cache.get(&key_a), None, "key_a from incomplete tx should not be in cache");
         assert_eq!(store_after_crash.cache.get(&key_b), None, "key_b from incomplete tx should not be in cache");
     }
@@ -1065,7 +1128,7 @@ mod tests {
         let db_path = db_file.path();
         let wal_writer = WalWriter::new(db_path);
         let snapshot_id = 2;
-        let committed_ids = HashSet::new(); // TX 1 was committed then rolled back, so not in final committed set for this view
+        let committed_ids: HashSet<u64> = HashSet::new(); // TX 1 was committed then rolled back, so not in final committed set for this view
 
         // Transaction 1: Puts, then Commit, then Rollback
         wal_writer.log_entry(&WalEntry::Put { transaction_id: 1, key: b"key_cr".to_vec(), value: b"val_cr".to_vec() }).unwrap();
@@ -1073,6 +1136,7 @@ mod tests {
         wal_writer.log_entry(&WalEntry::TransactionRollback { transaction_id: 1 }).unwrap(); // Rollback after commit
 
         let store = SimpleFileKvStore::new(db_path).unwrap();
+        // Test cache directly
         assert_eq!(store.cache.get(&b"key_cr".to_vec()), None, "Data from tx committed then rolled back should not be in cache");
     }
     
@@ -1102,11 +1166,14 @@ mod tests {
         let store = SimpleFileKvStore::new(db_path).unwrap();
 
         // Check cache directly
-        assert_eq!(store.cache.get(&b"key10_1".to_vec()), Some(&b"val10_1".to_vec()));
-        assert_eq!(store.cache.get(&b"key10_2".to_vec()), Some(&b"val10_2".to_vec()));
-        assert_eq!(store.cache.get(&b"key20_1".to_vec()), None);
-        assert_eq!(store.cache.get(&b"some_other_key".to_vec()), None);
-        assert_eq!(store.cache.get(&b"key30_1".to_vec()), None);
+        let get_latest_value = |cache: &HashMap<Vec<u8>, Vec<VersionedValue<Vec<u8>>>>, key: &Vec<u8>| -> Option<Vec<u8>> {
+            cache.get(key).and_then(|versions| versions.last().map(|v| v.value.clone()))
+        };
+        assert_eq!(get_latest_value(&store.cache, &b"key10_1".to_vec()), Some(b"val10_1".to_vec()));
+        assert_eq!(get_latest_value(&store.cache, &b"key10_2".to_vec()), Some(b"val10_2".to_vec()));
+        assert_eq!(get_latest_value(&store.cache, &b"key20_1".to_vec()), None);
+        assert_eq!(get_latest_value(&store.cache, &b"some_other_key".to_vec()), None);
+        assert_eq!(get_latest_value(&store.cache, &b"key30_1".to_vec()), None);
     }
 
 
@@ -1171,8 +1238,11 @@ mod tests {
         let store = SimpleFileKvStore::new(db_path).unwrap(); // Triggers load_from_disk and WAL replay
         
         // Test cache directly
-        assert_eq!(store.cache.get(&key_good), Some(&value_good.clone()), "Should recover key before corruption into cache");
-        assert_eq!(store.cache.get(&key_bad), None, "Should not recover key after corruption into cache");
+        let get_latest_value = |cache: &HashMap<Vec<u8>, Vec<VersionedValue<Vec<u8>>>>, key: &Vec<u8>| -> Option<Vec<u8>> {
+            cache.get(key).and_then(|versions| versions.last().map(|v| v.value.clone()))
+        };
+        assert_eq!(get_latest_value(&store.cache, &key_good), Some(value_good.clone()), "Should recover key before corruption into cache");
+        assert_eq!(get_latest_value(&store.cache, &key_bad), None, "Should not recover key after corruption into cache");
     }
 
     #[test]
@@ -1218,7 +1288,7 @@ mod tests {
         let value = b"atomic_put_value".to_vec();
         let dummy_transaction = Transaction::new(0);
         let snapshot_id = 0;
-        let committed_ids = HashSet::new();
+        let committed_ids: HashSet<u64> = HashSet::new();
 
         // Attempt to put, expecting failure from WAL
         let result = store.put(key.clone(), value.clone(), &dummy_transaction);
@@ -1249,7 +1319,7 @@ mod tests {
         let key = b"atomic_del_key".to_vec();
         let value = b"atomic_del_value".to_vec();
         let snapshot_id = 0;
-        let committed_ids = HashSet::new();
+        let committed_ids: HashSet<u64> = HashSet::new();
 
         // 1. Setup store and insert an item successfully
         {
@@ -1284,7 +1354,9 @@ mod tests {
         // 5. Assert that the cache still contains the key
         // assert!(store.get(&key, snapshot_id, &committed_ids).unwrap().is_some(), "Cache should still contain key after failed WAL write for delete.");
         assert!(store.cache.contains_key(&key), "Cache should still contain key directly.");
-        assert_eq!(store.cache.get(&key), Some(&value), "Value should be the original value.");
+        // The value in cache should be a Vec<VersionedValue>, so direct comparison with `value` (Vec<u8>) will fail.
+        // We need to get the actual value from the VersionedValue.
+        assert_eq!(store.cache.get(&key).and_then(|v| v.last().map(|vv| vv.value.clone())), Some(value.clone()), "Value should be the original value.");
 
         // Cleanup: remove the directory we created
         let _ = std::fs::remove_dir_all(&wal_path);

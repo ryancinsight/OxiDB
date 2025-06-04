@@ -40,9 +40,13 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                 .map_err(|e| DbError::IndexError(format!("Failed to create default_value_index: {}", e.to_string())))?;
         }
 
+        let mut transaction_manager = TransactionManager::new();
+        // Add transaction ID 0 as committed by default, representing the baseline disk state.
+        transaction_manager.add_committed_tx_id(0);
+
         Ok(QueryExecutor {
             store,
-            transaction_manager: TransactionManager::new(),
+            transaction_manager,
             lock_manager: LockManager::new(),
             index_manager,
         })
@@ -81,8 +85,21 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                     let put_result = self.store.put(key.clone(), serialized_value.clone(), &tx_for_store);
 
                     if put_result.is_ok() {
-                        // Add to redo log instead of direct index update
-                        active_tx_mut.redo_log.push(crate::core::transaction::transaction::RedoOperation::IndexInsert {
+                        // Perform index update immediately
+                        let mut indexed_values_map = HashMap::new();
+                        // Assuming "default_value_index" and serialized_value is what's indexed.
+                        // This needs to be more generic if multiple indexes or different value parts are indexed.
+                        indexed_values_map.insert("default_value_index".to_string(), serialized_value.clone());
+                        if let Err(index_err) = self.index_manager.on_insert_data(&indexed_values_map, &key) {
+                            // If index update fails, the transaction should ideally roll back the store.put.
+                            // This is complex. For now, let's make it an error.
+                            // A more robust system might try to undo the put or mark the transaction for rollback.
+                            eprintln!("Index insert failed: {:?}, store put was successful but transaction will be hard to rollback fully here.", index_err);
+                            return Err(DbError::IndexError(format!("Failed to update index after insert: {}", index_err)));
+                        }
+                        // Add to undo log for index operation
+                        active_tx_mut.undo_log.push(UndoOperation::IndexRevertInsert {
+                            index_name: "default_value_index".to_string(), // Assuming default index
                             key: key.clone(),
                             value_for_index: serialized_value.clone(),
                         });
@@ -116,6 +133,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                                 tx_for_store.set_state(TransactionState::Committed);
                                 let commit_entry = crate::core::storage::engine::wal::WalEntry::TransactionCommit { transaction_id: auto_commit_tx_id };
                                 self.store.log_wal_entry(&commit_entry)?;
+                                self.transaction_manager.add_committed_tx_id(auto_commit_tx_id); // Add to committed list
                                 self.lock_manager.release_locks(auto_commit_tx_id);
                                 Ok(ExecutionResult::Success)
                             } else {
@@ -134,16 +152,15 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 
                 if let Some(active_tx) = self.transaction_manager.get_active_transaction() { 
                     snapshot_id = active_tx.id;
-                    // For a transaction, its snapshot should ideally only see transactions committed *before* it started.
-                    // The current `get_committed_tx_ids_snapshot()` returns all committed IDs.
-                    // We filter this to those <= snapshot_id.
-                    // A stricter snapshot would filter to those < snapshot_id.
-                    // For now, using <= snapshot_id for simplicity.
                     committed_ids_vec = self.transaction_manager.get_committed_tx_ids_snapshot();
-                    // No lock needed for MVCC reads
+                    // Acquire shared lock for read consistency if in an active transaction
+                    self.lock_manager.acquire_lock(active_tx.id, &key, LockType::Shared)?;
                 } else { // Auto-commit for Get
                     // Auto-commit Get acts as its own short transaction.
                     // It should see all data committed up to the point it starts.
+                    // For auto-commit reads, we typically don't acquire locks in this simplified model,
+                    // or it would be a very short-lived lock if we did.
+                    // The test "test_exclusive_lock_prevents_shared_read" implies locking even for reads within a TX.
                     // We generate a temporary ID for it to define its snapshot point.
                     // Note: This ID is not stored in TransactionManager's active/committed lists.
                     snapshot_id = self.transaction_manager.generate_tx_id();
@@ -192,11 +209,20 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 
                     if let Ok(deleted) = delete_result {
                         if deleted {
-                            if let Some(old_serialized_value) = old_value_opt {
-                                // Add to redo log instead of direct index update
-                                active_tx.redo_log.push(crate::core::transaction::transaction::RedoOperation::IndexDelete {
+                            if let Some(old_serialized_value_for_index) = old_value_opt {
+                                // Perform index update immediately
+                                let mut indexed_values_map = HashMap::new();
+                                // Assuming "default_value_index" and old_serialized_value_for_index is what was indexed.
+                                indexed_values_map.insert("default_value_index".to_string(), old_serialized_value_for_index.clone());
+                                if let Err(index_err) = self.index_manager.on_delete_data(&indexed_values_map, &key) {
+                                    eprintln!("Index delete failed: {:?}, store delete was successful but transaction will be hard to rollback fully here.", index_err);
+                                    return Err(DbError::IndexError(format!("Failed to update index after delete: {}", index_err)));
+                                }
+                                // Add to undo log for index operation
+                                active_tx.undo_log.push(UndoOperation::IndexRevertDelete {
+                                    index_name: "default_value_index".to_string(), // Assuming default index
                                     key: key.clone(),
-                                    old_value_for_index: old_serialized_value,
+                                    old_value_for_index: old_serialized_value_for_index.clone(),
                                 });
                             }
                         }
@@ -228,6 +254,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                                 tx_for_store.set_state(TransactionState::Committed);
                                 let commit_entry = crate::core::storage::engine::wal::WalEntry::TransactionCommit { transaction_id: auto_commit_tx_id };
                                 self.store.log_wal_entry(&commit_entry)?;
+                                self.transaction_manager.add_committed_tx_id(auto_commit_tx_id); // Add to committed list
                                 self.lock_manager.release_locks(auto_commit_tx_id);
                                 Ok(ExecutionResult::Deleted(deleted))
                             } else {
@@ -297,23 +324,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             Command::CommitTransaction => {
                 if let Some(active_tx) = self.transaction_manager.get_active_transaction_mut() {
                     let tx_id_to_release = active_tx.id;
-                    // Process redo log for index updates
-                    for redo_op in active_tx.redo_log.iter() {
-                        match redo_op {
-                            crate::core::transaction::transaction::RedoOperation::IndexInsert { key, value_for_index } => {
-                                let mut indexed_values_map = HashMap::new();
-                                indexed_values_map.insert("default_value_index".to_string(), value_for_index.clone());
-                                self.index_manager.on_insert_data(&indexed_values_map, key)?;
-                            }
-                            crate::core::transaction::transaction::RedoOperation::IndexDelete { key, old_value_for_index } => {
-                                let mut indexed_values_map = HashMap::new();
-                                indexed_values_map.insert("default_value_index".to_string(), old_value_for_index.clone());
-                                self.index_manager.on_delete_data(&indexed_values_map, key)?;
-                            }
-                        }
-                    }
-                    active_tx.redo_log.clear(); // Clear after successful processing
-                    active_tx.undo_log.clear(); 
+                    // Index updates are now immediate, so redo_log for indexes is not processed here for commit.
+                    // Redo log might still be relevant for WAL-based recovery if needed in future.
+                    // For now, we primarily rely on undo log for rollback.
+                    active_tx.redo_log.clear(); // Clear any redo log (though we stopped adding index ops to it)
+                    active_tx.undo_log.clear(); // Undo log is cleared after successful commit.
 
                     // Log commit to WAL before releasing locks or finalizing commit in manager
                     let commit_entry = crate::core::storage::engine::wal::WalEntry::TransactionCommit { transaction_id: tx_id_to_release };
@@ -343,6 +358,19 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                             }
                             UndoOperation::RevertDelete { key, old_value } => {
                                 self.store.put(key.clone(), old_value.clone(), &temp_transaction_for_undo)?;
+                            }
+                            UndoOperation::IndexRevertInsert { index_name, key, value_for_index } => {
+                                // To revert an index insert, we need to delete the entry from the index.
+                                // The on_delete_data method needs a map of {index_name: value_that_was_indexed}.
+                                let mut indexed_values_map = HashMap::new();
+                                indexed_values_map.insert(index_name.clone(), value_for_index.clone());
+                                self.index_manager.on_delete_data(&indexed_values_map, key)?;
+                            }
+                            UndoOperation::IndexRevertDelete { index_name, key, old_value_for_index } => {
+                                // To revert an index delete, we need to add the entry back to the index.
+                                let mut indexed_values_map = HashMap::new();
+                                indexed_values_map.insert(index_name.clone(), old_value_for_index.clone());
+                                self.index_manager.on_insert_data(&indexed_values_map, key)?;
                             }
                         }
                     }

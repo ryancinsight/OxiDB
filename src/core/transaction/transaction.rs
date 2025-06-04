@@ -31,6 +31,9 @@ pub enum UndoOperation {
     RevertInsert { key: Vec<u8> },
     RevertUpdate { key: Vec<u8>, old_value: Vec<u8> },
     RevertDelete { key: Vec<u8>, old_value: Vec<u8> },
+    // For reverting index changes
+    IndexRevertInsert { index_name: String, key: Vec<u8>, value_for_index: Vec<u8> }, // value_for_index is the serialized data that was indexed
+    IndexRevertDelete { index_name: String, key: Vec<u8>, old_value_for_index: Vec<u8> }, // old_value_for_index is the serialized data that was deleted from index
 }
 
 impl Transaction {

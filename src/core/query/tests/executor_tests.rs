@@ -657,11 +657,11 @@ mod tests {
         executor.execute_command(Command::RollbackTransaction)?;
 
         let get_cmd = Command::Get { key: key.clone() };
-        assert_eq!(executor.execute_command(get_cmd)?, ExecutionResult::Value(None));
+        assert_eq!(executor.execute_command(get_cmd)?, ExecutionResult::Value(None)); // Data should NOT be in store after rolling back an insert.
 
-        let indexed_pks_after_rollback = executor.index_manager.find_by_index("default_value_index", &serialized_value)?
-            .expect("Value should still be in index after rollback due to current limitations");
-        assert!(indexed_pks_after_rollback.contains(&key));
+        // After rolling back an insert, the key should NOT be in the index.
+        let indexed_pks_after_rollback = executor.index_manager.find_by_index("default_value_index", &serialized_value)?;
+        assert!(indexed_pks_after_rollback.map_or(true, |pks| !pks.contains(&key)), "Value should NOT be in index after rolling back an insert");
         Ok(())
     }
 
@@ -725,10 +725,12 @@ mod tests {
         executor.execute_command(Command::RollbackTransaction)?;
 
         let get_cmd = Command::Get { key: key.clone() };
-        assert_eq!(executor.execute_command(get_cmd)?, ExecutionResult::Value(Some(value)));
+        assert_eq!(executor.execute_command(get_cmd)?, ExecutionResult::Value(Some(value))); // Data should be restored in store
 
-        let indexed_pks_after_rollback = executor.index_manager.find_by_index("default_value_index", &serialized_value)?;
-        assert!(indexed_pks_after_rollback.map_or(true, |pks| !pks.contains(&key)), "Key should remain removed from index after rollback (current limitation)");
+        // After rolling back a delete, the key SHOULD be back in the index.
+        let indexed_pks_after_rollback = executor.index_manager.find_by_index("default_value_index", &serialized_value)?
+            .expect("Index entry should be restored after rolling back a delete");
+        assert!(indexed_pks_after_rollback.contains(&key), "Value SHOULD BE in index after rolling back a delete");
         Ok(())
     }
 
@@ -896,22 +898,26 @@ mod tests {
 
     #[test]
     fn test_mvcc_write_write_conflict() {
-        let mut exec1 = create_mvcc_test_executor();
-        let mut exec2 = create_mvcc_test_executor();
+        let mut exec = create_mvcc_test_executor(); // Use a single executor
 
         let key_k = b"k_ww".to_vec();
         let val_v1 = DataType::String("v1_ww".to_string());
         let val_v2 = DataType::String("v2_ww".to_string());
 
-        exec1.execute_command(Command::BeginTransaction).unwrap();
-        assert_eq!(exec1.execute_command(Command::Insert { key: key_k.clone(), value: val_v1.clone() }).unwrap(), ExecutionResult::Success);
+        // TX1 writes K=V1 and commits
+        exec.execute_command(Command::BeginTransaction).unwrap();
+        assert_eq!(exec.execute_command(Command::Insert { key: key_k.clone(), value: val_v1.clone() }).unwrap(), ExecutionResult::Success);
+        exec.execute_command(Command::CommitTransaction).unwrap();
 
-        exec1.execute_command(Command::CommitTransaction).unwrap();
+        // TX2 writes K=V2 and commits (overwriting V1)
+        exec.execute_command(Command::BeginTransaction).unwrap();
+        assert_eq!(exec.execute_command(Command::Insert { key: key_k.clone(), value: val_v2.clone() }).unwrap(), ExecutionResult::Success);
+        // TX2 sees its own write
+        assert_eq!(exec.execute_command(Command::Get { key: key_k.clone() }).unwrap(), ExecutionResult::Value(Some(val_v2.clone())));
+        exec.execute_command(Command::CommitTransaction).unwrap();
 
-        exec2.execute_command(Command::BeginTransaction).unwrap();
-        assert_eq!(exec2.execute_command(Command::Insert { key: key_k.clone(), value: val_v2.clone() }).unwrap(), ExecutionResult::Success);
-        assert_eq!(exec2.execute_command(Command::Get { key: key_k.clone() }).unwrap(), ExecutionResult::Value(Some(val_v2.clone())));
-        exec2.execute_command(Command::CommitTransaction).unwrap();
+        // A new transaction (or auto-commit get) should see V2
+        assert_eq!(exec.execute_command(Command::Get { key: key_k.clone() }).unwrap(), ExecutionResult::Value(Some(val_v2.clone())));
     }
 
     #[test]
