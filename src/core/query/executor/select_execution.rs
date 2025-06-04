@@ -1,0 +1,76 @@
+use crate::core::common::error::DbError;
+use crate::core::types::DataType;
+use crate::core::query::commands::{SelectColumnSpec, SqlCondition}; // Removed Key
+use crate::core::storage::engine::traits::KeyValueStore;
+use std::collections::HashSet;
+use std::sync::Arc;
+use super::{ExecutionResult, QueryExecutor};
+use crate::core::query::sql::ast::{Statement as AstStatement, SelectColumn, Condition as AstCondition}; // Removed AstLiteralValue
+use super::utils::datatype_to_ast_literal; // Import the helper
+
+// Make sure KeyValueStore is Send + Sync + 'static for build_execution_tree
+impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S> {
+    pub(crate) fn handle_select(
+        &mut self,
+        select_columns_spec: SelectColumnSpec,
+        source_table_name: String,
+        condition_opt: Option<SqlCondition>,
+    ) -> Result<ExecutionResult, DbError> {
+        let snapshot_id;
+        let committed_ids_vec;
+
+        if let Some(active_tx) = self.transaction_manager.get_active_transaction() {
+            snapshot_id = active_tx.id;
+            committed_ids_vec = self.transaction_manager.get_committed_tx_ids_snapshot();
+        } else {
+            snapshot_id = self.transaction_manager.generate_tx_id();
+            committed_ids_vec = self.transaction_manager.get_committed_tx_ids_snapshot();
+        }
+        let committed_ids = Arc::new(committed_ids_vec.into_iter().collect::<HashSet<u64>>());
+
+        let ast_select_items = match select_columns_spec {
+            SelectColumnSpec::All => vec![SelectColumn::Asterisk],
+            SelectColumnSpec::Specific(cols) => cols
+                .into_iter()
+                .map(|name| SelectColumn::ColumnName(name))
+                .collect(),
+        };
+
+        // Convert Option<SqlCondition> to Option<ast::Condition>
+        let ast_sql_condition: Option<AstCondition> = match condition_opt {
+            Some(sql_cond) => {
+                Some(AstCondition {
+                    column: sql_cond.column,
+                    operator: sql_cond.operator,
+                    value: datatype_to_ast_literal(&sql_cond.value)?, // Use the helper
+                })
+            }
+            None => None,
+        };
+
+        let ast_statement = AstStatement::Select(crate::core::query::sql::ast::SelectStatement {
+            columns: ast_select_items,
+            source: source_table_name,
+            condition: ast_sql_condition,
+            // alias field is not present in sql::ast::SelectStatement
+        });
+
+        let initial_plan = self.optimizer.build_initial_plan(&ast_statement)?;
+        let optimized_plan = self.optimizer.optimize(initial_plan)?;
+
+        let mut execution_tree_root =
+            self.build_execution_tree(optimized_plan, snapshot_id, committed_ids.clone())?;
+
+        let mut results_iter = execution_tree_root.execute()?;
+        let mut all_datatypes_from_tuples: Vec<DataType> = Vec::new();
+
+        while let Some(tuple_result) = results_iter.next() {
+            let tuple = tuple_result?;
+            for data_type in tuple {
+                all_datatypes_from_tuples.push(data_type);
+            }
+        }
+
+        Ok(ExecutionResult::Values(all_datatypes_from_tuples))
+    }
+}

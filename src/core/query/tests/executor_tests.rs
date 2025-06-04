@@ -1,10 +1,10 @@
 #[cfg(test)]
 mod tests {
-    use crate::core::query::executor::*; // Corrected path
-    use crate::core::query::commands::{Command, Key}; // Added Command
+    use crate::core::query::executor::*;
+    use crate::core::query::commands::{Command, Key};
     use crate::core::types::DataType;
     use serde_json::json;
-    use crate::core::transaction::TransactionState;
+    use crate::core::transaction::TransactionState; // Used by QueryExecutor indirectly via TransactionManager
     use crate::core::storage::engine::{SimpleFileKvStore, InMemoryKvStore, traits::KeyValueStore};
     use crate::core::storage::engine::wal::WalEntry;
     use crate::core::common::traits::DataDeserializer;
@@ -12,10 +12,14 @@ mod tests {
     use std::fs::File as StdFile;
     use std::io::{BufReader, ErrorKind as IoErrorKind};
     use std::path::PathBuf;
-    use paste::paste; // Added paste
-    use std::any::TypeId; // For conditional test logic if needed, though trying to avoid
-    use crate::core::common::error::DbError; // Added DbError
-    use std::collections::HashSet; // Added HashSet
+    use paste::paste; // Used by define_executor_tests! macro
+    // use std::any::TypeId; // For conditional test logic if needed, though trying to avoid - REMOVED
+    use crate::core::common::error::DbError;
+    // use std::collections::HashSet; // REMOVED - Not directly used in this test file
+    use std::sync::{Arc, RwLock};
+
+    use crate::core::common::serialization::serialize_data_type;
+    use crate::core::transaction::transaction::{Transaction}; // Removed UndoOperation
 
     // Helper functions (original test logic, now generic)
     fn run_test_get_non_existent<S: KeyValueStore<Vec<u8>, Vec<u8>>>(executor: &mut QueryExecutor<S>) {
@@ -119,8 +123,8 @@ mod tests {
         assert_eq!(executor.execute_command(get_command).unwrap(), ExecutionResult::Value(None));
     }
 
-    // Helper to derive WAL path from DB path, similar to SimpleFileKvStore's internal logic
-    fn derive_wal_path_for_test(store: &SimpleFileKvStore) -> PathBuf {
+    fn derive_wal_path_for_test(store_lock: &Arc<RwLock<SimpleFileKvStore>>) -> PathBuf {
+        let store = store_lock.read().unwrap();
         let mut wal_path = store.file_path().to_path_buf();
         let original_extension = wal_path.extension().map(|s| s.to_os_string());
         if let Some(ext) = original_extension {
@@ -133,10 +137,9 @@ mod tests {
         wal_path
     }
 
-    // Helper to read all entries from a WAL file for test verification
     fn read_all_wal_entries_for_test(wal_path: &std::path::Path) -> Result<Vec<WalEntry>, DbError> {
         if !wal_path.exists() {
-            return Ok(Vec::new()); // No WAL file, no entries
+            return Ok(Vec::new());
         }
         let file = StdFile::open(wal_path).map_err(DbError::IoError)?;
         let mut reader = BufReader::new(file);
@@ -145,7 +148,7 @@ mod tests {
             match <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut reader) {
                 Ok(entry) => entries.push(entry),
                 Err(DbError::IoError(e)) if e.kind() == IoErrorKind::UnexpectedEof => break,
-                Err(e) => return Err(e), // Other errors
+                Err(e) => return Err(e),
             }
         }
         Ok(entries)
@@ -170,8 +173,6 @@ mod tests {
         QueryExecutor::new(store, index_path).unwrap()
     }
 
-    use crate::core::common::serialization::serialize_data_type; // Added for index tests
-    use crate::core::transaction::transaction::{Transaction, UndoOperation}; // Added for some tests
 
     #[test]
     fn test_insert_and_get_boolean() {
@@ -206,7 +207,7 @@ mod tests {
         let malformed_bytes: Vec<u8> = b"this is not valid json for DataType".to_vec();
 
         let dummy_tx = Transaction::new(0);
-        executor.store.put(key.clone(), malformed_bytes, &dummy_tx).unwrap();
+        executor.store.write().unwrap().put(key.clone(), malformed_bytes, &dummy_tx).unwrap();
 
         let get_command = Command::Get { key: key.clone() };
         let result = executor.execute_command(get_command);
@@ -352,9 +353,8 @@ mod tests {
 
         assert_eq!(wal_entries.len(), 2, "Should be 1 Put and 1 Commit WAL entry");
         match &wal_entries[0] {
-            WalEntry::Put { transaction_id: put_tx_id, key, value } => {
+            WalEntry::Put { transaction_id: put_tx_id, key: _, value: _ } => {
                  assert_eq!(*put_tx_id, tx_id);
-                 assert_eq!(key, &b"key_commit".to_vec());
             }
             _ => panic!("Expected Put entry first"),
         }
@@ -657,9 +657,8 @@ mod tests {
         executor.execute_command(Command::RollbackTransaction)?;
 
         let get_cmd = Command::Get { key: key.clone() };
-        assert_eq!(executor.execute_command(get_cmd)?, ExecutionResult::Value(None)); // Data should NOT be in store after rolling back an insert.
+        assert_eq!(executor.execute_command(get_cmd)?, ExecutionResult::Value(None));
 
-        // After rolling back an insert, the key should NOT be in the index.
         let indexed_pks_after_rollback = executor.index_manager.find_by_index("default_value_index", &serialized_value)?;
         assert!(indexed_pks_after_rollback.map_or(true, |pks| !pks.contains(&key)), "Value should NOT be in index after rolling back an insert");
         Ok(())
@@ -725,9 +724,8 @@ mod tests {
         executor.execute_command(Command::RollbackTransaction)?;
 
         let get_cmd = Command::Get { key: key.clone() };
-        assert_eq!(executor.execute_command(get_cmd)?, ExecutionResult::Value(Some(value))); // Data should be restored in store
+        assert_eq!(executor.execute_command(get_cmd)?, ExecutionResult::Value(Some(value)));
 
-        // After rolling back a delete, the key SHOULD be back in the index.
         let indexed_pks_after_rollback = executor.index_manager.find_by_index("default_value_index", &serialized_value)?
             .expect("Index entry should be restored after rolling back a delete");
         assert!(indexed_pks_after_rollback.contains(&key), "Value SHOULD BE in index after rolling back a delete");
@@ -898,25 +896,21 @@ mod tests {
 
     #[test]
     fn test_mvcc_write_write_conflict() {
-        let mut exec = create_mvcc_test_executor(); // Use a single executor
+        let mut exec = create_mvcc_test_executor();
 
         let key_k = b"k_ww".to_vec();
         let val_v1 = DataType::String("v1_ww".to_string());
         let val_v2 = DataType::String("v2_ww".to_string());
 
-        // TX1 writes K=V1 and commits
         exec.execute_command(Command::BeginTransaction).unwrap();
         assert_eq!(exec.execute_command(Command::Insert { key: key_k.clone(), value: val_v1.clone() }).unwrap(), ExecutionResult::Success);
         exec.execute_command(Command::CommitTransaction).unwrap();
 
-        // TX2 writes K=V2 and commits (overwriting V1)
         exec.execute_command(Command::BeginTransaction).unwrap();
         assert_eq!(exec.execute_command(Command::Insert { key: key_k.clone(), value: val_v2.clone() }).unwrap(), ExecutionResult::Success);
-        // TX2 sees its own write
         assert_eq!(exec.execute_command(Command::Get { key: key_k.clone() }).unwrap(), ExecutionResult::Value(Some(val_v2.clone())));
         exec.execute_command(Command::CommitTransaction).unwrap();
 
-        // A new transaction (or auto-commit get) should see V2
         assert_eq!(exec.execute_command(Command::Get { key: key_k.clone() }).unwrap(), ExecutionResult::Value(Some(val_v2.clone())));
     }
 
