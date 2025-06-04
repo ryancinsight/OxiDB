@@ -112,6 +112,23 @@ impl Index for HashIndex {
             .map_err(|e| DbError::DeserializationError(format!("Failed to deserialize index data: {}", e)))?;
         Ok(())
     }
+
+    fn update(&mut self, old_value_for_index: &Value, new_value_for_index: &Value, primary_key: &PrimaryKey) -> Result<(), DbError> {
+        if old_value_for_index == new_value_for_index {
+            // If the indexed value hasn't changed, no update to the index is needed for this specific key.
+            // However, ensure the primary_key is associated with new_value_for_index if it wasn't before
+            // (e.g. if this is part of a repair or if logic allows updating non-indexed fields only).
+            // For most cases, if old == new, the PK should already be there.
+            // A simple `insert` will ensure it's there without duplicating.
+            return self.insert(new_value_for_index, primary_key);
+        }
+
+        // Value changed, so remove old index entry and add new one.
+        self.delete(old_value_for_index, Some(primary_key))?;
+        self.insert(new_value_for_index, primary_key)?;
+        // self.save() // Consider persistence strategy
+        Ok(())
+    }
 }
 
 // Consider adding a `mod tests` block here later for unit tests.
@@ -122,6 +139,7 @@ mod tests {
     use crate::core::indexing::traits::Index;
     use tempfile::tempdir;
     use std::path::Path;
+    use crate::core::query::commands::Value; // Ensure Value is in scope for tests.
 
     // Helper to create a Value (Vec<u8>) from a string literal
     fn val(s: &str) -> Value {
@@ -352,6 +370,97 @@ mod tests {
         // HashIndex::new will attempt to load, but file won't exist.
         let index = HashIndex::new("non_existent_file_idx".to_string(), temp_dir.path())?;
         assert!(index.store.is_empty(), "Index store should be empty if no file exists");
+        Ok(())
+    }
+
+    #[test]
+    fn test_index_update_value_changed() -> Result<(), DbError> {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let mut index = HashIndex::new("update_idx".to_string(), temp_dir.path())?;
+
+        let old_val = val("old_value");
+        let new_val = val("new_value");
+        let pk1 = pk("pk1");
+
+        // Insert initial value
+        index.insert(&old_val, &pk1)?;
+        assert_eq!(index.find(&old_val)?.unwrap(), vec![pk1.clone()]);
+        assert!(index.find(&new_val)?.is_none());
+
+        // Update to new value
+        index.update(&old_val, &new_val, &pk1)?;
+        assert!(index.find(&old_val)?.is_none(), "Old value should be removed after update");
+        assert_eq!(index.find(&new_val)?.unwrap(), vec![pk1.clone()], "New value should be inserted after update");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_index_update_value_unchanged() -> Result<(), DbError> {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let mut index = HashIndex::new("update_unchanged_idx".to_string(), temp_dir.path())?;
+
+        let val1 = val("value1");
+        let pk1 = pk("pk1");
+
+        index.insert(&val1, &pk1)?;
+        assert_eq!(index.find(&val1)?.unwrap(), vec![pk1.clone()]);
+
+        // Update with the same value
+        index.update(&val1, &val1, &pk1)?;
+        assert_eq!(index.find(&val1)?.unwrap(), vec![pk1.clone()], "Value should still exist and be unchanged");
+        // Ensure no duplicate PKs if insert is called internally
+        let pks = index.store.get(&val1).unwrap();
+        assert_eq!(pks.len(), 1, "PK list should not grow if value is unchanged and PK already exists.");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_index_update_multiple_pks_one_changes() -> Result<(), DbError> {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let mut index = HashIndex::new("update_multi_pk_idx".to_string(), temp_dir.path())?;
+
+        let old_val = val("shared_old_value");
+        let new_val = val("shared_new_value");
+        let pk1 = pk("pk1"); // This one will change
+        let pk2 = pk("pk2"); // This one will remain associated with old_val
+
+        index.insert(&old_val, &pk1)?;
+        index.insert(&old_val, &pk2)?;
+        assert_eq!(index.find(&old_val)?.unwrap().len(), 2);
+
+        // Update pk1 from old_val to new_val
+        index.update(&old_val, &new_val, &pk1)?;
+
+        let old_val_pks = index.find(&old_val)?.expect("Old value should still exist for pk2");
+        assert_eq!(old_val_pks.len(), 1);
+        assert_eq!(old_val_pks[0], pk2); // pk2 should still be under old_val
+
+        let new_val_pks = index.find(&new_val)?.expect("New value should exist for pk1");
+        assert_eq!(new_val_pks.len(), 1);
+        assert_eq!(new_val_pks[0], pk1); // pk1 should now be under new_val
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_index_update_from_non_existent_old_value() -> Result<(), DbError> {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let mut index = HashIndex::new("update_non_old_idx".to_string(), temp_dir.path())?;
+
+        let old_val_non_existent = val("non_existent_old_value");
+        let new_val = val("new_value_from_nothing");
+        let pk1 = pk("pk1");
+
+        // Attempt update where old_val was never inserted for pk1
+        index.update(&old_val_non_existent, &new_val, &pk1)?;
+
+        // The new value should be inserted
+        assert_eq!(index.find(&new_val)?.unwrap(), vec![pk1.clone()]);
+        // The non-existent old value should still not be found
+        assert!(index.find(&old_val_non_existent)?.is_none());
+
         Ok(())
     }
 }

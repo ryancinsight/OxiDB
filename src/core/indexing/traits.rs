@@ -60,4 +60,19 @@ pub trait Index: Debug { // Add Debug as a supertrait
 
     /// Loads the index data from persistent storage.
     fn load(&mut self) -> Result<(), DbError>;
+
+    /// Updates an index entry.
+    /// This typically involves removing the old index entry (if the indexed value changed)
+    /// and inserting the new one.
+    ///
+    /// # Arguments
+    ///
+    /// * `old_value_for_index` - The old value that was indexed.
+    /// * `new_value_for_index` - The new value to be indexed.
+    /// * `primary_key` - The primary key of the row being updated.
+    ///
+    /// # Errors
+    ///
+    /// Returns `DbError` if the update fails.
+    fn update(&mut self, old_value_for_index: &Value, new_value_for_index: &Value, primary_key: &PrimaryKey) -> Result<(), DbError>;
 }

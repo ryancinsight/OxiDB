@@ -51,4 +51,15 @@ impl Transaction {
     pub fn set_state(&mut self, state: TransactionState) {
         self.state = state;
     }
+
+    /// Clones the transaction for storage operations, excluding logs.
+    /// The store itself doesn't need to know about the undo/redo logs for its basic put/get/delete.
+    pub fn clone_for_store(&self) -> Self {
+        Transaction {
+            id: self.id,
+            state: self.state.clone(), // State might be relevant for some store implementations (e.g. MVCC visibility)
+            undo_log: Vec::new(),
+            redo_log: Vec::new(),
+        }
+    }
 }

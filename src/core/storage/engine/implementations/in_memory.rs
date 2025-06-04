@@ -118,13 +118,85 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
         });
         Ok(())
     }
+
+    fn scan(&self) -> Result<Vec<(Vec<u8>, Vec<u8>)>, DbError> {
+        // This is a simplified scan that returns the latest version of each value,
+        // without considering MVCC visibility based on a snapshot ID.
+        // It's suitable for enabling basic iteration functionalities like in SELECT *.
+        let mut results = Vec::new();
+        // self.data is HashMap<Vec<u8>, Vec<VersionedValue<Vec<u8>>>>
+        // No read lock needed here as per current InMemoryKvStore structure (not using RwLock on self.data directly)
+        // However, if this were to be made thread-safe, a read lock on `self.data` would be needed.
+        // The trait KeyValueStore has Send + Sync, implying InMemoryKvStore should be thread-safe if shared.
+        // The current HashMap is not behind a RwLock. This is a pre-existing issue.
+        // For now, proceeding with direct iteration. If `InMemoryKvStore` is wrapped in `Arc<RwLock<...>>`
+        // at a higher level, that would provide safety. This method itself doesn't use internal locks.
+
+        for (key, version_vec) in self.data.iter() {
+            if let Some(latest_version) = version_vec.last() {
+                // We only consider items that are not "deleted" from an absolute latest perspective.
+                // A truly correct scan would need a snapshot_id and committed_ids.
+                // This simplification takes the last entry if it's not marked as expired by *any* transaction.
+                // Or, more simply for a "raw" scan, just take the value of the last entry.
+                // The prompt suggested: "if let Some(latest_version) = value_rc.versions.front()"
+                // but here versions are in a Vec, and new ones are pushed. So .last() is more appropriate.
+
+                // Let's refine to pick the latest *visible* version based on a "latest possible snapshot"
+                // This means taking the latest version whose created_tx_id is committed (assuming all prior are)
+                // and which is not expired by a committed transaction.
+                // This is still a simplification. A true latest committed scan:
+                let mut best_candidate: Option<&VersionedValue<Vec<u8>>> = None;
+                for version in version_vec.iter().rev() {
+                     // For a basic scan, let's assume we see all committed data and ignore uncommitted expirations.
+                     // This means we are looking for a version that *is* created and *is not* definitively expired.
+                     // For simplicity for THIS scan, let's just take the latest version that has no expired_tx_id at all.
+                     // This is the simplest way to get "a" version if multiple exist due to MVCC.
+                    if version.expired_tx_id.is_none() {
+                        best_candidate = Some(version);
+                        break;
+                    }
+                }
+                if best_candidate.is_none() && !version_vec.is_empty() {
+                    // If all versions are marked as expired, this key is effectively deleted.
+                    // However, a scan might still want to see the latest "tombstoned" value for some debug/raw cases.
+                    // For now, if all are expired, we don't include it.
+                    // If we wanted the absolute latest (even if tombstoned), we'd just use:
+                    // best_candidate = version_vec.last();
+                }
+
+
+                if let Some(visible_version) = best_candidate {
+                     results.push((key.clone(), visible_version.value.clone()));
+                }
+            }
+        }
+        Ok(results)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::transaction::Transaction; // For dummy transaction
-    use std::collections::HashSet; // Added for GC tests
+    use crate::core::transaction::{Transaction, TransactionState}; // For dummy transaction & state
+    use std::collections::HashSet;
+
+    // Helper to create a dummy transaction
+    fn tx(id: u64) -> Transaction {
+        Transaction::new(id)
+    }
+
+    // Helper to create a committed transaction
+    fn committed_tx(id: u64) -> Transaction {
+        let mut t = Transaction::new(id);
+        t.set_state(TransactionState::Committed);
+        t
+    }
+
+
+    // MVCC tests are complex and depend on TransactionManager state.
+    // The old tests are commented out because they don't reflect MVCC.
+    // New tests for put/get/delete under MVCC would need careful setup of
+    // transaction states and committed_ids passed to get/contains_key.
 
     // #[test]
     // fn test_put_and_get() {
@@ -304,5 +376,140 @@ mod tests {
         let dummy_wal_entry = WalEntry::TransactionCommit { transaction_id: 1 };
         assert!(store.log_wal_entry(&dummy_wal_entry).is_ok());
         // No other state to check, just that it doesn't panic or error.
+    }
+
+    // --- Tests for scan ---
+    #[test]
+    fn test_scan_empty_store() {
+        let store = InMemoryKvStore::new();
+        let result = store.scan().unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_scan_single_item_no_expiration() {
+        let mut store = InMemoryKvStore::new();
+        let key1 = b"key1".to_vec();
+        let val1 = b"val1".to_vec();
+        store.put(key1.clone(), val1.clone(), &tx(1)).unwrap(); // Assumes tx 1 is "committed" for scan
+
+        let result = store.scan().unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], (key1, val1));
+    }
+
+    #[test]
+    fn test_scan_multiple_items_latest_version_no_expiration() {
+        let mut store = InMemoryKvStore::new();
+        let key1 = b"key1".to_vec();
+        let val1_v1 = b"val1_v1".to_vec(); // tx1
+        let val1_v2 = b"val1_v2".to_vec(); // tx2, latest for key1
+
+        let key2 = b"key2".to_vec();
+        let val2_v1 = b"val2_v1".to_vec(); // tx3
+
+        store.put(key1.clone(), val1_v1.clone(), &tx(1)).unwrap();
+        store.put(key1.clone(), val1_v2.clone(), &tx(2)).unwrap();
+        store.put(key2.clone(), val2_v1.clone(), &tx(3)).unwrap();
+
+        let result = store.scan().unwrap();
+        assert_eq!(result.len(), 2);
+        // Order is not guaranteed by HashMap iteration, so check contents
+        let mut found_key1 = false;
+        let mut found_key2 = false;
+        for (k, v) in result {
+            if k == key1 {
+                assert_eq!(v, val1_v2); // Expect latest version of key1
+                found_key1 = true;
+            } else if k == key2 {
+                assert_eq!(v, val2_v1);
+                found_key2 = true;
+            }
+        }
+        assert!(found_key1 && found_key2, "Both keys should be found in scan");
+    }
+
+    #[test]
+    fn test_scan_item_with_all_versions_expired() {
+        let mut store = InMemoryKvStore::new();
+        let key1 = b"key1".to_vec();
+        let val1_v1 = b"val1_v1".to_vec();
+
+        store.put(key1.clone(), val1_v1.clone(), &tx(1)).unwrap();
+        // Now "delete" (expire) this version
+        store.delete(&key1, &tx(2)).unwrap(); // tx(2) expires the version from tx(1)
+
+        let result = store.scan().unwrap();
+        // The current scan logic: if all versions are expired, the key is not included.
+        assert!(result.is_empty(), "Scan should be empty if the only item's versions are all expired.");
+    }
+
+    #[test]
+    fn test_scan_item_with_some_versions_expired_takes_latest_non_expired() {
+        let mut store = InMemoryKvStore::new();
+        let key1 = b"key1".to_vec();
+        let val1_v1 = b"val1_v1_expired".to_vec(); // tx1, will be expired by tx2
+        let val1_v2 = b"val1_v2_current".to_vec(); // tx3, current
+        let val1_v3 = b"val1_v3_also_current_but_later_tx".to_vec(); // tx4, also current (if tx3 was also non-expired)
+
+        store.put(key1.clone(), val1_v1.clone(), &tx(1)).unwrap();
+        // Expire val1_v1 by tx(2)
+        let mut expiring_tx = tx(2); // This transaction "deletes" the version made by tx(1)
+        // Simulate the effect of put causing expiration:
+        // Find the version created by tx(1) and set its expired_tx_id to 2
+        if let Some(versions) = store.data.get_mut(&key1) {
+            if let Some(version_to_expire) = versions.iter_mut().find(|v| v.created_tx_id == 1) {
+                version_to_expire.expired_tx_id = Some(2);
+            }
+        }
+
+        store.put(key1.clone(), val1_v2.clone(), &tx(3)).unwrap(); // This is now the latest non-expired
+        store.put(key1.clone(), val1_v3.clone(), &tx(4)).unwrap(); // This is even later, also non-expired
+
+        let result = store.scan().unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], (key1.clone(), val1_v3.clone()), "Scan should return the latest non-expired version");
+    }
+
+    #[test]
+    fn test_scan_mixed_expired_and_active_keys() {
+        let mut store = InMemoryKvStore::new();
+        let key1 = b"key1_active".to_vec();
+        let val1 = b"val1".to_vec();
+        store.put(key1.clone(), val1.clone(), &tx(1)).unwrap();
+
+        let key2 = b"key2_expired".to_vec();
+        let val2 = b"val2".to_vec();
+        store.put(key2.clone(), val2.clone(), &tx(2)).unwrap();
+        store.delete(&key2, &tx(3)).unwrap(); // Expire key2
+
+        let key3 = b"key3_active_multi_ver".to_vec();
+        let val3_v1 = b"val3_v1".to_vec();
+        let val3_v2 = b"val3_v2".to_vec();
+        store.put(key3.clone(), val3_v1.clone(), &tx(4)).unwrap();
+        // Expire val3_v1
+         if let Some(versions) = store.data.get_mut(&key3) {
+            if let Some(version_to_expire) = versions.iter_mut().find(|v| v.created_tx_id == 4) {
+                version_to_expire.expired_tx_id = Some(5);
+            }
+        }
+        store.put(key3.clone(), val3_v2.clone(), &tx(6)).unwrap();
+
+
+        let result = store.scan().unwrap();
+        assert_eq!(result.len(), 2, "Should find key1 and key3, key2 is fully expired");
+
+        let mut found_key1 = false;
+        let mut found_key3 = false;
+        for (k,v) in result {
+            if k == key1 {
+                assert_eq!(v, val1);
+                found_key1 = true;
+            } else if k == key3 {
+                assert_eq!(v, val3_v2);
+                found_key3 = true;
+            }
+        }
+        assert!(found_key1 && found_key3);
     }
 }

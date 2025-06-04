@@ -13,7 +13,8 @@ pub struct VersionedValue<V> {
 }
 
 /// Trait for basic key-value store operations.
-pub trait KeyValueStore<K, V> {
+// Added Send + Sync + 'static bounds for broader usability (e.g. with Arc<RwLock<T>>)
+pub trait KeyValueStore<K, V>: Send + Sync + 'static {
     /// Inserts a key-value pair into the store.
     /// If the key already exists, its value is updated.
     fn put(&mut self, key: K, value: V, transaction: &Transaction) -> Result<(), DbError>;
@@ -40,4 +41,17 @@ pub trait KeyValueStore<K, V> {
     // Other potential methods:
     // fn scan(&self, key_prefix: &K) -> Result<Vec<(K, V)>, DbError>;
     // fn clear(&mut self) -> Result<(), DbError>;
+
+    /// Scans all key-value pairs in the store.
+    ///
+    /// This is a simple, non-MVCC scan for now, returning the latest versions of values.
+    /// The order of returned pairs is not guaranteed.
+    ///
+    /// # Returns
+    /// A `Result` containing a `Vec` of `(K, V)` tuples.
+    ///
+    /// # Type Bounds
+    /// Requires `K: Clone` and `V: Clone` as it returns owned copies.
+    fn scan(&self) -> Result<Vec<(K, V)>, DbError>
+        where K: Clone, V: Clone;
 }
