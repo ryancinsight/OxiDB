@@ -6,6 +6,7 @@ pub struct TransactionManager {
     active_transactions: HashMap<u64, Transaction>,
     next_transaction_id: u64,
     current_active_transaction_id: Option<u64>,
+    committed_tx_ids: Vec<u64>, // Added field
 }
 
 impl TransactionManager {
@@ -14,6 +15,7 @@ impl TransactionManager {
             active_transactions: HashMap::new(),
             next_transaction_id: 1,
             current_active_transaction_id: None,
+            committed_tx_ids: Vec::new(), // Initialize new field
         }
     }
 
@@ -47,11 +49,29 @@ impl TransactionManager {
         if let Some(id) = self.current_active_transaction_id.take() { // take() sets current_active_transaction_id to None
             if let Some(mut transaction) = self.active_transactions.remove(&id) {
                 transaction.set_state(TransactionState::Committed);
+                self.committed_tx_ids.push(id); // Add to committed list
                 // The transaction (and its undo_log) is removed from active_transactions.
                 // If it were to be kept for inspection, its undo_log should be cleared here.
             }
             // current_active_transaction_id is already None due to take()
         }
+    }
+
+    pub fn is_committed(&self, tx_id: u64) -> bool {
+        // Assumes committed_tx_ids is sorted because tx IDs are monotonic and pushed in order.
+        self.committed_tx_ids.binary_search(&tx_id).is_ok()
+    }
+
+    pub fn get_committed_tx_ids_snapshot(&self) -> Vec<u64> {
+        self.committed_tx_ids.clone()
+    }
+
+    pub fn get_oldest_active_tx_id(&self) -> Option<u64> {
+        self.active_transactions.values().map(|tx| tx.id).min()
+    }
+
+    pub fn get_next_transaction_id_peek(&self) -> u64 {
+        self.next_transaction_id
     }
 
     pub fn rollback_transaction(&mut self) {

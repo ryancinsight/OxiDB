@@ -19,6 +19,7 @@ pub enum Command {
     CommitTransaction,
     RollbackTransaction,
     FindByIndex { index_name: String, value: Value }, // Find by secondary index
+    Vacuum, // Added Vacuum command
     // Potentially others later, like:
     // Update { key: Key, value: Value },
     // Scan { prefix: Option<Key> },

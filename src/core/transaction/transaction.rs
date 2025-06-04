@@ -17,6 +17,13 @@ pub struct Transaction {
     /// The current state of the transaction.
     pub state: TransactionState,
     pub undo_log: Vec<UndoOperation>,
+    pub redo_log: Vec<RedoOperation>, // Added redo_log
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RedoOperation {
+    IndexInsert { key: Vec<u8>, value_for_index: Vec<u8> }, // Serialized value
+    IndexDelete { key: Vec<u8>, old_value_for_index: Vec<u8> }, // Old serialized value
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,6 +40,7 @@ impl Transaction {
             id,
             state: TransactionState::Active,
             undo_log: Vec::new(),
+            redo_log: Vec::new(), // Initialize redo_log
         }
     }
 
