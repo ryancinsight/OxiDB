@@ -52,7 +52,7 @@ impl Index for HashIndex {
     }
 
     fn insert(&mut self, value: &Value, primary_key: &PrimaryKey) -> Result<(), DbError> {
-        let mut primary_keys = self.store.entry(value.clone()).or_insert_with(Vec::new);
+        let primary_keys = self.store.entry(value.clone()).or_insert_with(Vec::new);
         if !primary_keys.contains(primary_key) {
             primary_keys.push(primary_key.clone());
         }

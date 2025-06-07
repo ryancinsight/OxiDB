@@ -28,7 +28,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     }
 
     pub(crate) fn handle_rollback_transaction(&mut self) -> Result<ExecutionResult, DbError> {
-        if let Some(mut active_tx) = self.transaction_manager.get_active_transaction_mut() {
+        if let Some(active_tx) = self.transaction_manager.get_active_transaction_mut() {
             let tx_id_to_release = active_tx.id;
 
             let temp_transaction_for_undo = Transaction::new(tx_id_to_release);

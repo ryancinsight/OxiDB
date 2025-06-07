@@ -61,6 +61,10 @@ impl IndexManager {
         self.indexes.get(index_name).cloned()
     }
 
+    pub fn base_path(&self) -> PathBuf {
+        self.base_path.clone()
+    }
+
     pub fn insert_into_index(
         &self,
         index_name: &str,

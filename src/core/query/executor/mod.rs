@@ -11,7 +11,7 @@ pub mod planner; // Added planner module
 #[cfg(test)]
 pub mod tests;
 
-pub use planner::*; // Re-export planner contents
+ // Re-export planner contents
 
 // Necessary imports for struct definitions and the `new` method
 use crate::core::common::error::DbError;
@@ -71,5 +71,9 @@ impl QueryExecutor<SimpleFileKvStore> {
     pub fn persist(&mut self) -> Result<(), DbError> {
         self.store.write().unwrap().save_to_disk()?;
         self.index_manager.save_all_indexes()
+    }
+
+    pub fn index_base_path(&self) -> PathBuf {
+        self.index_manager.base_path()
     }
 }

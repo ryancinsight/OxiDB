@@ -154,7 +154,7 @@ mod tests {
 
    #[test]
    fn test_oxidb_new_from_config_file_custom_paths() {
-       use crate::core::config::OxidbConfig; // Config is used here
+       use crate::core::Config; // Config is used here
        use tempfile::tempdir;
 
        let dir = tempdir().unwrap();
@@ -165,13 +165,13 @@ mod tests {
 
        let config_content = format!(
            r#"
-           data_dir = "{}"
-           db_filename = "{}"
+           database_file_path = "{}/{}"
            wal_enabled = true
-           index_dir = "{}"
+           index_base_path = "{}/{}"
            "#,
            custom_data_dir.to_str().unwrap().replace("\\", "/"),
            custom_db_filename,
+           custom_data_dir.to_str().unwrap().replace("\\", "/"), // Assuming index dir is also under custom_data_dir for this test
            custom_index_dir
        );
 
@@ -179,16 +179,18 @@ mod tests {
        let mut file = File::create(&config_file_path).unwrap(); // File is used here
        file.write_all(config_content.as_bytes()).unwrap(); // Write is used here
 
-       let db = Oxidb::new_from_config_file(Some(config_file_path.clone())).unwrap();
+       let mut db = Oxidb::new_from_config_file(config_file_path.clone()).unwrap();
 
-       assert_eq!(db.config.data_dir, custom_data_dir);
-       assert_eq!(db.config.db_filename, custom_db_filename);
-       assert_eq!(db.config.index_dir, custom_index_dir);
+       let expected_db_path = custom_data_dir.join(custom_db_filename);
+       assert_eq!(db.database_path(), expected_db_path);
+       // For index_path, the config now specifies a full path for index_base_path
+       let expected_index_path = custom_data_dir.join(custom_index_dir);
+       assert_eq!(db.index_path(), expected_index_path);
 
        db.execute_query_str("INSERT test 1").unwrap();
        let val = db.execute_query_str("GET test").unwrap();
        // This test was missing DataType import if not for the global one.
-       assert_eq!(val, Some(crate::core::types::DataType::Integer(1)));
+       assert_eq!(val, crate::core::query::executor::ExecutionResult::Value(Some(crate::core::types::DataType::Integer(1))));
 
        fs::remove_file(&config_file_path).ok();
        fs::remove_dir_all(&custom_data_dir).ok();
@@ -196,7 +198,7 @@ mod tests {
 
    #[test]
    fn test_oxidb_new_from_missing_config_file_uses_defaults() {
-       use crate::core::config::OxidbConfig; // Config is used here
+       use crate::core::Config; // Config is used here
        use tempfile::tempdir;
        // Path is used by PathBuf::from if not already imported
        // fs is used by fs::remove_file etc. if not already imported
@@ -212,7 +214,10 @@ mod tests {
         let original_cwd = std::env::current_dir().unwrap();
         std::env::set_current_dir(current_test_dir).unwrap();
 
-       let mut db = Oxidb::new_from_config_file(Some(non_existent_config_path)).expect("Failed to create Oxidb with non-existent config");
+       let mut db = Oxidb::new_from_config_file(non_existent_config_path).expect("Failed to create Oxidb with non-existent config");
+
+       assert_eq!(current_test_dir.join(db.database_path()), default_db_path, "Database path should match default absolute path");
+       assert_eq!(current_test_dir.join(db.index_path()), default_indexes_path, "Index path should match default absolute path");
 
        let key = b"test_key_defaults".to_vec();
        let value = "test_value_defaults".to_string();

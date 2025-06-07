@@ -133,7 +133,7 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
         // at a higher level, that would provide safety. This method itself doesn't use internal locks.
 
         for (key, version_vec) in self.data.iter() {
-            if let Some(latest_version) = version_vec.last() {
+            if let Some(_latest_version) = version_vec.last() {
                 // We only consider items that are not "deleted" from an absolute latest perspective.
                 // A truly correct scan would need a snapshot_id and committed_ids.
                 // This simplification takes the last entry if it's not marked as expired by *any* transaction.

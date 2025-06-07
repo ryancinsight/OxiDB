@@ -439,7 +439,7 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         Ok(false) // Key not found or no visible version to delete
     }
 
-    fn contains_key(&self, key: &Vec<u8>, snapshot_id: u64, committed_ids: &HashSet<u64>) -> Result<bool, DbError> {
+    fn contains_key(&self, _key: &Vec<u8>, _snapshot_id: u64, _committed_ids: &HashSet<u64>) -> Result<bool, DbError> {
         // Placeholder for MVCC
         // For now, mimics pre-MVCC behavior.
         // Ok(self.cache.contains_key(key))

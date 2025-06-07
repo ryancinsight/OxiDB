@@ -5,6 +5,7 @@
 
 use crate::core::common::error::DbError;
 use crate::core::config::Config; // Added
+use std::path::PathBuf; // Added for return types
 use crate::core::query::commands::{Command, Key}; // Value removed
 use crate::core::types::DataType; // Added
 use serde_json; // Added for JsonBlob stringification
@@ -257,7 +258,7 @@ impl Oxidb {
     /// // Attempt an invalid query
     /// match db.execute_query_str("INVALID COMMAND") {
     ///     Err(oxidb::core::common::error::DbError::InvalidQuery(msg)) => {
-    ///         assert!(msg.contains("Unknown command"));
+    ///         assert!(msg.contains("SQL parse error: Unknown statement type at position 0"));
     ///         eprintln!("Invalid query as expected: {}", msg);
     ///     },
     ///     _ => panic!("Expected InvalidQuery error"),
@@ -268,6 +269,16 @@ impl Oxidb {
             Ok(command) => self.executor.execute_command(command), // Use self.executor
             Err(e) => Err(e),
         }
+    }
+
+    /// Returns the path to the main database file.
+    pub fn database_path(&self) -> PathBuf {
+        self.executor.store.read().unwrap().file_path().to_path_buf()
+    }
+
+    /// Returns the base path for index storage.
+    pub fn index_path(&self) -> PathBuf {
+        self.executor.index_base_path()
     }
 }
 

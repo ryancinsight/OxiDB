@@ -75,7 +75,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             return Ok(ExecutionResult::Success);
         }
 
-        let mut updated_count = 0;
+        // TODO: Consider returning the updated_count in ExecutionResult
+        let mut _updated_count = 0;
 
         for key in keys_to_update {
             let (current_op_tx_id, committed_ids_for_get, is_auto_commit) =
@@ -141,7 +142,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     self.store.write().unwrap().log_wal_entry(&commit_entry)?;
                     self.transaction_manager.add_committed_tx_id(current_op_tx_id);
                 }
-                updated_count += 1;
+                _updated_count += 1;
             }
 
             if is_auto_commit {

@@ -3,11 +3,11 @@ use crate::core::common::serialization::serialize_data_type;
 use crate::core::execution::operators::{
     TableScanOperator, IndexScanOperator, FilterOperator, ProjectOperator, NestedLoopJoinOperator,
 };
-use crate::core::execution::{ExecutionOperator, Tuple};
+use crate::core::execution::{ExecutionOperator};
 use crate::core::optimizer::QueryPlanNode;
 use crate::core::query::executor::QueryExecutor; // To access self.store, self.index_manager
 use crate::core::storage::engine::traits::KeyValueStore;
-use crate::core::types::DataType;
+
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -113,11 +113,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 let operator = NestedLoopJoinOperator::new(left_operator, right_operator, join_predicate);
                 Ok(Box::new(operator))
             }
-            // Add other QueryPlanNode variants as they are defined and supported
-             _ => Err(DbError::NotImplemented(format!(
-                "QueryPlanNode variant not yet supported in build_execution_tree: {:?}",
-                plan
-            ))),
+            // If QueryPlanNode is extended, new variants must be handled here.
+            // The compiler will error if the match is not exhaustive.
         }
     }
 }
