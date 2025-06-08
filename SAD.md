@@ -88,9 +88,40 @@ oxidb will follow a layered architecture consisting of the following primary com
 *   A typical read query: `API Layer -> Query Parser -> Query Executor -> Storage Engine -> Query Executor -> API Layer`
 *   A typical write query: `API Layer -> Query Parser -> Query Executor -> Transaction Manager -> Storage Engine -> Transaction Manager -> Query Executor -> API Layer`
 
-## 6. Modularity and Separation of Concerns
+## 6. Modularity, Separation of Concerns, and Directory Structure
 
-The file structure (e.g., `src/core/storage/engine`) reflects the modular design. Each module will have a well-defined public API (`mod.rs` or `lib.rs` within the module's directory) to interact with other modules. This deep vertical hierarchy aims to clearly separate concerns at each level of the system.
+The architecture emphasizes strong modularity and clear separation of concerns, which is directly reflected in the project's directory structure. We adhere to a **Deep Vertical File Tree** philosophy, particularly within the `src/core` module.
+
+**Philosophy:**
+
+*   **Clear Ownership:** Each fine-grained component or sub-feature resides in its own dedicated directory. This makes ownership واضح (clear) and responsibilities distinct.
+*   **Reduced Cognitive Load:** When working on a specific deeply nested component (e.g., a particular storage engine mechanism or a query parsing rule), the relevant files are co-located, minimizing the need to jump across wide, flat directory structures.
+*   **Improved Navigability:** While the tree can become deep, it provides a logical path to components. For instance, a B-Tree implementation within the storage engine would naturally reside in a path like `src/core/storage/engine/b_tree/`.
+*   **Scalability:** As the system grows, new sub-modules or deeper specializations can be added without cluttering existing directories, maintaining organizational clarity.
+
+**Implementation in `oxidb`:**
+
+The `src/` directory is organized as follows:
+
+*   **`src/api/`**: Contains all code related to the database's external Application Programming Interface.
+*   **`src/core/`**: Houses the core database logic. This is where the deep vertical structure is most prominent:
+    *   **`src/core/common/`**: For truly cross-cutting concerns like custom error types (`error.rs`), serialization utilities (`serialization.rs`), shared traits (`traits.rs`), and fundamental data type definitions (`types/`). The `types/` subdirectory further organizes type-related definitions.
+    *   **`src/core/execution/`**: Manages the execution of query plans.
+        *   `operators/`: Contains distinct subdirectories for different types of execution operators (e.g., `scans/`, `joins/`, `filters/`), allowing each operator's logic to be self-contained.
+    *   **`src/core/indexing/`**: Dedicated to data indexing mechanisms. Specific index types (e.g., `btree/`, `hash/`) have their own subdirectories. This consolidates all indexing logic previously scattered (e.g., removing `src/core/storage/indexing/`).
+    *   **`src/core/optimizer/`**: Concerned with query optimization.
+        *   `rules/`: Subdirectory for individual optimization rules or rule sets.
+    *   **`src/core/query/`**: Handles the initial stages of query processing.
+        *   `parser/`: Contains all logic for parsing SQL strings into an Abstract Syntax Tree (AST), including lexer and AST definitions.
+        *   `binder/`: For semantic analysis and binding identifiers.
+        *   `planner/`: For converting ASTs into logical and physical query plans.
+        *   `statements/`: For specific SQL statement handlers or structures.
+    *   **`src/core/storage/`**: Manages the persistence and retrieval of data.
+        *   `engine/`: The core storage engine, with subdirectories for its fundamental components like `page_manager/`, `buffer_pool/`, `wal/` (Write-Ahead Log), `heap/` (for table heap management), and potentially specific storage structures like `b_tree/` if tightly coupled with the engine's page management.
+    *   **`src/core/transaction/`**: Manages transaction lifecycle and concurrency control.
+*   **`src/lib.rs`**: The root of the Rust library.
+
+Each module (directory) is intended to have a well-defined public API, primarily through its `mod.rs` file, which exports the necessary items for interaction with other modules. This hierarchical and granular approach aims to make the codebase more understandable, maintainable, and easier to extend by isolating concerns at each level of the system.
 
 ## 7. Safety and Rust Features
 
