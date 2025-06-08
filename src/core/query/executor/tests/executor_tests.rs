@@ -12,7 +12,7 @@ mod tests {
     use std::fs::File as StdFile;
     use std::io::{BufReader, ErrorKind as IoErrorKind};
     use std::path::PathBuf;
-    use paste::paste; // Used by define_executor_tests! macro
+     // Used by define_executor_tests! macro
     // use std::any::TypeId; // For conditional test logic if needed, though trying to avoid - REMOVED
     use crate::core::common::error::DbError;
     // use std::collections::HashSet; // REMOVED - Not directly used in this test file

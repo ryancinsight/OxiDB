@@ -54,7 +54,8 @@ impl FilterOperator {
                     _ => Err(DbError::NotImplemented(format!("Operator '{}' not implemented.", simple_predicate.operator))),
                 }
             }
-            _ => Err(DbError::NotImplemented("Complex expressions not supported.".to_string())),
+            // Since Expression only has one variant (Predicate), this match is exhaustive.
+            // If other Expression variants are added, this match will need to be updated.
         }
     }
 }

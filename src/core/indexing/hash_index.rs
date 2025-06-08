@@ -138,7 +138,7 @@ mod tests {
     use super::*;
     use crate::core::indexing::traits::Index;
     use tempfile::tempdir;
-    use std::path::Path;
+
     use crate::core::query::commands::Value; // Ensure Value is in scope for tests.
 
     // Helper to create a Value (Vec<u8>) from a string literal
@@ -333,7 +333,7 @@ mod tests {
         }
 
         // Create a new index instance and load data
-        let mut index2 = HashIndex::new(index_name, index_path)?;
+        let index2 = HashIndex::new(index_name, index_path)?;
         // New already loads, but we can call load explicitly if we want to test that part,
         // though `new` already covers the file-exists-load scenario.
         // For an explicit load test on an existing instance:

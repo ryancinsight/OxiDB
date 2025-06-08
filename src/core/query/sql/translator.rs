@@ -91,6 +91,7 @@ fn translate_select_columns(ast_columns: Vec<ast::SelectColumn>) -> commands::Se
 mod tests {
     use super::*;
     use crate::core::types::DataType;
+
     // Use aliased imports for ast items used in tests to avoid conflict with `super::ast`
     use crate::core::query::sql::ast::{
         AstLiteralValue as TestAstLiteralValue,
@@ -282,7 +283,7 @@ mod tests {
         let command = translate_ast_to_command(ast_stmt).unwrap();
         match command {
             Command::Select { columns, source, condition } => {
-                assert_eq!(columns, SelectColumnSpec::All);
+                assert_eq!(columns, commands::SelectColumnSpec::All);
                 assert_eq!(source, "users");
                 assert!(condition.is_none());
             }
@@ -304,7 +305,7 @@ mod tests {
         let command = translate_ast_to_command(ast_stmt).unwrap();
         match command {
             Command::Select { columns, source, condition } => {
-                assert_eq!(columns, SelectColumnSpec::Specific(vec!["email".to_string()]));
+                assert_eq!(columns, commands::SelectColumnSpec::Specific(vec!["email".to_string()]));
                 assert_eq!(source, "customers");
                 assert!(condition.is_some());
                 let cond_val = condition.unwrap();

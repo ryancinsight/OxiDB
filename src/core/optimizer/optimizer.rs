@@ -73,7 +73,8 @@ impl Optimizer {
                 };
                 Ok(plan_node)
             }
-            _ => Err(DbError::NotImplemented("Plan generation for this statement type is not implemented.".to_string())),
+            // If other AstStatement variants (like Insert, Delete) are added,
+            // this match will become non-exhaustive, requiring updates.
         }
     }
 

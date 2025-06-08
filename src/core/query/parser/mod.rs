@@ -193,7 +193,7 @@ fn parse_legacy_command_string(query_str: &str) -> Result<Command, DbError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::query::commands::{SelectColumnSpec, SqlCondition, SqlAssignment};
+    use crate::core::query::commands::{SelectColumnSpec};
 
     #[test]
     fn test_legacy_parse_get() {
@@ -385,11 +385,11 @@ mod tests {
         let result = parse_query_string("SELECT name FROM users WHERE id =;");
         match result {
             Err(DbError::InvalidQuery(msg)) => {
-                assert!(msg.contains("SQL parse error") || msg.contains("SQL tokenizer error") || msg.contains("Cannot parse"));
-                assert!(msg.contains("literal value") || msg.contains("Unexpected token: expected literal value"));
+                // Check for the specific error message propagated from the new parser logic
+                assert!(msg.contains("Expected value for condition"));
             }
             Ok(cmd) => panic!("Expected InvalidQuery error for SQL syntax error, got Ok({:?})", cmd),
-            _ => panic!("Expected InvalidQuery error"),
+            other_err => panic!("Expected InvalidQuery error, got {:?}", other_err),
         }
     }
     

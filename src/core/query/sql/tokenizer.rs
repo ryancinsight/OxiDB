@@ -55,6 +55,11 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn read_identifier_or_keyword(&mut self, start_idx: usize) -> Result<Token, SqlTokenizerError> {
+        // The `end_idx` variable is used to determine the end of the slice for an identifier/keyword.
+        // It's initialized with `start_idx` and updated in the loop.
+        // The compiler might warn about `unused_assignments` if the loop condition isn't met initially,
+        // but given the calling context (first char is alphanumeric/underscore), the loop runs at least once.
+        // The variable is essential for `&self.input[start_idx..=end_idx]`.
         let mut end_idx = start_idx;
         while let Some((idx, ch)) = self.chars.peek() {
             if ch.is_alphanumeric() || *ch == '_' {

@@ -154,7 +154,7 @@ mod tests {
 
    #[test]
    fn test_oxidb_new_from_config_file_custom_paths() {
-       use crate::core::Config; // Config is used here
+        // Config is used here
        use tempfile::tempdir;
 
        let dir = tempdir().unwrap();
@@ -198,7 +198,7 @@ mod tests {
 
    #[test]
    fn test_oxidb_new_from_missing_config_file_uses_defaults() {
-       use crate::core::Config; // Config is used here
+        // Config is used here
        use tempfile::tempdir;
        // Path is used by PathBuf::from if not already imported
        // fs is used by fs::remove_file etc. if not already imported

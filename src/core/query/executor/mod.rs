@@ -69,7 +69,12 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 // Methods specific to QueryExecutor when the store is SimpleFileKvStore
 impl QueryExecutor<SimpleFileKvStore> {
     pub fn persist(&mut self) -> Result<(), DbError> {
-        self.store.write().unwrap().save_to_disk()?;
+        // Call the new persist method on SimpleFileKvStore
+        self.store.read().unwrap().persist()?; // Use read lock if persist only needs to read cache
+                                               // If persist needs to modify internal state of store (e.g. WAL writer),
+                                               // then a write lock might be needed: self.store.write().unwrap().persist()?;
+                                               // Given save_data_to_disk takes &self.cache, read lock is fine for cache access.
+                                               // WalWriter is not directly used by persist() method of SimpleFileKvStore.
         self.index_manager.save_all_indexes()
     }
 
