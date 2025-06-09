@@ -1,76 +1,72 @@
 use thiserror::Error;
 
-#[derive(Error, Debug)] // PartialEq will be implemented manually
-pub enum DbError {
+#[derive(Error, Debug)]
+pub enum OxidbError {
     #[error("IO Error: {0}")]
-    IoError(#[from] std::io::Error),
+    Io(#[from] std::io::Error),
+
     #[error("Serialization Error: {0}")]
-    SerializationError(String), // Or a more specific error type from a serialization crate
+    Serialization(String),
+
     #[error("Deserialization Error: {0}")]
-    DeserializationError(String), // Or a more specific error type
-    #[error("Key not found: {key}")]
-    NotFoundError { key: String },
-    #[error("Invalid Query: {0}")]
-    InvalidQuery(String),
-    #[error("Transaction Error: {0}")]
-    TransactionError(String),
+    Deserialization(String), // Kept separate from Serialization for now
+
+    #[error("JSON Serialization/Deserialization Error: {0}")]
+    Json(#[from] serde_json::Error),
+
+    #[error("Parsing Error: {0}")]
+    Parsing(String), // Generic parsing error
+
+    #[error("SQL Parsing Error: {0}")]
+    SqlParsing(String), // Specific for SQL, was InvalidQuery
+
+    #[error("Execution Error: {0}")]
+    Execution(String),
+
     #[error("Storage Error: {0}")]
-    StorageError(String),
-    #[error("Internal Error: {0}")]
-    InternalError(String), // For unexpected issues
+    Storage(String), // Was StorageError
+
+    #[error("Transaction Error: {0}")]
+    Transaction(String), // Was TransactionError
+
+    #[error("Key not found: {key}")]
+    NotFound { key: String }, // Was NotFoundError
+
+    #[error("Resource already exists: {name}")]
+    AlreadyExists { name: String },
+
+    #[error("Feature not implemented: {feature}")]
+    NotImplemented { feature: String }, // Was NotImplemented(String) and similar to UnsupportedOperation
+
+    #[error("Invalid input: {message}")]
+    InvalidInput { message: String },
+
     #[error("Index Error: {0}")]
-    IndexError(String),    // Errors related to index operations
+    Index(String), // Was IndexError
+
     #[error("Lock Error: {0}")]
-    LockError(String),     // Errors related to RwLock or other synchronization primitives
+    Lock(String), // Was LockError
+
     #[error("No active transaction")]
     NoActiveTransaction,
+
     #[error("Lock conflict for key {key:?} on transaction {current_tx}. Locked by transaction {locked_by_tx:?}")]
     LockConflict { key: Vec<u8>, current_tx: u64, locked_by_tx: Option<u64> },
+
     #[error("Lock acquisition timeout for key {key:?} on transaction {current_tx}")]
     LockAcquisitionTimeout { key: Vec<u8>, current_tx: u64 },
+
     #[error("Configuration error: {0}")]
-    ConfigError(String),
-    #[error("Unsupported Operation: {0}")]
-    UnsupportedOperation(String),
+    Configuration(String), // Was ConfigError
+
     #[error("Type Error: {0}")]
-    TypeError(String),
-    #[error("Internal Engine Error: {0}")] // Added Internal variant
-    Internal(String),
-    #[error("Feature Not Implemented: {0}")] // Added NotImplemented variant
-    NotImplemented(String),
-    // Add more variants as needed
+    Type(String), // Was TypeError
+
+    #[error("Internal Error: {0}")]
+    Internal(String), // Was InternalError and Internal(String)
 }
 
-impl PartialEq for DbError {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (DbError::IoError(e1), DbError::IoError(e2)) => e1.kind() == e2.kind(),
-            (DbError::SerializationError(s1), DbError::SerializationError(s2)) => s1 == s2,
-            (DbError::DeserializationError(s1), DbError::DeserializationError(s2)) => s1 == s2,
-            (DbError::NotFoundError{key: k1}, DbError::NotFoundError{key: k2}) => k1 == k2,
-            (DbError::InvalidQuery(s1), DbError::InvalidQuery(s2)) => s1 == s2,
-            (DbError::TransactionError(s1), DbError::TransactionError(s2)) => s1 == s2,
-            (DbError::StorageError(s1), DbError::StorageError(s2)) => s1 == s2,
-            (DbError::InternalError(s1), DbError::InternalError(s2)) => s1 == s2,
-            (DbError::IndexError(s1), DbError::IndexError(s2)) => s1 == s2,
-            (DbError::LockError(s1), DbError::LockError(s2)) => s1 == s2,
-            (DbError::NoActiveTransaction, DbError::NoActiveTransaction) => true,
-            (DbError::LockConflict { key: k1, current_tx: ct1, locked_by_tx: lbt1 },
-             DbError::LockConflict { key: k2, current_tx: ct2, locked_by_tx: lbt2 }) => {
-                k1 == k2 && ct1 == ct2 && lbt1 == lbt2
-            }
-            (DbError::LockAcquisitionTimeout { key: k1, current_tx: ct1 },
-             DbError::LockAcquisitionTimeout { key: k2, current_tx: ct2 }) => {
-                k1 == k2 && ct1 == ct2
-            }
-            (DbError::ConfigError(s1), DbError::ConfigError(s2)) => s1 == s2,
-            (DbError::UnsupportedOperation(s1), DbError::UnsupportedOperation(s2)) => s1 == s2,
-            (DbError::TypeError(s1), DbError::TypeError(s2)) => s1 == s2,
-            (DbError::Internal(s1), DbError::Internal(s2)) => s1 == s2, // Added for Internal
-            (DbError::NotImplemented(s1), DbError::NotImplemented(s2)) => s1 == s2, // Added for NotImplemented
-            _ => false, // Different variants are not equal
-        }
-    }
-}
-
-// Implement std::fmt::Display for DbError
+// Note: Removed manual PartialEq. If needed, it should be added carefully,
+// considering that std::io::Error and other wrapped errors might not implement PartialEq.
+// For many error types, direct comparison isn't as common as matching on the variant.
+// thiserror does not automatically derive PartialEq or Eq.

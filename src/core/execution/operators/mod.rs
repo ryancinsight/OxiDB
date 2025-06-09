@@ -18,14 +18,14 @@
 // All individual operators have been moved to their own files.
 // This file will now just declare the modules and re-export.
 
-pub mod table_scan;
-pub mod index_scan;
 pub mod filter;
-pub mod project;
+pub mod index_scan;
 pub mod nested_loop_join;
+pub mod project;
+pub mod table_scan;
 
-pub use table_scan::*;
-pub use index_scan::*;
 pub use filter::*;
-pub use project::*;
+pub use index_scan::*;
 pub use nested_loop_join::*;
+pub use project::*;
+pub use table_scan::*;

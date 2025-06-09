@@ -1,7 +1,7 @@
 use crate::core::storage::engine::implementations::in_memory::InMemoryKvStore;
 use crate::core::storage::engine::traits::{KeyValueStore, VersionedValue};
-use crate::core::transaction::Transaction;
 use crate::core::storage::engine::wal::WalEntry; // Though not strictly used by InMemory, tests might use it for completeness/shared helpers
+use crate::core::transaction::Transaction;
 use std::collections::HashSet;
 
 // Helper to create a dummy transaction
@@ -97,9 +97,18 @@ fn tx(id: u64) -> Transaction {
 fn test_gc_removes_old_uncommitted_versions() {
     let mut store = InMemoryKvStore::new();
     let key = b"key1".to_vec();
-    let val1 = VersionedValue { value: b"val1_uncommitted_old".to_vec(), created_tx_id: 1, expired_tx_id: None };
-    let val2 = VersionedValue { value: b"val2_committed".to_vec(), created_tx_id: 2, expired_tx_id: None };
-    let val3 = VersionedValue { value: b"val3_uncommitted_active".to_vec(), created_tx_id: 10, expired_tx_id: None };
+    let val1 = VersionedValue {
+        value: b"val1_uncommitted_old".to_vec(),
+        created_tx_id: 1,
+        expired_tx_id: None,
+    };
+    let val2 =
+        VersionedValue { value: b"val2_committed".to_vec(), created_tx_id: 2, expired_tx_id: None };
+    let val3 = VersionedValue {
+        value: b"val3_uncommitted_active".to_vec(),
+        created_tx_id: 10,
+        expired_tx_id: None,
+    };
 
     store.data.insert(key.clone(), vec![val1, val2.clone(), val3.clone()]);
 
@@ -120,10 +129,26 @@ fn test_gc_removes_old_committed_and_old_expired_versions() {
     let mut store = InMemoryKvStore::new();
     let key = b"key2".to_vec();
 
-    let val1 = VersionedValue { value: b"val1_comm_exp_old".to_vec(), created_tx_id: 1, expired_tx_id: Some(3) };
-    let val2 = VersionedValue { value: b"val2_comm_not_exp".to_vec(), created_tx_id: 2, expired_tx_id: None };
-    let val3 = VersionedValue { value: b"val3_comm_exp_active".to_vec(), created_tx_id: 4, expired_tx_id: Some(10) };
-    let val4 = VersionedValue { value: b"val4_comm_exp_uncomm".to_vec(), created_tx_id: 5, expired_tx_id: Some(11) };
+    let val1 = VersionedValue {
+        value: b"val1_comm_exp_old".to_vec(),
+        created_tx_id: 1,
+        expired_tx_id: Some(3),
+    };
+    let val2 = VersionedValue {
+        value: b"val2_comm_not_exp".to_vec(),
+        created_tx_id: 2,
+        expired_tx_id: None,
+    };
+    let val3 = VersionedValue {
+        value: b"val3_comm_exp_active".to_vec(),
+        created_tx_id: 4,
+        expired_tx_id: Some(10),
+    };
+    let val4 = VersionedValue {
+        value: b"val4_comm_exp_uncomm".to_vec(),
+        created_tx_id: 5,
+        expired_tx_id: Some(11),
+    };
 
     store.data.insert(key.clone(), vec![val1, val2.clone(), val3.clone(), val4.clone()]);
 
@@ -149,7 +174,11 @@ fn test_gc_removes_old_committed_and_old_expired_versions() {
 fn test_gc_removes_key_if_all_versions_are_gc_ed() {
     let mut store = InMemoryKvStore::new();
     let key = b"key3".to_vec();
-    let val1 = VersionedValue { value: b"val1_uncommitted_old".to_vec(), created_tx_id: 1, expired_tx_id: None };
+    let val1 = VersionedValue {
+        value: b"val1_uncommitted_old".to_vec(),
+        created_tx_id: 1,
+        expired_tx_id: None,
+    };
 
     store.data.insert(key.clone(), vec![val1]);
 
@@ -165,7 +194,11 @@ fn test_gc_removes_key_if_all_versions_are_gc_ed() {
 fn test_gc_keeps_uncommitted_versions_from_active_transactions() {
     let mut store = InMemoryKvStore::new();
     let key = b"key4".to_vec();
-    let val1 = VersionedValue { value: b"val1_uncommitted_active".to_vec(), created_tx_id: 6, expired_tx_id: None };
+    let val1 = VersionedValue {
+        value: b"val1_uncommitted_active".to_vec(),
+        created_tx_id: 6,
+        expired_tx_id: None,
+    };
 
     store.data.insert(key.clone(), vec![val1.clone()]);
 
@@ -268,7 +301,11 @@ fn test_scan_item_with_some_versions_expired_takes_latest_non_expired() {
 
     let result = store.scan().unwrap();
     assert_eq!(result.len(), 1);
-    assert_eq!(result[0], (key1.clone(), val1_v3.clone()), "Scan should return the latest non-expired version");
+    assert_eq!(
+        result[0],
+        (key1.clone(), val1_v3.clone()),
+        "Scan should return the latest non-expired version"
+    );
 }
 
 #[test]
@@ -287,7 +324,7 @@ fn test_scan_mixed_expired_and_active_keys() {
     let val3_v1 = b"val3_v1".to_vec();
     let val3_v2 = b"val3_v2".to_vec();
     store.put(key3.clone(), val3_v1.clone(), &tx(4)).unwrap();
-     if let Some(versions) = store.data.get_mut(&key3) {
+    if let Some(versions) = store.data.get_mut(&key3) {
         if let Some(version_to_expire) = versions.iter_mut().find(|v| v.created_tx_id == 4) {
             version_to_expire.expired_tx_id = Some(5);
         }
@@ -299,7 +336,7 @@ fn test_scan_mixed_expired_and_active_keys() {
 
     let mut found_key1 = false;
     let mut found_key3 = false;
-    for (k,v) in result {
+    for (k, v) in result {
         if k == key1 {
             assert_eq!(v, val1);
             found_key1 = true;

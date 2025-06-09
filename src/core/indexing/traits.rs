@@ -1,13 +1,14 @@
-use crate::core::common::error::DbError;
-use crate::core::query::commands::Value; // Using Value for flexibility in indexed values
+use crate::core::common::OxidbError; // Changed
 use crate::core::query::commands::Key as PrimaryKey; // Alias for clarity
+use crate::core::query::commands::Value; // Using Value for flexibility in indexed values
 use std::fmt::Debug; // Import Debug
 
 /// Trait for secondary indexes.
 ///
 /// A secondary index maps values of a specific column (or a set of columns)
 /// to the primary keys of the rows containing those values.
-pub trait Index: Debug { // Add Debug as a supertrait
+pub trait Index: Debug {
+    // Add Debug as a supertrait
     /// Returns the name of the index.
     fn name(&self) -> &str;
 
@@ -20,8 +21,8 @@ pub trait Index: Debug { // Add Debug as a supertrait
     ///
     /// # Errors
     ///
-    /// Returns `DbError` if the insertion fails (e.g., due to I/O issues when persisting).
-    fn insert(&mut self, value: &Value, primary_key: &PrimaryKey) -> Result<(), DbError>;
+    /// Returns `OxidbError` if the insertion fails (e.g., due to I/O issues when persisting).
+    fn insert(&mut self, value: &Value, primary_key: &PrimaryKey) -> Result<(), OxidbError>; // Changed
 
     /// Deletes an entry from the index.
     ///
@@ -37,8 +38,8 @@ pub trait Index: Debug { // Add Debug as a supertrait
     ///
     /// # Errors
     ///
-    /// Returns `DbError` if the deletion fails.
-    fn delete(&mut self, value: &Value, primary_key: Option<&PrimaryKey>) -> Result<(), DbError>;
+    /// Returns `OxidbError` if the deletion fails.
+    fn delete(&mut self, value: &Value, primary_key: Option<&PrimaryKey>) -> Result<(), OxidbError>; // Changed
 
     /// Finds primary keys associated with a given indexed value.
     ///
@@ -50,16 +51,16 @@ pub trait Index: Debug { // Add Debug as a supertrait
     ///
     /// A `Result` containing a `Vec<PrimaryKey>` of matching primary keys if found,
     /// or `None` if the value is not in the index.
-    /// Returns `DbError` if the lookup fails.
-    fn find(&self, value: &Value) -> Result<Option<Vec<PrimaryKey>>, DbError>;
+    /// Returns `OxidbError` if the lookup fails.
+    fn find(&self, value: &Value) -> Result<Option<Vec<PrimaryKey>>, OxidbError>; // Changed
 
     /// Saves the index data to persistent storage.
     /// The specific storage mechanism (e.g., file path) should be managed by the
     /// implementing struct.
-    fn save(&self) -> Result<(), DbError>;
+    fn save(&self) -> Result<(), OxidbError>; // Changed
 
     /// Loads the index data from persistent storage.
-    fn load(&mut self) -> Result<(), DbError>;
+    fn load(&mut self) -> Result<(), OxidbError>; // Changed
 
     /// Updates an index entry.
     /// This typically involves removing the old index entry (if the indexed value changed)
@@ -73,6 +74,11 @@ pub trait Index: Debug { // Add Debug as a supertrait
     ///
     /// # Errors
     ///
-    /// Returns `DbError` if the update fails.
-    fn update(&mut self, old_value_for_index: &Value, new_value_for_index: &Value, primary_key: &PrimaryKey) -> Result<(), DbError>;
+    /// Returns `OxidbError` if the update fails.
+    fn update(
+        &mut self,
+        old_value_for_index: &Value,
+        new_value_for_index: &Value,
+        primary_key: &PrimaryKey,
+    ) -> Result<(), OxidbError>; // Changed
 }

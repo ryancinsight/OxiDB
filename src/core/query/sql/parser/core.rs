@@ -1,10 +1,10 @@
-use crate::core::query::sql::tokenizer::Token;
 use crate::core::query::sql::errors::SqlParseError;
+use crate::core::query::sql::tokenizer::Token;
 
 #[derive(Debug)] // Added Debug as it's useful
 pub struct SqlParser {
     pub(super) tokens: Vec<Token>, // pub(super) for access from statement.rs and expression.rs
-    pub(super) current: usize,    // pub(super)
+    pub(super) current: usize,     // pub(super)
 }
 
 impl SqlParser {
@@ -21,7 +21,11 @@ impl SqlParser {
     }
 
     pub(super) fn previous(&self) -> Option<&Token> {
-        if self.current == 0 { None } else { self.tokens.get(self.current -1) }
+        if self.current == 0 {
+            None
+        } else {
+            self.tokens.get(self.current - 1)
+        }
     }
 
     pub(super) fn is_at_end(&self) -> bool {
@@ -59,34 +63,46 @@ impl SqlParser {
         }
     }
 
-    pub(super) fn expect_identifier(&mut self, _error_message: &str) -> Result<String, SqlParseError> {
+    pub(super) fn expect_identifier(
+        &mut self,
+        _error_message: &str,
+    ) -> Result<String, SqlParseError> {
         match self.consume_any() {
             Some(Token::Identifier(name)) => Ok(name),
             Some(other) => Err(SqlParseError::UnexpectedToken {
                 expected: "Identifier".to_string(),
                 found: format!("{:?}", other),
-                position: self.current_token_pos() -1, // Position of the consumed token
+                position: self.current_token_pos() - 1, // Position of the consumed token
             }),
             None => Err(SqlParseError::UnexpectedEOF),
         }
     }
 
-    pub(super) fn expect_operator(&mut self, op_str: &str, _error_message: &str) -> Result<String, SqlParseError> {
+    pub(super) fn expect_operator(
+        &mut self,
+        op_str: &str,
+        _error_message: &str,
+    ) -> Result<String, SqlParseError> {
         match self.consume_any() {
             Some(Token::Operator(s)) if s == op_str => Ok(s),
             Some(other) => Err(SqlParseError::UnexpectedToken {
                 expected: format!("Operator '{}'", op_str),
                 found: format!("{:?}", other),
-                position: self.current_token_pos() -1, // Position of the consumed token
+                position: self.current_token_pos() - 1, // Position of the consumed token
             }),
             None => Err(SqlParseError::UnexpectedEOF),
         }
     }
 
-    pub(super) fn expect_operator_any(&mut self, valid_ops: &[&str], _error_message: &str) -> Result<String, SqlParseError> {
+    pub(super) fn expect_operator_any(
+        &mut self,
+        valid_ops: &[&str],
+        _error_message: &str,
+    ) -> Result<String, SqlParseError> {
         // Peek first to report correct position if token is not an operator at all
         let current_pos_before_consume = self.current_token_pos();
-        match self.peek().cloned() { // Clone to avoid borrowing issues with self.consume_any()
+        match self.peek().cloned() {
+            // Clone to avoid borrowing issues with self.consume_any()
             Some(Token::Operator(s)) if valid_ops.contains(&s.as_str()) => {
                 self.consume_any(); // Consume the matched operator
                 Ok(s)

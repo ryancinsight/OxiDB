@@ -1,9 +1,9 @@
 use crate::api::db::Oxidb;
-use crate::core::common::error::DbError;
+use crate::core::common::OxidbError;
 use crate::core::query::executor::ExecutionResult;
 use crate::core::types::DataType;
-use tempfile::NamedTempFile;
 use std::path::{Path, PathBuf};
+use tempfile::NamedTempFile;
 
 // Helper function to create a NamedTempFile and return its path for tests
 // This avoids repeating NamedTempFile::new().unwrap().path()
@@ -53,7 +53,7 @@ fn test_oxidb_delete() {
 
     let delete_result = db.delete(key.clone());
     assert!(delete_result.is_ok());
-    assert_eq!(delete_result.unwrap(), true); // Key existed and was deleted
+    assert!(delete_result.unwrap()); // Key existed and was deleted
 
     let get_deleted_result = db.get(key.clone());
     assert!(get_deleted_result.is_ok());
@@ -68,7 +68,7 @@ fn test_oxidb_delete_non_existent() {
 
     let delete_result = db.delete(key.clone());
     assert!(delete_result.is_ok());
-    assert_eq!(delete_result.unwrap(), false); // Key did not exist
+    assert!(!delete_result.unwrap()); // Key did not exist
 }
 
 #[test]
@@ -115,15 +115,14 @@ fn test_oxidb_persist_method() {
     {
         let mut db = Oxidb::new(&db_path).unwrap();
         db.insert(key.clone(), value_str.clone()).unwrap(); // Use String value
-        // Data is in WAL and cache. Main file might be empty or have old data.
-        // WAL file should exist if inserts happened.
-        // (This check depends on SimpleFileKvStore's WAL behavior after insert)
-        // For this test, we assume WAL is written to on put.
-        // Replace direct store access with API usage:
+                                                            // Data is in WAL and cache. Main file might be empty or have old data.
+                                                            // WAL file should exist if inserts happened.
+                                                            // (This check depends on SimpleFileKvStore's WAL behavior after insert)
+                                                            // For this test, we assume WAL is written to on put.
+                                                            // Replace direct store access with API usage:
         if db.get(key.clone()).unwrap().is_some() {
-             assert!(wal_path.exists(), "WAL file should exist after insert before persist.");
+            assert!(wal_path.exists(), "WAL file should exist after insert before persist.");
         }
-
 
         let persist_result = db.persist();
         assert!(persist_result.is_ok());
@@ -150,7 +149,9 @@ fn test_execute_query_str_get_ok() {
     let result = db.execute_query_str("GET mykey");
     match result {
         // Expecting DataType::String from the executor
-        Ok(ExecutionResult::Value(Some(DataType::String(val_str)))) => assert_eq!(val_str, "myvalue"),
+        Ok(ExecutionResult::Value(Some(DataType::String(val_str)))) => {
+            assert_eq!(val_str, "myvalue")
+        }
         _ => panic!("Expected Value(Some(DataType::String(...))), got {:?}", result),
     }
 }
@@ -220,7 +221,6 @@ fn test_execute_query_str_insert_boolean_via_parser() {
     assert_eq!(db.get(b"boolkey".to_vec()).unwrap(), Some("true".to_string()));
 }
 
-
 #[test]
 fn test_execute_query_str_delete_ok() {
     let db_path = get_temp_db_path();
@@ -251,8 +251,8 @@ fn test_execute_query_str_parse_error() {
     let mut db = Oxidb::new(&db_path).unwrap();
     let result = db.execute_query_str("GARBAGE COMMAND");
     match result {
-        Err(DbError::InvalidQuery(_)) => {} // Expected
-        _ => panic!("Expected InvalidQuery, got {:?}", result),
+        Err(OxidbError::SqlParsing(_)) => {} // Expected, changed from InvalidQuery to SqlParsing
+        _ => panic!("Expected OxidbError::SqlParsing, got {:?}", result),
     }
 }
 
@@ -262,7 +262,7 @@ fn test_execute_query_str_empty_query() {
     let mut db = Oxidb::new(&db_path).unwrap();
     let result = db.execute_query_str("");
     match result {
-        Err(DbError::InvalidQuery(msg)) => assert_eq!(msg, "Input query string cannot be empty."),
-        _ => panic!("Expected InvalidQuery for empty string, got {:?}", result),
+        Err(OxidbError::SqlParsing(msg)) => assert_eq!(msg, "Input query string cannot be empty."), // Changed
+        _ => panic!("Expected OxidbError::SqlParsing for empty string, got {:?}", result),
     }
 }

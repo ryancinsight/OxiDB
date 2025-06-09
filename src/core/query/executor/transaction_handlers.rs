@@ -1,33 +1,35 @@
-use crate::core::common::error::DbError;
+use super::{ExecutionResult, QueryExecutor};
+use crate::core::common::OxidbError; // Changed
 use crate::core::storage::engine::traits::KeyValueStore;
-use std::collections::{HashMap, HashSet};
 use crate::core::transaction::transaction::{Transaction, UndoOperation}; // Removed TransactionState
-use super::{ExecutionResult, QueryExecutor}; // Use super to refer to parent mod
+use std::collections::{HashMap, HashSet}; // Use super to refer to parent mod
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
-    pub(crate) fn handle_begin_transaction(&mut self) -> Result<ExecutionResult, DbError> {
+    pub(crate) fn handle_begin_transaction(&mut self) -> Result<ExecutionResult, OxidbError> { // Changed
         self.transaction_manager.begin_transaction();
         Ok(ExecutionResult::Success)
     }
 
-    pub(crate) fn handle_commit_transaction(&mut self) -> Result<ExecutionResult, DbError> {
+    pub(crate) fn handle_commit_transaction(&mut self) -> Result<ExecutionResult, OxidbError> { // Changed
         if let Some(active_tx) = self.transaction_manager.get_active_transaction_mut() {
             let tx_id_to_release = active_tx.id;
             active_tx.redo_log.clear();
             active_tx.undo_log.clear();
 
-            let commit_entry = crate::core::storage::engine::wal::WalEntry::TransactionCommit { transaction_id: tx_id_to_release };
+            let commit_entry = crate::core::storage::engine::wal::WalEntry::TransactionCommit {
+                transaction_id: tx_id_to_release,
+            };
             self.store.write().unwrap().log_wal_entry(&commit_entry)?;
 
             self.lock_manager.release_locks(tx_id_to_release);
             self.transaction_manager.commit_transaction();
             Ok(ExecutionResult::Success)
         } else {
-            Err(DbError::NoActiveTransaction)
+            Err(OxidbError::NoActiveTransaction) // Changed
         }
     }
 
-    pub(crate) fn handle_rollback_transaction(&mut self) -> Result<ExecutionResult, DbError> {
+    pub(crate) fn handle_rollback_transaction(&mut self) -> Result<ExecutionResult, OxidbError> { // Changed
         if let Some(active_tx) = self.transaction_manager.get_active_transaction_mut() {
             let tx_id_to_release = active_tx.id;
 
@@ -39,10 +41,18 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                         self.store.write().unwrap().delete(key, &temp_transaction_for_undo)?;
                     }
                     UndoOperation::RevertUpdate { key, old_value } => {
-                        self.store.write().unwrap().put(key.clone(), old_value.clone(), &temp_transaction_for_undo)?;
+                        self.store.write().unwrap().put(
+                            key.clone(),
+                            old_value.clone(),
+                            &temp_transaction_for_undo,
+                        )?;
                     }
                     UndoOperation::RevertDelete { key, old_value } => {
-                        self.store.write().unwrap().put(key.clone(), old_value.clone(), &temp_transaction_for_undo)?;
+                        self.store.write().unwrap().put(
+                            key.clone(),
+                            old_value.clone(),
+                            &temp_transaction_for_undo,
+                        )?;
                     }
                     UndoOperation::IndexRevertInsert { index_name, key, value_for_index } => {
                         let mut indexed_values_map = HashMap::new();
@@ -59,22 +69,27 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             active_tx.undo_log.clear();
             active_tx.redo_log.clear();
 
-            let rollback_entry = crate::core::storage::engine::wal::WalEntry::TransactionRollback { transaction_id: tx_id_to_release };
+            let rollback_entry = crate::core::storage::engine::wal::WalEntry::TransactionRollback {
+                transaction_id: tx_id_to_release,
+            };
             self.store.write().unwrap().log_wal_entry(&rollback_entry)?;
 
             self.lock_manager.release_locks(tx_id_to_release);
             self.transaction_manager.rollback_transaction();
             Ok(ExecutionResult::Success)
         } else {
-            Err(DbError::NoActiveTransaction)
+            Err(OxidbError::NoActiveTransaction) // Changed
         }
     }
 
-    pub(crate) fn handle_vacuum(&mut self) -> Result<ExecutionResult, DbError> {
-        let low_water_mark = self.transaction_manager.get_oldest_active_tx_id()
+    pub(crate) fn handle_vacuum(&mut self) -> Result<ExecutionResult, OxidbError> { // Changed
+        let low_water_mark = self
+            .transaction_manager
+            .get_oldest_active_tx_id()
             .unwrap_or_else(|| self.transaction_manager.get_next_transaction_id_peek());
 
-        let committed_ids: HashSet<u64> = self.transaction_manager.get_committed_tx_ids_snapshot().into_iter().collect();
+        let committed_ids: HashSet<u64> =
+            self.transaction_manager.get_committed_tx_ids_snapshot().into_iter().collect();
 
         self.store.write().unwrap().gc(low_water_mark, &committed_ids)?;
         Ok(ExecutionResult::Success)

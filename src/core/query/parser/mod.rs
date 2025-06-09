@@ -5,17 +5,16 @@
 //! It now attempts to parse SQL-like queries first (SELECT, UPDATE) and falls back to a legacy
 //! command parser for other command types (GET, INSERT, DELETE, BEGIN, COMMIT, ROLLBACK).
 
-use crate::core::common::error::DbError;
+use crate::core::common::OxidbError; // Changed
 use crate::core::query::commands::{Command, Key};
 use crate::core::types::DataType;
 
 // Imports for the new SQL parser integration
-use crate::core::query::sql::{self, tokenizer::Tokenizer, parser::SqlParser};
+use crate::core::query::sql::{self, parser::SqlParser, tokenizer::Tokenizer};
 
-
-pub fn parse_query_string(query_str: &str) -> Result<Command, DbError> {
+pub fn parse_query_string(query_str: &str) -> Result<Command, OxidbError> { // Changed
     if query_str.is_empty() {
-        return Err(DbError::InvalidQuery("Input query string cannot be empty.".to_string()));
+        return Err(OxidbError::SqlParsing("Input query string cannot be empty.".to_string())); // Changed
     }
 
     let first_word = query_str.split_whitespace().next().unwrap_or("").to_uppercase();
@@ -30,20 +29,16 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, DbError> {
                         Ok(ast_statement) => {
                             sql::translator::translate_ast_to_command(ast_statement)
                         }
-                        Err(sql_parse_error) => {
-                            Err(DbError::InvalidQuery(format!(
-                                "SQL parse error: {}",
-                                sql_parse_error
-                            )))
-                        }
+                        Err(sql_parse_error) => Err(OxidbError::SqlParsing(format!( // Changed
+                            "SQL parse error: {}",
+                            sql_parse_error
+                        ))),
                     }
                 }
-                Err(sql_tokenizer_error) => {
-                    Err(DbError::InvalidQuery(format!(
-                        "SQL tokenizer error: {}",
-                        sql_tokenizer_error
-                    )))
-                }
+                Err(sql_tokenizer_error) => Err(OxidbError::SqlParsing(format!( // Changed
+                    "SQL tokenizer error: {}",
+                    sql_tokenizer_error
+                ))),
             }
         }
         "GET" | "INSERT" | "DELETE" | "BEGIN" | "COMMIT" | "ROLLBACK" => {
@@ -59,7 +54,7 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, DbError> {
                             sql::translator::translate_ast_to_command(ast_statement)
                         }
                         Err(sql_parse_error) => {
-                             Err(DbError::InvalidQuery(format!(
+                             Err(OxidbError::SqlParsing(format!( // Changed
                                 "SQL parse error: {}. If you intended a legacy command, ensure it's one of GET, INSERT, DELETE, BEGIN, COMMIT, ROLLBACK.",
                                 sql_parse_error
                             )))
@@ -67,7 +62,7 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, DbError> {
                     }
                 }
                 Err(sql_tokenizer_error) => {
-                     Err(DbError::InvalidQuery(format!(
+                     Err(OxidbError::SqlParsing(format!( // Changed
                         "SQL tokenizer error: {}. If you intended a legacy command, ensure it's one of GET, INSERT, DELETE, BEGIN, COMMIT, ROLLBACK.",
                         sql_tokenizer_error
                     )))
@@ -77,9 +72,9 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, DbError> {
     }
 }
 
-fn parse_legacy_command_string(query_str: &str) -> Result<Command, DbError> {
+fn parse_legacy_command_string(query_str: &str) -> Result<Command, OxidbError> { // Changed
     if query_str.is_empty() {
-        return Err(DbError::InvalidQuery("Input query string cannot be empty.".to_string()));
+        return Err(OxidbError::SqlParsing("Input query string cannot be empty.".to_string())); // Changed
     }
 
     let mut tokens: Vec<String> = Vec::new();
@@ -101,7 +96,10 @@ fn parse_legacy_command_string(query_str: &str) -> Result<Command, DbError> {
                     in_quotes = false;
                 } else {
                     if !current_token.is_empty() {
-                         return Err(DbError::InvalidQuery(format!("Unexpected quote in token: {}", current_token)));
+                        return Err(OxidbError::SqlParsing(format!( // Changed
+                            "Unexpected quote in token: {}",
+                            current_token
+                        )));
                     }
                     in_quotes = true;
                 }
@@ -113,7 +111,7 @@ fn parse_legacy_command_string(query_str: &str) -> Result<Command, DbError> {
     }
 
     if in_quotes {
-        return Err(DbError::InvalidQuery("Unclosed quotes in query string.".to_string()));
+        return Err(OxidbError::SqlParsing("Unclosed quotes in query string.".to_string())); // Changed
     }
 
     if !current_token.is_empty() {
@@ -121,7 +119,7 @@ fn parse_legacy_command_string(query_str: &str) -> Result<Command, DbError> {
     }
 
     if tokens.is_empty() {
-        return Err(DbError::InvalidQuery("Input query string resulted in no tokens.".to_string()));
+        return Err(OxidbError::SqlParsing("Input query string resulted in no tokens.".to_string())); // Changed
     }
 
     let command_str = tokens[0].to_uppercase();
@@ -132,7 +130,10 @@ fn parse_legacy_command_string(query_str: &str) -> Result<Command, DbError> {
                 let key: Key = tokens[1].as_bytes().to_vec();
                 Ok(Command::Get { key })
             } else {
-                Err(DbError::InvalidQuery(format!("GET command expects 1 argument, got {}", tokens.len() - 1)))
+                Err(OxidbError::SqlParsing(format!( // Changed
+                    "GET command expects 1 argument, got {}",
+                    tokens.len() - 1
+                )))
             }
         }
         "INSERT" => {
@@ -148,13 +149,15 @@ fn parse_legacy_command_string(query_str: &str) -> Result<Command, DbError> {
                     DataType::Integer(num)
                 } else if let Ok(num_f) = value_str.parse::<f64>() {
                     DataType::Float(num_f)
-                }
-                else {
+                } else {
                     DataType::String(value_str.clone())
                 };
                 Ok(Command::Insert { key, value: data_type_value })
             } else {
-                Err(DbError::InvalidQuery(format!("INSERT command expects 2 arguments, got {}", tokens.len() - 1)))
+                Err(OxidbError::SqlParsing(format!( // Changed
+                    "INSERT command expects 2 arguments, got {}",
+                    tokens.len() - 1
+                )))
             }
         }
         "DELETE" => {
@@ -162,38 +165,50 @@ fn parse_legacy_command_string(query_str: &str) -> Result<Command, DbError> {
                 let key: Key = tokens[1].as_bytes().to_vec();
                 Ok(Command::Delete { key })
             } else {
-                Err(DbError::InvalidQuery(format!("DELETE command expects 1 argument, got {}", tokens.len() - 1)))
+                Err(OxidbError::SqlParsing(format!( // Changed
+                    "DELETE command expects 1 argument, got {}",
+                    tokens.len() - 1
+                )))
             }
         }
         "BEGIN" => {
             if tokens.len() == 1 {
                 Ok(Command::BeginTransaction)
             } else {
-                Err(DbError::InvalidQuery(format!("BEGIN command expects 0 arguments, got {}", tokens.len() - 1)))
+                Err(OxidbError::SqlParsing(format!( // Changed
+                    "BEGIN command expects 0 arguments, got {}",
+                    tokens.len() - 1
+                )))
             }
         }
         "COMMIT" => {
             if tokens.len() == 1 {
                 Ok(Command::CommitTransaction)
             } else {
-                Err(DbError::InvalidQuery(format!("COMMIT command expects 0 arguments, got {}", tokens.len() - 1)))
+                Err(OxidbError::SqlParsing(format!( // Changed
+                    "COMMIT command expects 0 arguments, got {}",
+                    tokens.len() - 1
+                )))
             }
         }
         "ROLLBACK" => {
             if tokens.len() == 1 {
                 Ok(Command::RollbackTransaction)
             } else {
-                Err(DbError::InvalidQuery(format!("ROLLBACK command expects 0 arguments, got {}", tokens.len() - 1)))
+                Err(OxidbError::SqlParsing(format!( // Changed
+                    "ROLLBACK command expects 0 arguments, got {}",
+                    tokens.len() - 1
+                )))
             }
         }
-        _ => Err(DbError::InvalidQuery(format!("Unknown legacy command: {}", tokens[0]))),
+        _ => Err(OxidbError::SqlParsing(format!("Unknown legacy command: {}", tokens[0]))), // Changed
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::query::commands::{SelectColumnSpec};
+    use crate::core::query::commands::SelectColumnSpec;
 
     #[test]
     fn test_legacy_parse_get() {
@@ -207,7 +222,7 @@ mod tests {
     #[test]
     fn test_legacy_parse_get_case_insensitive() {
         let result = parse_legacy_command_string("get mykey");
-         match result {
+        match result {
             Ok(Command::Get { key }) => assert_eq!(key, "mykey".as_bytes().to_vec()),
             _ => panic!("Expected GET command"),
         }
@@ -224,7 +239,7 @@ mod tests {
             _ => panic!("Expected INSERT command"),
         }
     }
-    
+
     #[test]
     fn test_legacy_parse_insert_float() {
         let result = parse_legacy_command_string("INSERT mykey 123.45");
@@ -236,7 +251,6 @@ mod tests {
             _ => panic!("Expected INSERT command with Float"),
         }
     }
-
 
     #[test]
     fn test_legacy_parse_insert_with_quotes() {
@@ -287,8 +301,10 @@ mod tests {
     fn test_legacy_invalid_command() {
         let result = parse_legacy_command_string("UNKNOWN mykey");
         match result {
-            Err(DbError::InvalidQuery(msg)) => assert!(msg.contains("Unknown legacy command: UNKNOWN")),
-            _ => panic!("Expected InvalidQuery error"),
+            Err(OxidbError::SqlParsing(msg)) => { // Changed
+                assert!(msg.contains("Unknown legacy command: UNKNOWN"))
+            }
+            _ => panic!("Expected SqlParsing error"), // Changed
         }
     }
 
@@ -296,15 +312,15 @@ mod tests {
     fn test_legacy_unclosed_quotes() {
         let result = parse_legacy_command_string("INSERT mykey \"my value with spaces");
         match result {
-            Err(DbError::InvalidQuery(msg)) => assert_eq!(msg, "Unclosed quotes in query string."),
-            _ => panic!("Expected InvalidQuery error for unclosed quotes"),
+            Err(OxidbError::SqlParsing(msg)) => assert_eq!(msg, "Unclosed quotes in query string."), // Changed
+            _ => panic!("Expected SqlParsing error for unclosed quotes"), // Changed
         }
     }
-    
+
     #[test]
     fn test_legacy_parse_begin_transaction() {
         let result = parse_legacy_command_string("BEGIN");
-        assert_eq!(result, Ok(Command::BeginTransaction));
+        assert!(matches!(result, Ok(Command::BeginTransaction))); // Changed to use matches!
     }
 
     #[test]
@@ -315,11 +331,11 @@ mod tests {
             _ => panic!("Expected GET command via main parser"),
         }
     }
-    
+
     #[test]
     fn test_main_parse_insert_routes_to_legacy() {
         let result = parse_query_string("INSERT key1 val1");
-         match result {
+        match result {
             Ok(Command::Insert { key, value }) => {
                 assert_eq!(key, "key1".as_bytes().to_vec());
                 assert_eq!(value, DataType::String("val1".to_string()));
@@ -327,7 +343,6 @@ mod tests {
             _ => panic!("Expected INSERT command via main parser"),
         }
     }
-
 
     #[test]
     fn test_main_parse_select_simple_sql() {
@@ -360,11 +375,13 @@ mod tests {
             _ => panic!("Expected Command::Select for SQL with WHERE"),
         }
     }
-    
+
     #[test]
     fn test_main_parse_update_sql() {
-        let result = parse_query_string("UPDATE users SET email = 'new@example.com' WHERE name = \"old name\";");
-         match result {
+        let result = parse_query_string(
+            "UPDATE users SET email = 'new@example.com' WHERE name = \"old name\";",
+        );
+        match result {
             Ok(Command::Update { source, assignments, condition }) => {
                 assert_eq!(source, "users");
                 assert_eq!(assignments.len(), 1);
@@ -384,24 +401,26 @@ mod tests {
     fn test_main_parse_sql_syntax_error() {
         let result = parse_query_string("SELECT name FROM users WHERE id =;");
         match result {
-            Err(DbError::InvalidQuery(msg)) => {
+            Err(OxidbError::SqlParsing(msg)) => { // Changed
                 // Check for the specific error message propagated from the new parser logic
                 assert!(msg.contains("Expected value for condition"));
             }
-            Ok(cmd) => panic!("Expected InvalidQuery error for SQL syntax error, got Ok({:?})", cmd),
-            other_err => panic!("Expected InvalidQuery error, got {:?}", other_err),
+            Ok(cmd) => {
+                panic!("Expected SqlParsing error for SQL syntax error, got Ok({:?})", cmd) // Changed
+            }
+            other_err => panic!("Expected SqlParsing error, got {:?}", other_err), // Changed
         }
     }
-    
+
     #[test]
     fn test_main_parse_sql_tokenizer_error() {
         let result = parse_query_string("SELECT name FROM users WHERE id = #;");
         match result {
-            Err(DbError::InvalidQuery(msg)) => {
+            Err(OxidbError::SqlParsing(msg)) => { // Changed
                 // Reverting to expect 34 as per observed tokenizer output
                 assert!(msg.contains("SQL tokenizer error: Invalid character '#' at position 34"));
             }
-            _ => panic!("Expected InvalidQuery error for SQL tokenizer error"),
+            _ => panic!("Expected SqlParsing error for SQL tokenizer error"), // Changed
         }
     }
 
@@ -409,10 +428,13 @@ mod tests {
     fn test_main_parse_unknown_command_tries_sql_first() {
         let result = parse_query_string("QUERY mydata");
         match result {
-            Err(DbError::InvalidQuery(msg)) => {
-                assert!(msg.contains("SQL parse error: Unknown statement type") || msg.contains("SQL tokenizer error"));
+            Err(OxidbError::SqlParsing(msg)) => { // Changed
+                assert!(
+                    msg.contains("SQL parse error: Unknown statement type")
+                        || msg.contains("SQL tokenizer error")
+                );
             }
-            _ => panic!("Expected InvalidQuery error for unknown command"),
+            _ => panic!("Expected SqlParsing error for unknown command"), // Changed
         }
     }
 
@@ -420,19 +442,21 @@ mod tests {
     fn test_empty_query_main_parser() {
         let result = parse_query_string("");
         match result {
-            Err(DbError::InvalidQuery(msg)) => assert_eq!(msg, "Input query string cannot be empty."),
-            _ => panic!("Expected InvalidQuery error for empty query"),
+            Err(OxidbError::SqlParsing(msg)) => { // Changed
+                assert_eq!(msg, "Input query string cannot be empty.")
+            }
+            _ => panic!("Expected SqlParsing error for empty query"), // Changed
         }
     }
 
     #[test]
     fn test_whitespace_query_main_parser() {
         let result = parse_query_string("   ");
-         match result {
-            Err(DbError::InvalidQuery(msg)) => {
+        match result {
+            Err(OxidbError::SqlParsing(msg)) => { // Changed
                 assert!(msg.contains("SQL parse error: Unexpected end of input"));
             }
-            _ => panic!("Expected InvalidQuery error for whitespace only query, got {:?}", result),
+            _ => panic!("Expected SqlParsing error for whitespace only query, got {:?}", result), // Changed
         }
     }
 }

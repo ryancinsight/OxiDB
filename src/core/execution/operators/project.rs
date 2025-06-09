@@ -1,4 +1,4 @@
-use crate::core::common::error::DbError;
+use crate::core::common::OxidbError;
 use crate::core::execution::{ExecutionOperator, Tuple};
 
 pub struct ProjectOperator {
@@ -7,21 +7,24 @@ pub struct ProjectOperator {
 }
 
 impl ProjectOperator {
-    pub fn new(input: Box<dyn ExecutionOperator + Send + Sync>, column_indices: Vec<usize>) -> Self {
+    pub fn new(
+        input: Box<dyn ExecutionOperator + Send + Sync>,
+        column_indices: Vec<usize>,
+    ) -> Self {
         ProjectOperator { input, column_indices }
     }
 }
 
 impl ExecutionOperator for ProjectOperator {
-    fn execute(&mut self) -> Result<Box<dyn Iterator<Item = Result<Tuple, DbError>> + Send + Sync>, DbError> {
+    fn execute(
+        &mut self,
+    ) -> Result<Box<dyn Iterator<Item = Result<Tuple, OxidbError>> + Send + Sync>, OxidbError> { // Changed
         let input_iter = self.input.execute()?;
 
         if self.column_indices.is_empty() {
             // Special case: empty column_indices means project all (pass through)
             // This is a simplification for SELECT * where indices are not predetermined.
-            Ok(Box::new(input_iter.map(|tuple_result| {
-                tuple_result.and_then(|tuple| Ok(tuple)) // Just pass through
-            })))
+            Ok(Box::new(input_iter))
         } else {
             let indices_clone = self.column_indices.clone();
             let iterator = input_iter.map(move |tuple_result| {
@@ -31,9 +34,10 @@ impl ExecutionOperator for ProjectOperator {
                         if index < tuple.len() {
                             projected_tuple.push(tuple[index].clone());
                         } else {
-                            return Err(DbError::Internal(format!(
+                            return Err(OxidbError::Internal(format!( // Changed
                                 "Projection index {} out of bounds for tuple length {}",
-                                index, tuple.len()
+                                index,
+                                tuple.len()
                             )));
                         }
                     }

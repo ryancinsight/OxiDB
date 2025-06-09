@@ -1,15 +1,17 @@
-use crate::core::common::error::DbError;
-use crate::core::types::DataType;
-use crate::core::common::serialization::{serialize_data_type, deserialize_data_type};
-use crate::core::query::commands::{Key, SqlCondition, SqlAssignment};
-use crate::core::storage::engine::traits::KeyValueStore;
-use std::collections::{HashMap, HashSet};
-use crate::core::transaction::transaction::{Transaction, TransactionState, UndoOperation};
 use super::{ExecutionResult, QueryExecutor};
-use crate::core::query::sql::ast::{Statement as AstStatement, SelectColumn, Condition as AstCondition}; // Removed AstLiteralValue
-// AstAssignment from sql::ast is not needed here because assignments_cmd is already SqlAssignment
-use std::sync::Arc;
-use super::utils::datatype_to_ast_literal; // Import the helper
+use crate::core::common::OxidbError; // Changed
+use crate::core::common::serialization::{deserialize_data_type, serialize_data_type};
+use crate::core::query::commands::{Key, SqlAssignment, SqlCondition};
+use crate::core::query::sql::ast::{
+    Condition as AstCondition, SelectColumn, Statement as AstStatement,
+};
+use crate::core::storage::engine::traits::KeyValueStore;
+use crate::core::transaction::transaction::{Transaction, TransactionState, UndoOperation};
+use crate::core::types::DataType;
+use std::collections::{HashMap, HashSet}; // Removed AstLiteralValue
+                                          // AstAssignment from sql::ast is not needed here because assignments_cmd is already SqlAssignment
+use super::utils::datatype_to_ast_literal;
+use std::sync::Arc; // Import the helper
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S> {
     pub(crate) fn handle_update(
@@ -17,7 +19,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         source_table_name: String,
         assignments_cmd: Vec<SqlAssignment>,
         condition_opt: Option<SqlCondition>,
-    ) -> Result<ExecutionResult, DbError> {
+    ) -> Result<ExecutionResult, OxidbError> { // Changed
         let plan_snapshot_id;
         let plan_committed_ids_vec;
 
@@ -28,7 +30,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             plan_snapshot_id = self.transaction_manager.generate_tx_id();
             plan_committed_ids_vec = self.transaction_manager.get_committed_tx_ids_snapshot();
         }
-        let plan_committed_ids = Arc::new(plan_committed_ids_vec.into_iter().collect::<HashSet<u64>>());
+        let plan_committed_ids =
+            Arc::new(plan_committed_ids_vec.into_iter().collect::<HashSet<u64>>());
 
         let ast_select_items = vec![SelectColumn::Asterisk];
 
@@ -42,12 +45,13 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             None => None,
         };
 
-        let ast_statement_for_select = AstStatement::Select(crate::core::query::sql::ast::SelectStatement{
-            columns: ast_select_items,
-            source: source_table_name.clone(),
-            condition: ast_sql_condition_for_select,
-            // alias field is not present in sql::ast::SelectStatement
-        });
+        let ast_statement_for_select =
+            AstStatement::Select(crate::core::query::sql::ast::SelectStatement {
+                columns: ast_select_items,
+                source: source_table_name.clone(),
+                condition: ast_sql_condition_for_select,
+                // alias field is not present in sql::ast::SelectStatement
+            });
 
         let initial_select_plan = self.optimizer.build_initial_plan(&ast_statement_for_select)?;
         let optimized_select_plan = self.optimizer.optimize(initial_select_plan)?;
@@ -58,16 +62,23 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             plan_committed_ids.clone(),
         )?;
         let mut keys_to_update: Vec<Key> = Vec::new();
-        let mut rows_iter = select_execution_tree.execute()?;
-        while let Some(tuple_result) = rows_iter.next() {
+        let rows_iter = select_execution_tree.execute()?;
+        for tuple_result in rows_iter {
             let tuple = tuple_result?;
             if tuple.is_empty() {
-                return Err(DbError::Internal("Execution plan for UPDATE yielded empty tuple.".to_string()));
+                return Err(OxidbError::Internal( // Changed
+                    "Execution plan for UPDATE yielded empty tuple.".to_string(),
+                ));
             }
             match tuple[0].clone() {
                 DataType::String(s) => keys_to_update.push(s.into_bytes()),
                 DataType::Integer(i) => keys_to_update.push(i.to_le_bytes().to_vec()),
-                val @ _ => return Err(DbError::TypeError(format!("Unsupported key type {:?} from UPDATE selection plan.", val))),
+                val => {
+                    return Err(OxidbError::Type(format!( // Changed
+                        "Unsupported key type {:?} from UPDATE selection plan.",
+                        val
+                    )))
+                }
             }
         }
 
@@ -79,27 +90,48 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         let mut _updated_count = 0;
 
         for key in keys_to_update {
-            let (current_op_tx_id, committed_ids_for_get, is_auto_commit) =
-                if let Some(active_tx) = self.transaction_manager.get_active_transaction() {
-                    (active_tx.id, self.transaction_manager.get_committed_tx_ids_snapshot().into_iter().collect(), false)
-                } else {
-                    (0, self.transaction_manager.get_committed_tx_ids_snapshot().into_iter().collect(), true)
-                };
+            let (current_op_tx_id, committed_ids_for_get, is_auto_commit) = if let Some(active_tx) =
+                self.transaction_manager.get_active_transaction()
+            {
+                (
+                    active_tx.id,
+                    self.transaction_manager.get_committed_tx_ids_snapshot().into_iter().collect(),
+                    false,
+                )
+            } else {
+                (
+                    0,
+                    self.transaction_manager.get_committed_tx_ids_snapshot().into_iter().collect(),
+                    true,
+                )
+            };
 
-            self.lock_manager.acquire_lock(current_op_tx_id, &key, crate::core::transaction::lock_manager::LockType::Exclusive)?;
+            self.lock_manager.acquire_lock(
+                current_op_tx_id,
+                &key,
+                crate::core::transaction::lock_manager::LockType::Exclusive,
+            )?;
 
-            let current_value_bytes_opt = self.store.read().unwrap().get(&key, current_op_tx_id, &committed_ids_for_get)?;
+            let current_value_bytes_opt =
+                self.store.read().unwrap().get(&key, current_op_tx_id, &committed_ids_for_get)?;
 
             if let Some(current_value_bytes) = current_value_bytes_opt {
                 let mut current_data_type = deserialize_data_type(&current_value_bytes)?;
 
                 if let DataType::Map(ref mut map_data) = current_data_type {
                     for assignment_cmd in &assignments_cmd {
-                        map_data.insert(assignment_cmd.column.as_bytes().to_vec(), assignment_cmd.value.clone());
+                        map_data.insert(
+                            assignment_cmd.column.as_bytes().to_vec(),
+                            assignment_cmd.value.clone(),
+                        );
                     }
                 } else if !assignments_cmd.is_empty() {
-                    if is_auto_commit { self.lock_manager.release_locks(current_op_tx_id); }
-                    return Err(DbError::UnsupportedOperation("Cannot apply field assignments to non-Map DataType".to_string()));
+                    if is_auto_commit {
+                        self.lock_manager.release_locks(current_op_tx_id);
+                    }
+                    return Err(OxidbError::NotImplemented{feature: // Corrected to NotImplemented
+                        "Cannot apply field assignments to non-Map DataType".to_string(),
+                    });
                 }
 
                 let updated_value_bytes = serialize_data_type(&current_data_type)?;
@@ -112,33 +144,51 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
                     if current_value_bytes != updated_value_bytes {
                         active_tx_mut.undo_log.push(UndoOperation::IndexRevertInsert {
-                            index_name: "default_value_index".to_string(), key: key.clone(), value_for_index: updated_value_bytes.clone(),
+                            index_name: "default_value_index".to_string(),
+                            key: key.clone(),
+                            value_for_index: updated_value_bytes.clone(),
                         });
                         active_tx_mut.undo_log.push(UndoOperation::IndexRevertDelete {
-                            index_name: "default_value_index".to_string(), key: key.clone(), old_value_for_index: current_value_bytes.clone(),
+                            index_name: "default_value_index".to_string(),
+                            key: key.clone(),
+                            old_value_for_index: current_value_bytes.clone(),
                         });
                     }
                 }
 
                 if current_value_bytes != updated_value_bytes {
                     let mut old_map_for_index = HashMap::new();
-                    old_map_for_index.insert("default_value_index".to_string(), current_value_bytes.clone());
+                    old_map_for_index
+                        .insert("default_value_index".to_string(), current_value_bytes.clone());
                     let mut new_map_for_index = HashMap::new();
-                    new_map_for_index.insert("default_value_index".to_string(), updated_value_bytes.clone());
-                    self.index_manager.on_update_data(&old_map_for_index, &new_map_for_index, &key)?;
+                    new_map_for_index
+                        .insert("default_value_index".to_string(), updated_value_bytes.clone());
+                    self.index_manager.on_update_data(
+                        &old_map_for_index,
+                        &new_map_for_index,
+                        &key,
+                    )?;
                 }
 
-                let tx_for_store = if let Some(atm) = self.transaction_manager.get_active_transaction() {
-                    atm.clone_for_store()
-                } else {
-                    let mut temp_tx = Transaction::new(current_op_tx_id);
-                    temp_tx.set_state(TransactionState::Committed);
-                    temp_tx
-                };
-                self.store.write().unwrap().put(key.clone(), updated_value_bytes.clone(), &tx_for_store)?;
+                let tx_for_store =
+                    if let Some(atm) = self.transaction_manager.get_active_transaction() {
+                        atm.clone_for_store()
+                    } else {
+                        let mut temp_tx = Transaction::new(current_op_tx_id);
+                        temp_tx.set_state(TransactionState::Committed);
+                        temp_tx
+                    };
+                self.store.write().unwrap().put(
+                    key.clone(),
+                    updated_value_bytes.clone(),
+                    &tx_for_store,
+                )?;
 
                 if is_auto_commit {
-                    let commit_entry = crate::core::storage::engine::wal::WalEntry::TransactionCommit { transaction_id: current_op_tx_id };
+                    let commit_entry =
+                        crate::core::storage::engine::wal::WalEntry::TransactionCommit {
+                            transaction_id: current_op_tx_id,
+                        };
                     self.store.write().unwrap().log_wal_entry(&commit_entry)?;
                     self.transaction_manager.add_committed_tx_id(current_op_tx_id);
                 }

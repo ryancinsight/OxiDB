@@ -2,28 +2,28 @@
 
 // Module declarations
 pub mod command_handlers;
-pub mod utils;
-pub mod select_execution;
-pub mod update_execution;
-pub mod transaction_handlers;
 pub mod ddl_handlers;
 pub mod planner; // Added planner module
+pub mod select_execution;
 #[cfg(test)]
 pub mod tests;
+pub mod transaction_handlers;
+pub mod update_execution;
+pub mod utils;
 
- // Re-export planner contents
+// Re-export planner contents
 
 // Necessary imports for struct definitions and the `new` method
-use crate::core::common::error::DbError;
-use crate::core::types::DataType;
-use crate::core::storage::engine::SimpleFileKvStore;
-use crate::core::storage::engine::traits::KeyValueStore;
+use crate::core::common::OxidbError; // Changed
 use crate::core::indexing::manager::IndexManager;
-use std::path::PathBuf;
-use std::sync::{Arc, RwLock}; // Added RwLock
+use crate::core::optimizer::Optimizer;
+use crate::core::storage::engine::traits::KeyValueStore;
+use crate::core::storage::engine::SimpleFileKvStore;
 use crate::core::transaction::lock_manager::LockManager;
 use crate::core::transaction::manager::TransactionManager;
-use crate::core::optimizer::Optimizer; // Added Optimizer
+use crate::core::types::DataType;
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock}; // Added RwLock // Added Optimizer
 
 #[derive(Debug, PartialEq)]
 pub enum ExecutionResult {
@@ -44,12 +44,13 @@ pub struct QueryExecutor<S: KeyValueStore<Vec<u8>, Vec<u8>>> {
 
 // The `new` method remains here as it's tied to the struct definition visibility
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
-    pub fn new(store: S, index_base_path: PathBuf) -> Result<Self, DbError> {
+    pub fn new(store: S, index_base_path: PathBuf) -> Result<Self, OxidbError> { // Changed
         let mut index_manager = IndexManager::new(index_base_path)?;
 
         if index_manager.get_index("default_value_index").is_none() {
-            index_manager.create_index("default_value_index".to_string(), "hash")
-                .map_err(|e| DbError::IndexError(format!("Failed to create default_value_index: {}", e.to_string())))?;
+            index_manager.create_index("default_value_index".to_string(), "hash").map_err(|e| {
+                OxidbError::Index(format!("Failed to create default_value_index: {}", e)) // Changed
+            })?;
         }
 
         let mut transaction_manager = TransactionManager::new();
@@ -68,7 +69,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 
 // Methods specific to QueryExecutor when the store is SimpleFileKvStore
 impl QueryExecutor<SimpleFileKvStore> {
-    pub fn persist(&mut self) -> Result<(), DbError> {
+    pub fn persist(&mut self) -> Result<(), OxidbError> { // Changed
         // Call the new persist method on SimpleFileKvStore
         self.store.read().unwrap().persist()?; // Use read lock if persist only needs to read cache
                                                // If persist needs to modify internal state of store (e.g. WAL writer),

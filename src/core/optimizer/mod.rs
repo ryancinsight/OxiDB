@@ -50,10 +50,10 @@ pub enum Expression {
     // Example: Literal(DataType), Column(String), BinaryOp(Box<Expression>, String, Box<Expression>)
     // For now, let's keep it simple or refer to SimplePredicate if it covers the needs
     Predicate(SimplePredicate), // Simplified for now
-    // Add other expression types as needed, e.g.
-    // And(Box<Expression>, Box<Expression>),
-    // Or(Box<Expression>, Box<Expression>),
-    // Not(Box<Expression>),
+                                // Add other expression types as needed, e.g.
+                                // And(Box<Expression>, Box<Expression>),
+                                // Or(Box<Expression>, Box<Expression>),
+                                // Not(Box<Expression>),
 }
 
 #[allow(dead_code)] // TODO: Remove this when JoinPredicate is used

@@ -1,9 +1,9 @@
-use crate::core::common::error::DbError;
+use crate::core::common::OxidbError; // Changed
 use crate::core::common::serialization::serialize_data_type;
 use crate::core::execution::operators::{
-    TableScanOperator, IndexScanOperator, FilterOperator, ProjectOperator, NestedLoopJoinOperator,
+    FilterOperator, IndexScanOperator, NestedLoopJoinOperator, ProjectOperator, TableScanOperator,
 };
-use crate::core::execution::{ExecutionOperator};
+use crate::core::execution::ExecutionOperator;
 use crate::core::optimizer::QueryPlanNode;
 use crate::core::query::executor::QueryExecutor; // To access self.store, self.index_manager
 use crate::core::storage::engine::traits::KeyValueStore;
@@ -17,7 +17,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         plan: QueryPlanNode,
         snapshot_id: u64,
         committed_ids: Arc<HashSet<u64>>,
-    ) -> Result<Box<dyn ExecutionOperator + Send + Sync>, DbError> {
+    ) -> Result<Box<dyn ExecutionOperator + Send + Sync>, OxidbError> { // Changed
         match plan {
             QueryPlanNode::TableScan { table_name, alias: _ } => {
                 // Alias is ignored for now by TableScanOperator
@@ -37,7 +37,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             } => {
                 // scan_condition is Option<SimplePredicate>
                 // IndexScanOperator requires a specific value to scan for.
-                let simple_predicate = scan_condition.ok_or_else(|| DbError::InvalidQuery("IndexScan requires a scan condition".to_string()))?;
+                let simple_predicate = scan_condition.ok_or_else(|| {
+                    OxidbError::SqlParsing("IndexScan requires a scan condition".to_string()) // Changed
+                })?;
                 let scan_value_dt = simple_predicate.value; // This is already a DataType
 
                 // IndexScanOperator expects Vec<u8>, so serialize the DataType
@@ -90,7 +92,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                             Ok(idx) => column_indices.push(idx),
                             Err(_) => {
                                 // If a column is not "*" and not parseable to usize, it's an error.
-                                return Err(DbError::InvalidQuery(format!(
+                                return Err(OxidbError::SqlParsing(format!( // Changed
                                     "Project column '{}' is not a valid numeric index and not '*'.",
                                     col_str
                                 )));
@@ -101,20 +103,16 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 let operator = ProjectOperator::new(input_operator, column_indices);
                 Ok(Box::new(operator))
             }
-            QueryPlanNode::NestedLoopJoin {
-                left,
-                right,
-                join_predicate,
-            } => {
+            QueryPlanNode::NestedLoopJoin { left, right, join_predicate } => {
                 let left_operator =
                     self.build_execution_tree(*left, snapshot_id, committed_ids.clone())?;
                 let right_operator =
                     self.build_execution_tree(*right, snapshot_id, committed_ids.clone())?;
-                let operator = NestedLoopJoinOperator::new(left_operator, right_operator, join_predicate);
+                let operator =
+                    NestedLoopJoinOperator::new(left_operator, right_operator, join_predicate);
                 Ok(Box::new(operator))
-            }
-            // If QueryPlanNode is extended, new variants must be handled here.
-            // The compiler will error if the match is not exhaustive.
+            } // If QueryPlanNode is extended, new variants must be handled here.
+              // The compiler will error if the match is not exhaustive.
         }
     }
 }

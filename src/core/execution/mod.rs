@@ -2,10 +2,10 @@
 // It defines the ExecutionOperator trait and related structs/type aliases.
 
 pub mod operators; // Added operators module
-// Optional: Re-export new operators
-// pub use operators::{TableScanOperator, IndexScanOperator};
+                   // Optional: Re-export new operators
+                   // pub use operators::{TableScanOperator, IndexScanOperator};
 
-use crate::core::common::error::DbError;
+use crate::core::common::OxidbError; // Changed
 use crate::core::types::DataType;
 use std::collections::HashMap;
 
@@ -23,5 +23,7 @@ pub struct Row {
 // Define ExecutionOperator trait
 #[allow(dead_code)] // TODO: Remove this when ExecutionOperator is used
 pub trait ExecutionOperator {
-    fn execute(&mut self) -> Result<Box<dyn Iterator<Item = Result<Tuple, DbError>> + Send + Sync>, DbError>;
+    fn execute(
+        &mut self,
+    ) -> Result<Box<dyn Iterator<Item = Result<Tuple, OxidbError>> + Send + Sync>, OxidbError>; // Changed
 }

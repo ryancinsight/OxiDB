@@ -1,9 +1,9 @@
 // src/core/storage/engine/implementations/in_memory.rs
-use std::collections::{HashMap, HashSet}; // Added HashSet
-use crate::core::common::error::DbError;
+use crate::core::common::OxidbError; // Changed
 use crate::core::storage::engine::traits::{KeyValueStore, VersionedValue};
 use crate::core::storage::engine::wal::WalEntry;
 use crate::core::transaction::Transaction;
+use std::collections::{HashMap, HashSet}; // Added HashSet
 
 #[derive(Debug, Default)] // Added Default
 pub struct InMemoryKvStore {
@@ -12,14 +12,17 @@ pub struct InMemoryKvStore {
 
 impl InMemoryKvStore {
     pub fn new() -> Self {
-        InMemoryKvStore {
-            data: HashMap::new(),
-        }
+        InMemoryKvStore { data: HashMap::new() }
     }
 }
 
 impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
-    fn put(&mut self, key: Vec<u8>, value: Vec<u8>, transaction: &Transaction) -> Result<(), DbError> {
+    fn put(
+        &mut self,
+        key: Vec<u8>,
+        value: Vec<u8>,
+        transaction: &Transaction,
+    ) -> Result<(), OxidbError> { // Changed
         let versions = self.data.entry(key).or_default();
         // Mark the latest existing visible version (if any) as expired by this transaction.
         for version in versions.iter_mut().rev() {
@@ -29,19 +32,24 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
             }
         }
 
-        let new_version = VersionedValue {
-            value,
-            created_tx_id: transaction.id,
-            expired_tx_id: None,
-        };
+        let new_version =
+            VersionedValue { value, created_tx_id: transaction.id, expired_tx_id: None };
         versions.push(new_version);
         Ok(())
     }
 
-    fn get(&self, key: &Vec<u8>, snapshot_id: u64, committed_ids: &HashSet<u64>) -> Result<Option<Vec<u8>>, DbError> {
+    fn get(
+        &self,
+        key: &Vec<u8>,
+        snapshot_id: u64,
+        committed_ids: &HashSet<u64>,
+    ) -> Result<Option<Vec<u8>>, OxidbError> { // Changed
         if let Some(versions) = self.data.get(key) {
             for version in versions.iter().rev() {
-                if version.created_tx_id <= snapshot_id && (version.created_tx_id == snapshot_id || committed_ids.contains(&version.created_tx_id)) {
+                if version.created_tx_id <= snapshot_id
+                    && (version.created_tx_id == snapshot_id
+                        || committed_ids.contains(&version.created_tx_id))
+                {
                     match version.expired_tx_id {
                         None => return Ok(Some(version.value.clone())),
                         Some(expired_id) => {
@@ -56,11 +64,13 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
         Ok(None)
     }
 
-    fn delete(&mut self, key: &Vec<u8>, transaction: &Transaction) -> Result<bool, DbError> {
+    fn delete(&mut self, key: &Vec<u8>, transaction: &Transaction) -> Result<bool, OxidbError> { // Changed
         if let Some(versions) = self.data.get_mut(key) {
             for version in versions.iter_mut().rev() {
-                if version.created_tx_id <= transaction.id &&
-                   (version.expired_tx_id.is_none() || version.expired_tx_id.unwrap() > transaction.id) {
+                if version.created_tx_id <= transaction.id
+                    && (version.expired_tx_id.is_none()
+                        || version.expired_tx_id.unwrap() > transaction.id)
+                {
                     if version.expired_tx_id.is_none() {
                         version.expired_tx_id = Some(transaction.id);
                         return Ok(true);
@@ -73,15 +83,20 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
         Ok(false)
     }
 
-    fn contains_key(&self, key: &Vec<u8>, snapshot_id: u64, committed_ids: &HashSet<u64>) -> Result<bool, DbError> {
+    fn contains_key(
+        &self,
+        key: &Vec<u8>,
+        snapshot_id: u64,
+        committed_ids: &HashSet<u64>,
+    ) -> Result<bool, OxidbError> { // Changed
         self.get(key, snapshot_id, committed_ids).map(|opt| opt.is_some())
     }
 
-    fn log_wal_entry(&mut self, _entry: &WalEntry) -> Result<(), DbError> {
+    fn log_wal_entry(&mut self, _entry: &WalEntry) -> Result<(), OxidbError> { // Changed
         Ok(())
     }
 
-    fn gc(&mut self, low_water_mark: u64, committed_ids: &HashSet<u64>) -> Result<(), DbError> {
+    fn gc(&mut self, low_water_mark: u64, committed_ids: &HashSet<u64>) -> Result<(), OxidbError> { // Changed
         self.data.retain(|_key, versions| {
             versions.retain_mut(|v| {
                 let created_by_committed = committed_ids.contains(&v.created_tx_id);
@@ -101,7 +116,7 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
         Ok(())
     }
 
-    fn scan(&self) -> Result<Vec<(Vec<u8>, Vec<u8>)>, DbError> {
+    fn scan(&self) -> Result<Vec<(Vec<u8>, Vec<u8>)>, OxidbError> { // Changed
         let mut results = Vec::new();
         for (key, version_vec) in self.data.iter() {
             if let Some(_latest_version) = version_vec.last() {
@@ -116,7 +131,7 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
                     // No action if all expired for now
                 }
                 if let Some(visible_version) = best_candidate {
-                     results.push((key.clone(), visible_version.value.clone()));
+                    results.push((key.clone(), visible_version.value.clone()));
                 }
             }
         }

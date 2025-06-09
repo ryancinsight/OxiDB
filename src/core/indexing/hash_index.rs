@@ -1,12 +1,12 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter};
-use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize}; // For persistence
+use std::path::{Path, PathBuf}; // For persistence
 
-use crate::core::common::error::DbError;
+use crate::core::common::OxidbError; // Changed
 use crate::core::indexing::traits::Index;
-use crate::core::query::commands::{Value, Key as PrimaryKey}; // Value is Vec<u8>
+use crate::core::query::commands::{Key as PrimaryKey, Value}; // Value is Vec<u8>
 
 const DEFAULT_INDEX_FILE_EXTENSION: &str = "idx";
 
@@ -27,19 +27,17 @@ impl HashIndex {
     ///
     /// The actual index file will be named `[name].[DEFAULT_INDEX_FILE_EXTENSION]`
     /// within the `base_path`.
-    pub fn new(name: String, base_path: &Path) -> Result<Self, DbError> {
+    pub fn new(name: String, base_path: &Path) -> Result<Self, OxidbError> { // Changed
         let mut file_path = base_path.to_path_buf();
         file_path.push(format!("{}.{}", name, DEFAULT_INDEX_FILE_EXTENSION));
 
-        let mut index = HashIndex {
-            name,
-            store: HashMap::new(),
-            file_path,
-        };
+        let mut index = HashIndex { name, store: HashMap::new(), file_path };
 
         // Try to load existing index data if the file exists
         if index.file_path.exists() {
-            index.load().map_err(|e| DbError::IndexError(format!("Failed to load index {}: {}", index.name, e)))?;
+            index.load().map_err(|e| {
+                OxidbError::Index(format!("Failed to load index {}: {}", index.name, e)) // Changed
+            })?;
         }
 
         Ok(index)
@@ -51,8 +49,8 @@ impl Index for HashIndex {
         &self.name
     }
 
-    fn insert(&mut self, value: &Value, primary_key: &PrimaryKey) -> Result<(), DbError> {
-        let primary_keys = self.store.entry(value.clone()).or_insert_with(Vec::new);
+    fn insert(&mut self, value: &Value, primary_key: &PrimaryKey) -> Result<(), OxidbError> { // Changed
+        let primary_keys = self.store.entry(value.clone()).or_default();
         if !primary_keys.contains(primary_key) {
             primary_keys.push(primary_key.clone());
         }
@@ -62,7 +60,7 @@ impl Index for HashIndex {
         Ok(())
     }
 
-    fn delete(&mut self, value: &Value, primary_key: Option<&PrimaryKey>) -> Result<(), DbError> {
+    fn delete(&mut self, value: &Value, primary_key: Option<&PrimaryKey>) -> Result<(), OxidbError> { // Changed
         if let Some(primary_keys) = self.store.get_mut(value) {
             if let Some(pk_to_delete) = primary_key {
                 primary_keys.retain(|pk| pk != pk_to_delete);
@@ -78,42 +76,49 @@ impl Index for HashIndex {
         Ok(())
     }
 
-    fn find(&self, value: &Value) -> Result<Option<Vec<PrimaryKey>>, DbError> {
+    fn find(&self, value: &Value) -> Result<Option<Vec<PrimaryKey>>, OxidbError> { // Changed
         Ok(self.store.get(value).cloned())
     }
 
-    fn save(&self) -> Result<(), DbError> {
+    fn save(&self) -> Result<(), OxidbError> { // Changed
         let file = OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true) // Overwrite existing file
             .open(&self.file_path)
-            .map_err(|e| DbError::IoError(e))?;
+            .map_err(OxidbError::Io)?; // Changed
         let writer = BufWriter::new(file);
-        bincode::serialize_into(writer, &self.store)
-            .map_err(|e| DbError::SerializationError(format!("Failed to serialize index data: {}", e)))
+        bincode::serialize_into(writer, &self.store).map_err(|e| {
+            OxidbError::Serialization(format!("Failed to serialize index data: {}", e)) // Changed
+        })
     }
 
-    fn load(&mut self) -> Result<(), DbError> {
+    fn load(&mut self) -> Result<(), OxidbError> { // Changed
         if !self.file_path.exists() {
             // If the file doesn't exist, it's not an error; it just means no data to load.
             // Initialize with an empty store, which is already the case.
             self.store = HashMap::new();
             return Ok(());
         }
-        let file = File::open(&self.file_path).map_err(|e| DbError::IoError(e))?;
-        if file.metadata().map_err(|e| DbError::IoError(e))?.len() == 0 {
+        let file = File::open(&self.file_path).map_err(OxidbError::Io)?; // Changed
+        if file.metadata().map_err(OxidbError::Io)?.len() == 0 { // Changed
             // File is empty, treat as no data.
             self.store = HashMap::new();
             return Ok(());
         }
         let reader = BufReader::new(file);
-        self.store = bincode::deserialize_from(reader)
-            .map_err(|e| DbError::DeserializationError(format!("Failed to deserialize index data: {}", e)))?;
+        self.store = bincode::deserialize_from(reader).map_err(|e| {
+            OxidbError::Deserialization(format!("Failed to deserialize index data: {}", e)) // Changed
+        })?;
         Ok(())
     }
 
-    fn update(&mut self, old_value_for_index: &Value, new_value_for_index: &Value, primary_key: &PrimaryKey) -> Result<(), DbError> {
+    fn update(
+        &mut self,
+        old_value_for_index: &Value,
+        new_value_for_index: &Value,
+        primary_key: &PrimaryKey,
+    ) -> Result<(), OxidbError> { // Changed
         if old_value_for_index == new_value_for_index {
             // If the indexed value hasn't changed, no update to the index is needed for this specific key.
             // However, ensure the primary_key is associated with new_value_for_index if it wasn't before
@@ -152,7 +157,7 @@ mod tests {
     }
 
     #[test]
-    fn test_new_empty_index() -> Result<(), DbError> {
+    fn test_new_empty_index() -> Result<(), OxidbError> { // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let index = HashIndex::new("test_idx".to_string(), temp_dir.path())?;
 
@@ -162,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    fn test_new_loads_existing() -> Result<(), DbError> {
+    fn test_new_loads_existing() -> Result<(), OxidbError> { // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let index_name = "existing_idx".to_string();
         let value1 = val("value1");
@@ -186,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_and_find() -> Result<(), DbError> {
+    fn test_insert_and_find() -> Result<(), OxidbError> { // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("insert_idx".to_string(), temp_dir.path())?;
 
@@ -220,7 +225,7 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_duplicate_pk_for_same_value() -> Result<(), DbError> {
+    fn test_insert_duplicate_pk_for_same_value() -> Result<(), OxidbError> { // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("duplicate_pk_idx".to_string(), temp_dir.path())?;
         let value1 = val("value1");
@@ -235,9 +240,8 @@ mod tests {
         Ok(())
     }
 
-
     #[test]
-    fn test_delete_specific_pk_from_multiple() -> Result<(), DbError> {
+    fn test_delete_specific_pk_from_multiple() -> Result<(), OxidbError> { // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("delete_specific_pk_idx".to_string(), temp_dir.path())?;
         let value1 = val("value1");
@@ -255,7 +259,7 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_last_pk_removes_value() -> Result<(), DbError> {
+    fn test_delete_last_pk_removes_value() -> Result<(), OxidbError> { // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("delete_last_pk_idx".to_string(), temp_dir.path())?;
         let value1 = val("value1");
@@ -264,12 +268,15 @@ mod tests {
         index.insert(&value1, &pk1)?;
         index.delete(&value1, Some(&pk1))?;
 
-        assert!(index.find(&value1)?.is_none(), "Value should be removed after deleting its last PK");
+        assert!(
+            index.find(&value1)?.is_none(),
+            "Value should be removed after deleting its last PK"
+        );
         Ok(())
     }
 
     #[test]
-    fn test_delete_all_pks_for_value() -> Result<(), DbError> {
+    fn test_delete_all_pks_for_value() -> Result<(), OxidbError> { // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("delete_all_pks_idx".to_string(), temp_dir.path())?;
         let value1 = val("value1");
@@ -280,12 +287,15 @@ mod tests {
         index.insert(&value1, &pk2)?;
 
         index.delete(&value1, None)?; // Delete all PKs for value1
-        assert!(index.find(&value1)?.is_none(), "Value should be removed when primary_key is None in delete");
+        assert!(
+            index.find(&value1)?.is_none(),
+            "Value should be removed when primary_key is None in delete"
+        );
         Ok(())
     }
 
     #[test]
-    fn test_delete_non_existent_value() -> Result<(), DbError> {
+    fn test_delete_non_existent_value() -> Result<(), OxidbError> { // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("delete_non_value_idx".to_string(), temp_dir.path())?;
         let value1 = val("value1"); // Not inserted
@@ -296,7 +306,7 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_non_existent_pk() -> Result<(), DbError> {
+    fn test_delete_non_existent_pk() -> Result<(), OxidbError> { // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("delete_non_pk_idx".to_string(), temp_dir.path())?;
         let value1 = val("value1");
@@ -312,7 +322,7 @@ mod tests {
     }
 
     #[test]
-    fn test_save_and_load_persistence() -> Result<(), DbError> {
+    fn test_save_and_load_persistence() -> Result<(), OxidbError> { // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir for persistence test");
         let index_name = "persistence_idx".to_string();
         let index_path = temp_dir.path();
@@ -351,21 +361,25 @@ mod tests {
     }
 
     #[test]
-    fn test_load_from_empty_file() -> Result<(), DbError> {
+    fn test_load_from_empty_file() -> Result<(), OxidbError> { // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let index_name = "empty_file_idx".to_string();
-        let index_file_path = temp_dir.path().join(format!("{}.{}", index_name, DEFAULT_INDEX_FILE_EXTENSION));
+        let index_file_path =
+            temp_dir.path().join(format!("{}.{}", index_name, DEFAULT_INDEX_FILE_EXTENSION));
 
         // Create an empty file
         File::create(&index_file_path).expect("Failed to create empty file");
 
         let index = HashIndex::new(index_name, temp_dir.path())?;
-        assert!(index.store.is_empty(), "Index store should be empty after loading from an empty file");
+        assert!(
+            index.store.is_empty(),
+            "Index store should be empty after loading from an empty file"
+        );
         Ok(())
     }
 
     #[test]
-    fn test_load_from_non_existent_file() -> Result<(), DbError> {
+    fn test_load_from_non_existent_file() -> Result<(), OxidbError> { // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         // HashIndex::new will attempt to load, but file won't exist.
         let index = HashIndex::new("non_existent_file_idx".to_string(), temp_dir.path())?;
@@ -374,7 +388,7 @@ mod tests {
     }
 
     #[test]
-    fn test_index_update_value_changed() -> Result<(), DbError> {
+    fn test_index_update_value_changed() -> Result<(), OxidbError> { // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("update_idx".to_string(), temp_dir.path())?;
 
@@ -390,13 +404,17 @@ mod tests {
         // Update to new value
         index.update(&old_val, &new_val, &pk1)?;
         assert!(index.find(&old_val)?.is_none(), "Old value should be removed after update");
-        assert_eq!(index.find(&new_val)?.unwrap(), vec![pk1.clone()], "New value should be inserted after update");
+        assert_eq!(
+            index.find(&new_val)?.unwrap(),
+            vec![pk1.clone()],
+            "New value should be inserted after update"
+        );
 
         Ok(())
     }
 
     #[test]
-    fn test_index_update_value_unchanged() -> Result<(), DbError> {
+    fn test_index_update_value_unchanged() -> Result<(), OxidbError> { // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("update_unchanged_idx".to_string(), temp_dir.path())?;
 
@@ -408,16 +426,24 @@ mod tests {
 
         // Update with the same value
         index.update(&val1, &val1, &pk1)?;
-        assert_eq!(index.find(&val1)?.unwrap(), vec![pk1.clone()], "Value should still exist and be unchanged");
+        assert_eq!(
+            index.find(&val1)?.unwrap(),
+            vec![pk1.clone()],
+            "Value should still exist and be unchanged"
+        );
         // Ensure no duplicate PKs if insert is called internally
         let pks = index.store.get(&val1).unwrap();
-        assert_eq!(pks.len(), 1, "PK list should not grow if value is unchanged and PK already exists.");
+        assert_eq!(
+            pks.len(),
+            1,
+            "PK list should not grow if value is unchanged and PK already exists."
+        );
 
         Ok(())
     }
 
     #[test]
-    fn test_index_update_multiple_pks_one_changes() -> Result<(), DbError> {
+    fn test_index_update_multiple_pks_one_changes() -> Result<(), OxidbError> { // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("update_multi_pk_idx".to_string(), temp_dir.path())?;
 
@@ -445,7 +471,7 @@ mod tests {
     }
 
     #[test]
-    fn test_index_update_from_non_existent_old_value() -> Result<(), DbError> {
+    fn test_index_update_from_non_existent_old_value() -> Result<(), OxidbError> { // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("update_non_old_idx".to_string(), temp_dir.path())?;
 

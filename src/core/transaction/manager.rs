@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::core::transaction::{Transaction, TransactionState};
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct TransactionManager {
@@ -7,6 +7,12 @@ pub struct TransactionManager {
     next_transaction_id: u64,
     current_active_transaction_id: Option<u64>,
     committed_tx_ids: Vec<u64>, // Added field
+}
+
+impl Default for TransactionManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TransactionManager {
@@ -46,12 +52,13 @@ impl TransactionManager {
     }
 
     pub fn commit_transaction(&mut self) {
-        if let Some(id) = self.current_active_transaction_id.take() { // take() sets current_active_transaction_id to None
+        if let Some(id) = self.current_active_transaction_id.take() {
+            // take() sets current_active_transaction_id to None
             if let Some(mut transaction) = self.active_transactions.remove(&id) {
                 transaction.set_state(TransactionState::Committed);
                 self.committed_tx_ids.push(id); // Add to committed list
-                // The transaction (and its undo_log) is removed from active_transactions.
-                // If it were to be kept for inspection, its undo_log should be cleared here.
+                                                // The transaction (and its undo_log) is removed from active_transactions.
+                                                // If it were to be kept for inspection, its undo_log should be cleared here.
             }
             // current_active_transaction_id is already None due to take()
         }
@@ -75,10 +82,11 @@ impl TransactionManager {
         // and auto-commit IDs can be arbitrary, this might need sorting or a Set.
         // Given current usage (ID 0), direct push and then sort/dedup if needed is an option.
         // Or, ensure `is_committed` handles potential disorder if non-monotonic IDs are added.
-        if !self.committed_tx_ids.contains(&tx_id) { // Avoid duplicates for sanity
-             self.committed_tx_ids.push(tx_id);
-             // If order is strictly required for is_committed's binary_search, sort here.
-             // self.committed_tx_ids.sort_unstable();
+        if !self.committed_tx_ids.contains(&tx_id) {
+            // Avoid duplicates for sanity
+            self.committed_tx_ids.push(tx_id);
+            // If order is strictly required for is_committed's binary_search, sort here.
+            // self.committed_tx_ids.sort_unstable();
         }
     }
 
@@ -91,7 +99,8 @@ impl TransactionManager {
     }
 
     pub fn rollback_transaction(&mut self) {
-        if let Some(id) = self.current_active_transaction_id.take() { // take() sets current_active_transaction_id to None
+        if let Some(id) = self.current_active_transaction_id.take() {
+            // take() sets current_active_transaction_id to None
             if let Some(mut transaction) = self.active_transactions.remove(&id) {
                 transaction.set_state(TransactionState::Aborted);
                 // The transaction (and its undo_log) is removed.

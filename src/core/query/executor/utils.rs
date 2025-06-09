@@ -1,9 +1,13 @@
-use crate::core::common::error::DbError;
-use crate::core::types::DataType;
-use crate::core::query::sql::ast::AstLiteralValue; // Ensure this path is correct
+use crate::core::common::OxidbError; // Changed
+use crate::core::query::sql::ast::AstLiteralValue;
+use crate::core::types::DataType; // Ensure this path is correct
 
 // This function was already here from previous refactoring, ensure it's pub
-pub fn compare_data_types(val1: &DataType, val2: &DataType, operator: &str) -> Result<bool, DbError> {
+pub fn compare_data_types(
+    val1: &DataType,
+    val2: &DataType,
+    operator: &str,
+) -> Result<bool, OxidbError> { // Changed
     match operator {
         "=" => Ok(val1 == val2),
         "!=" => Ok(val1 != val2),
@@ -50,31 +54,31 @@ pub fn compare_data_types(val1: &DataType, val2: &DataType, operator: &str) -> R
                     ">=" => Ok(s1 >= s2),
                     _ => unreachable!(),
                 },
-                (DataType::Null, _) | (_, DataType::Null) => Err(DbError::InvalidQuery(format!(
+                (DataType::Null, _) | (_, DataType::Null) => Err(OxidbError::SqlParsing(format!( // Changed
                     "Ordered comparison ('{}') with NULL is not supported directly. Use IS NULL or IS NOT NULL.",
                     operator
                 ))),
-                _ => Err(DbError::TypeError(format!(
+                _ => Err(OxidbError::Type(format!( // Changed
                     "Cannot apply ordered operator '{}' between {:?} and {:?}",
                     operator, val1, val2
                 ))),
             }
         }
-        _ => Err(DbError::InvalidQuery(format!("Unsupported operator: {}", operator))),
+        _ => Err(OxidbError::SqlParsing(format!("Unsupported operator: {}", operator))), // Changed
     }
 }
 
 // New helper function as planned
-pub fn datatype_to_ast_literal(data_type: &DataType) -> Result<AstLiteralValue, DbError> {
+pub fn datatype_to_ast_literal(data_type: &DataType) -> Result<AstLiteralValue, OxidbError> { // Changed
     match data_type {
         DataType::Integer(i) => Ok(AstLiteralValue::Number(i.to_string())),
         DataType::String(s) => Ok(AstLiteralValue::String(s.clone())),
         DataType::Boolean(b) => Ok(AstLiteralValue::Boolean(*b)),
         DataType::Float(f) => Ok(AstLiteralValue::Number(f.to_string())), // Consider precision if needed
         DataType::Null => Ok(AstLiteralValue::Null),
-        DataType::Map(_) => Err(DbError::NotImplemented(
+        DataType::Map(_) => Err(OxidbError::NotImplemented{feature: // Changed
             "Cannot convert Map DataType to AstLiteralValue for SQL conditions".to_string(),
-        )),
+        }),
         DataType::JsonBlob(json_val) => {
             // Convert serde_json::Value to a string representation for AstLiteralValue::String
             // This might need refinement based on how JSON literals are handled in SQL (e.g., direct JSON type vs. string)

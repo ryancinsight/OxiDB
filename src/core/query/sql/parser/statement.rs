@@ -1,5 +1,5 @@
 use super::core::SqlParser;
-use crate::core::query::sql::ast::{Statement, SelectStatement, UpdateStatement};
+use crate::core::query::sql::ast::{SelectStatement, Statement, UpdateStatement};
 use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::tokenizer::Token; // For matching specific tokens like Token::Where
 
@@ -12,7 +12,9 @@ impl SqlParser {
         let statement = match self.peek() {
             Some(Token::Select) => self.parse_select_statement(),
             Some(Token::Update) => self.parse_update_statement(),
-            Some(_other_token) => return Err(SqlParseError::UnknownStatementType(self.current_token_pos())),
+            Some(_other_token) => {
+                return Err(SqlParseError::UnknownStatementType(self.current_token_pos()))
+            }
             None => return Err(SqlParseError::UnexpectedEOF), // Should be caught by is_at_end earlier
         }?;
 
@@ -40,11 +42,7 @@ impl SqlParser {
         if self.match_token(Token::Semicolon) {
             self.consume(Token::Semicolon)?;
         }
-        Ok(Statement::Select(SelectStatement {
-            columns,
-            source,
-            condition,
-        }))
+        Ok(Statement::Select(SelectStatement { columns, source, condition }))
     }
 
     pub(super) fn parse_update_statement(&mut self) -> Result<Statement, SqlParseError> {
@@ -61,10 +59,6 @@ impl SqlParser {
         if self.match_token(Token::Semicolon) {
             self.consume(Token::Semicolon)?;
         }
-        Ok(Statement::Update(UpdateStatement {
-            source,
-            assignments,
-            condition,
-        }))
+        Ok(Statement::Update(UpdateStatement { source, assignments, condition }))
     }
 }

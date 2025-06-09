@@ -33,11 +33,10 @@ pub enum SelectColumn {
     Asterisk, // For SELECT *
 }
 
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct SelectStatement {
     pub columns: Vec<SelectColumn>, // Changed to Vec<SelectColumn> to support specific columns or *
-    pub source: String, // Table name
+    pub source: String,             // Table name
     pub condition: Option<Condition>, // Simplified: Option<ConditionTree> for complex conditions
 }
 

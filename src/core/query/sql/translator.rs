@@ -1,9 +1,9 @@
-use crate::core::common::error::DbError;
+use super::ast;
+use crate::core::common::OxidbError; // Changed
 use crate::core::query::commands::{self, Command};
 use crate::core::types::DataType;
-use super::ast;
 
-pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command, DbError> {
+pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command, OxidbError> { // Changed
     match ast_statement {
         ast::Statement::Select(select_ast) => {
             let columns_spec = translate_select_columns(select_ast.columns);
@@ -36,20 +36,26 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
     }
 }
 
-fn translate_literal(literal: &ast::AstLiteralValue) -> Result<DataType, DbError> {
+fn translate_literal(literal: &ast::AstLiteralValue) -> Result<DataType, OxidbError> { // Changed
     match literal {
         ast::AstLiteralValue::String(s) => Ok(DataType::String(s.clone())),
         ast::AstLiteralValue::Number(n_str) => {
-            if let Ok(i_val) = n_str.parse::<i64>() { Ok(DataType::Integer(i_val)) }
-            else if let Ok(f_val) = n_str.parse::<f64>() { Ok(DataType::Float(f_val)) }
-            else { Err(DbError::InvalidQuery(format!("Cannot parse numeric literal '{}'", n_str))) }
+            if let Ok(i_val) = n_str.parse::<i64>() {
+                Ok(DataType::Integer(i_val))
+            } else if let Ok(f_val) = n_str.parse::<f64>() {
+                Ok(DataType::Float(f_val))
+            } else {
+                Err(OxidbError::SqlParsing(format!("Cannot parse numeric literal '{}'", n_str))) // Changed
+            }
         }
         ast::AstLiteralValue::Boolean(b) => Ok(DataType::Boolean(*b)),
         ast::AstLiteralValue::Null => Ok(DataType::Null),
     }
 }
 
-fn translate_condition_to_sql_condition(ast_condition: &ast::Condition) -> Result<commands::SqlCondition, DbError> {
+fn translate_condition_to_sql_condition(
+    ast_condition: &ast::Condition,
+) -> Result<commands::SqlCondition, OxidbError> { // Changed
     let value = translate_literal(&ast_condition.value)?;
     Ok(commands::SqlCondition {
         column: ast_condition.column.clone(),
@@ -58,12 +64,11 @@ fn translate_condition_to_sql_condition(ast_condition: &ast::Condition) -> Resul
     })
 }
 
-fn translate_assignment_to_sql_assignment(ast_assignment: &ast::Assignment) -> Result<commands::SqlAssignment, DbError> {
+fn translate_assignment_to_sql_assignment(
+    ast_assignment: &ast::Assignment,
+) -> Result<commands::SqlAssignment, OxidbError> { // Changed
     let value = translate_literal(&ast_assignment.value)?;
-    Ok(commands::SqlAssignment {
-        column: ast_assignment.column.clone(),
-        value,
-    })
+    Ok(commands::SqlAssignment { column: ast_assignment.column.clone(), value })
 }
 
 fn translate_select_columns(ast_columns: Vec<ast::SelectColumn>) -> commands::SelectColumnSpec {
@@ -86,7 +91,6 @@ fn translate_select_columns(ast_columns: Vec<ast::SelectColumn>) -> commands::Se
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,91 +98,86 @@ mod tests {
 
     // Use aliased imports for ast items used in tests to avoid conflict with `super::ast`
     use crate::core::query::sql::ast::{
-        AstLiteralValue as TestAstLiteralValue,
-        SelectColumn as TestSelectColumn,
-        Statement as TestStatement,
-        SelectStatement as TestSelectStatement,
+        Assignment as TestAssignment, AstLiteralValue as TestAstLiteralValue,
+        Condition as TestCondition, SelectColumn as TestSelectColumn,
+        SelectStatement as TestSelectStatement, Statement as TestStatement,
         UpdateStatement as TestUpdateStatement,
-        Assignment as TestAssignment,
-        Condition as TestCondition
     };
-
 
     #[test]
     fn test_translate_literal_string() {
         let ast_literal = TestAstLiteralValue::String("hello".to_string());
-        assert_eq!(translate_literal(&ast_literal), Ok(DataType::String("hello".to_string())));
+        assert!(matches!(translate_literal(&ast_literal), Ok(DataType::String(s)) if s == "hello"));
     }
 
     #[test]
     fn test_translate_literal_integer() {
         let ast_literal = TestAstLiteralValue::Number("123".to_string());
-        assert_eq!(translate_literal(&ast_literal), Ok(DataType::Integer(123)));
+        assert!(matches!(translate_literal(&ast_literal), Ok(DataType::Integer(123))));
     }
 
     #[test]
     fn test_translate_literal_float() {
         let ast_literal = TestAstLiteralValue::Number("123.45".to_string());
-        assert_eq!(translate_literal(&ast_literal), Ok(DataType::Float(123.45)));
+        assert!(matches!(translate_literal(&ast_literal), Ok(DataType::Float(f)) if (f - 123.45).abs() < f64::EPSILON));
     }
 
     #[test]
     fn test_translate_literal_negative_integer() {
         let ast_literal = TestAstLiteralValue::Number("-50".to_string());
-        assert_eq!(translate_literal(&ast_literal), Ok(DataType::Integer(-50)));
+        assert!(matches!(translate_literal(&ast_literal), Ok(DataType::Integer(-50))));
     }
 
     #[test]
     fn test_translate_literal_negative_float() {
         let ast_literal = TestAstLiteralValue::Number("-50.75".to_string());
-        assert_eq!(translate_literal(&ast_literal), Ok(DataType::Float(-50.75)));
+        assert!(matches!(translate_literal(&ast_literal), Ok(DataType::Float(f)) if (f - -50.75).abs() < f64::EPSILON));
     }
-
 
     #[test]
     fn test_translate_literal_invalid_number() {
         let ast_literal = TestAstLiteralValue::Number("abc".to_string());
         match translate_literal(&ast_literal) {
-            Err(DbError::InvalidQuery(msg)) => {
+            Err(OxidbError::SqlParsing(msg)) => { // Changed
                 assert!(msg.contains("Cannot parse numeric literal 'abc'"));
             }
-            _ => panic!("Expected InvalidQuery error for unparsable number string."),
+            _ => panic!("Expected SqlParsing error for unparsable number string."), // Changed
         }
     }
 
     #[test]
     fn test_translate_literal_number_with_alpha_suffix() {
         let ast_literal = TestAstLiteralValue::Number("123xyz".to_string());
-         match translate_literal(&ast_literal) {
-            Err(DbError::InvalidQuery(msg)) => {
+        match translate_literal(&ast_literal) {
+            Err(OxidbError::SqlParsing(msg)) => { // Changed
                 assert!(msg.contains("Cannot parse numeric literal '123xyz'"));
             }
-            _ => panic!("Expected InvalidQuery error for unparsable number string."),
+            _ => panic!("Expected SqlParsing error for unparsable number string."), // Changed
         }
     }
-
 
     #[test]
     fn test_translate_literal_boolean_true() {
         let ast_literal = TestAstLiteralValue::Boolean(true);
-        assert_eq!(translate_literal(&ast_literal), Ok(DataType::Boolean(true)));
+        assert!(matches!(translate_literal(&ast_literal), Ok(DataType::Boolean(true))));
     }
 
     #[test]
     fn test_translate_literal_boolean_false() {
         let ast_literal = TestAstLiteralValue::Boolean(false);
-        assert_eq!(translate_literal(&ast_literal), Ok(DataType::Boolean(false)));
+        assert!(matches!(translate_literal(&ast_literal), Ok(DataType::Boolean(false))));
     }
 
     #[test]
     fn test_translate_literal_null() {
         let ast_literal = TestAstLiteralValue::Null;
-        assert_eq!(translate_literal(&ast_literal), Ok(DataType::Null));
+        assert!(matches!(translate_literal(&ast_literal), Ok(DataType::Null)));
     }
 
     #[test]
     fn test_translate_condition_simple_equals() {
-        let ast_cond = TestCondition { // Using aliased TestCondition
+        let ast_cond = TestCondition {
+            // Using aliased TestCondition
             column: "name".to_string(),
             operator: "=".to_string(),
             value: TestAstLiteralValue::String("test_user".to_string()),
@@ -188,12 +187,13 @@ mod tests {
             operator: "=".to_string(),
             value: DataType::String("test_user".to_string()),
         };
-        assert_eq!(translate_condition_to_sql_condition(&ast_cond), Ok(expected_sql_cond));
+        assert!(matches!(translate_condition_to_sql_condition(&ast_cond), Ok(ref res_cond) if *res_cond == expected_sql_cond));
     }
 
     #[test]
     fn test_translate_condition_with_numeric_value() {
-         let ast_cond = TestCondition { // Using aliased TestCondition
+        let ast_cond = TestCondition {
+            // Using aliased TestCondition
             column: "age".to_string(),
             operator: ">".to_string(),
             value: TestAstLiteralValue::Number("30".to_string()),
@@ -203,7 +203,7 @@ mod tests {
             operator: ">".to_string(),
             value: DataType::Integer(30),
         };
-        assert_eq!(translate_condition_to_sql_condition(&ast_cond), Ok(expected_sql_cond));
+        assert!(matches!(translate_condition_to_sql_condition(&ast_cond), Ok(ref res_cond) if *res_cond == expected_sql_cond));
     }
 
     #[test]
@@ -216,7 +216,7 @@ mod tests {
             column: "email".to_string(),
             value: DataType::String("new@example.com".to_string()),
         };
-        assert_eq!(translate_assignment_to_sql_assignment(&ast_assign), Ok(expected_sql_assign));
+        assert!(matches!(translate_assignment_to_sql_assignment(&ast_assign), Ok(ref res_assign) if *res_assign == expected_sql_assign));
     }
 
     #[test]
@@ -229,7 +229,7 @@ mod tests {
             column: "is_active".to_string(),
             value: DataType::Boolean(true),
         };
-        assert_eq!(translate_assignment_to_sql_assignment(&ast_assign), Ok(expected_sql_assign));
+        assert!(matches!(translate_assignment_to_sql_assignment(&ast_assign), Ok(ref res_assign) if *res_assign == expected_sql_assign));
     }
 
     #[test]
@@ -244,28 +244,24 @@ mod tests {
             TestSelectColumn::ColumnName("id".to_string()),
             TestSelectColumn::ColumnName("name".to_string()),
         ];
-        let expected_spec = commands::SelectColumnSpec::Specific(vec!["id".to_string(), "name".to_string()]);
+        let expected_spec =
+            commands::SelectColumnSpec::Specific(vec!["id".to_string(), "name".to_string()]);
         assert_eq!(translate_select_columns(ast_cols), expected_spec);
     }
 
     #[test]
     fn test_translate_select_columns_specific_with_asterisk_first() {
-        let ast_cols = vec![
-            TestSelectColumn::Asterisk,
-            TestSelectColumn::ColumnName("id".to_string()),
-        ];
+        let ast_cols =
+            vec![TestSelectColumn::Asterisk, TestSelectColumn::ColumnName("id".to_string())];
         assert_eq!(translate_select_columns(ast_cols), commands::SelectColumnSpec::All);
     }
 
     #[test]
     fn test_translate_select_columns_specific_with_asterisk_last() {
-        let ast_cols = vec![
-            TestSelectColumn::ColumnName("id".to_string()),
-            TestSelectColumn::Asterisk,
-        ];
+        let ast_cols =
+            vec![TestSelectColumn::ColumnName("id".to_string()), TestSelectColumn::Asterisk];
         assert_eq!(translate_select_columns(ast_cols), commands::SelectColumnSpec::All);
     }
-
 
     #[test]
     fn test_translate_select_columns_empty() {
@@ -305,7 +301,10 @@ mod tests {
         let command = translate_ast_to_command(ast_stmt).unwrap();
         match command {
             Command::Select { columns, source, condition } => {
-                assert_eq!(columns, commands::SelectColumnSpec::Specific(vec!["email".to_string()]));
+                assert_eq!(
+                    columns,
+                    commands::SelectColumnSpec::Specific(vec!["email".to_string()])
+                );
                 assert_eq!(source, "customers");
                 assert!(condition.is_some());
                 let cond_val = condition.unwrap();

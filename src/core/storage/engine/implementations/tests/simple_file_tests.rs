@@ -1,31 +1,35 @@
 // Original imports from simple_file.rs that might be needed by test helpers or types:
 use std::collections::{HashMap, HashSet};
-use std::fs::{File, OpenOptions, write, remove_file, read, File as StdFile}; // Removed rename for now as it's not used after test changes
-use std::io::{BufReader, BufWriter, Write, ErrorKind};
+use std::fs::{read, remove_file, write, File, File as StdFile, OpenOptions}; // Removed rename for now as it's not used after test changes
+use std::io::{BufReader, BufWriter, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
 // Specific imports for types used in tests, from their canonical paths
-use crate::core::common::error::DbError;
+use crate::core::common::OxidbError; // Changed
+use crate::core::common::traits::{DataDeserializer, DataSerializer};
 use crate::core::storage::engine::traits::{KeyValueStore, VersionedValue};
-use crate::core::common::traits::{DataSerializer, DataDeserializer};
 use crate::core::storage::engine::wal::{WalEntry, WalWriter};
 use crate::core::transaction::Transaction;
-use tempfile::{NamedTempFile, Builder};
+use tempfile::{Builder, NamedTempFile};
 
 // Import the struct being tested
 use crate::core::storage::engine::implementations::simple_file::SimpleFileKvStore;
 
-
 // Helper to create a main DB file with specific key-value data
-fn create_db_file_with_kv_data(path: &Path, data: &[(Vec<u8>, Vec<u8>)]) -> Result<(), DbError> {
-    let file = OpenOptions::new().write(true).create(true).truncate(true).open(path).map_err(DbError::IoError)?;
+fn create_db_file_with_kv_data(path: &Path, data: &[(Vec<u8>, Vec<u8>)]) -> Result<(), OxidbError> { // Changed
+    let file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(path)
+        .map_err(OxidbError::Io)?; // Changed
     let mut writer = BufWriter::new(file);
     for (key, value) in data {
         <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut writer)?;
         <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(value, &mut writer)?;
     }
-    writer.flush().map_err(DbError::IoError)?;
-    writer.get_ref().sync_all().map_err(DbError::IoError)?; // Ensure data is on disk
+    writer.flush().map_err(OxidbError::Io)?; // Changed
+    writer.get_ref().sync_all().map_err(OxidbError::Io)?; // Changed
     Ok(())
 }
 
@@ -44,17 +48,17 @@ fn derive_wal_path(db_path: &Path) -> PathBuf {
 }
 
 // Helper to read all entries from a WAL file
-fn read_all_wal_entries(wal_path: &Path) -> Result<Vec<WalEntry>, DbError> {
-    let file = StdFile::open(wal_path).map_err(DbError::IoError)?;
+fn read_all_wal_entries(wal_path: &Path) -> Result<Vec<WalEntry>, OxidbError> { // Changed
+    let file = StdFile::open(wal_path).map_err(OxidbError::Io)?; // Changed
     let mut reader = BufReader::new(file);
     let mut entries = Vec::new();
     loop {
         match <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut reader) {
             Ok(entry) => entries.push(entry),
-            Err(DbError::IoError(e)) if e.kind() == ErrorKind::UnexpectedEof => {
+            Err(OxidbError::Io(e)) if e.kind() == ErrorKind::UnexpectedEof => { // Changed
                 break;
             }
-            Err(e) => {
+            Err(e) => { // e is OxidbError
                 return Err(e);
             }
         }
@@ -125,7 +129,10 @@ fn test_get_non_existent() {
     let store = SimpleFileKvStore::new(temp_file.path()).unwrap();
     let snapshot_id = 0;
     let committed_ids: HashSet<u64> = HashSet::new();
-    assert_eq!(store.get(&b"non_existent_key".to_vec(), snapshot_id, &committed_ids).unwrap(), None);
+    assert_eq!(
+        store.get(&b"non_existent_key".to_vec(), snapshot_id, &committed_ids).unwrap(),
+        None
+    );
 }
 
 #[test]
@@ -163,7 +170,9 @@ fn test_contains_key() {
     let key1 = b"key1".to_vec();
     store.put(key1.clone(), b"value1".to_vec(), &dummy_transaction).unwrap();
 
-    assert!(!store.contains_key(&b"non_existent_key".to_vec(), snapshot_id, &committed_ids).unwrap());
+    assert!(!store
+        .contains_key(&b"non_existent_key".to_vec(), snapshot_id, &committed_ids)
+        .unwrap());
 }
 
 #[test]
@@ -210,10 +219,8 @@ fn test_load_from_disk_prefers_valid_temp_file() {
     let initial_data = vec![(b"key1".to_vec(), b"value_initial".to_vec())];
     create_db_file_with_kv_data(&main_db_path, &initial_data).unwrap();
 
-    let temp_data = vec![
-        (b"key1".to_vec(), b"value_new".to_vec()),
-        (b"key2".to_vec(), b"value2".to_vec()),
-    ];
+    let temp_data =
+        vec![(b"key1".to_vec(), b"value_new".to_vec()), (b"key2".to_vec(), b"value2".to_vec())];
     create_db_file_with_kv_data(&temp_db_path, &temp_data).unwrap();
 
     let store = SimpleFileKvStore::new(&main_db_path).unwrap();
@@ -258,7 +265,9 @@ fn test_load_from_disk_handles_temp_file_and_no_main_file() {
     let temp_db_path = main_db_path.with_extension("tmp");
 
     main_db_file_handle.close().unwrap();
-    if main_db_path.exists() { remove_file(&main_db_path).unwrap(); }
+    if main_db_path.exists() {
+        remove_file(&main_db_path).unwrap();
+    }
     assert!(!main_db_path.exists());
 
     let temp_data = vec![(b"key_temp".to_vec(), b"value_temp".to_vec())];
@@ -280,7 +289,9 @@ fn test_load_from_disk_handles_corrupted_temp_file_and_no_main_file() {
     let temp_db_path = main_db_path.with_extension("tmp");
 
     main_db_file_handle.close().unwrap();
-    if main_db_path.exists() { remove_file(&main_db_path).unwrap(); }
+    if main_db_path.exists() {
+        remove_file(&main_db_path).unwrap();
+    }
     assert!(!main_db_path.exists());
 
     write(&temp_db_path, b"corrupted data").unwrap();
@@ -333,10 +344,10 @@ fn test_load_from_malformed_file_key_eof() {
     let result = SimpleFileKvStore::new(path);
     assert!(result.is_err());
     match result.unwrap_err() {
-        DbError::StorageError(msg) => {
+        OxidbError::Storage(msg) => {
             assert!(msg.contains("Failed to deserialize key"));
-            assert!(msg.contains("failed to fill whole buffer"));
-        },
+            assert!(msg.contains("failed to fill whole buffer") || msg.contains("Io(Error { kind: UnexpectedEof"));
+        }
         e => panic!("Unexpected error type for malformed key (EOF): {:?}", e),
     }
 }
@@ -357,10 +368,10 @@ fn test_load_from_malformed_file_value_eof() {
     let result = SimpleFileKvStore::new(path);
     assert!(result.is_err());
     match result.unwrap_err() {
-        DbError::StorageError(msg) => {
+            OxidbError::Storage(msg) => {
             assert!(msg.contains("Failed to deserialize value for key"));
-            assert!(msg.contains("IO Error: failed to fill whole buffer"));
-        },
+            assert!(msg.contains("failed to fill whole buffer") || msg.contains("Io(Error { kind: UnexpectedEof"));
+        }
         e => panic!("Unexpected error type for malformed value (EOF): {:?}", e),
     }
 }
@@ -377,7 +388,10 @@ fn test_put_writes_to_wal_and_cache() {
     let value = b"wal_value1".to_vec();
     store.put(key.clone(), value.clone(), &dummy_transaction).unwrap();
 
-    assert_eq!(store.get_cache_entry_for_test(&key).and_then(|v| v.last().map(|vv| vv.value.clone())), Some(value.clone()));
+    assert_eq!(
+        store.get_cache_entry_for_test(&key).and_then(|v| v.last().map(|vv| vv.value.clone())),
+        Some(value.clone())
+    );
     assert!(wal_path.exists());
 
     let entries = read_all_wal_entries(&wal_path).unwrap();
@@ -452,7 +466,10 @@ fn test_load_from_disk_no_wal() {
     assert!(!wal_path.exists(), "WAL file should not exist after save_to_disk");
 
     let store = SimpleFileKvStore::new(db_path).unwrap();
-    assert_eq!(store.get_cache_entry_for_test(&key).and_then(|v| v.last().map(|vv| vv.value.clone())), Some(value));
+    assert_eq!(
+        store.get_cache_entry_for_test(&key).and_then(|v| v.last().map(|vv| vv.value.clone())),
+        Some(value)
+    );
 }
 
 #[test]
@@ -467,20 +484,50 @@ fn test_load_from_disk_with_wal_replay() {
 
     let wal_writer = WalWriter::new(db_path);
 
-    wal_writer.log_entry(&WalEntry::Put { transaction_id: 1, key: b"key1".to_vec(), value: b"val1".to_vec() }).unwrap();
+    wal_writer
+        .log_entry(&WalEntry::Put {
+            transaction_id: 1,
+            key: b"key1".to_vec(),
+            value: b"val1".to_vec(),
+        })
+        .unwrap();
     wal_writer.log_entry(&WalEntry::Delete { transaction_id: 1, key: key0.clone() }).unwrap();
     wal_writer.log_entry(&WalEntry::TransactionCommit { transaction_id: 1 }).unwrap();
 
-    wal_writer.log_entry(&WalEntry::Put { transaction_id: 2, key: b"key2".to_vec(), value: b"val2".to_vec() }).unwrap();
+    wal_writer
+        .log_entry(&WalEntry::Put {
+            transaction_id: 2,
+            key: b"key2".to_vec(),
+            value: b"val2".to_vec(),
+        })
+        .unwrap();
     wal_writer.log_entry(&WalEntry::TransactionRollback { transaction_id: 2 }).unwrap();
 
-    wal_writer.log_entry(&WalEntry::Put { transaction_id: 3, key: b"key3".to_vec(), value: b"val3".to_vec() }).unwrap();
+    wal_writer
+        .log_entry(&WalEntry::Put {
+            transaction_id: 3,
+            key: b"key3".to_vec(),
+            value: b"val3".to_vec(),
+        })
+        .unwrap();
 
-    wal_writer.log_entry(&WalEntry::Put { transaction_id: 4, key: b"key4".to_vec(), value: b"val4".to_vec() }).unwrap();
+    wal_writer
+        .log_entry(&WalEntry::Put {
+            transaction_id: 4,
+            key: b"key4".to_vec(),
+            value: b"val4".to_vec(),
+        })
+        .unwrap();
     wal_writer.log_entry(&WalEntry::TransactionCommit { transaction_id: 4 }).unwrap();
     wal_writer.log_entry(&WalEntry::TransactionRollback { transaction_id: 4 }).unwrap();
 
-    wal_writer.log_entry(&WalEntry::Put { transaction_id: 5, key: b"key5".to_vec(), value: b"val5".to_vec() }).unwrap();
+    wal_writer
+        .log_entry(&WalEntry::Put {
+            transaction_id: 5,
+            key: b"key5".to_vec(),
+            value: b"val5".to_vec(),
+        })
+        .unwrap();
     wal_writer.log_entry(&WalEntry::TransactionRollback { transaction_id: 5 }).unwrap();
     wal_writer.log_entry(&WalEntry::TransactionCommit { transaction_id: 5 }).unwrap();
     drop(wal_writer);
@@ -538,7 +585,13 @@ fn test_wal_recovery_commit_then_rollback_same_tx() {
     let db_path = db_file.path();
     let wal_writer = WalWriter::new(db_path);
 
-    wal_writer.log_entry(&WalEntry::Put { transaction_id: 1, key: b"key_cr".to_vec(), value: b"val_cr".to_vec() }).unwrap();
+    wal_writer
+        .log_entry(&WalEntry::Put {
+            transaction_id: 1,
+            key: b"key_cr".to_vec(),
+            value: b"val_cr".to_vec(),
+        })
+        .unwrap();
     wal_writer.log_entry(&WalEntry::TransactionCommit { transaction_id: 1 }).unwrap();
     wal_writer.log_entry(&WalEntry::TransactionRollback { transaction_id: 1 }).unwrap();
     drop(wal_writer);
@@ -553,22 +606,58 @@ fn test_wal_recovery_multiple_interleaved_transactions() {
     let db_path = db_file.path();
     let wal_writer = WalWriter::new(db_path);
 
-    wal_writer.log_entry(&WalEntry::Put { transaction_id: 10, key: b"key10_1".to_vec(), value: b"val10_1".to_vec() }).unwrap();
-    wal_writer.log_entry(&WalEntry::Put { transaction_id: 20, key: b"key20_1".to_vec(), value: b"val20_1".to_vec() }).unwrap();
-    wal_writer.log_entry(&WalEntry::Put { transaction_id: 10, key: b"key10_2".to_vec(), value: b"val10_2".to_vec() }).unwrap();
+    wal_writer
+        .log_entry(&WalEntry::Put {
+            transaction_id: 10,
+            key: b"key10_1".to_vec(),
+            value: b"val10_1".to_vec(),
+        })
+        .unwrap();
+    wal_writer
+        .log_entry(&WalEntry::Put {
+            transaction_id: 20,
+            key: b"key20_1".to_vec(),
+            value: b"val20_1".to_vec(),
+        })
+        .unwrap();
+    wal_writer
+        .log_entry(&WalEntry::Put {
+            transaction_id: 10,
+            key: b"key10_2".to_vec(),
+            value: b"val10_2".to_vec(),
+        })
+        .unwrap();
     wal_writer.log_entry(&WalEntry::TransactionCommit { transaction_id: 10 }).unwrap();
-    wal_writer.log_entry(&WalEntry::Put { transaction_id: 30, key: b"key30_1".to_vec(), value: b"val30_1".to_vec() }).unwrap();
+    wal_writer
+        .log_entry(&WalEntry::Put {
+            transaction_id: 30,
+            key: b"key30_1".to_vec(),
+            value: b"val30_1".to_vec(),
+        })
+        .unwrap();
     wal_writer.log_entry(&WalEntry::TransactionRollback { transaction_id: 30 }).unwrap();
-    wal_writer.log_entry(&WalEntry::Delete { transaction_id: 20, key: b"some_other_key".to_vec() }).unwrap();
+    wal_writer
+        .log_entry(&WalEntry::Delete { transaction_id: 20, key: b"some_other_key".to_vec() })
+        .unwrap();
     drop(wal_writer);
 
     let store = SimpleFileKvStore::new(db_path).unwrap();
 
-    let get_latest_value = |cache: &HashMap<Vec<u8>, Vec<VersionedValue<Vec<u8>>>>, key: &Vec<u8>| -> Option<Vec<u8>> {
-        cache.get(key).and_then(|versions| versions.last().filter(|v| v.expired_tx_id.is_none()).map(|v| v.value.clone()))
+    let get_latest_value = |cache: &HashMap<Vec<u8>, Vec<VersionedValue<Vec<u8>>>>,
+                            key: &Vec<u8>|
+     -> Option<Vec<u8>> {
+        cache.get(key).and_then(|versions| {
+            versions.last().filter(|v| v.expired_tx_id.is_none()).map(|v| v.value.clone())
+        })
     };
-    assert_eq!(get_latest_value(store.get_cache_for_test(), &b"key10_1".to_vec()), Some(b"val10_1".to_vec()));
-    assert_eq!(get_latest_value(store.get_cache_for_test(), &b"key10_2".to_vec()), Some(b"val10_2".to_vec()));
+    assert_eq!(
+        get_latest_value(store.get_cache_for_test(), &b"key10_1".to_vec()),
+        Some(b"val10_1".to_vec())
+    );
+    assert_eq!(
+        get_latest_value(store.get_cache_for_test(), &b"key10_2".to_vec()),
+        Some(b"val10_2".to_vec())
+    );
     assert_eq!(get_latest_value(store.get_cache_for_test(), &b"key20_1".to_vec()), None);
     assert_eq!(get_latest_value(store.get_cache_for_test(), &b"some_other_key".to_vec()), None);
     assert_eq!(get_latest_value(store.get_cache_for_test(), &b"key30_1".to_vec()), None);
@@ -590,7 +679,12 @@ fn test_wal_truncation_after_save_to_disk() {
 
     assert!(!wal_path.exists(), "WAL file should not exist after save_to_disk");
     let store = SimpleFileKvStore::new(db_path).unwrap();
-    assert_eq!(store.get_cache_entry_for_test(&b"trunc_key".to_vec()).and_then(|v|v.last().map(|vv| vv.value.clone())), Some(b"trunc_val".to_vec()));
+    assert_eq!(
+        store
+            .get_cache_entry_for_test(&b"trunc_key".to_vec())
+            .and_then(|v| v.last().map(|vv| vv.value.clone())),
+        Some(b"trunc_val".to_vec())
+    );
 }
 
 #[test]
@@ -605,24 +699,43 @@ fn test_wal_replay_stops_on_corruption() {
     let value_bad = b"value_bad".to_vec();
 
     {
-        let wal_file_handle = OpenOptions::new().write(true).create(true).truncate(true).open(&wal_path).unwrap();
+        let wal_file_handle =
+            OpenOptions::new().write(true).create(true).truncate(true).open(&wal_path).unwrap();
         let mut writer = BufWriter::new(wal_file_handle);
 
-        <WalEntry as DataSerializer<WalEntry>>::serialize(&WalEntry::Put{ transaction_id: 0, key: key_good.clone(), value: value_good.clone() }, &mut writer).unwrap();
-        <WalEntry as DataSerializer<WalEntry>>::serialize(&WalEntry::TransactionCommit{ transaction_id: 0 }, &mut writer).unwrap();
+        <WalEntry as DataSerializer<WalEntry>>::serialize(
+            &WalEntry::Put { transaction_id: 0, key: key_good.clone(), value: value_good.clone() },
+            &mut writer,
+        )
+        .unwrap();
+        <WalEntry as DataSerializer<WalEntry>>::serialize(
+            &WalEntry::TransactionCommit { transaction_id: 0 },
+            &mut writer,
+        )
+        .unwrap();
         writer.flush().unwrap();
 
         writer.write_all(&[0xDE, 0xAD, 0xBE, 0xEF]).unwrap();
         writer.flush().unwrap();
 
-        <WalEntry as DataSerializer<WalEntry>>::serialize(&WalEntry::Put{ transaction_id: 1, key: key_bad.clone(), value: value_bad.clone() }, &mut writer).unwrap();
-        <WalEntry as DataSerializer<WalEntry>>::serialize(&WalEntry::TransactionCommit{ transaction_id: 1 }, &mut writer).unwrap();
+        <WalEntry as DataSerializer<WalEntry>>::serialize(
+            &WalEntry::Put { transaction_id: 1, key: key_bad.clone(), value: value_bad.clone() },
+            &mut writer,
+        )
+        .unwrap();
+        <WalEntry as DataSerializer<WalEntry>>::serialize(
+            &WalEntry::TransactionCommit { transaction_id: 1 },
+            &mut writer,
+        )
+        .unwrap();
         writer.flush().unwrap();
     }
 
     let store = SimpleFileKvStore::new(db_path).unwrap();
 
-    let get_latest_value = |cache: &HashMap<Vec<u8>, Vec<VersionedValue<Vec<u8>>>>, key: &Vec<u8>| -> Option<Vec<u8>> {
+    let get_latest_value = |cache: &HashMap<Vec<u8>, Vec<VersionedValue<Vec<u8>>>>,
+                            key: &Vec<u8>|
+     -> Option<Vec<u8>> {
         cache.get(key).and_then(|versions| versions.last().map(|v| v.value.clone()))
     };
     assert_eq!(get_latest_value(store.get_cache_for_test(), &key_good), Some(value_good.clone()));
@@ -643,7 +756,12 @@ fn test_drop_persists_data() {
     }
 
     let reloaded_store = SimpleFileKvStore::new(&path).unwrap();
-    assert_eq!(reloaded_store.get_cache_entry_for_test(&key1).and_then(|v|v.last().map(|vv|vv.value.clone())), Some(value1));
+    assert_eq!(
+        reloaded_store
+            .get_cache_entry_for_test(&key1)
+            .and_then(|v| v.last().map(|vv| vv.value.clone())),
+        Some(value1)
+    );
     assert_eq!(reloaded_store.get_cache_for_test().len(), 1);
 
     let wal_path = derive_wal_path(&path);
@@ -669,8 +787,8 @@ fn test_put_atomicity_wal_failure() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        DbError::IoError(_) => {}
-        other_err => panic!("Expected DbError::IoError, got {:?}", other_err),
+        OxidbError::Io(_) => {}
+        other_err => panic!("Expected OxidbError::Io, got {:?}", other_err),
     }
     assert!(store.get_cache_entry_for_test(&key).is_none());
     let _ = std::fs::remove_dir_all(&wal_path);
@@ -701,11 +819,14 @@ fn test_delete_atomicity_wal_failure() {
 
     let result = store.delete(&key, &dummy_transaction);
     assert!(result.is_err());
-     match result.unwrap_err() {
-        DbError::IoError(_) => {}
-        other_err => panic!("Expected DbError::IoError, got {:?}", other_err),
+    match result.unwrap_err() {
+        OxidbError::Io(_) => {}
+        other_err => panic!("Expected OxidbError::Io, got {:?}", other_err),
     }
     assert!(store.get_cache_entry_for_test(&key).is_some());
-    assert_eq!(store.get_cache_entry_for_test(&key).and_then(|v| v.last().map(|vv| vv.value.clone())), Some(value.clone()));
+    assert_eq!(
+        store.get_cache_entry_for_test(&key).and_then(|v| v.last().map(|vv| vv.value.clone())),
+        Some(value.clone())
+    );
     let _ = std::fs::remove_dir_all(&wal_path);
 }

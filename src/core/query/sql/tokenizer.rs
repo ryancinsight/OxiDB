@@ -37,11 +37,7 @@ pub struct Tokenizer<'a> {
 
 impl<'a> Tokenizer<'a> {
     pub fn new(input: &'a str) -> Self {
-        Tokenizer {
-            input,
-            chars: input.char_indices().peekable(),
-            current_pos: 0,
-        }
+        Tokenizer { input, chars: input.char_indices().peekable(), current_pos: 0 }
     }
 
     fn skip_whitespace(&mut self) {
@@ -87,12 +83,16 @@ impl<'a> Tokenizer<'a> {
         })
     }
 
-    fn read_string_literal(&mut self, quote_char: char, start_idx: usize) -> Result<Token, SqlTokenizerError> {
+    fn read_string_literal(
+        &mut self,
+        quote_char: char,
+        start_idx: usize,
+    ) -> Result<Token, SqlTokenizerError> {
         let mut value = String::new();
         let mut escaped = false;
         self.chars.next(); // Consume the opening quote
 
-        while let Some((idx, ch)) = self.chars.next() {
+        for (idx, ch) in self.chars.by_ref() {
             self.current_pos = idx;
             if escaped {
                 value.push(ch);
@@ -129,7 +129,7 @@ impl<'a> Tokenizer<'a> {
             let next_char_info = self.chars.peek().cloned();
 
             if let Some((idx_peek, ch_peek)) = next_char_info {
-                if ch_peek.is_digit(10) {
+                if ch_peek.is_ascii_digit() {
                     end_idx = idx_peek;
                     self.chars.next(); // Consume the digit
                 } else if ch_peek == '.' && !has_decimal {
@@ -139,7 +139,10 @@ impl<'a> Tokenizer<'a> {
                     temp_iter.next(); // In the temp_iter, consume the '.' character we just peeked.
 
                     // Now, peek at the character *after* the '.' in the temp_iter.
-                    if temp_iter.peek().map_or(false, |&(_, next_next_ch)| next_next_ch.is_digit(10)) {
+                    if temp_iter
+                        .peek()
+                        .is_some_and(|&(_, next_next_ch)| next_next_ch.is_ascii_digit())
+                    {
                         // The '.' is followed by a digit, so it's part of this number.
                         has_decimal = true;
                         end_idx = idx_peek; // The current character ('.') is part of the number.
@@ -164,7 +167,6 @@ impl<'a> Tokenizer<'a> {
         Ok(Token::NumericLiteral(num_str.to_string()))
     }
 
-
     pub fn tokenize(&mut self) -> Result<Vec<Token>, SqlTokenizerError> {
         let mut tokens = Vec::new();
 
@@ -175,10 +177,13 @@ impl<'a> Tokenizer<'a> {
             match self.chars.peek().cloned() {
                 Some((idx, ch)) => {
                     match ch {
-                        '=' | '<' | '>' | '!' => { // Potential multi-char operators later
+                        '=' | '<' | '>' | '!' => {
+                            // Potential multi-char operators later
                             self.chars.next();
                             // Basic for now, extend for !=, <=, >=
-                            if ch == '!' && self.chars.peek().map_or(false, |&(_, next_ch)| next_ch == '=') {
+                            if ch == '!'
+                                && self.chars.peek().is_some_and(|&(_, next_ch)| next_ch == '=')
+                            {
                                 self.chars.next();
                                 tokens.push(Token::Operator("!=".to_string()));
                             } else {
@@ -217,14 +222,19 @@ impl<'a> Tokenizer<'a> {
                         c if c.is_alphabetic() || c == '_' => {
                             tokens.push(self.read_identifier_or_keyword(idx)?);
                         }
-                        c if c.is_digit(10) => {
+                        c if c.is_ascii_digit() => {
                             tokens.push(self.read_numeric_literal(idx)?);
                         }
                         // Handle '.' not part of a number as an invalid character for now,
                         // or it could be part of a more complex identifier/operator later.
                         '.' => {
-                             // Check if it's a decimal starting with '.'
-                            if self.chars.clone().nth(1).map_or(false, |(_, next_ch)| next_ch.is_digit(10)) {
+                            // Check if it's a decimal starting with '.'
+                            if self
+                                .chars
+                                .clone()
+                                .nth(1)
+                                .is_some_and(|(_, next_ch)| next_ch.is_ascii_digit())
+                            {
                                 tokens.push(self.read_numeric_literal(idx)?);
                             } else {
                                 return Err(SqlTokenizerError::InvalidCharacter(ch, idx));
@@ -304,10 +314,11 @@ mod tests {
         );
     }
 
-
     #[test]
     fn test_update_statement() {
-        let mut tokenizer = Tokenizer::new("UPDATE products SET price = 10.50, name = \"New Name\" WHERE id = 101;");
+        let mut tokenizer = Tokenizer::new(
+            "UPDATE products SET price = 10.50, name = \"New Name\" WHERE id = 101;",
+        );
         let tokens = tokenizer.tokenize().unwrap();
         assert_eq!(
             tokens,
@@ -404,7 +415,6 @@ mod tests {
             ]
         );
     }
-
 
     #[test]
     fn test_invalid_character() {

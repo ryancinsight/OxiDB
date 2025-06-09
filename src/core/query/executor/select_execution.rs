@@ -1,12 +1,14 @@
-use crate::core::common::error::DbError;
-use crate::core::types::DataType;
-use crate::core::query::commands::{SelectColumnSpec, SqlCondition}; // Removed Key
-use crate::core::storage::engine::traits::KeyValueStore;
-use std::collections::HashSet;
-use std::sync::Arc;
+use super::utils::datatype_to_ast_literal;
 use super::{ExecutionResult, QueryExecutor};
-use crate::core::query::sql::ast::{Statement as AstStatement, SelectColumn, Condition as AstCondition}; // Removed AstLiteralValue
-use super::utils::datatype_to_ast_literal; // Import the helper
+use crate::core::common::OxidbError; // Changed
+use crate::core::query::commands::{SelectColumnSpec, SqlCondition}; // Removed Key
+use crate::core::query::sql::ast::{
+    Condition as AstCondition, SelectColumn, Statement as AstStatement,
+}; // Removed AstLiteralValue
+use crate::core::storage::engine::traits::KeyValueStore;
+use crate::core::types::DataType;
+use std::collections::HashSet;
+use std::sync::Arc; // Import the helper
 
 // Make sure KeyValueStore is Send + Sync + 'static for build_execution_tree
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S> {
@@ -15,7 +17,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         select_columns_spec: SelectColumnSpec,
         source_table_name: String,
         condition_opt: Option<SqlCondition>,
-    ) -> Result<ExecutionResult, DbError> {
+    ) -> Result<ExecutionResult, OxidbError> { // Changed
         let snapshot_id;
         let committed_ids_vec;
 
@@ -30,10 +32,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
         let ast_select_items = match select_columns_spec {
             SelectColumnSpec::All => vec![SelectColumn::Asterisk],
-            SelectColumnSpec::Specific(cols) => cols
-                .into_iter()
-                .map(|name| SelectColumn::ColumnName(name))
-                .collect(),
+            SelectColumnSpec::Specific(cols) => {
+                cols.into_iter().map(SelectColumn::ColumnName).collect()
+            }
         };
 
         // Convert Option<SqlCondition> to Option<ast::Condition>
@@ -61,10 +62,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         let mut execution_tree_root =
             self.build_execution_tree(optimized_plan, snapshot_id, committed_ids.clone())?;
 
-        let mut results_iter = execution_tree_root.execute()?;
+        let results_iter = execution_tree_root.execute()?;
         let mut all_datatypes_from_tuples: Vec<DataType> = Vec::new();
 
-        while let Some(tuple_result) = results_iter.next() {
+        for tuple_result in results_iter {
             let tuple = tuple_result?;
             for data_type in tuple {
                 all_datatypes_from_tuples.push(data_type);

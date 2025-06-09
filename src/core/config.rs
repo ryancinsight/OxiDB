@@ -1,10 +1,10 @@
 // src/core/config.rs
 
+use crate::core::common::OxidbError; // Changed
 use serde::Deserialize;
-use std::path::PathBuf; // Import PathBuf for Default impl
-use crate::core::common::error::DbError; // For load_from_file result
 use std::fs; // For reading file
-use std::path::Path; // For load_from_file argument
+use std::path::Path;
+use std::path::PathBuf; // Import PathBuf for Default impl // For load_from_file argument
 
 /// Represents the configuration for Oxidb.
 ///
@@ -46,11 +46,21 @@ pub struct Config {
 }
 
 // Default value functions for serde
-fn default_database_file_path() -> String { "oxidb.db".to_string() } // Added
-fn default_index_base_path() -> String { "oxidb_indexes/".to_string() } // Added
-fn default_wal_enabled() -> bool { true }
-fn default_cache_size_mb() -> usize { 64 }
-fn default_isolation_level() -> String { "Serializable".to_string() }
+fn default_database_file_path() -> String {
+    "oxidb.db".to_string()
+} // Added
+fn default_index_base_path() -> String {
+    "oxidb_indexes/".to_string()
+} // Added
+fn default_wal_enabled() -> bool {
+    true
+}
+fn default_cache_size_mb() -> usize {
+    64
+}
+fn default_isolation_level() -> String {
+    "Serializable".to_string()
+}
 
 impl Default for Config {
     fn default() -> Self {
@@ -75,18 +85,18 @@ impl Config {
     ///
     /// # Errors
     ///
-    /// Returns `DbError::ConfigError` if the file cannot be read or if parsing fails.
-    pub fn load_from_file(path: &Path) -> Result<Self, DbError> {
+    /// Returns `OxidbError::Configuration` if the file cannot be read or if parsing fails.
+    pub fn load_from_file(path: &Path) -> Result<Self, OxidbError> {
         match fs::read_to_string(path) {
-            Ok(contents) => {
-                toml::from_str(&contents).map_err(|e| DbError::ConfigError(format!("Failed to parse config file '{}': {}", path.display(), e)))
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                Ok(Config::default())
-            }
-            Err(e) => {
-                Err(DbError::ConfigError(format!("Failed to read config file '{}': {}", path.display(), e)))
-            }
+            Ok(contents) => toml::from_str(&contents).map_err(|e| {
+                OxidbError::Configuration(format!( // Changed
+                    "Failed to parse config file '{}': {}",
+                    path.display(),
+                    e
+                ))
+            }),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
+            Err(e) => Err(OxidbError::Io(e)), // Changed to Io variant
         }
     }
 
@@ -102,9 +112,9 @@ impl Config {
     ///
     /// # Errors
     ///
-    /// Returns `DbError::ConfigError` if a file path is provided but the file
+    /// Returns `OxidbError::Configuration` if a file path is provided but the file
     /// cannot be read or parsed.
-    pub fn load_or_default(optional_path: Option<&Path>) -> Result<Self, DbError> {
+    pub fn load_or_default(optional_path: Option<&Path>) -> Result<Self, OxidbError> {
         match optional_path {
             Some(path) => Self::load_from_file(path),
             None => Ok(Config::default()),
@@ -132,15 +142,15 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_default_config() {
         let config = Config::default();
         assert_eq!(config.database_file_path, "oxidb.db");
         assert_eq!(config.index_base_path, "oxidb_indexes/");
-        assert_eq!(config.wal_enabled, true);
+        assert!(config.wal_enabled);
         assert_eq!(config.cache_size_mb, 64);
         assert_eq!(config.default_isolation_level, "Serializable");
     }
@@ -161,7 +171,7 @@ mod tests {
 
         assert_eq!(config.database_file_path, "my_custom.db");
         assert_eq!(config.index_base_path, "my_custom_indexes/");
-        assert_eq!(config.wal_enabled, false);
+        assert!(!config.wal_enabled);
         assert_eq!(config.cache_size_mb, 128);
         assert_eq!(config.default_isolation_level, "ReadCommitted");
     }
@@ -179,7 +189,7 @@ mod tests {
 
         assert_eq!(config.database_file_path, "partial.db");
         assert_eq!(config.index_base_path, "oxidb_indexes/"); // Should be default
-        assert_eq!(config.wal_enabled, true); // Default
+        assert!(config.wal_enabled); // Default
         assert_eq!(config.cache_size_mb, 64); // Default
         assert_eq!(config.default_isolation_level, "Serializable"); // Default
     }
@@ -200,10 +210,10 @@ mod tests {
 
         let result = Config::load_from_file(temp_file.path());
         assert!(result.is_err());
-        if let Err(DbError::ConfigError(msg)) = result {
+        if let Err(OxidbError::Configuration(msg)) = result { // Changed
             assert!(msg.contains("Failed to parse config file"));
         } else {
-            panic!("Expected ConfigError, got {:?}", result);
+            panic!("Expected OxidbError::Configuration, got {:?}", result); // Changed
         }
     }
 

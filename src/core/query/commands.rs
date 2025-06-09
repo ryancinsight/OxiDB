@@ -11,7 +11,7 @@ pub type Value = Vec<u8>;
 pub struct SqlCondition {
     pub column: String,
     pub operator: String, // e.g., "=", "!=", "<", ">", "<=", ">="
-    pub value: DataType, // Use DataType here
+    pub value: DataType,  // Use DataType here
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -30,23 +30,33 @@ pub enum SelectColumnSpec {
 /// These are internal representations, not directly parsed from strings yet.
 #[derive(Debug, PartialEq, Clone)] // For testing and inspection
 pub enum Command {
-    Insert { key: Key, value: DataType },
-    Get { key: Key },
-    Delete { key: Key },
+    Insert {
+        key: Key,
+        value: DataType,
+    },
+    Get {
+        key: Key,
+    },
+    Delete {
+        key: Key,
+    },
     // Transaction control commands
     BeginTransaction,
     CommitTransaction,
     RollbackTransaction,
-    FindByIndex { index_name: String, value: Value }, // Find by secondary index
+    FindByIndex {
+        index_name: String,
+        value: Value,
+    }, // Find by secondary index
     Vacuum, // Added Vacuum command
     // SQL-like commands
     Select {
         columns: SelectColumnSpec,
-        source: String,         // Table/source name
+        source: String, // Table/source name
         condition: Option<SqlCondition>,
     },
     Update {
-        source: String,         // Table/source name
+        source: String, // Table/source name
         assignments: Vec<SqlAssignment>,
         condition: Option<SqlCondition>,
     },

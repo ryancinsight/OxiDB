@@ -15,11 +15,7 @@ pub enum SqlTokenizerError {
 #[derive(Debug, Error, PartialEq)]
 pub enum SqlParseError {
     #[error("Unexpected token: expected {expected}, found {found} at position {position}")]
-    UnexpectedToken {
-        expected: String,
-        found: String,
-        position: usize,
-    },
+    UnexpectedToken { expected: String, found: String, position: usize },
     #[error("Unexpected end of input")]
     UnexpectedEOF,
     #[error("Invalid expression at position {0}: {1}")]

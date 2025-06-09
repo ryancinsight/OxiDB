@@ -1,19 +1,48 @@
 // src/core/common/serialization.rs
 
+use crate::core::common::OxidbError; // Changed
+use crate::core::common::traits::{DataDeserializer, DataSerializer}; // Added
 use crate::core::types::DataType;
-use crate::core::common::error::DbError; // Already present
 use serde_json;
-use crate::core::common::traits::{DataSerializer, DataDeserializer}; // Added
 use std::io::{Read, Write}; // Added
 
 /// Serializes a DataType into a Vec<u8> using JSON.
-pub fn serialize_data_type(data_type: &DataType) -> Result<Vec<u8>, DbError> {
-    serde_json::to_vec(data_type).map_err(|e| DbError::SerializationError(e.to_string()))
+pub fn serialize_data_type(data_type: &DataType) -> Result<Vec<u8>, OxidbError> {
+    serde_json::to_vec(data_type).map_err(OxidbError::Json) // Changed
 }
 
 /// Deserializes a Vec<u8> (expected to be JSON) into a DataType.
-pub fn deserialize_data_type(bytes: &[u8]) -> Result<DataType, DbError> {
-    serde_json::from_slice(bytes).map_err(|e| DbError::DeserializationError(e.to_string()))
+pub fn deserialize_data_type(bytes: &[u8]) -> Result<DataType, OxidbError> {
+    serde_json::from_slice(bytes).map_err(OxidbError::Json) // Changed
+}
+
+// Implementations for Vec<u8>
+impl DataSerializer<Vec<u8>> for Vec<u8> {
+    fn serialize<W: Write>(value: &Vec<u8>, writer: &mut W) -> Result<(), OxidbError> {
+        let len = value.len() as u64;
+        writer.write_all(&len.to_be_bytes())?; // Relies on From<std::io::Error> for OxidbError
+        writer.write_all(value)?;
+        Ok(())
+    }
+}
+
+impl DataDeserializer<Vec<u8>> for Vec<u8> {
+    fn deserialize<R: Read>(reader: &mut R) -> Result<Vec<u8>, OxidbError> {
+        let mut len_bytes = [0u8; 8];
+        reader.read_exact(&mut len_bytes)?; // Relies on From<std::io::Error> for OxidbError
+        let len = u64::from_be_bytes(len_bytes) as usize;
+        // Basic protection against extremely large allocations
+        if len > 1_000_000_000 {
+            // 1GB limit, adjust as needed
+            return Err(OxidbError::Deserialization(format!( // Changed
+                "Vec<u8> length {} exceeds maximum allowed size",
+                len
+            )));
+        }
+        let mut buffer = vec![0u8; len];
+        reader.read_exact(&mut buffer)?;
+        Ok(buffer)
+    }
 }
 
 #[cfg(test)]
@@ -60,13 +89,13 @@ mod tests {
         let result = deserialize_data_type(bytes);
         assert!(result.is_err());
         match result.unwrap_err() {
-            DbError::DeserializationError(msg) => {
-                assert!(msg.contains("expected value at line 1 column 1"));
+            OxidbError::Json(e) => { // Changed
+                assert!(e.to_string().contains("expected value at line 1 column 1"));
             }
-            _ => panic!("Expected DeserializationError"),
+            _ => panic!("Expected OxidbError::Json"), // Changed
         }
     }
-    
+
     #[test]
     fn test_deserialize_wrong_json_structure() {
         // This JSON is valid, but doesn't match the DataType enum structure
@@ -74,39 +103,15 @@ mod tests {
         let result = deserialize_data_type(bytes);
         assert!(result.is_err());
         match result.unwrap_err() {
-            DbError::DeserializationError(msg) => {
+            OxidbError::Json(e) => { // Changed
                 // The exact error message might vary based on serde's internal logic
                 // It might complain about missing fields for any of the DataType variants
                 // or an unknown variant.
+                let msg = e.to_string();
                 println!("Deserialization error for wrong structure: {}", msg); // For debugging
                 assert!(msg.contains("missing field") || msg.contains("unknown variant"));
             }
-            _ => panic!("Expected DeserializationError for wrong JSON structure"),
+            _ => panic!("Expected OxidbError::Json for wrong JSON structure"), // Changed
         }
-    }
-}
-
-// Implementations for Vec<u8>
-impl DataSerializer<Vec<u8>> for Vec<u8> {
-    fn serialize<W: Write>(value: &Vec<u8>, writer: &mut W) -> Result<(), DbError> {
-        let len = value.len() as u64;
-        writer.write_all(&len.to_be_bytes())?; // Relies on From<std::io::Error> for DbError
-        writer.write_all(value)?;
-        Ok(())
-    }
-}
-
-impl DataDeserializer<Vec<u8>> for Vec<u8> {
-    fn deserialize<R: Read>(reader: &mut R) -> Result<Vec<u8>, DbError> {
-        let mut len_bytes = [0u8; 8];
-        reader.read_exact(&mut len_bytes)?; // Relies on From<std::io::Error> for DbError
-        let len = u64::from_be_bytes(len_bytes) as usize;
-        // Basic protection against extremely large allocations
-        if len > 1_000_000_000 { // 1GB limit, adjust as needed
-            return Err(DbError::DeserializationError(format!("Vec<u8> length {} exceeds maximum allowed size", len)));
-        }
-        let mut buffer = vec![0u8; len];
-        reader.read_exact(&mut buffer)?;
-        Ok(buffer)
     }
 }

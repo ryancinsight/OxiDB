@@ -12,8 +12,8 @@ pub enum DataType {
     Integer(i64),
     String(String),
     Boolean(bool),
-    Float(f64), // Added Float variant
-    Null, // Added Null variant
+    Float(f64),     // Added Float variant
+    Null,           // Added Null variant
     Map(SimpleMap), // Added Map variant
     JsonBlob(serde_json::Value),
     // Potentially other types like Timestamp, etc. could be added later

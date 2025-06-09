@@ -1,11 +1,13 @@
 // Imports needed for the tests
-use crate::core::query::sql::parser::SqlParser; // The struct being tested
-use crate::core::query::sql::tokenizer::{Tokenizer, Token}; // For tokenizing test strings
-use crate::core::query::sql::ast::{ // AST nodes for assertions
-    Statement, SelectColumn,
-    AstLiteralValue
+use crate::core::query::sql::ast::{
+    AstLiteralValue,
+    SelectColumn,
+    // AST nodes for assertions
+    Statement,
 };
-use crate::core::query::sql::errors::SqlParseError; // Error type for assertions
+use crate::core::query::sql::errors::SqlParseError;
+use crate::core::query::sql::parser::SqlParser; // The struct being tested
+use crate::core::query::sql::tokenizer::{Token, Tokenizer}; // For tokenizing test strings // Error type for assertions
 
 // Helper function to tokenize a string for tests
 fn tokenize_str(input: &str) -> Vec<Token> {
@@ -18,7 +20,11 @@ fn test_update_missing_set_keyword() {
     let tokens = tokenize_str("UPDATE table field = 'value';");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })), "Result was: {:?}", result);
+    assert!(
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. })),
+        "Result was: {:?}",
+        result
+    );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert_eq!(expected, "Set"); // SqlParser::consume expects specific tokens by value
         assert!(found.contains("Identifier(\"field\")"));
@@ -32,14 +38,20 @@ fn test_update_empty_set_clause() {
     let tokens = tokenize_str("UPDATE table SET;");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)), "Result was: {:?}", result);
-    if let Err(SqlParseError::UnexpectedToken {expected, found, ..}) = result {
+    assert!(
+        matches!(
+            result,
+            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+        ),
+        "Result was: {:?}",
+        result
+    );
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert_eq!(expected, "Identifier");
         assert_eq!(found, "Semicolon");
-    } else if let Err(SqlParseError::UnexpectedEOF {}) = result {
+    } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // also possible
-    }
-     else {
+    } else {
         panic!("Wrong error type: {:?}", result);
     }
 }
@@ -49,11 +61,18 @@ fn test_update_missing_value_in_assignment() {
     let tokens = tokenize_str("UPDATE table SET field =;");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)), "Result was: {:?}", result);
-     if let Err(SqlParseError::UnexpectedToken {expected, found, ..}) = result {
+    assert!(
+        matches!(
+            result,
+            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+        ),
+        "Result was: {:?}",
+        result
+    );
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert_eq!(expected, "Expected value for assignment");
         assert_eq!(found, "Semicolon");
-    } else if let Err(SqlParseError::UnexpectedEOF {}) = result {
+    } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // also possible
     } else {
         panic!("Wrong error type: {:?}", result);
@@ -65,7 +84,11 @@ fn test_update_missing_equals_in_assignment() {
     let tokens = tokenize_str("UPDATE table SET field 'value';");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })), "Result was: {:?}", result);
+    assert!(
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. })),
+        "Result was: {:?}",
+        result
+    );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert_eq!(expected, "Operator \'=\'");
         assert!(found.contains("StringLiteral(\"value\")"));
@@ -79,11 +102,18 @@ fn test_update_trailing_comma_in_assignment_list() {
     let tokens = tokenize_str("UPDATE table SET field = 'val', ;");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)), "Result was: {:?}", result);
-    if let Err(SqlParseError::UnexpectedToken {expected, found, ..}) = result {
+    assert!(
+        matches!(
+            result,
+            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+        ),
+        "Result was: {:?}",
+        result
+    );
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert_eq!(expected, "Identifier");
         assert_eq!(found, "Semicolon");
-    } else if let Err(SqlParseError::UnexpectedEOF {}) = result {
+    } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // also possible
     } else {
         panic!("Wrong error type: {:?}", result);
@@ -95,11 +125,18 @@ fn test_update_empty_where_clause() {
     let tokens = tokenize_str("UPDATE table SET field = 'val' WHERE;");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)), "Result was: {:?}", result);
-    if let Err(SqlParseError::UnexpectedToken {expected, found, ..}) = result {
+    assert!(
+        matches!(
+            result,
+            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+        ),
+        "Result was: {:?}",
+        result
+    );
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert_eq!(expected, "Identifier");
         assert_eq!(found, "Semicolon");
-    } else if let Err(SqlParseError::UnexpectedEOF {}) = result {
+    } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // also possible
     } else {
         panic!("Wrong error type: {:?}", result);
@@ -111,11 +148,18 @@ fn test_update_missing_value_in_condition() {
     let tokens = tokenize_str("UPDATE table SET field = 'val' WHERE id =;");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)), "Result was: {:?}", result);
-    if let Err(SqlParseError::UnexpectedToken {expected, found, ..}) = result {
+    assert!(
+        matches!(
+            result,
+            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+        ),
+        "Result was: {:?}",
+        result
+    );
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert_eq!(expected, "Expected value for condition");
         assert_eq!(found, "Semicolon");
-    } else if let Err(SqlParseError::UnexpectedEOF {}) = result {
+    } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // also possible
     } else {
         panic!("Wrong error type: {:?}", result);
@@ -127,7 +171,11 @@ fn test_update_missing_operator_in_condition() {
     let tokens = tokenize_str("UPDATE table SET field = 'val' WHERE id value;");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })), "Result was: {:?}", result);
+    assert!(
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. })),
+        "Result was: {:?}",
+        result
+    );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert!(expected.contains("one of operators"));
         assert!(found.contains("Identifier(\"value\")"));
@@ -141,12 +189,16 @@ fn test_update_extra_token_after_valid_statement_no_semicolon() {
     let tokens = tokenize_str("UPDATE table SET field = 'value' EXTRA_TOKEN");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })), "Result was: {:?}", result);
+    assert!(
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. })),
+        "Result was: {:?}",
+        result
+    );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert!(expected.contains("end of statement"));
         assert!(found.contains("Identifier(\"EXTRA_TOKEN\")"));
     } else {
-       panic!("Wrong error type: {:?}", result);
+        panic!("Wrong error type: {:?}", result);
     }
 }
 
@@ -155,12 +207,16 @@ fn test_update_extra_token_after_semicolon() {
     let tokens = tokenize_str("UPDATE table SET field = 'value'; EXTRA_TOKEN");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })), "Result was: {:?}", result);
+    assert!(
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. })),
+        "Result was: {:?}",
+        result
+    );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert!(expected.contains("end of statement"));
         assert!(found.contains("Identifier(\"EXTRA_TOKEN\")"));
     } else {
-       panic!("Wrong error type: {:?}", result);
+        panic!("Wrong error type: {:?}", result);
     }
 }
 
@@ -218,11 +274,14 @@ fn test_parse_select_multiple_columns() {
     match ast {
         Statement::Select(select_stmt) => {
             assert_eq!(select_stmt.source, "customers");
-            assert_eq!(select_stmt.columns, vec![
-                SelectColumn::ColumnName("id".to_string()),
-                SelectColumn::ColumnName("name".to_string()),
-                SelectColumn::ColumnName("email".to_string()),
-            ]);
+            assert_eq!(
+                select_stmt.columns,
+                vec![
+                    SelectColumn::ColumnName("id".to_string()),
+                    SelectColumn::ColumnName("name".to_string()),
+                    SelectColumn::ColumnName("email".to_string()),
+                ]
+            );
             assert!(select_stmt.condition.is_none());
         }
         _ => panic!("Expected SelectStatement"),
@@ -258,7 +317,10 @@ fn test_parse_update_simple() {
             assert_eq!(update_stmt.source, "users");
             assert_eq!(update_stmt.assignments.len(), 1);
             assert_eq!(update_stmt.assignments[0].column, "name");
-            assert_eq!(update_stmt.assignments[0].value, AstLiteralValue::String("New Name".to_string()));
+            assert_eq!(
+                update_stmt.assignments[0].value,
+                AstLiteralValue::String("New Name".to_string())
+            );
             assert!(update_stmt.condition.is_some());
             let cond = update_stmt.condition.unwrap();
             assert_eq!(cond.column, "id");
@@ -271,7 +333,9 @@ fn test_parse_update_simple() {
 
 #[test]
 fn test_parse_update_multiple_assignments() {
-    let tokens = tokenize_str("UPDATE products SET price = 99.50, stock = 500 WHERE category = 'electronics';");
+    let tokens = tokenize_str(
+        "UPDATE products SET price = 99.50, stock = 500 WHERE category = 'electronics';",
+    );
     let mut parser = SqlParser::new(tokens);
     let ast = parser.parse().unwrap();
     match ast {
@@ -279,9 +343,15 @@ fn test_parse_update_multiple_assignments() {
             assert_eq!(update_stmt.source, "products");
             assert_eq!(update_stmt.assignments.len(), 2);
             assert_eq!(update_stmt.assignments[0].column, "price");
-            assert_eq!(update_stmt.assignments[0].value, AstLiteralValue::Number("99.50".to_string()));
+            assert_eq!(
+                update_stmt.assignments[0].value,
+                AstLiteralValue::Number("99.50".to_string())
+            );
             assert_eq!(update_stmt.assignments[1].column, "stock");
-            assert_eq!(update_stmt.assignments[1].value, AstLiteralValue::Number("500".to_string()));
+            assert_eq!(
+                update_stmt.assignments[1].value,
+                AstLiteralValue::Number("500".to_string())
+            );
 
             assert!(update_stmt.condition.is_some());
             let cond = update_stmt.condition.unwrap();
@@ -298,8 +368,12 @@ fn test_parse_select_missing_from() {
     let tokens = tokenize_str("SELECT name users;");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken{..})), "Result was: {:?}", result);
-     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
+    assert!(
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. })),
+        "Result was: {:?}",
+        result
+    );
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert!(expected.contains("From")); // Token::From
         assert!(found.contains("Identifier(\"users\")"));
     } else {
@@ -312,8 +386,12 @@ fn test_parse_update_missing_set() {
     let tokens = tokenize_str("UPDATE users name = 'Test';");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken{..})), "Result was: {:?}", result);
-     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
+    assert!(
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. })),
+        "Result was: {:?}",
+        result
+    );
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert!(expected.contains("Set")); // Token::Set
         assert!(found.contains("Identifier(\"name\")"));
     } else {
@@ -326,7 +404,11 @@ fn test_unexpected_token_instead_of_literal() {
     let tokens = tokenize_str("SELECT name FROM users WHERE id = SELECT;");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken{..})), "Result was: {:?}", result);
+    assert!(
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. })),
+        "Result was: {:?}",
+        result
+    );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert_eq!(expected, "Expected value for condition"); // Was "literal value..."
         assert!(found.contains("Select"));
@@ -340,7 +422,11 @@ fn test_select_missing_columns() {
     let tokens = tokenize_str("SELECT FROM table;");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })), "Result was: {:?}", result);
+    assert!(
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. })),
+        "Result was: {:?}",
+        result
+    );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert_eq!(expected, "Identifier");
         assert_eq!(found, "From");
@@ -354,7 +440,11 @@ fn test_select_missing_from_keyword() {
     let tokens = tokenize_str("SELECT * table;");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })), "Result was: {:?}", result);
+    assert!(
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. })),
+        "Result was: {:?}",
+        result
+    );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert_eq!(expected, "From"); // Token::From
         assert!(found.contains("Identifier(\"table\")"));
@@ -368,7 +458,11 @@ fn test_select_trailing_comma_in_column_list() {
     let tokens = tokenize_str("SELECT col, FROM table;");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })), "Result was: {:?}", result);
+    assert!(
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. })),
+        "Result was: {:?}",
+        result
+    );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert_eq!(expected, "Identifier");
         assert_eq!(found, "From");
@@ -382,17 +476,21 @@ fn test_select_missing_table_name() {
     let tokens = tokenize_str("SELECT col FROM;");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })
-        | Err(SqlParseError::UnexpectedEOF { .. })),
-        "Result was: {:?}", result);
+    assert!(
+        matches!(
+            result,
+            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+        ),
+        "Result was: {:?}",
+        result
+    );
 
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert_eq!(expected, "Identifier");
         assert_eq!(found, "Semicolon");
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // This case is also possible
-    }
-     else {
+    } else {
         panic!("Wrong error type: {:?}", result);
     }
 }
@@ -402,8 +500,15 @@ fn test_select_empty_where_clause() {
     let tokens = tokenize_str("SELECT col FROM table WHERE;");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)), "Result was: {:?}", result);
-     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
+    assert!(
+        matches!(
+            result,
+            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+        ),
+        "Result was: {:?}",
+        result
+    );
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert_eq!(expected, "Identifier");
         assert_eq!(found, "Semicolon");
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
@@ -418,14 +523,20 @@ fn test_select_missing_value_in_condition() {
     let tokens = tokenize_str("SELECT col FROM table WHERE field =;");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)), "Result was: {:?}", result);
+    assert!(
+        matches!(
+            result,
+            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+        ),
+        "Result was: {:?}",
+        result
+    );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert_eq!(expected, "Expected value for condition"); // Was "literal value..."
         assert_eq!(found, "Semicolon");
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // This case is also possible
-    }
-     else {
+    } else {
         panic!("Wrong error type: {:?}", result);
     }
 }
@@ -435,7 +546,11 @@ fn test_select_missing_operator_in_condition() {
     let tokens = tokenize_str("SELECT col FROM table WHERE field value;");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })), "Result was: {:?}", result);
+    assert!(
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. })),
+        "Result was: {:?}",
+        result
+    );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert!(expected.contains("one of operators"));
         assert!(found.contains("Identifier(\"value\")"));
@@ -449,12 +564,16 @@ fn test_select_extra_token_after_valid_statement_no_semicolon() {
     let tokens = tokenize_str("SELECT col FROM table WHERE field = 1 EXTRA_TOKEN");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })), "Result was: {:?}", result);
+    assert!(
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. })),
+        "Result was: {:?}",
+        result
+    );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert!(expected.contains("end of statement"));
         assert!(found.contains("Identifier(\"EXTRA_TOKEN\")"));
     } else {
-       panic!("Wrong error type: {:?}", result);
+        panic!("Wrong error type: {:?}", result);
     }
 }
 
@@ -463,12 +582,16 @@ fn test_select_extra_token_after_semicolon() {
     let tokens = tokenize_str("SELECT col FROM table WHERE field = 1; EXTRA_TOKEN");
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })), "Result was: {:?}", result);
+    assert!(
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. })),
+        "Result was: {:?}",
+        result
+    );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert!(expected.contains("end of statement"));
         assert!(found.contains("Identifier(\"EXTRA_TOKEN\")"));
     } else {
-       panic!("Wrong error type: {:?}", result);
+        panic!("Wrong error type: {:?}", result);
     }
 }
 
