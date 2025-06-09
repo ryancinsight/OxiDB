@@ -28,7 +28,7 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
         *   [x] Subtask: Create a comprehensive `.gitignore` file for Rust projects. (Already present and seems comprehensive)
     *   [x] Configure linting tools (e.g., Clippy) and code formatter (e.g., `rustfmt`).
         *   [x] Subtask: Add Clippy and `rustfmt` to project configuration. (rustfmt is configured via rustfmt.toml; Clippy is available by default with Rust)
-        *   [ ] Subtask: Define project-specific linting rules. (rustfmt.toml defines formatting rules; no project-specific Clippy lint rules beyond defaults are explicitly set)
+        *   [x] Subtask: Define project-specific linting rules. (Activated core clippy lints like unwrap_used, expect_used, etc., via src/lib.rs attributes)
     *   [x] Set up a Continuous Integration (CI) pipeline (e.g., GitHub Actions). (Workflow exists in .github/workflows/rust.yml)
         *   [x] Subtask: Create a basic CI workflow that runs `cargo build` and `cargo test` on every push. (Workflow includes build, test, fmt, and clippy checks)
     *   [x] **Validation:** CI pipeline passes; code formatting and linting tools are functional.
@@ -40,13 +40,13 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
     *   [x] Define error handling mechanisms (e.g., custom `Error` enums).
         *   [x] Subtask: Implement a comprehensive error type for the database.
         *   [x] Subtask: Write unit tests for error propagation and handling. (Comprehensive OxidbError enum exists and is used/matched in some tests; further specific error path tests can be added iteratively)
-    *   [ ] **Validation:** All core data types are implemented and thoroughly tested.
+    *   [x] **Validation:** All core data types are implemented and thoroughly tested. (Added serialization tests for ID types and comprehensive PartialOrd tests for Value type; fixed PartialOrd bug for Value.)
 
 ## Phase 2: Storage Engine
 
 4.  **Implement the Page Management System:**
     *   [ ] Design page layout and structure (e.g., header, data area).
-        *   [ ] Subtask: Define structs for page headers and page data.
+        *   [x] Subtask: Define structs for page headers and page data. (Created src/core/storage/engine/page.rs with Page, PageHeader, PageType structs and PAGE_SIZE constant. Page.data uses Vec<u8> for now due to serde large array limitations.)
     *   [ ] Implement page serialization and deserialization.
         *   [ ] Subtask: Write functions to read/write pages from/to disk.
         *   [ ] Subtask: Write unit tests for page serialization/deserialization.

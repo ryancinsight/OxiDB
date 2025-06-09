@@ -1,3 +1,12 @@
+#![warn(clippy::unwrap_used)]
+#![warn(clippy::expect_used)]
+#![warn(clippy::missing_docs_in_private_items)]
+#![warn(clippy::panic)]
+#![warn(clippy::arithmetic_side_effects)]
+#![warn(clippy::cast_possible_truncation)]
+#![warn(clippy::cast_possible_wrap)]
+#![warn(clippy::cast_precision_loss)]
+#![warn(clippy::cast_sign_loss)]
 //! # Oxidb: A Simple Key-Value Store
 //!
 //! `oxidb` is a learning project implementing a basic file-based key-value store

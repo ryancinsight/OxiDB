@@ -1,0 +1,43 @@
+# Enable pedantic and nursery groups for a stricter linting baseline
+# pedantic = "warn" # Start with warn to avoid too many initial errors
+# nursery = "warn"  # Start with warn
+# cargo = "warn"
+
+# Disallow unwrapping and expecting without specific justification
+# unwrap_used = "warn" # This syntax is not valid for setting lint levels here
+# expect_used = "warn" # This syntax is not valid for setting lint levels here
+
+# Encourage documentation, even for private items
+# missing_docs_in_private_items = "warn" # This syntax is not valid for setting lint levels here
+
+# Discourage direct panics, prefer Result for error handling
+# panic = "warn" # This syntax is not valid for setting lint levels here
+
+# Require explicit return statements for clarity
+# implicit_return = "allow" # This is idiomatic in Rust, so allow it. Let rustfmt handle it.
+
+# Enforce use of core/alloc where std is not necessary, aligning with minimal dependency goal
+# These might be too aggressive initially if std is widely used.
+# std_instead_of_core = "warn"
+# alloc_instead_of_core = "warn"
+# std_instead_of_alloc = "warn"
+
+# Prevent unintended arithmetic overflows/underflows
+# arithmetic_side_effects = "warn" # This syntax is not valid for setting lint levels here
+
+# Lints for potentially problematic type casts
+# cast_possible_truncation = "warn" # This syntax is not valid for setting lint levels here
+# cast_possible_wrap = "warn" # This syntax is not valid for setting lint levels here
+# cast_precision_loss = "warn" # This syntax is not valid for setting lint levels here
+# cast_sign_loss = "warn" # This syntax is not valid for setting lint levels here
+
+# Allow certain lints that might be too noisy or conflict with common patterns
+# For example, if you use a lot of `as` casts for FFI or specific low-level reasons
+# you might allow them here after careful consideration.
+# allow = []
+
+# Deny specific lints
+# deny = []
+
+# Warn specific lints
+# warn = [] # This syntax (top-level warn array) is not valid for setting lint levels here
