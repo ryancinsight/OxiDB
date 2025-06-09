@@ -64,6 +64,9 @@ pub enum OxidbError {
 
     #[error("Internal Error: {0}")]
     Internal(String), // Was InternalError and Internal(String)
+
+    #[error("Buffer Pool Error: {0}")]
+    BufferPool(String),
 }
 
 // Note: Removed manual PartialEq. If needed, it should be added carefully,

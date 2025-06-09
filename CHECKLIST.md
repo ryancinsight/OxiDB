@@ -47,14 +47,14 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
 4.  **Implement the Page Management System:**
     *   [ ] Design page layout and structure (e.g., header, data area).
         *   [x] Subtask: Define structs for page headers and page data. (Created src/core/storage/engine/page.rs with Page, PageHeader, PageType structs and PAGE_SIZE constant. Page.data uses Vec<u8> for now due to serde large array limitations.)
-    *   [ ] Implement page serialization and deserialization.
-        *   [ ] Subtask: Write functions to read/write pages from/to disk.
-        *   [ ] Subtask: Write unit tests for page serialization/deserialization.
-    *   [ ] Implement a buffer pool manager.
-        *   [ ] Subtask: Design the buffer pool with a page replacement policy (e.g., LRU).
-        *   [ ] Subtask: Implement methods for fetching, pinning, and unpinning pages.
-        *   [ ] Subtask: Write unit tests for buffer pool operations.
-    *   [ ] **Validation:** Pages can be reliably read from and written to disk; buffer pool manages pages efficiently.
+    *   [x] Implement page serialization and deserialization.
+        *   [x] Subtask: Write functions to read/write pages from/to disk. (Covered by Page ser/de and DiskManager)
+        *   [x] Subtask: Write unit tests for page serialization/deserialization.
+    *   [x] Implement a buffer pool manager.
+        *   [x] Subtask: Design the buffer pool with a page replacement policy (e.g., LRU). (FIFO implemented)
+        *   [x] Subtask: Implement methods for fetching, pinning, and unpinning pages.
+        *   [x] Subtask: Write unit tests for buffer pool operations.
+    *   [x] **Validation:** Pages can be reliably read from and written to disk via DiskManager; page serialization/deserialization is functional and tested. Buffer pool manages pages with a FIFO policy, and its core operations (fetch, unpin, new, flush) are implemented and tested.
 
 5.  **Implement the Table Heap/File Manager:**
     *   [ ] Design how tables and records are stored on pages.
