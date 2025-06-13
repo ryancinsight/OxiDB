@@ -78,8 +78,9 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
     *   [ ] Implement WAL writer and manager.
         *   [ ] Subtask: Write functions to append log records to the WAL.
             *   [x] Sub-subtask: Implement serialization for each WAL record type. (Completed as part of record format definition)
-            *   [ ] Sub-subtask: Implement buffering for log records before writing to disk.
-        *   [ ] Subtask: Implement log flushing mechanisms.
+            *   [x] Sub-subtask: Implement buffering for log records before writing to disk. (Implemented `WalWriter` with an in-memory `Vec<LogRecord>` buffer and an `add_record` method.)
+        *   [x] Subtask: Implement log flushing mechanisms.
+            *   [x] Sub-sub-subtask: Implemented a `flush` method in `WalWriter` that serializes records, writes them to a file with length prefixes, and uses `sync_all()` for durability.
             *   [ ] Sub-subtask: Implement `fsync` or similar calls to ensure durability.
             *   [ ] Sub-subtask: Design policies for when to flush (e.g., on commit, periodically).
     *   [ ] Implement recovery mechanisms using WAL (e.g., ARIES).

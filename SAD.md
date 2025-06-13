@@ -62,6 +62,7 @@ oxidb will follow a layered architecture consisting of the following primary com
 
 *   **Sub-components:**
     *   **Engine (`src/core/storage/engine`):** Core logic for managing data on disk.
+    *   **Write-Ahead Log (`src/core/wal/`):** Ensures durability and atomicity through logging changes before they are applied to persistent storage.
     *   **Page Manager (Future):** Handles allocation and deallocation of pages on disk.
     *   **Buffer Manager (Future):** Caches frequently accessed data in memory.
     *   **Indexer (Future):** Manages index structures (e.g., B-Trees) for efficient data lookup.
@@ -117,8 +118,9 @@ The `src/` directory is organized as follows:
         *   `planner/`: For converting ASTs into logical and physical query plans.
         *   `statements/`: For specific SQL statement handlers or structures.
     *   **`src/core/storage/`**: Manages the persistence and retrieval of data.
-        *   `engine/`: The core storage engine, with subdirectories for its fundamental components like `page_manager/`, `buffer_pool/`, `wal/` (Write-Ahead Log), `heap/` (for table heap management), and potentially specific storage structures like `b_tree/` if tightly coupled with the engine's page management.
+        *   `engine/`: The core storage engine, with subdirectories for its fundamental components like `page_manager/`, `buffer_pool/`, `heap/` (for table heap management), and potentially specific storage structures like `b_tree/` if tightly coupled with the engine's page management.
     *   **`src/core/transaction/`**: Manages transaction lifecycle and concurrency control.
+    *   **`src/core/wal/`**: Manages the Write-Ahead Log for durability and recovery.
 *   **`src/lib.rs`**: The root of the Rust library.
 
 Each module (directory) is intended to have a well-defined public API, primarily through its `mod.rs` file, which exports the necessary items for interaction with other modules. This hierarchical and granular approach aims to make the codebase more understandable, maintainable, and easier to extend by isolating concerns at each level of the system.
