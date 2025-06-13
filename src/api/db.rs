@@ -3,11 +3,13 @@ use crate::core::config::Config;
 use crate::core::query::commands::{Command, Key};
 use crate::core::query::executor::{ExecutionResult, QueryExecutor};
 use crate::core::query::parser::parse_query_string;
-use crate::core::wal::writer::WalWriter; // Added for QueryExecutor::new
+use crate::core::wal::log_manager::LogManager; // Added for LogManager
+use crate::core::wal::writer::WalWriter;
 use crate::core::storage::engine::SimpleFileKvStore;
 use crate::core::types::DataType;
 use serde_json;
 use std::path::{Path, PathBuf};
+use std::sync::Arc; // Added for Arc
 
 /// `Oxidb` is the primary structure providing the public API for the key-value store.
 ///
@@ -33,10 +35,10 @@ impl Oxidb {
     /// Returns `OxidbError` if the store cannot be initialized or the executor cannot be created.
     pub fn new_with_config(config: Config) -> Result<Self, OxidbError> {
         let store = SimpleFileKvStore::new(config.database_path())?;
-        // Potentially clean up old WAL file before creating a new one.
-        // std::fs::remove_file(config.wal_path()).ok();
         let wal_writer = WalWriter::new(config.wal_path());
-        let executor = QueryExecutor::new(store, config.index_path(), wal_writer)?;
+        let log_manager = Arc::new(LogManager::new()); // Create LogManager
+        // QueryExecutor::new will need to be updated to accept log_manager
+        let executor = QueryExecutor::new(store, config.index_path(), wal_writer, log_manager)?;
         Ok(Self { executor })
     }
 

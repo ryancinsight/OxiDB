@@ -1,5 +1,6 @@
 // src/core/storage/engine/implementations/in_memory.rs
-use crate::core::common::OxidbError; // Changed
+use crate::core::common::OxidbError;
+use crate::core::common::types::Lsn; // Added Lsn import
 use crate::core::storage::engine::traits::{KeyValueStore, VersionedValue};
 use crate::core::storage::engine::wal::WalEntry;
 use crate::core::transaction::Transaction;
@@ -22,18 +23,19 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
         key: Vec<u8>,
         value: Vec<u8>,
         transaction: &Transaction,
-    ) -> Result<(), OxidbError> { // Changed
+        _lsn: Lsn, // Added _lsn, unused in this implementation
+    ) -> Result<(), OxidbError> {
         let versions = self.data.entry(key).or_default();
         // Mark the latest existing visible version (if any) as expired by this transaction.
         for version in versions.iter_mut().rev() {
             if version.expired_tx_id.is_none() {
-                version.expired_tx_id = Some(transaction.id);
+                version.expired_tx_id = Some(transaction.id.0); // Use .0
                 break; // Only expire the most recent version
             }
         }
 
         let new_version =
-            VersionedValue { value, created_tx_id: transaction.id, expired_tx_id: None };
+            VersionedValue { value, created_tx_id: transaction.id.0, expired_tx_id: None }; // Use .0
         versions.push(new_version);
         Ok(())
     }
@@ -64,15 +66,22 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
         Ok(None)
     }
 
-    fn delete(&mut self, key: &Vec<u8>, transaction: &Transaction) -> Result<bool, OxidbError> { // Changed
+    fn delete(&mut self, key: &Vec<u8>, transaction: &Transaction, _lsn: Lsn) -> Result<bool, OxidbError> { // Added _lsn
         if let Some(versions) = self.data.get_mut(key) {
             for version in versions.iter_mut().rev() {
-                if version.created_tx_id <= transaction.id
+                // Compare TransactionId directly if Transaction.id is TransactionId struct
+                // If Transaction.id is u64, then this is fine.
+                // Assuming Transaction.id is u64 based on VersionedValue fields.
+                // If Transaction.id became TransactionId, then version.created_tx_id should be compared with transaction.id.0
+                // For now, assuming transaction.id is u64 for comparison with VersionedValue fields.
+                // This part might need adjustment if Transaction.id type changed to TransactionId struct.
+                // Based on Transaction struct, id is TransactionId. So comparison should be with transaction.id.0.
+                if version.created_tx_id <= transaction.id.0 // Use .0 if transaction.id is TransactionId struct
                     && (version.expired_tx_id.is_none()
-                        || version.expired_tx_id.unwrap() > transaction.id)
+                        || version.expired_tx_id.unwrap() > transaction.id.0) // Use .0
                 {
                     if version.expired_tx_id.is_none() {
-                        version.expired_tx_id = Some(transaction.id);
+                        version.expired_tx_id = Some(transaction.id.0); // Use .0
                         return Ok(true);
                     } else {
                         return Ok(false);

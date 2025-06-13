@@ -1,7 +1,8 @@
-use std::fs::OpenOptions; // File is only used in tests
-use std::io::{BufWriter, Write, Error as IoError, ErrorKind as IoErrorKind};
+use std::fs::OpenOptions;
+use std::io::{BufWriter, Write, Error as IoError, ErrorKind as IoErrorKind}; // Added Write back
 use std::path::PathBuf;
 use bincode;
+// Removed unused TransactionId import
 use crate::core::wal::log_record::LogRecord;
 
 #[derive(Debug)]
@@ -63,8 +64,9 @@ impl WalWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::wal::log_record::{LogRecord, TransactionId};
-    use std::fs::{self, File}; // fs for remove_file, File for File::open
+    use crate::core::common::types::TransactionId; // Use direct import in tests too
+    use crate::core::wal::log_record::LogRecord;
+    use std::fs::{self, File};
     use std::io::{BufReader, Read};
     use std::path::Path;
 
@@ -113,10 +115,10 @@ mod tests {
 
         let mut writer = WalWriter::new(test_dir_path.clone()); // WalWriter itself doesn't fail on new() with bad path
 
-        let record1 = LogRecord::BeginTransaction { tx_id: 404 as TransactionId };
+        let record1 = LogRecord::BeginTransaction { lsn: 0, tx_id: TransactionId(404) }; // Added lsn, use TransactionId()
         assert!(writer.add_record(record1.clone()).is_ok(), "Adding non-commit record should still be Ok");
 
-        let record2 = LogRecord::CommitTransaction { tx_id: 404 as TransactionId, prev_lsn: 0 };
+        let record2 = LogRecord::CommitTransaction { lsn: 1, tx_id: TransactionId(404), prev_lsn: 0 }; // Added lsn, use TransactionId()
         let result = writer.add_record(record2.clone());
 
         assert!(result.is_err(), "add_record with commit should return Err when flush fails");
@@ -143,16 +145,20 @@ mod tests {
         cleanup_file(&test_file_path);
 
         let mut writer = WalWriter::new(test_file_path.clone());
+        let mut lsn_counter: u64 = 0;
+        let next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
 
-        let record1 = LogRecord::BeginTransaction { tx_id: 789 as TransactionId };
+
+        let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(789) }; // Added lsn, use TransactionId()
         let record2 = LogRecord::InsertRecord {
-            tx_id: 789,
+            lsn: next_lsn(), // Added lsn
+            tx_id: TransactionId(789), // Use TransactionId()
             page_id: crate::core::common::types::ids::PageId(1),
             slot_id: crate::core::common::types::ids::SlotId(0),
             record_data: vec![1,2,3],
-            prev_lsn: 0
+            prev_lsn: 0 // Assuming this prev_lsn is for the transaction chain
         };
-        let record3 = LogRecord::CommitTransaction { tx_id: 789 as TransactionId, prev_lsn: 1 };
+        let record3 = LogRecord::CommitTransaction { lsn: next_lsn(), tx_id: TransactionId(789), prev_lsn: 1 }; // Added lsn, use TransactionId()
 
         // Add non-commit records
         assert!(writer.add_record(record1.clone()).is_ok());
@@ -182,7 +188,7 @@ mod tests {
         cleanup_file(&test_file_path);
 
         let mut writer = WalWriter::new(test_file_path.clone());
-        let record = LogRecord::BeginTransaction { tx_id: 123 as TransactionId };
+        let record = LogRecord::BeginTransaction { lsn: 0, tx_id: TransactionId(123) }; // Added lsn, use TransactionId()
 
         let result = writer.add_record(record.clone());
         assert!(result.is_ok(), "add_record for non-commit should return Ok");
@@ -201,8 +207,10 @@ mod tests {
         cleanup_file(&test_file_path);
 
         let mut writer = WalWriter::new(test_file_path.clone());
+        let mut lsn_counter: u64 = 0;
+        let next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
 
-        let record1 = LogRecord::BeginTransaction { tx_id: 1 as TransactionId };
+        let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1) }; // Added lsn, use TransactionId()
         // Adding a non-commit record should not flush and return Ok(())
         assert!(writer.add_record(record1.clone()).is_ok());
         assert_eq!(writer.buffer.len(), 1);
@@ -210,7 +218,7 @@ mod tests {
         assert!(!test_file_path.exists(), "File should not be created by non-commit record");
 
 
-        let record2 = LogRecord::CommitTransaction { tx_id: 1 as TransactionId, prev_lsn: 0 };
+        let record2 = LogRecord::CommitTransaction { lsn: next_lsn(), tx_id: TransactionId(1), prev_lsn: 0 }; // Added lsn, use TransactionId()
         // Adding a commit record should flush and return Ok(()) if flush is successful
         // This will also clear the buffer.
         assert!(writer.add_record(record2.clone()).is_ok());
@@ -272,9 +280,11 @@ mod tests {
         cleanup_file(&test_file_path);
 
         let mut writer = WalWriter::new(test_file_path.clone());
+        let mut lsn_counter: u64 = 0;
+        let next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
 
-        let record1 = LogRecord::BeginTransaction { tx_id: 10 as TransactionId };
-        let record2 = LogRecord::CommitTransaction { tx_id: 10 as TransactionId, prev_lsn: 1 };
+        let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(10) }; // Added lsn
+        let record2 = LogRecord::CommitTransaction { lsn: next_lsn(), tx_id: TransactionId(10), prev_lsn: 1 }; // Added lsn
 
         // Add a non-commit record, should not flush yet.
         assert!(writer.add_record(record1.clone()).is_ok());
@@ -306,9 +316,11 @@ mod tests {
         cleanup_file(&test_file_path);
 
         let mut writer = WalWriter::new(test_file_path.clone());
+        let mut lsn_counter: u64 = 0;
+        let next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
 
         // First batch
-        let record1 = LogRecord::BeginTransaction { tx_id: 20 as TransactionId };
+        let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(20) }; // Added lsn
         assert!(writer.add_record(record1.clone()).is_ok(), "Add BeginTransaction should succeed");
         assert_eq!(writer.buffer.len(), 1, "Buffer should have 1 record before explicit flush");
         let flush_result1 = writer.flush(); // Explicit flush for the first batch
@@ -318,13 +330,14 @@ mod tests {
 
         // Second batch
         let record2 = LogRecord::InsertRecord {
-            tx_id: 20,
+            lsn: next_lsn(), // Added lsn
+            tx_id: TransactionId(20), // Use TransactionId()
             page_id: crate::core::common::types::ids::PageId(1),
             slot_id: crate::core::common::types::ids::SlotId(0),
             record_data: vec![1,2,3],
-            prev_lsn: 0
+            prev_lsn: 0 // Assuming this prev_lsn is for the transaction chain
         };
-        let record3 = LogRecord::CommitTransaction { tx_id: 20 as TransactionId, prev_lsn: 1 };
+        let record3 = LogRecord::CommitTransaction { lsn: next_lsn(), tx_id: TransactionId(20), prev_lsn: 1 }; // Added lsn
 
         // Add InsertRecord, should not flush
         assert!(writer.add_record(record2.clone()).is_ok(), "Add InsertRecord should succeed");

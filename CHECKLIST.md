@@ -87,13 +87,18 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
                 *   [x] Sub-sub-subtask: Integrated `WalWriter` with `TransactionManager` to log and flush a `LogRecord::CommitTransaction` upon successful transaction commit.
                 *   [ ] Sub-sub-subtask: Design and implement periodic flush policy (if deemed necessary).
                 *   [ ] Sub-sub-subtask: Design and implement other flush policies (e.g., buffer full).
-    *   [ ] Implement Log Sequence Number (LSN) generation and management.
-        *   [ ] Subtask: Design a `LogManager` component responsible for LSN generation.
-        *   [ ] Subtask: `LogManager` to assign a unique, increasing LSN to each log record.
-        *   [ ] Subtask: `LogManager` to update `Transaction::last_lsn` with the LSN of the latest record for that transaction.
-        *   [ ] Subtask: Operations generating log records (e.g., Insert, Update, Delete, Begin Transaction) to use `LogManager` to create and log records.
-        *   [ ] Subtask: `LogManager` to delegate actual WAL file writing to `WalWriter`.
-        *   [ ] Subtask: Write unit tests for LSN generation and `LogManager` functionality.
+    *   [x] Implement Log Sequence Number (LSN) generation and management. <!-- COMPLETED -->
+        *   [x] Subtask: Design a `LogManager` component responsible for LSN generation.
+            *   [x] Sub-subtask: Located in `src/core/wal/log_manager.rs`.
+            *   [x] Sub-subtask: Manages an in-memory atomic counter for LSNs, starting from 0.
+        *   [x] Subtask: `LogManager` to assign a unique, increasing LSN to each log record.
+            *   [x] Sub-subtask: Modified `LogRecord` (logical WAL) struct to include an `lsn` field.
+            *   [x] Sub-subtask: Modified `WalEntry` (physical WAL) struct to include an `lsn` field.
+        *   [x] Subtask: `LogManager` to update `Transaction::prev_lsn` with the LSN of the latest record for that transaction.
+            *   [x] Sub-subtask: The `Transaction` struct's `prev_lsn` field stores this LSN.
+        *   [x] Subtask: Operations generating log records (logical `LogRecord` for Begin/Commit/Abort via `TransactionManager`, and physical `WalEntry` for DML via `QueryExecutor` -> `Store`) now use `LogManager` to obtain LSNs.
+        *   [x] Subtask: `LogManager` provides LSNs; `WalWriter` (logical) and `engine::wal::WalWriter` (physical) handle writing.
+        *   [x] Subtask: Write unit tests for LSN generation and `LogManager` functionality. (Includes basic LogManager tests, WalEntry (de)serialization with LSN, TransactionManager LSN awareness, prev_lsn updates, and physical WAL LSN integration tests).
     *   [ ] Implement recovery mechanisms using WAL (e.g., ARIES).
         *   [ ] Subtask: Design the analysis, redo, and undo phases of recovery.
             *   [ ] Sub-subtask: Analysis phase: Scan WAL to identify dirty pages and active transactions at the time of crash.

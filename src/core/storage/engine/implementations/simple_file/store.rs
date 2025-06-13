@@ -2,11 +2,12 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 // Required by QueryExecutor for the store it holds.
 
-use crate::core::common::OxidbError; // Changed
+use crate::core::common::OxidbError;
+use crate::core::common::types::Lsn; // Added Lsn
 use crate::core::storage::engine::traits::{KeyValueStore, VersionedValue};
-use crate::core::storage::engine::wal::WalWriter; // WalWriter will be part of SimpleFileKvStore struct
+use crate::core::storage::engine::wal::WalWriter;
 use crate::core::transaction::Transaction;
-use std::collections::HashSet; // Required for KeyValueStore trait methods
+use std::collections::HashSet;
 
 use super::persistence; // For load_data_from_disk, save_data_to_disk (will be pub(super))
 use super::recovery; // For replay_wal_into_cache (will be pub(super))
@@ -75,10 +76,11 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         key: Vec<u8>,
         value: Vec<u8>,
         transaction: &Transaction,
-    ) -> Result<(), OxidbError> { // Changed
-        let wal_entry = super::super::super::wal::WalEntry::Put {
-            // Adjusted path to WalEntry enum
-            transaction_id: transaction.id,
+        lsn: Lsn, // Added lsn parameter
+    ) -> Result<(), OxidbError> {
+        let wal_entry = crate::core::storage::engine::wal::WalEntry::Put {
+            lsn,
+            transaction_id: transaction.id.0, // Ensure .0 is used for u64 WalEntry field
             key: key.clone(),
             value: value.clone(),
         };
@@ -87,12 +89,12 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         let versions = self.cache.entry(key).or_default();
         for version in versions.iter_mut().rev() {
             if version.expired_tx_id.is_none() {
-                version.expired_tx_id = Some(transaction.id);
+                version.expired_tx_id = Some(transaction.id.0); // Use .0 for u64 VersionedValue field
                 break;
             }
         }
         let new_version =
-            VersionedValue { value, created_tx_id: transaction.id, expired_tx_id: None };
+            VersionedValue { value, created_tx_id: transaction.id.0, expired_tx_id: None }; // Use .0
         versions.push(new_version);
         Ok(())
     }
@@ -127,25 +129,25 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         Ok(None)
     }
 
-    fn delete(&mut self, key: &Vec<u8>, transaction: &Transaction) -> Result<bool, OxidbError> { // Changed
-        let wal_entry = super::super::super::wal::WalEntry::Delete {
-            // Adjusted path
-            transaction_id: transaction.id,
+    fn delete(&mut self, key: &Vec<u8>, transaction: &Transaction, lsn: Lsn) -> Result<bool, OxidbError> {
+        let wal_entry = crate::core::storage::engine::wal::WalEntry::Delete {
+            lsn,
+            transaction_id: transaction.id.0, // Use .0 for u64 field
             key: key.clone(),
         };
         self.wal_writer.log_entry(&wal_entry)?;
 
         if let Some(versions) = self.cache.get_mut(key) {
             for version in versions.iter_mut().rev() {
-                if version.created_tx_id <= transaction.id
+                if version.created_tx_id <= transaction.id.0 // Use .0 for comparison
                     && (version.expired_tx_id.is_none()
-                        || version.expired_tx_id.unwrap() > transaction.id)
+                        || version.expired_tx_id.unwrap() > transaction.id.0) // Use .0 for comparison
                 {
                     if version.expired_tx_id.is_none() {
-                        version.expired_tx_id = Some(transaction.id);
+                        version.expired_tx_id = Some(transaction.id.0); // Use .0 for assignment
                         return Ok(true);
                     } else {
-                        return Ok(false);
+                        return Ok(false); // Already expired
                     }
                 }
             }

@@ -1,4 +1,7 @@
-use crate::core::wal::log_record::LogSequenceNumber;
+use crate::core::common::types::{Lsn, TransactionId}; // Added TransactionId import
+
+// Define INVALID_LSN constant
+pub const INVALID_LSN: Lsn = u64::MAX;
 
 /// Represents the state of a transaction.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,11 +18,11 @@ pub enum TransactionState {
 #[derive(Debug, Clone)]
 pub struct Transaction {
     /// A unique identifier for the transaction.
-    pub id: u64,
+    pub id: TransactionId, // Changed from u64
     /// The current state of the transaction.
     pub state: TransactionState,
-    /// The Log Sequence Number of the last WAL record written by this transaction.
-    pub last_lsn: LogSequenceNumber,
+    /// The LSN of the previous WAL record written by this transaction.
+    pub prev_lsn: Lsn,
     pub undo_log: Vec<UndoOperation>,
     pub redo_log: Vec<RedoOperation>, // Added redo_log
 }
@@ -42,11 +45,11 @@ pub enum UndoOperation {
 
 impl Transaction {
     /// Creates a new transaction with the given ID and an initial state of `Active`.
-    pub fn new(id: u64) -> Self {
+    pub fn new(id: TransactionId) -> Self { // Changed id type from u64
         Transaction {
             id,
             state: TransactionState::Active,
-            last_lsn: 0, // Initialize last_lsn to 0 (or a more appropriate default LSN)
+            prev_lsn: INVALID_LSN, // Initialize prev_lsn with an invalid LSN
             undo_log: Vec::new(),
             redo_log: Vec::new(), // Initialize redo_log
         }
@@ -63,7 +66,7 @@ impl Transaction {
         Transaction {
             id: self.id,
             state: self.state.clone(), // State might be relevant for some store implementations (e.g. MVCC visibility)
-            last_lsn: self.last_lsn, // Clone last_lsn
+            prev_lsn: self.prev_lsn, // Clone prev_lsn
             undo_log: Vec::new(),
             redo_log: Vec::new(),
         }

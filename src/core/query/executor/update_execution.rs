@@ -2,6 +2,7 @@ use super::{ExecutionResult, QueryExecutor};
 use crate::core::common::OxidbError; // Changed
 use crate::core::common::serialization::{deserialize_data_type, serialize_data_type};
 use crate::core::query::commands::{Key, SqlAssignment, SqlCondition};
+use crate::core::common::types::TransactionId; // Added TransactionId import
 use crate::core::query::sql::ast::{
     Condition as AstCondition, SelectColumn, Statement as AstStatement,
 };
@@ -19,19 +20,19 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         source_table_name: String,
         assignments_cmd: Vec<SqlAssignment>,
         condition_opt: Option<SqlCondition>,
-    ) -> Result<ExecutionResult, OxidbError> { // Changed
-        let plan_snapshot_id;
-        let plan_committed_ids_vec;
+    ) -> Result<ExecutionResult, OxidbError> {
+        let plan_snapshot_id: TransactionId;
+        let plan_committed_ids_vec: Vec<TransactionId>;
 
         if let Some(active_tx_for_plan) = self.transaction_manager.get_active_transaction() {
             plan_snapshot_id = active_tx_for_plan.id;
             plan_committed_ids_vec = self.transaction_manager.get_committed_tx_ids_snapshot();
         } else {
-            plan_snapshot_id = self.transaction_manager.generate_tx_id();
+            plan_snapshot_id = self.transaction_manager.current_active_transaction_id().unwrap_or(TransactionId(0));
             plan_committed_ids_vec = self.transaction_manager.get_committed_tx_ids_snapshot();
         }
-        let plan_committed_ids =
-            Arc::new(plan_committed_ids_vec.into_iter().collect::<HashSet<u64>>());
+        let plan_committed_ids_u64_set =
+            Arc::new(plan_committed_ids_vec.into_iter().map(|id| id.0).collect::<HashSet<u64>>());
 
         let ast_select_items = vec![SelectColumn::Asterisk];
 
@@ -58,8 +59,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
         let mut select_execution_tree = self.build_execution_tree(
             optimized_select_plan,
-            plan_snapshot_id,
-            plan_committed_ids.clone(),
+            plan_snapshot_id.0, // Pass u64
+            plan_committed_ids_u64_set.clone(),
         )?;
         let mut keys_to_update: Vec<Key> = Vec::new();
         let rows_iter = select_execution_tree.execute()?;
@@ -90,30 +91,28 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         let mut _updated_count = 0;
 
         for key in keys_to_update {
-            let (current_op_tx_id, committed_ids_for_get, is_auto_commit) = if let Some(active_tx) =
-                self.transaction_manager.get_active_transaction()
-            {
-                (
-                    active_tx.id,
-                    self.transaction_manager.get_committed_tx_ids_snapshot().into_iter().collect(),
-                    false,
-                )
+            let current_op_tx_id: TransactionId;
+            let committed_ids_for_get_u64_set: HashSet<u64>;
+            let is_auto_commit: bool;
+
+            if let Some(active_tx) = self.transaction_manager.get_active_transaction() {
+                current_op_tx_id = active_tx.id;
+                committed_ids_for_get_u64_set = self.transaction_manager.get_committed_tx_ids_snapshot().into_iter().map(|id| id.0).collect();
+                is_auto_commit = false;
             } else {
-                (
-                    0,
-                    self.transaction_manager.get_committed_tx_ids_snapshot().into_iter().collect(),
-                    true,
-                )
-            };
+                current_op_tx_id = TransactionId(0);
+                committed_ids_for_get_u64_set = self.transaction_manager.get_committed_tx_ids_snapshot().into_iter().map(|id| id.0).collect();
+                is_auto_commit = true;
+            }
 
             self.lock_manager.acquire_lock(
-                current_op_tx_id,
+                current_op_tx_id.0, // Use .0 for u64
                 &key,
                 crate::core::transaction::lock_manager::LockType::Exclusive,
             )?;
 
             let current_value_bytes_opt =
-                self.store.read().unwrap().get(&key, current_op_tx_id, &committed_ids_for_get)?;
+                self.store.read().unwrap().get(&key, current_op_tx_id.0, &committed_ids_for_get_u64_set)?;
 
             if let Some(current_value_bytes) = current_value_bytes_opt {
                 let mut current_data_type = deserialize_data_type(&current_value_bytes)?;
@@ -127,9 +126,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     }
                 } else if !assignments_cmd.is_empty() {
                     if is_auto_commit {
-                        self.lock_manager.release_locks(current_op_tx_id);
+                        self.lock_manager.release_locks(current_op_tx_id.0); // Use .0 for u64
                     }
-                    return Err(OxidbError::NotImplemented{feature: // Corrected to NotImplemented
+                    return Err(OxidbError::NotImplemented{feature:
                         "Cannot apply field assignments to non-Map DataType".to_string(),
                     });
                 }
@@ -174,29 +173,45 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     if let Some(atm) = self.transaction_manager.get_active_transaction() {
                         atm.clone_for_store()
                     } else {
+                        // current_op_tx_id is TransactionId here
                         let mut temp_tx = Transaction::new(current_op_tx_id);
                         temp_tx.set_state(TransactionState::Committed);
                         temp_tx
                     };
+                // Generate LSN for the put operation
+                let new_lsn = self.log_manager.next_lsn();
+
+                // If there's a real active transaction, update its prev_lsn
+                // This check is slightly different from insert/delete as active_tx_mut is already fetched above
+                if !is_auto_commit {
+                    if let Some(active_tx_mut_for_lsn) = self.transaction_manager.get_active_transaction_mut() {
+                        active_tx_mut_for_lsn.prev_lsn = new_lsn;
+                    }
+                }
+
                 self.store.write().unwrap().put(
                     key.clone(),
                     updated_value_bytes.clone(),
                     &tx_for_store,
+                    new_lsn, // Pass the new LSN
                 )?;
 
                 if is_auto_commit {
+                    // Generate LSN for the auto-commit WalEntry
+                    let commit_lsn = self.log_manager.next_lsn();
                     let commit_entry =
                         crate::core::storage::engine::wal::WalEntry::TransactionCommit {
-                            transaction_id: current_op_tx_id,
+                            lsn: commit_lsn,
+                            transaction_id: current_op_tx_id.0, // Use .0 for u64
                         };
                     self.store.write().unwrap().log_wal_entry(&commit_entry)?;
-                    self.transaction_manager.add_committed_tx_id(current_op_tx_id);
+                    self.transaction_manager.add_committed_tx_id(current_op_tx_id); // Pass TransactionId
                 }
                 _updated_count += 1;
             }
 
             if is_auto_commit {
-                self.lock_manager.release_locks(current_op_tx_id);
+                self.lock_manager.release_locks(current_op_tx_id.0); // Use .0 for u64
             }
         }
 

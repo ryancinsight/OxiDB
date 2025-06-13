@@ -3,13 +3,16 @@
 // to more specialized handler modules.
 
 use super::{ExecutionResult, QueryExecutor};
-use crate::core::common::OxidbError; // Changed
+use crate::core::common::OxidbError;
 use crate::core::query::commands::Command;
-use crate::core::storage::engine::traits::KeyValueStore; // Needed for QueryExecutor<S> bound
+use crate::core::storage::engine::traits::KeyValueStore;
+// Removed unused Transaction and DataType imports that were moved to executor/mod.rs
+// use crate::core::transaction::Transaction;
+// use crate::core::types::DataType;
 
 // The main execute_command method, dispatching to handlers in submodules.
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S> {
-    pub fn execute_command(&mut self, command: Command) -> Result<ExecutionResult, OxidbError> { // Changed
+    pub fn execute_command(&mut self, command: Command) -> Result<ExecutionResult, OxidbError> {
         match command {
             Command::Insert { key, value } => self.handle_insert(key, value),
             Command::Get { key } => self.handle_get(key),

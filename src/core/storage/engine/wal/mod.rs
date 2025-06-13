@@ -1,7 +1,8 @@
-use crate::core::common::OxidbError; // Changed
+use crate::core::common::OxidbError;
+use crate::core::common::types::Lsn; // Added Lsn
 use crate::core::common::traits::{DataDeserializer, DataSerializer};
 use crc32fast::Hasher;
-use std::fs::OpenOptions; // Removed File
+use std::fs::OpenOptions;
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf}; // Corrected path for traits
 
@@ -11,46 +12,66 @@ const TRANSACTION_COMMIT_OPERATION: u8 = 0x03;
 const TRANSACTION_ROLLBACK_OPERATION: u8 = 0x04;
 
 /// Represents an entry in the Write-Ahead Log (WAL).
-#[derive(Debug, PartialEq, Clone)] // Added Clone
+#[derive(Debug, PartialEq, Clone)]
 pub enum WalEntry {
     /// Represents a 'Put' operation with a key and a value.
-    Put { transaction_id: u64, key: Vec<u8>, value: Vec<u8> },
+    Put {
+        lsn: Lsn,
+        transaction_id: u64,
+        key: Vec<u8>,
+        value: Vec<u8>,
+    },
     /// Represents a 'Delete' operation with a key.
-    Delete { transaction_id: u64, key: Vec<u8> },
+    Delete {
+        lsn: Lsn,
+        transaction_id: u64,
+        key: Vec<u8>,
+    },
     /// Marks the commit of a transaction.
-    TransactionCommit { transaction_id: u64 },
+    TransactionCommit {
+        lsn: Lsn,
+        transaction_id: u64,
+    },
     /// Marks the rollback of a transaction.
-    TransactionRollback { transaction_id: u64 },
+    TransactionRollback {
+        lsn: Lsn,
+        transaction_id: u64,
+    },
 }
 
 impl DataSerializer<WalEntry> for WalEntry {
     /// Serializes a `WalEntry` into a byte stream.
     /// The format is:
     /// - Operation type (1 byte)
+    /// - LSN (8 bytes)
     /// - Transaction ID (8 bytes, for Put, Delete, Commit, Rollback)
     /// - Key (length-prefixed Vec<u8>, for Put, Delete)
     /// - Value (length-prefixed Vec<u8>, only for Put operation)
     /// - CRC32 checksum (4 bytes) of all preceding data in this entry.
-    fn serialize<W: Write>(value: &WalEntry, writer: &mut W) -> Result<(), OxidbError> { // Changed
+    fn serialize<W: Write>(value: &WalEntry, writer: &mut W) -> Result<(), OxidbError> {
         let mut buffer = Vec::new(); // Buffer to hold data before checksum calculation
         match value {
-            WalEntry::Put { transaction_id, key, value } => {
+            WalEntry::Put { lsn, transaction_id, key, value } => {
                 buffer.push(PUT_OPERATION);
+                buffer.extend_from_slice(&lsn.to_le_bytes());
                 buffer.extend_from_slice(&transaction_id.to_le_bytes());
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut buffer)?;
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(value, &mut buffer)?;
             }
-            WalEntry::Delete { transaction_id, key } => {
+            WalEntry::Delete { lsn, transaction_id, key } => {
                 buffer.push(DELETE_OPERATION);
+                buffer.extend_from_slice(&lsn.to_le_bytes());
                 buffer.extend_from_slice(&transaction_id.to_le_bytes());
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut buffer)?;
             }
-            WalEntry::TransactionCommit { transaction_id } => {
+            WalEntry::TransactionCommit { lsn, transaction_id } => {
                 buffer.push(TRANSACTION_COMMIT_OPERATION);
+                buffer.extend_from_slice(&lsn.to_le_bytes());
                 buffer.extend_from_slice(&transaction_id.to_le_bytes());
             }
-            WalEntry::TransactionRollback { transaction_id } => {
+            WalEntry::TransactionRollback { lsn, transaction_id } => {
                 buffer.push(TRANSACTION_ROLLBACK_OPERATION);
+                buffer.extend_from_slice(&lsn.to_le_bytes());
                 buffer.extend_from_slice(&transaction_id.to_le_bytes());
             }
         }
@@ -73,76 +94,67 @@ mod tests {
     #[test]
     fn test_wal_entry_serialize_deserialize() {
         let put_entry = WalEntry::Put {
+            lsn: 0,
             transaction_id: 1,
             key: b"test_key".to_vec(),
             value: b"test_value".to_vec(),
         };
-        let delete_entry = WalEntry::Delete { transaction_id: 2, key: b"test_key_delete".to_vec() };
-        let commit_entry = WalEntry::TransactionCommit { transaction_id: 3 };
-        let rollback_entry = WalEntry::TransactionRollback { transaction_id: 4 };
+        let delete_entry = WalEntry::Delete {
+            lsn: 1,
+            transaction_id: 2,
+            key: b"test_key_delete".to_vec(),
+        };
+        let commit_entry = WalEntry::TransactionCommit { lsn: 2, transaction_id: 3 };
+        let rollback_entry = WalEntry::TransactionRollback { lsn: 3, transaction_id: 4 };
 
         let entries = vec![put_entry, delete_entry, commit_entry, rollback_entry];
 
         for original_entry in entries {
             let mut buffer = Vec::new();
-            <WalEntry as DataSerializer<WalEntry>>::serialize(&original_entry, &mut buffer)
-                .unwrap();
+            WalEntry::serialize(&original_entry, &mut buffer).unwrap();
 
             let mut reader = Cursor::new(&buffer);
-            let deserialized_entry =
-                <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut reader).unwrap();
-
-            // Using the PartialEq derived for WalEntry
+            let deserialized_entry = WalEntry::deserialize(&mut reader).unwrap();
             assert_eq!(&original_entry, &deserialized_entry);
         }
     }
 
     #[test]
     fn test_wal_entry_sequential_deserialization() {
-        let entry1 =
-            WalEntry::Put { transaction_id: 10, key: b"key1".to_vec(), value: b"value1".to_vec() };
-        let entry2 = WalEntry::Delete { transaction_id: 11, key: b"key1".to_vec() };
-        let entry3 = WalEntry::TransactionCommit { transaction_id: 11 };
+        let entry1 = WalEntry::Put {
+            lsn: 100,
+            transaction_id: 10,
+            key: b"key1".to_vec(),
+            value: b"value1".to_vec(),
+        };
+        let entry2 = WalEntry::Delete { lsn: 101, transaction_id: 11, key: b"key1".to_vec() };
+        let entry3 = WalEntry::TransactionCommit { lsn: 102, transaction_id: 11 };
         let entry4 = WalEntry::Put {
+            lsn: 103,
             transaction_id: 12,
             key: b"key2".to_vec(),
             value: b"value2_longer".to_vec(),
         };
-        let entry5 = WalEntry::TransactionRollback { transaction_id: 12 };
+        let entry5 = WalEntry::TransactionRollback { lsn: 104, transaction_id: 12 };
 
         let mut buffer = Vec::new();
-        <WalEntry as DataSerializer<WalEntry>>::serialize(&entry1, &mut buffer).unwrap();
-        <WalEntry as DataSerializer<WalEntry>>::serialize(&entry2, &mut buffer).unwrap();
-        <WalEntry as DataSerializer<WalEntry>>::serialize(&entry3, &mut buffer).unwrap();
-        <WalEntry as DataSerializer<WalEntry>>::serialize(&entry4, &mut buffer).unwrap();
-        <WalEntry as DataSerializer<WalEntry>>::serialize(&entry5, &mut buffer).unwrap();
+        WalEntry::serialize(&entry1, &mut buffer).unwrap();
+        WalEntry::serialize(&entry2, &mut buffer).unwrap();
+        WalEntry::serialize(&entry3, &mut buffer).unwrap();
+        WalEntry::serialize(&entry4, &mut buffer).unwrap();
+        WalEntry::serialize(&entry5, &mut buffer).unwrap();
 
         let mut cursor = Cursor::new(&buffer);
 
-        assert_eq!(
-            <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut cursor).unwrap(),
-            entry1
-        );
-        assert_eq!(
-            <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut cursor).unwrap(),
-            entry2
-        );
-        assert_eq!(
-            <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut cursor).unwrap(),
-            entry3
-        );
-        assert_eq!(
-            <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut cursor).unwrap(),
-            entry4
-        );
-        assert_eq!(
-            <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut cursor).unwrap(),
-            entry5
-        );
+        assert_eq!(WalEntry::deserialize(&mut cursor).unwrap(), entry1);
+        assert_eq!(WalEntry::deserialize(&mut cursor).unwrap(), entry2);
+        assert_eq!(WalEntry::deserialize(&mut cursor).unwrap(), entry3);
+        assert_eq!(WalEntry::deserialize(&mut cursor).unwrap(), entry4);
+        assert_eq!(WalEntry::deserialize(&mut cursor).unwrap(), entry5);
 
         // Try to deserialize again, expecting EOF
-        match <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut cursor) {
-                Err(OxidbError::Io(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => { // Changed
+        match WalEntry::deserialize(&mut cursor) {
+            Err(OxidbError::Io(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 // This is the expected outcome
             }
             Ok(entry) => panic!("Expected EOF error, but got an entry: {:?}", entry),
@@ -230,7 +242,7 @@ impl DataDeserializer<WalEntry> for WalEntry {
                     "Reached end of WAL stream while expecting operation type",
                 )));
             }
-            Err(e) => return Err(OxidbError::Io(e)), // Changed
+            Err(e) => return Err(OxidbError::Io(e)),
         }
         let operation_type = operation_type_buffer[0];
 
@@ -239,75 +251,75 @@ impl DataDeserializer<WalEntry> for WalEntry {
 
         let entry = match operation_type {
             PUT_OPERATION => {
-                // Read transaction_id from the stream
+                let mut lsn_bytes = [0u8; 8];
+                reader.read_exact(&mut lsn_bytes).map_err(|e| map_eof_error(e, "LSN for PUT"))?;
+                let lsn = u64::from_le_bytes(lsn_bytes);
+                data_to_checksum.extend_from_slice(&lsn_bytes);
+
                 let mut tx_id_bytes = [0u8; 8];
-                reader
-                    .read_exact(&mut tx_id_bytes)
-                    .map_err(|e| map_eof_error(e, "transaction ID for PUT"))?;
+                reader.read_exact(&mut tx_id_bytes).map_err(|e| map_eof_error(e, "transaction ID for PUT"))?;
                 let transaction_id = u64::from_le_bytes(tx_id_bytes);
-                // data_to_checksum already has op_type, now add tx_id bytes
                 data_to_checksum.extend_from_slice(&tx_id_bytes);
 
-                // Then, read key from the stream
                 let key = <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(reader)
                     .map_err(|e| map_deserialization_eof(e, "key for PUT operation"))?;
-                // For checksum: get the serialized form of key (len + data) and add to data_to_checksum
                 let mut temp_key_bytes = Vec::new();
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(&key, &mut temp_key_bytes)?;
                 data_to_checksum.extend_from_slice(&temp_key_bytes);
 
-                // Then, read value from the stream
                 let value = <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(reader)
                     .map_err(|e| map_deserialization_eof(e, "value for PUT operation"))?;
-                // For checksum: get the serialized form of value (len + data) and add to data_to_checksum
                 let mut temp_value_bytes = Vec::new();
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(&value, &mut temp_value_bytes)?;
                 data_to_checksum.extend_from_slice(&temp_value_bytes);
 
-                WalEntry::Put { transaction_id, key, value }
+                WalEntry::Put { lsn, transaction_id, key, value }
             }
             DELETE_OPERATION => {
-                // Read transaction_id from the stream
+                let mut lsn_bytes = [0u8; 8];
+                reader.read_exact(&mut lsn_bytes).map_err(|e| map_eof_error(e, "LSN for DELETE"))?;
+                let lsn = u64::from_le_bytes(lsn_bytes);
+                data_to_checksum.extend_from_slice(&lsn_bytes);
+
                 let mut tx_id_bytes = [0u8; 8];
-                reader
-                    .read_exact(&mut tx_id_bytes)
-                    .map_err(|e| map_eof_error(e, "transaction ID for DELETE"))?;
+                reader.read_exact(&mut tx_id_bytes).map_err(|e| map_eof_error(e, "transaction ID for DELETE"))?;
                 let transaction_id = u64::from_le_bytes(tx_id_bytes);
-                // data_to_checksum already has op_type, now add tx_id bytes
                 data_to_checksum.extend_from_slice(&tx_id_bytes);
 
-                // Then, read key from the stream
                 let key = <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(reader)
                     .map_err(|e| map_deserialization_eof(e, "key for DELETE operation"))?;
-                // For checksum: get the serialized form of key (len + data) and add to data_to_checksum
                 let mut temp_key_bytes = Vec::new();
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(&key, &mut temp_key_bytes)?;
                 data_to_checksum.extend_from_slice(&temp_key_bytes);
 
-                WalEntry::Delete { transaction_id, key }
+                WalEntry::Delete { lsn, transaction_id, key }
             }
             TRANSACTION_COMMIT_OPERATION => {
-                // For Commit: op_type + tx_id
+                let mut lsn_bytes = [0u8; 8];
+                reader.read_exact(&mut lsn_bytes).map_err(|e| map_eof_error(e, "LSN for COMMIT"))?;
+                let lsn = u64::from_le_bytes(lsn_bytes);
+                data_to_checksum.extend_from_slice(&lsn_bytes);
+
                 let mut tx_id_bytes = [0u8; 8];
-                reader
-                    .read_exact(&mut tx_id_bytes)
-                    .map_err(|e| map_eof_error(e, "transaction ID for COMMIT"))?;
+                reader.read_exact(&mut tx_id_bytes).map_err(|e| map_eof_error(e, "transaction ID for COMMIT"))?;
                 let transaction_id = u64::from_le_bytes(tx_id_bytes);
                 data_to_checksum.extend_from_slice(&tx_id_bytes);
-                WalEntry::TransactionCommit { transaction_id }
+                WalEntry::TransactionCommit { lsn, transaction_id }
             }
             TRANSACTION_ROLLBACK_OPERATION => {
-                // For Rollback: op_type + tx_id
+                let mut lsn_bytes = [0u8; 8];
+                reader.read_exact(&mut lsn_bytes).map_err(|e| map_eof_error(e, "LSN for ROLLBACK"))?;
+                let lsn = u64::from_le_bytes(lsn_bytes);
+                data_to_checksum.extend_from_slice(&lsn_bytes);
+
                 let mut tx_id_bytes = [0u8; 8];
-                reader
-                    .read_exact(&mut tx_id_bytes)
-                    .map_err(|e| map_eof_error(e, "transaction ID for ROLLBACK"))?;
+                reader.read_exact(&mut tx_id_bytes).map_err(|e| map_eof_error(e, "transaction ID for ROLLBACK"))?;
                 let transaction_id = u64::from_le_bytes(tx_id_bytes);
                 data_to_checksum.extend_from_slice(&tx_id_bytes);
-                WalEntry::TransactionRollback { transaction_id }
+                WalEntry::TransactionRollback { lsn, transaction_id }
             }
             _ => {
-                return Err(OxidbError::Deserialization(format!( // Changed
+                return Err(OxidbError::Deserialization(format!(
                     "Unknown WAL operation type: {}",
                     operation_type
                 )))

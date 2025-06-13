@@ -6,7 +6,7 @@ use std::collections::HashSet;
 
 // Helper to create a dummy transaction
 fn tx(id: u64) -> Transaction {
-    Transaction::new(id)
+    Transaction::new(crate::core::common::types::TransactionId(id)) // Use TransactionId struct
 }
 
 // MVCC tests are complex and depend on TransactionManager state.
@@ -214,7 +214,8 @@ fn test_gc_keeps_uncommitted_versions_from_active_transactions() {
 #[test]
 fn test_log_wal_entry_is_nop() {
     let mut store = InMemoryKvStore::new();
-    let dummy_wal_entry = WalEntry::TransactionCommit { transaction_id: 1 };
+    let dummy_lsn = 0; // Dummy LSN for test
+    let dummy_wal_entry = WalEntry::TransactionCommit { lsn: dummy_lsn, transaction_id: 1 };
     assert!(store.log_wal_entry(&dummy_wal_entry).is_ok());
 }
 
@@ -231,7 +232,8 @@ fn test_scan_single_item_no_expiration() {
     let mut store = InMemoryKvStore::new();
     let key1 = b"key1".to_vec();
     let val1 = b"val1".to_vec();
-    store.put(key1.clone(), val1.clone(), &tx(1)).unwrap();
+    let dummy_lsn = 0; // LSN for test
+    store.put(key1.clone(), val1.clone(), &tx(1), dummy_lsn).unwrap();
 
     let result = store.scan().unwrap();
     assert_eq!(result.len(), 1);
@@ -247,10 +249,11 @@ fn test_scan_multiple_items_latest_version_no_expiration() {
 
     let key2 = b"key2".to_vec();
     let val2_v1 = b"val2_v1".to_vec();
+    let dummy_lsn = 0; // LSN for test
 
-    store.put(key1.clone(), val1_v1.clone(), &tx(1)).unwrap();
-    store.put(key1.clone(), val1_v2.clone(), &tx(2)).unwrap();
-    store.put(key2.clone(), val2_v1.clone(), &tx(3)).unwrap();
+    store.put(key1.clone(), val1_v1.clone(), &tx(1), dummy_lsn).unwrap();
+    store.put(key1.clone(), val1_v2.clone(), &tx(2), dummy_lsn).unwrap();
+    store.put(key2.clone(), val2_v1.clone(), &tx(3), dummy_lsn).unwrap();
 
     let result = store.scan().unwrap();
     assert_eq!(result.len(), 2);
@@ -273,9 +276,10 @@ fn test_scan_item_with_all_versions_expired() {
     let mut store = InMemoryKvStore::new();
     let key1 = b"key1".to_vec();
     let val1_v1 = b"val1_v1".to_vec();
+    let dummy_lsn = 0; // LSN for test
 
-    store.put(key1.clone(), val1_v1.clone(), &tx(1)).unwrap();
-    store.delete(&key1, &tx(2)).unwrap();
+    store.put(key1.clone(), val1_v1.clone(), &tx(1), dummy_lsn).unwrap();
+    store.delete(&key1, &tx(2), dummy_lsn).unwrap();
 
     let result = store.scan().unwrap();
     assert!(result.is_empty(), "Scan should be empty if the only item's versions are all expired.");
@@ -288,16 +292,17 @@ fn test_scan_item_with_some_versions_expired_takes_latest_non_expired() {
     let val1_v1 = b"val1_v1_expired".to_vec();
     let val1_v2 = b"val1_v2_current".to_vec();
     let val1_v3 = b"val1_v3_also_current_but_later_tx".to_vec();
+    let dummy_lsn = 0; // LSN for test
 
-    store.put(key1.clone(), val1_v1.clone(), &tx(1)).unwrap();
+    store.put(key1.clone(), val1_v1.clone(), &tx(1), dummy_lsn).unwrap();
     if let Some(versions) = store.data.get_mut(&key1) {
         if let Some(version_to_expire) = versions.iter_mut().find(|v| v.created_tx_id == 1) {
             version_to_expire.expired_tx_id = Some(2);
         }
     }
 
-    store.put(key1.clone(), val1_v2.clone(), &tx(3)).unwrap();
-    store.put(key1.clone(), val1_v3.clone(), &tx(4)).unwrap();
+    store.put(key1.clone(), val1_v2.clone(), &tx(3), dummy_lsn).unwrap();
+    store.put(key1.clone(), val1_v3.clone(), &tx(4), dummy_lsn).unwrap();
 
     let result = store.scan().unwrap();
     assert_eq!(result.len(), 1);
@@ -313,23 +318,24 @@ fn test_scan_mixed_expired_and_active_keys() {
     let mut store = InMemoryKvStore::new();
     let key1 = b"key1_active".to_vec();
     let val1 = b"val1".to_vec();
-    store.put(key1.clone(), val1.clone(), &tx(1)).unwrap();
+    let dummy_lsn = 0; // LSN for test
+    store.put(key1.clone(), val1.clone(), &tx(1), dummy_lsn).unwrap();
 
     let key2 = b"key2_expired".to_vec();
     let val2 = b"val2".to_vec();
-    store.put(key2.clone(), val2.clone(), &tx(2)).unwrap();
-    store.delete(&key2, &tx(3)).unwrap();
+    store.put(key2.clone(), val2.clone(), &tx(2), dummy_lsn).unwrap();
+    store.delete(&key2, &tx(3), dummy_lsn).unwrap();
 
     let key3 = b"key3_active_multi_ver".to_vec();
     let val3_v1 = b"val3_v1".to_vec();
     let val3_v2 = b"val3_v2".to_vec();
-    store.put(key3.clone(), val3_v1.clone(), &tx(4)).unwrap();
+    store.put(key3.clone(), val3_v1.clone(), &tx(4), dummy_lsn).unwrap();
     if let Some(versions) = store.data.get_mut(&key3) {
         if let Some(version_to_expire) = versions.iter_mut().find(|v| v.created_tx_id == 4) {
             version_to_expire.expired_tx_id = Some(5);
         }
     }
-    store.put(key3.clone(), val3_v2.clone(), &tx(6)).unwrap();
+    store.put(key3.clone(), val3_v2.clone(), &tx(6), dummy_lsn).unwrap();
 
     let result = store.scan().unwrap();
     assert_eq!(result.len(), 2, "Should find key1 and key3, key2 is fully expired");

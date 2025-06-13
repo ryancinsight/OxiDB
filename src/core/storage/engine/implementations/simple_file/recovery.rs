@@ -31,17 +31,17 @@ pub(super) fn replay_wal_into_cache(
     loop {
         match <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut reader) {
             Ok(entry) => match &entry {
-                WalEntry::Put { transaction_id, .. } | WalEntry::Delete { transaction_id, .. } => {
+                WalEntry::Put { lsn: _, transaction_id, .. } | WalEntry::Delete { lsn: _, transaction_id, .. } => { // Added lsn: _
                     transaction_operations.entry(*transaction_id).or_default().push(entry);
                 }
-                WalEntry::TransactionCommit { transaction_id } => {
+                WalEntry::TransactionCommit { lsn: _, transaction_id } => { // Added lsn: _
                     committed_transactions.insert(*transaction_id);
                 }
-                WalEntry::TransactionRollback { transaction_id } => {
+                WalEntry::TransactionRollback { lsn: _, transaction_id } => { // Added lsn: _
                     rolled_back_transactions.insert(*transaction_id);
                 }
             },
-            Err(OxidbError::Io(e)) if e.kind() == ErrorKind::UnexpectedEof => break, // Changed
+            Err(OxidbError::Io(e)) if e.kind() == ErrorKind::UnexpectedEof => break,
             Err(OxidbError::Deserialization(msg)) => { // Changed
                 eprintln!("WAL corruption detected (Deserialization error): {}. Replay stopped. Data up to this point is recovered.", msg);
                 break;
@@ -64,7 +64,7 @@ pub(super) fn replay_wal_into_cache(
             if let Some(operations) = transaction_operations.get(&tx_id) {
                 for entry in operations {
                     match entry {
-                        WalEntry::Put { key, value, transaction_id } => {
+                        WalEntry::Put { lsn: _, key, value, transaction_id } => { // Added lsn: _
                             let versions = cache.entry(key.clone()).or_default();
                             for version in versions.iter_mut().rev() {
                                 if version.expired_tx_id.is_none()
@@ -83,7 +83,7 @@ pub(super) fn replay_wal_into_cache(
                             };
                             versions.push(new_version);
                         }
-                        WalEntry::Delete { key, transaction_id } => {
+                        WalEntry::Delete { lsn: _, key, transaction_id } => { // Added lsn: _
                             if let Some(versions) = cache.get_mut(key) {
                                 for version in versions.iter_mut().rev() {
                                     if version.expired_tx_id.is_none()

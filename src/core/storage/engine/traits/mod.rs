@@ -1,8 +1,9 @@
 // Assuming OxidbError will be defined in crate::core::common::error
 // Adjust the path if error.rs is structured within a module e.g. crate::core::common::error::OxidbError
-use crate::core::common::OxidbError; // Changed
+use crate::core::common::OxidbError;
+use crate::core::common::types::Lsn; // Added Lsn
 use crate::core::transaction::Transaction;
-use std::collections::HashSet; // Added import
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionedValue<V> {
@@ -17,7 +18,7 @@ pub struct VersionedValue<V> {
 pub trait KeyValueStore<K, V>: Send + Sync + 'static {
     /// Inserts a key-value pair into the store.
     /// If the key already exists, its value is updated.
-    fn put(&mut self, key: K, value: V, transaction: &Transaction) -> Result<(), OxidbError>; // Changed
+    fn put(&mut self, key: K, value: V, transaction: &Transaction, lsn: Lsn) -> Result<(), OxidbError>;
 
     /// Retrieves the value associated with a key.
     /// Returns `Ok(Some(value))` if the key exists, `Ok(None)` otherwise.
@@ -30,7 +31,7 @@ pub trait KeyValueStore<K, V>: Send + Sync + 'static {
 
     /// Deletes a key-value pair from the store.
     /// Returns `Ok(true)` if the key was found and deleted, `Ok(false)` otherwise.
-    fn delete(&mut self, key: &K, transaction: &Transaction) -> Result<bool, OxidbError>; // Changed
+    fn delete(&mut self, key: &K, transaction: &Transaction, lsn: Lsn) -> Result<bool, OxidbError>;
 
     /// Checks if a key exists in the store.
     fn contains_key(

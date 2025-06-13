@@ -1,6 +1,6 @@
 use crate::core::common::error::OxidbError;
-use crate::core::common::types::PageId; // Use existing PageId
-use crate::core::common::types::ids::Lsn; // Use direct path for Lsn
+use crate::core::common::types::PageId;
+use crate::core::common::types::Lsn; // Corrected Lsn import path
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::Cursor;
 use std::convert::TryFrom;
@@ -8,7 +8,8 @@ use std::convert::TryFrom;
 // Define a standard page size.
 pub const PAGE_SIZE: usize = 4096;
 // Define the size of the PageHeader when serialized
-pub const PAGE_HEADER_SIZE: usize = 14; // PageId (u64: 8) + PageType (u8: 1) + Lsn (u32: 4) + flags (u8: 1)
+// PageId (u64: 8) + PageType (u8: 1) + Lsn (u64: 8) + flags (u8: 1) = 18 bytes
+pub const PAGE_HEADER_SIZE: usize = 18;
 
 // Placeholder for different page types that might be used later.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,8 +64,8 @@ impl PageHeader {
         PageHeader {
             page_id,
             page_type,
-            lsn: Lsn(0), // Default LSN
-            flags: 0,    // Default flags
+            lsn: 0, // Lsn is u64, default to 0
+            flags: 0,
         }
     }
 
@@ -74,9 +75,9 @@ impl PageHeader {
         }
 
         let mut cursor = Cursor::new(buffer);
-        cursor.write_u64::<LittleEndian>(self.page_id.0)?; // PageId is u64
+        cursor.write_u64::<LittleEndian>(self.page_id.0)?;
         cursor.write_u8(self.page_type as u8)?;
-        cursor.write_u32::<LittleEndian>(self.lsn.0)?; // Lsn is u32
+        cursor.write_u64::<LittleEndian>(self.lsn)?; // Lsn is u64
         cursor.write_u8(self.flags)?;
 
         Ok(())
@@ -88,10 +89,10 @@ impl PageHeader {
         }
 
         let mut cursor = Cursor::new(buffer);
-        let page_id = PageId(cursor.read_u64::<LittleEndian>()?); // PageId is u64
+        let page_id = PageId(cursor.read_u64::<LittleEndian>()?);
         let page_type_u8 = cursor.read_u8()?;
         let page_type = PageType::try_from(page_type_u8)?;
-        let lsn = Lsn(cursor.read_u32::<LittleEndian>()?); // Lsn is u32
+        let lsn = cursor.read_u64::<LittleEndian>()?; // Lsn is u64
         let flags = cursor.read_u8()?;
 
         Ok(PageHeader {
@@ -180,7 +181,7 @@ mod tests {
 
         assert_eq!(page.header.page_id, page_id);
         assert_eq!(page.header.page_type, PageType::Data);
-        assert_eq!(page.header.lsn, Lsn(0));
+        assert_eq!(page.header.lsn, 0); // Lsn is u64
         assert_eq!(page.header.flags, 0);
         assert_eq!(page.data.len(), PAGE_SIZE - PAGE_HEADER_SIZE);
     }
@@ -193,7 +194,7 @@ mod tests {
             let header = PageHeader {
                 page_id: PageId(123),
                 page_type,
-                lsn: Lsn(456),
+                lsn: 456, // Lsn is u64
                 flags: 0b10101010,
             };
 
@@ -226,13 +227,13 @@ mod tests {
         // Manually construct a header buffer with an invalid page type byte
         let page_id = PageId(123);
         let invalid_page_type_byte = 99u8; // Assuming 99 is not a valid PageType u8 value
-        let lsn = Lsn(456);
+        let lsn: Lsn = 456; // Lsn is u64
         let flags = 0b10101010;
 
         let mut cursor = Cursor::new(buffer.as_mut_slice());
         cursor.write_u64::<LittleEndian>(page_id.0).unwrap();
         cursor.write_u8(invalid_page_type_byte).unwrap();
-        cursor.write_u32::<LittleEndian>(lsn.0).unwrap();
+        cursor.write_u64::<LittleEndian>(lsn).unwrap(); // Lsn is u64
         cursor.write_u8(flags).unwrap();
 
         let result = PageHeader::deserialize(&buffer);
@@ -268,7 +269,7 @@ mod tests {
                 page_populated.data[i] = (i % 256) as u8;
             }
             // Modify header fields to be non-default for better testing
-            page_populated.header.lsn = Lsn(101112);
+            page_populated.header.lsn = 101112; // Lsn is u64
             page_populated.header.flags = 0xAA;
 
 

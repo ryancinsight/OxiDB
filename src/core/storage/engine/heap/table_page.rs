@@ -76,7 +76,7 @@ pub struct TablePage;
 impl TablePage {
     // This constant is specific to TablePage's data area, not the overall Page.
     // It's used by tests, so pub(crate) or pub.
-    pub(crate) const PAGE_DATA_AREA_SIZE: usize = PAGE_SIZE - PAGE_HEADER_SIZE;
+pub(crate) const PAGE_DATA_AREA_SIZE: usize = PAGE_SIZE - PAGE_HEADER_SIZE; // Uncommented for tests
 
 
     /// Gets the number of records currently stored in the page.

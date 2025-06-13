@@ -109,13 +109,13 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn read_numeric_literal(&mut self, start_idx: usize) -> Result<Token, SqlTokenizerError> {
-        let mut end_idx = start_idx;
+        let mut end_idx: usize;
         let mut has_decimal = false;
 
         // The first character is consumed here. It's known to be a digit,
         // or a '.' followed by a digit (checked by the caller, `tokenize`).
         if let Some((idx, first_ch)) = self.chars.next() {
-            end_idx = idx;
+            end_idx = idx; // First assignment here
             if first_ch == '.' {
                 has_decimal = true;
             }
