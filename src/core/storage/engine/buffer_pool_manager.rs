@@ -124,9 +124,11 @@ impl BufferPoolManager {
         // 3. If victim frame is dirty and occupied, write its content to disk
         if victim_frame.is_dirty {
             if let Some(old_page_id) = victim_frame.page_id {
-                let data_guard = victim_frame.data.read().unwrap(); // Read lock for page data
-                // It's important to unlock disk_manager after use.
-                self.disk_manager.lock().unwrap().write_page(old_page_id, &*data_guard)?;
+                { // Scope for data_guard
+                    let data_guard = victim_frame.data.read().unwrap(); // Read lock for page data
+                    // It's important to unlock disk_manager after use.
+                    self.disk_manager.lock().unwrap().write_page(old_page_id, &*data_guard)?;
+                } // data_guard is dropped here
                 victim_frame.is_dirty = false;
             } else {
                 // This case (dirty but no page_id) should ideally not happen with correct logic.
@@ -199,8 +201,10 @@ impl BufferPoolManager {
             if frame.is_dirty {
                 // Ensure page_id in frame matches, though it should if it's in page_table
                 if frame.page_id == Some(page_id) {
-                    let data_guard = frame.data.read().unwrap();
-                    self.disk_manager.lock().unwrap().write_page(page_id, &*data_guard)?;
+                    { // Scope for data_guard
+                        let data_guard = frame.data.read().unwrap();
+                        self.disk_manager.lock().unwrap().write_page(page_id, &*data_guard)?;
+                    } // data_guard is dropped here
                     frame.is_dirty = false;
                 } else {
                     // This would be an inconsistent state
@@ -293,26 +297,29 @@ mod tests {
             assert!(page0_data.iter().all(|&x| x == 0), "New page data should be zeroed");
         }
         // Frame for page_id0 should be pinned (pin_count=1)
-        let frame0_idx = bpm.page_table.get(&page_id0).unwrap();
-        assert_eq!(bpm.frames[*frame0_idx].lock().unwrap().pin_count, 1);
+        let frame0_idx_after_new = *bpm.page_table.get(&page_id0).unwrap();
+        assert_eq!(bpm.frames[frame0_idx_after_new].lock().unwrap().pin_count, 1);
         assert_eq!(bpm.free_list.len(), POOL_SIZE - 1); // One frame used
 
         // 2. Fetch the same page
         let page0_fetched_arc = bpm.fetch_page(page_id0).unwrap();
-        assert_eq!(bpm.frames[*frame0_idx].lock().unwrap().pin_count, 2); // Pinned again
+        let frame0_idx_after_fetch = *bpm.page_table.get(&page_id0).unwrap();
+        assert_eq!(bpm.frames[frame0_idx_after_fetch].lock().unwrap().pin_count, 2); // Pinned again
         assert!(Arc::ptr_eq(&page0_arc, &page0_fetched_arc)); // Should be the same Arc
 
         // 3. Unpin once
         bpm.unpin_page(page_id0, false).unwrap();
-        assert_eq!(bpm.frames[*frame0_idx].lock().unwrap().pin_count, 1);
+        let frame0_idx_after_unpin1 = *bpm.page_table.get(&page_id0).unwrap();
+        assert_eq!(bpm.frames[frame0_idx_after_unpin1].lock().unwrap().pin_count, 1);
         assert_eq!(bpm.replacer_queue.len(), 0); // Still pinned, not in replacer
 
         // 4. Unpin again, making it available for replacement
         bpm.unpin_page(page_id0, true).unwrap(); // Mark dirty
-        assert_eq!(bpm.frames[*frame0_idx].lock().unwrap().pin_count, 0);
-        assert!(bpm.frames[*frame0_idx].lock().unwrap().is_dirty);
+        let frame0_idx_after_unpin2 = *bpm.page_table.get(&page_id0).unwrap();
+        assert_eq!(bpm.frames[frame0_idx_after_unpin2].lock().unwrap().pin_count, 0);
+        assert!(bpm.frames[frame0_idx_after_unpin2].lock().unwrap().is_dirty);
         assert_eq!(bpm.replacer_queue.len(), 1);
-        assert_eq!(bpm.replacer_queue.front().unwrap(), frame0_idx);
+        assert_eq!(bpm.replacer_queue.front().unwrap(), &frame0_idx_after_unpin2);
     }
 
     #[test]

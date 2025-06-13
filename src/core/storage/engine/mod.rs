@@ -4,6 +4,7 @@ pub mod wal;
 pub mod page;
 pub mod disk_manager;
 pub mod buffer_pool_manager;
+pub mod heap;
 
 pub use implementations::in_memory::InMemoryKvStore;
 pub use implementations::simple_file::SimpleFileKvStore;

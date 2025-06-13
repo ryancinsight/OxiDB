@@ -833,7 +833,7 @@ mod tests {
         let indexed_pks_after_rollback =
             executor.index_manager.find_by_index("default_value_index", &serialized_value)?;
         assert!(
-            indexed_pks_after_rollback.is_none_or(|pks| !pks.contains(&key)),
+            indexed_pks_after_rollback.map_or(true, |pks| !pks.contains(&key)),
             "Value should NOT be in index after rolling back an insert"
         );
         Ok(())
@@ -860,7 +860,7 @@ mod tests {
         let indexed_pks =
             executor.index_manager.find_by_index("default_value_index", &serialized_value)?;
         assert!(
-            indexed_pks.is_none_or(|pks| !pks.contains(&key)),
+            indexed_pks.map_or(true, |pks| !pks.contains(&key)),
             "Key should be removed from index"
         );
         Ok(())
@@ -884,7 +884,7 @@ mod tests {
         let indexed_pks =
             executor.index_manager.find_by_index("default_value_index", &serialized_value)?;
         assert!(
-            indexed_pks.is_none_or(|pks| !pks.contains(&key)),
+            indexed_pks.map_or(true, |pks| !pks.contains(&key)),
             "Key should be removed from index after commit"
         );
         Ok(())
@@ -907,7 +907,7 @@ mod tests {
         let indexed_pks_before_rollback =
             executor.index_manager.find_by_index("default_value_index", &serialized_value)?;
         assert!(
-            indexed_pks_before_rollback.is_none_or(|pks| !pks.contains(&key)),
+            indexed_pks_before_rollback.map_or(true, |pks| !pks.contains(&key)),
             "Key should be removed from index before rollback"
         );
 
