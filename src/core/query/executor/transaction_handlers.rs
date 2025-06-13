@@ -22,7 +22,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             self.store.write().unwrap().log_wal_entry(&commit_entry)?;
 
             self.lock_manager.release_locks(tx_id_to_release);
-            self.transaction_manager.commit_transaction();
+            self.transaction_manager.commit_transaction().map_err(OxidbError::Io)?; // Handle Result
             Ok(ExecutionResult::Success)
         } else {
             Err(OxidbError::NoActiveTransaction) // Changed

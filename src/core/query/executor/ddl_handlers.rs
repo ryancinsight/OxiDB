@@ -35,6 +35,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             let tx_for_store = Transaction {
                 id: active_tx_id,
                 state: active_tx_mut.state.clone(),
+                last_lsn: active_tx_mut.last_lsn, // Copy last_lsn from the active transaction
                 undo_log: Vec::new(),
                 redo_log: Vec::new(),
             };

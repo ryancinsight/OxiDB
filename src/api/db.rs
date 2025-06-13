@@ -3,6 +3,7 @@ use crate::core::config::Config;
 use crate::core::query::commands::{Command, Key};
 use crate::core::query::executor::{ExecutionResult, QueryExecutor};
 use crate::core::query::parser::parse_query_string;
+use crate::core::wal::writer::WalWriter; // Added for QueryExecutor::new
 use crate::core::storage::engine::SimpleFileKvStore;
 use crate::core::types::DataType;
 use serde_json;
@@ -32,7 +33,10 @@ impl Oxidb {
     /// Returns `OxidbError` if the store cannot be initialized or the executor cannot be created.
     pub fn new_with_config(config: Config) -> Result<Self, OxidbError> {
         let store = SimpleFileKvStore::new(config.database_path())?;
-        let executor = QueryExecutor::new(store, config.index_path())?;
+        // Potentially clean up old WAL file before creating a new one.
+        // std::fs::remove_file(config.wal_path()).ok();
+        let wal_writer = WalWriter::new(config.wal_path());
+        let executor = QueryExecutor::new(store, config.index_path(), wal_writer)?;
         Ok(Self { executor })
     }
 

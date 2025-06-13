@@ -80,9 +80,20 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
             *   [x] Sub-subtask: Implement serialization for each WAL record type. (Completed as part of record format definition)
             *   [x] Sub-subtask: Implement buffering for log records before writing to disk. (Implemented `WalWriter` with an in-memory `Vec<LogRecord>` buffer and an `add_record` method.)
         *   [x] Subtask: Implement log flushing mechanisms.
-            *   [x] Sub-sub-subtask: Implemented a `flush` method in `WalWriter` that serializes records, writes them to a file with length prefixes, and uses `sync_all()` for durability.
-            *   [ ] Sub-subtask: Implement `fsync` or similar calls to ensure durability.
-            *   [ ] Sub-subtask: Design policies for when to flush (e.g., on commit, periodically).
+            *   [x] Sub-subtask: Implemented a `flush` method in `WalWriter` that serializes records, writes them to a file with length prefixes, and uses `sync_all()` for durability.
+            *   [x] Sub-subtask: Implement `fsync` or similar calls to ensure durability. (Achieved using `File::sync_all()` in `WalWriter::flush`)
+            *   [x] Sub-subtask: Design policies for when to flush (e.g., on commit, periodically).
+                *   [x] Sub-sub-subtask: Implemented "flush on commit" policy in `WalWriter` (flushes when `LogRecord::CommitTransaction` is added).
+                *   [x] Sub-sub-subtask: Integrated `WalWriter` with `TransactionManager` to log and flush a `LogRecord::CommitTransaction` upon successful transaction commit.
+                *   [ ] Sub-sub-subtask: Design and implement periodic flush policy (if deemed necessary).
+                *   [ ] Sub-sub-subtask: Design and implement other flush policies (e.g., buffer full).
+    *   [ ] Implement Log Sequence Number (LSN) generation and management.
+        *   [ ] Subtask: Design a `LogManager` component responsible for LSN generation.
+        *   [ ] Subtask: `LogManager` to assign a unique, increasing LSN to each log record.
+        *   [ ] Subtask: `LogManager` to update `Transaction::last_lsn` with the LSN of the latest record for that transaction.
+        *   [ ] Subtask: Operations generating log records (e.g., Insert, Update, Delete, Begin Transaction) to use `LogManager` to create and log records.
+        *   [ ] Subtask: `LogManager` to delegate actual WAL file writing to `WalWriter`.
+        *   [ ] Subtask: Write unit tests for LSN generation and `LogManager` functionality.
     *   [ ] Implement recovery mechanisms using WAL (e.g., ARIES).
         *   [ ] Subtask: Design the analysis, redo, and undo phases of recovery.
             *   [ ] Sub-subtask: Analysis phase: Scan WAL to identify dirty pages and active transactions at the time of crash.

@@ -24,6 +24,11 @@ pub struct Config {
     #[serde(default = "default_index_base_path")]
     pub index_base_path: String,
 
+    /// The path to the Write-Ahead Log (WAL) file.
+    /// Default: "oxidb.wal"
+    #[serde(default = "default_wal_file_path")]
+    pub wal_file_path: String,
+
     // --- Future Configuration Options (with defaults) ---
     /// Enables or disables the Write-Ahead Log (WAL).
     /// Currently, WAL is always used if this feature is compiled. This is a placeholder.
@@ -52,6 +57,9 @@ fn default_database_file_path() -> String {
 fn default_index_base_path() -> String {
     "oxidb_indexes/".to_string()
 } // Added
+fn default_wal_file_path() -> String {
+    "oxidb.wal".to_string()
+}
 fn default_wal_enabled() -> bool {
     true
 }
@@ -65,8 +73,9 @@ fn default_isolation_level() -> String {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            database_file_path: default_database_file_path(), // Changed
-            index_base_path: default_index_base_path(),       // Changed
+            database_file_path: default_database_file_path(),
+            index_base_path: default_index_base_path(),
+            wal_file_path: default_wal_file_path(),
             wal_enabled: default_wal_enabled(),
             cache_size_mb: default_cache_size_mb(),
             default_isolation_level: default_isolation_level(),
@@ -130,6 +139,11 @@ impl Config {
     pub fn index_path(&self) -> PathBuf {
         PathBuf::from(&self.index_base_path)
     }
+
+    // Helper to get wal_file_path as PathBuf
+    pub fn wal_path(&self) -> PathBuf {
+        PathBuf::from(&self.wal_file_path)
+    }
 }
 
 // Add this to src/core/mod.rs
@@ -150,6 +164,7 @@ mod tests {
         let config = Config::default();
         assert_eq!(config.database_file_path, "oxidb.db");
         assert_eq!(config.index_base_path, "oxidb_indexes/");
+        assert_eq!(config.wal_file_path, "oxidb.wal");
         assert!(config.wal_enabled);
         assert_eq!(config.cache_size_mb, 64);
         assert_eq!(config.default_isolation_level, "Serializable");
@@ -161,6 +176,7 @@ mod tests {
         let config_content = r#"
             database_file_path = "my_custom.db"
             index_base_path = "my_custom_indexes/"
+            wal_file_path = "my_custom.wal"
             wal_enabled = false
             cache_size_mb = 128
             default_isolation_level = "ReadCommitted"
@@ -171,6 +187,7 @@ mod tests {
 
         assert_eq!(config.database_file_path, "my_custom.db");
         assert_eq!(config.index_base_path, "my_custom_indexes/");
+        assert_eq!(config.wal_file_path, "my_custom.wal");
         assert!(!config.wal_enabled);
         assert_eq!(config.cache_size_mb, 128);
         assert_eq!(config.default_isolation_level, "ReadCommitted");
@@ -189,6 +206,7 @@ mod tests {
 
         assert_eq!(config.database_file_path, "partial.db");
         assert_eq!(config.index_base_path, "oxidb_indexes/"); // Should be default
+        assert_eq!(config.wal_file_path, "oxidb.wal"); // Should be default
         assert!(config.wal_enabled); // Default
         assert_eq!(config.cache_size_mb, 64); // Default
         assert_eq!(config.default_isolation_level, "Serializable"); // Default
@@ -200,6 +218,7 @@ mod tests {
         let config = Config::load_from_file(non_existent_path).unwrap();
         assert_eq!(config.database_file_path, Config::default().database_file_path);
         assert_eq!(config.index_base_path, Config::default().index_base_path);
+        assert_eq!(config.wal_file_path, Config::default().wal_file_path);
     }
 
     #[test]
@@ -225,12 +244,14 @@ mod tests {
 
         let config = Config::load_or_default(Some(temp_file.path())).unwrap();
         assert_eq!(config.database_file_path, "custom_via_load_or_default.db");
+        assert_eq!(config.wal_file_path, "oxidb.wal"); // Default as not specified in file
     }
 
     #[test]
     fn test_load_or_default_with_none() {
         let config = Config::load_or_default(None).unwrap();
         assert_eq!(config.database_file_path, Config::default().database_file_path);
+        assert_eq!(config.wal_file_path, Config::default().wal_file_path);
     }
 
     #[test]
@@ -238,6 +259,7 @@ mod tests {
         let non_existent_path = Path::new("another_non_existent.toml");
         let config = Config::load_or_default(Some(non_existent_path)).unwrap();
         assert_eq!(config.database_file_path, Config::default().database_file_path);
+        assert_eq!(config.wal_file_path, Config::default().wal_file_path);
     }
 
     #[test]
@@ -245,9 +267,11 @@ mod tests {
         let config = Config {
             database_file_path: "test.db".to_string(),
             index_base_path: "test_indexes/".to_string(),
+            wal_file_path: "test.wal".to_string(),
             ..Default::default()
         };
         assert_eq!(config.database_path(), PathBuf::from("test.db"));
         assert_eq!(config.index_path(), PathBuf::from("test_indexes/"));
+        assert_eq!(config.wal_path(), PathBuf::from("test.wal"));
     }
 }

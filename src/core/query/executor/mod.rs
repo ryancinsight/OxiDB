@@ -16,6 +16,7 @@ pub mod utils;
 // Necessary imports for struct definitions and the `new` method
 use crate::core::common::OxidbError; // Changed
 use crate::core::indexing::manager::IndexManager;
+use crate::core::wal::writer::WalWriter; // Added for TransactionManager
 use crate::core::optimizer::Optimizer;
 use crate::core::storage::engine::traits::KeyValueStore;
 use crate::core::storage::engine::SimpleFileKvStore;
@@ -44,7 +45,7 @@ pub struct QueryExecutor<S: KeyValueStore<Vec<u8>, Vec<u8>>> {
 
 // The `new` method remains here as it's tied to the struct definition visibility
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
-    pub fn new(store: S, index_base_path: PathBuf) -> Result<Self, OxidbError> { // Changed
+    pub fn new(store: S, index_base_path: PathBuf, wal_writer: WalWriter) -> Result<Self, OxidbError> { // Changed
         let mut index_manager = IndexManager::new(index_base_path)?;
 
         if index_manager.get_index("default_value_index").is_none() {
@@ -53,7 +54,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             })?;
         }
 
-        let mut transaction_manager = TransactionManager::new();
+        let mut transaction_manager = TransactionManager::new(wal_writer);
         transaction_manager.add_committed_tx_id(0);
         let index_manager_arc = Arc::new(index_manager); // Create Arc for optimizer and self
 

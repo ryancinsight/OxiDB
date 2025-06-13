@@ -17,6 +17,7 @@ mod tests {
     use crate::core::common::OxidbError;
     // use std::collections::HashSet; // REMOVED - Not directly used in this test file
     use std::sync::{Arc, RwLock};
+    use crate::core::wal::writer::WalWriter; // Added for WalWriter
 
     use crate::core::common::serialization::serialize_data_type;
     use crate::core::transaction::transaction::Transaction; // Removed UndoOperation
@@ -177,23 +178,35 @@ mod tests {
         Ok(entries)
     }
 
-    fn create_temp_store() -> SimpleFileKvStore {
-        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-        SimpleFileKvStore::new(temp_file.path()).expect("Failed to create SimpleFileKvStore")
-    }
+    // create_temp_store() has been inlined into create_file_executor() to facilitate WAL path derivation.
+    // If it were used elsewhere, it would need to be adapted or this comment removed.
 
     fn create_file_executor() -> QueryExecutor<SimpleFileKvStore> {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp dir for indexes");
         let index_path = temp_dir.path().to_path_buf();
-        let temp_store = create_temp_store();
-        QueryExecutor::new(temp_store, index_path).unwrap()
+        let temp_store_file = NamedTempFile::new().expect("Failed to create temp db file");
+        let store_path = temp_store_file.path().to_path_buf();
+        let temp_store = SimpleFileKvStore::new(&store_path).expect("Failed to create SimpleFileKvStore");
+
+        // Ensure TransactionManager's WalWriter uses a distinct path from SimpleFileKvStore's internal WAL.
+        // SimpleFileKvStore's internal WAL typically defaults to <db_name>.db.wal or <db_name>.wal
+        // Let's use <db_name>.tx.wal for TransactionManager's WalWriter for clarity in tests.
+        let mut tm_wal_path = store_path.clone();
+        tm_wal_path.set_extension("tx_wal"); // e.g. /tmp/somefile.tx_wal
+        let tm_wal_writer = WalWriter::new(tm_wal_path);
+
+        QueryExecutor::new(temp_store, index_path, tm_wal_writer).unwrap()
     }
 
     fn create_in_memory_executor() -> QueryExecutor<InMemoryKvStore> {
         let temp_dir = tempfile::tempdir().expect("Failed to create temp dir for indexes");
         let index_path = temp_dir.path().to_path_buf();
         let store = InMemoryKvStore::new();
-        QueryExecutor::new(store, index_path).unwrap()
+
+        let wal_temp_file = NamedTempFile::new().expect("Failed to create temp wal file for in-memory test");
+        let wal_writer = WalWriter::new(wal_temp_file.path().to_path_buf());
+
+        QueryExecutor::new(store, index_path, wal_writer).unwrap()
     }
 
     #[test]
@@ -994,18 +1007,33 @@ mod tests {
         let serialized_value = serialize_data_type(&value)?;
 
         {
+            let wal_path1 = db_file_path.with_extension("wal1");
+            let wal_writer1 = WalWriter::new(wal_path1);
             let mut executor1 = QueryExecutor::new(
                 SimpleFileKvStore::new(&db_file_path)?,
                 temp_main_dir.path().join("indexes1"),
+                wal_writer1,
             )?;
             let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
             executor1.execute_command(insert_cmd)?;
             executor1.persist()?;
         }
 
+        // For executor2, re-use the same WAL path or a new one?
+        // If SimpleFileKvStore::new re-initializes/clears WAL based on its state,
+        // then a new WalWriter pointing to the same path might be fine.
+        // Or, to be safe for test isolation, use a different WAL path for executor2,
+        // though it implies executor2 wouldn't see WAL from executor1 if that was intended.
+        // Given persist() should clear WAL, using the same path for a "re-opened" scenario is logical.
+        let wal_path2 = db_file_path.with_extension("wal1"); // Re-using wal1 to simulate re-opening.
+                                                          // If persist clears it, this is fine.
+                                                          // If SimpleFileKvStore on new() is meant to recover from this WAL,
+                                                          // then the test logic might need adjustment based on desired behavior.
+        let wal_writer2 = WalWriter::new(wal_path2);
         let mut executor2 = QueryExecutor::new(
             SimpleFileKvStore::new(&db_file_path)?,
-            temp_main_dir.path().join("indexes1"),
+            temp_main_dir.path().join("indexes1"), // Same index path for persistence check
+            wal_writer2,
         )?;
 
         let find_cmd = Command::FindByIndex {
@@ -1027,7 +1055,11 @@ mod tests {
             tempfile::tempdir().expect("Failed to create temp dir for MVCC test indexes");
         let index_path = temp_dir.path().to_path_buf();
         let store = InMemoryKvStore::new();
-        QueryExecutor::new(store, index_path).unwrap()
+
+        let wal_temp_file = NamedTempFile::new().expect("Failed to create temp wal file for mvcc test");
+        let wal_writer = WalWriter::new(wal_temp_file.path().to_path_buf());
+
+        QueryExecutor::new(store, index_path, wal_writer).unwrap()
     }
 
     #[test]

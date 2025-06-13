@@ -1,3 +1,5 @@
+use crate::core::wal::log_record::LogSequenceNumber;
+
 /// Represents the state of a transaction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransactionState {
@@ -16,6 +18,8 @@ pub struct Transaction {
     pub id: u64,
     /// The current state of the transaction.
     pub state: TransactionState,
+    /// The Log Sequence Number of the last WAL record written by this transaction.
+    pub last_lsn: LogSequenceNumber,
     pub undo_log: Vec<UndoOperation>,
     pub redo_log: Vec<RedoOperation>, // Added redo_log
 }
@@ -42,6 +46,7 @@ impl Transaction {
         Transaction {
             id,
             state: TransactionState::Active,
+            last_lsn: 0, // Initialize last_lsn to 0 (or a more appropriate default LSN)
             undo_log: Vec::new(),
             redo_log: Vec::new(), // Initialize redo_log
         }
@@ -58,6 +63,7 @@ impl Transaction {
         Transaction {
             id: self.id,
             state: self.state.clone(), // State might be relevant for some store implementations (e.g. MVCC visibility)
+            last_lsn: self.last_lsn, // Clone last_lsn
             undo_log: Vec::new(),
             redo_log: Vec::new(),
         }
