@@ -69,15 +69,15 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
             *   [x] Subtask: Created test suite in `src/core/storage/engine/heap/tests/table_page_tests.rs`.
             *   [x] Subtask: Tests cover `insert_record` (basic, full page, slot reuse), `get_record` (basic, non-existent), `delete_record` (basic, already deleted), `update_record` (same/smaller size, larger size error), and empty record insertion.
             *   [x] Subtask: All project tests (306) pass.
-    *   [ ] **Validation:** Records can be inserted, deleted, updated, and retrieved correctly.
+    *   [x] **Validation:** Records can be inserted, deleted, updated, and retrieved correctly.
 
 6.  **Implement a Write-Ahead Log (WAL) for Durability:**
-    *   [ ] Design WAL record format.
-        *   [ ] Subtask: Define different types of log records (e.g., BEGIN, COMMIT, ABORT, INSERT, UPDATE, DELETE).
-        *   [ ] Subtask: Specify the content of each log record type (e.g., transaction ID, page ID, offset, old data, new data).
+    *   [x] Design WAL record format.
+        *   [x] Subtask: Define different types of log records (e.g., BEGIN, COMMIT, ABORT, INSERT, UPDATE, DELETE).
+        *   [x] Subtask: Specify the content of each log record type (e.g., transaction ID, page ID, offset, old data, new data).
     *   [ ] Implement WAL writer and manager.
         *   [ ] Subtask: Write functions to append log records to the WAL.
-            *   [ ] Sub-subtask: Implement serialization for each WAL record type.
+            *   [x] Sub-subtask: Implement serialization for each WAL record type. (Completed as part of record format definition)
             *   [ ] Sub-subtask: Implement buffering for log records before writing to disk.
         *   [ ] Subtask: Implement log flushing mechanisms.
             *   [ ] Sub-subtask: Implement `fsync` or similar calls to ensure durability.
