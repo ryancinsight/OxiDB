@@ -57,8 +57,8 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
     *   [x] **Validation:** Pages can be reliably read from and written to disk via DiskManager; page serialization/deserialization is functional and tested. Buffer pool manages pages with a FIFO policy, and its core operations (fetch, unpin, new, flush) are implemented and tested.
 
 5.  **Implement the Table Heap/File Manager:**
-    *   [ ] Design how tables and records are stored on pages.
-        *   [ ] Subtask: Define structures for table metadata and record layout.
+    *   [x] Design how tables and records are stored on pages.
+        *   [x] Subtask: Define structures for table metadata and record layout. (Implemented SlotId, Slot, RecordIdentifier, TablePageHeader, TablePage with tests for layout, serialization, and basic calculations. Location: `src/core/storage/engine/heap/table_page.rs` and `src/core/common/types/ids.rs` for SlotId)
     *   [ ] Implement record-level operations (insert, delete, update, get).
         *   [ ] Subtask: Write functions for managing records within pages.
         *   [ ] Subtask: Implement handling for variable-length records and overflow pages if necessary.
