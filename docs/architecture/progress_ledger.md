@@ -80,7 +80,7 @@ This ledger tracks the status of major features and components of the Oxidb cath
             *   [ ] `simple_file_kv_store.rs` (or other specific KV store)
             *   [ ] `page_manager.rs` (Future)
             *   [ ] `buffer_pool.rs` (Future)
-            *   [ ] ADR for storage formats and strategies
+            *   [x] ADR for storage formats and strategies (ADR-001)
     *   **Write-Ahead Log (WAL)** (`src/core/wal`)
         *   Status: Partially Implemented
         *   Checklist:
