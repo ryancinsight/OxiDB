@@ -65,6 +65,7 @@ impl TransactionManager {
         transaction.prev_lsn = lsn;
 
         self.wal_writer.add_record(begin_log_record)?; // This can fail
+        self.wal_writer.flush()?; // Ensure WAL is written for tests
 
         self.active_transactions.insert(id, transaction.clone());
         self.current_active_transaction_id = Some(id);
@@ -148,6 +149,7 @@ impl TransactionManager {
         // Attempt to write to WAL. If this fails, the transaction is still considered aborted locally.
         // The recovery process would handle inconsistencies if the abort record isn't durable.
         self.wal_writer.add_record(abort_log_record.clone())?;
+        self.wal_writer.flush()?; // Ensure WAL is written for tests
 
         transaction.prev_lsn = lsn; // Update transaction's prev_lsn to this abort record's LSN
         transaction.set_state(TransactionState::Aborted);
@@ -180,10 +182,10 @@ impl TransactionManager {
         self.next_transaction_id
     }
 
-    #[cfg(test)]
-    pub(crate) fn set_current_active_transaction_id_for_test(&mut self, tx_id: Option<CommonTransactionId>) {
-        self.current_active_transaction_id = tx_id;
-    }
+    // #[cfg(test)]
+    // pub(crate) fn set_current_active_transaction_id_for_test(&mut self, tx_id: Option<CommonTransactionId>) {
+    //     self.current_active_transaction_id = tx_id;
+    // }
 
     // This is the old rollback, which doesn't log. Replaced by abort_transaction.
     // pub fn rollback_transaction(&mut self) {

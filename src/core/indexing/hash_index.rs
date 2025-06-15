@@ -50,10 +50,13 @@ impl Index for HashIndex {
     }
 
     fn insert(&mut self, value: &Value, primary_key: &PrimaryKey) -> Result<(), OxidbError> { // Changed
+        eprintln!("[HashIndex::insert] Top: value: {:?}, pk: {:?}", value, primary_key);
+        eprintln!("[HashIndex::insert] Store BEFORE: {:?}", self.store);
         let primary_keys = self.store.entry(value.clone()).or_default();
         if !primary_keys.contains(primary_key) {
             primary_keys.push(primary_key.clone());
         }
+        eprintln!("[HashIndex::insert] Store AFTER: {:?}", self.store);
         // For now, persistence on every insert might be too slow.
         // Consider batching or explicit save calls.
         // self.save()
@@ -77,7 +80,9 @@ impl Index for HashIndex {
     }
 
     fn find(&self, value: &Value) -> Result<Option<Vec<PrimaryKey>>, OxidbError> { // Changed
-        Ok(self.store.get(value).cloned())
+        let result = self.store.get(value).cloned();
+        eprintln!("[HashIndex::find] value: {:?}, found_pks: {:?}", value, result);
+        Ok(result)
     }
 
     fn save(&self) -> Result<(), OxidbError> { // Changed
@@ -106,11 +111,26 @@ impl Index for HashIndex {
             self.store = HashMap::new();
             return Ok(());
         }
+        // Clear the existing in-memory store before loading from disk
+        self.store = HashMap::new();
         let reader = BufReader::new(file);
-        self.store = bincode::deserialize_from(reader).map_err(|e| {
-            OxidbError::Deserialization(format!("Failed to deserialize index data: {}", e)) // Changed
-        })?;
-        Ok(())
+        // Try to deserialize. If it fails, self.store remains empty (as cleared above).
+        match bincode::deserialize_from(reader) {
+            Ok(loaded_store) => {
+                self.store = loaded_store;
+                Ok(())
+            }
+            Err(e) => {
+                // Log the error, but consider an empty index loaded if deserialization fails,
+                // rather than propagating error, to prevent app crash on corrupted index.
+                // However, for testing, propagating might be better to catch issues.
+                // The original code propagated. Let's stick to that but ensure store is empty.
+                eprintln!("Failed to deserialize index data for {}: {}, index will be empty.", self.name, e);
+                // self.store is already empty.
+                // Propagate the error as per original logic to make failures visible in tests.
+                Err(OxidbError::Deserialization(format!("Failed to deserialize index data for {}: {}", self.name, e)))
+            }
+        }
     }
 
     fn update(
@@ -131,6 +151,22 @@ impl Index for HashIndex {
         // Value changed, so remove old index entry and add new one.
         self.delete(old_value_for_index, Some(primary_key))?;
         self.insert(new_value_for_index, primary_key)?;
+        // self.save() // Consider persistence strategy
+        // Ok(()) // Original Ok(()) was here, but update now calls insert/delete which return Result
+        // If the preceding calls were successful, this function implicitly returns Ok(()).
+        // However, to be explicit and match the signature, ensure Ok is returned if all ops succeed.
+        // The current structure where update calls insert/delete which return Result means this should be fine.
+        // Let's ensure an explicit Ok(()) if all paths succeed without early return.
+        // No, delete and insert already return Result<(), OxidbError>.
+        // If they succeed, they return Ok(()). If they error, update errors.
+        // So, this is fine. The last operation's Result is returned.
+        // For clarity, can add explicit Ok(()) if needed, but it's not strictly necessary if last expr is Ok.
+        // The issue is that self.insert and self.delete now return Result.
+        // The original structure was:
+        // self.delete(...)?; self.insert(...)?; Ok(())
+        // Now that save is inside insert/delete, they return the result of save.
+        // So the update function should also return that result or handle it.
+        // Let's ensure update returns the result of the last significant op.
         // self.save() // Consider persistence strategy
         Ok(())
     }

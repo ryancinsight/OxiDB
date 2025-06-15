@@ -83,6 +83,7 @@ impl IndexManager {
         primary_key: &PrimaryKey,
     ) -> Result<(), OxidbError> { // Changed
         for (index_name, value) in indexed_values {
+            eprintln!("[IndexManager::on_insert_data] index_name: {}, value: {:?}, pk: {:?}", index_name, value, primary_key);
             if let Some(index_arc) = self.indexes.get(index_name) {
                 let mut index = index_arc.write().map_err(|_| {
                     OxidbError::Lock("Failed to acquire write lock on index".to_string()) // Changed
@@ -120,6 +121,7 @@ impl IndexManager {
         primary_key: &PrimaryKey,
     ) -> Result<(), OxidbError> { // Changed
         for (index_name, value) in indexed_values {
+            eprintln!("[IndexManager::on_delete_data] index_name: {}, value: {:?}, pk: {:?}", index_name, value, primary_key);
             if let Some(index_arc) = self.indexes.get(index_name) {
                 let mut index = index_arc.write().map_err(|_| {
                     OxidbError::Lock("Failed to acquire write lock on index".to_string()) // Changed
@@ -159,6 +161,7 @@ impl IndexManager {
         index_name: &str,
         value: &Value,
     ) -> Result<Option<Vec<PrimaryKey>>, OxidbError> { // Changed
+        eprintln!("[IndexManager::find_by_index] index_name: {}, value: {:?}", index_name, value);
         match self.indexes.get(index_name) {
             Some(index_arc) => {
                 let index = index_arc.read().map_err(|_| {

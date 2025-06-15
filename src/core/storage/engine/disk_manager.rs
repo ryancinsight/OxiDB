@@ -7,7 +7,7 @@ use crate::core::storage::engine::page::PAGE_SIZE;
 
 pub struct DiskManager {
     db_file: File,
-    db_path: PathBuf,
+    // db_path: PathBuf, // Removed unused field
     next_page_id: PageId, // To keep track of the next page to allocate
 }
 
@@ -32,7 +32,7 @@ impl DiskManager {
 
         Ok(Self {
             db_file,
-            db_path,
+            // db_path, // Removed unused field
             next_page_id,
         })
     }
@@ -136,7 +136,7 @@ mod tests {
 
         // Pre-populate the file to simulate existing pages
         {
-            let mut file = OpenOptions::new().write(true).open(&db_path).unwrap();
+            let file = OpenOptions::new().write(true).open(&db_path).unwrap();
             file.set_len(PAGE_SIZE as u64 * 3).unwrap(); // Simulate 3 pages
         } // drop file to release lock before DiskManager::open
 

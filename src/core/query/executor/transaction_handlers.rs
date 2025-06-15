@@ -37,6 +37,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     pub(crate) fn handle_rollback_transaction(&mut self) -> Result<ExecutionResult, OxidbError> { // Changed
         if let Some(active_tx) = self.transaction_manager.get_active_transaction_mut() {
             let tx_id_to_release = active_tx.id; // This is TransactionId
+            eprintln!("[QueryExecutor::handle_rollback_transaction] Rolling back TX ID: {:?}, Undo Log: {:?}", tx_id_to_release, active_tx.undo_log);
 
             // temp_transaction_for_undo is used for store operations that require a &Transaction,
             // its ID should match the one being rolled back.

@@ -40,7 +40,7 @@ pub struct BufferPoolManager {
     free_list: VecDeque<usize>, // List of frame indices that are free
     replacer_queue: VecDeque<usize>, // Frame indices considered for replacement (FIFO for unpinned frames)
     disk_manager: Arc<Mutex<DiskManager>>,
-    pool_size: usize,
+    // pool_size: usize, // Removed unused field
 }
 
 impl BufferPoolManager {
@@ -58,7 +58,7 @@ impl BufferPoolManager {
             free_list,
             replacer_queue: VecDeque::new(),
             disk_manager,
-            pool_size,
+            // pool_size, // Removed unused field
         }
     }
 

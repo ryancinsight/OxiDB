@@ -180,15 +180,22 @@ pub(super) fn save_data_to_disk(
 
     // Delete WAL file after successful save to disk
     let wal_file_path = derive_wal_path(file_path);
+    eprintln!("[save_data_to_disk] Attempting to delete WAL file: {:?}", &wal_file_path);
     if wal_file_path.exists() {
+        eprintln!("[save_data_to_disk] WAL file {:?} exists, proceeding with deletion.", &wal_file_path);
         if let Err(e) = std::fs::remove_file(&wal_file_path) {
             eprintln!(
-                "Failed to delete WAL file {}: {}. Main data save was successful.",
+                "[save_data_to_disk] Error: Failed to delete WAL file {}: {}. Main data save was successful.",
                 wal_file_path.display(),
                 e
             );
-            // Not returning an error here as main data is safe.
+            // Not returning an error here as main data is safe in current design,
+            // but for tests this might hide issues.
+        } else {
+            eprintln!("[save_data_to_disk] Successfully deleted WAL file: {:?}", &wal_file_path);
         }
+    } else {
+        eprintln!("[save_data_to_disk] WAL file {:?} did not exist, no deletion needed.", &wal_file_path);
     }
     Ok(())
 }

@@ -270,8 +270,8 @@ mod tests {
 
         assert!(result.is_err());
         match result.unwrap_err() {
-            OxidbError::Json(_) => { /* Expected, as deserialize_data_type now returns Json variant for serde errors */ } // Changed
-            other_err => panic!("Expected OxidbError::Json for DeserializationError, got {:?}", other_err), // Changed
+            OxidbError::Deserialization(_) => { /* Expected, as handle_get uses bincode which returns Deserialization error */ }
+            other_err => panic!("Expected OxidbError::Deserialization, got {:?}", other_err),
         }
     }
 
@@ -373,7 +373,7 @@ mod tests {
             ExecutionResult::Value(Some(value))
         );
 
-        executor.transaction_manager.begin_transaction();
+        let _ = executor.transaction_manager.begin_transaction();
         assert!(executor.transaction_manager.get_active_transaction().is_some());
 
         let delete_command = Command::Delete { key: key.clone() };
@@ -408,7 +408,7 @@ mod tests {
             ExecutionResult::Value(Some(value.clone()))
         );
 
-        executor.transaction_manager.begin_transaction();
+        let _ = executor.transaction_manager.begin_transaction();
         assert!(executor.transaction_manager.get_active_transaction().is_some());
 
         let delete_command = Command::Delete { key: key.clone() };
@@ -805,7 +805,8 @@ mod tests {
         let mut executor = create_file_executor();
         let key = b"idx_key_auto".to_vec();
         let value = DataType::String("idx_val_auto".to_string());
-        let serialized_value = serialize_data_type(&value)?;
+        let serialized_value = bincode::serialize(&value)
+            .map_err(|e| OxidbError::Serialization(e.to_string()))?;
 
         let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
         assert_eq!(executor.execute_command(insert_cmd)?, ExecutionResult::Success);
@@ -823,7 +824,8 @@ mod tests {
         let mut executor = create_file_executor();
         let key = b"idx_key_tx_commit".to_vec();
         let value = DataType::String("idx_val_tx_commit".to_string());
-        let serialized_value = serialize_data_type(&value)?;
+        let serialized_value = bincode::serialize(&value)
+            .map_err(|e| OxidbError::Serialization(e.to_string()))?;
 
         executor.execute_command(Command::BeginTransaction)?;
         let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
@@ -843,7 +845,8 @@ mod tests {
         let mut executor = create_file_executor();
         let key = b"idx_key_tx_rollback".to_vec();
         let value = DataType::String("idx_val_tx_rollback".to_string());
-        let serialized_value = serialize_data_type(&value)?;
+        let serialized_value = bincode::serialize(&value)
+            .map_err(|e| OxidbError::Serialization(e.to_string()))?;
 
         executor.execute_command(Command::BeginTransaction)?;
         let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
@@ -874,7 +877,8 @@ mod tests {
         let mut executor = create_file_executor();
         let key = b"idx_del_key_auto".to_vec();
         let value = DataType::String("idx_del_val_auto".to_string());
-        let serialized_value = serialize_data_type(&value)?;
+        let serialized_value = bincode::serialize(&value)
+            .map_err(|e| OxidbError::Serialization(e.to_string()))?;
 
         let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
         executor.execute_command(insert_cmd)?;
@@ -925,7 +929,8 @@ mod tests {
         let mut executor = create_file_executor();
         let key = b"idx_del_key_tx_rollback".to_vec();
         let value = DataType::String("idx_del_val_tx_rollback".to_string());
-        let serialized_value = serialize_data_type(&value)?;
+        let serialized_value = bincode::serialize(&value)
+            .map_err(|e| OxidbError::Serialization(e.to_string()))?;
 
         let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
         executor.execute_command(insert_cmd)?;
@@ -962,7 +967,9 @@ mod tests {
         let mut executor = create_file_executor();
         let common_value_str = "indexed_value_common".to_string();
         let common_value = DataType::String(common_value_str.clone());
-        let serialized_common_value = serialize_data_type(&common_value)?;
+        // Ensure bincode serialization is used for the test, matching handle_insert
+        let serialized_common_value = bincode::serialize(&common_value)
+            .map_err(|e| OxidbError::Serialization(e.to_string()))?;
 
         let key1 = b"fbk1".to_vec();
         let key2 = b"fbk2".to_vec();
@@ -1021,7 +1028,8 @@ mod tests {
 
         let key = b"persist_idx_key".to_vec();
         let value = DataType::String("persist_idx_val".to_string());
-        let serialized_value = serialize_data_type(&value)?;
+        let serialized_value = bincode::serialize(&value)
+            .map_err(|e| OxidbError::Serialization(e.to_string()))?;
 
         {
             let wal_path1 = db_file_path.with_extension("wal1");
@@ -1300,9 +1308,9 @@ mod tests {
             ExecutionResult::Value(None)
         );
 
-        let ser_val_new = serialize_data_type(&val_new).unwrap();
-        let ser_val_new_exist = serialize_data_type(&val_new_exist).unwrap();
-        let ser_val_del = serialize_data_type(&val_del).unwrap();
+        let ser_val_new = bincode::serialize(&val_new).unwrap();
+        let ser_val_new_exist = bincode::serialize(&val_new_exist).unwrap();
+        let ser_val_del = bincode::serialize(&val_del).unwrap();
 
         match exec
             .execute_command(Command::FindByIndex {
@@ -1409,9 +1417,9 @@ mod tests {
             "Rolled back delete should restore value"
         );
 
-        let ser_val_new_rb = serialize_data_type(&val_new_rb).unwrap();
-        let ser_val_updated_exist_rb = serialize_data_type(&val_updated_exist_rb).unwrap();
-        let ser_val_del_rb = serialize_data_type(&val_del_rb).unwrap();
+        let ser_val_new_rb = bincode::serialize(&val_new_rb).unwrap();
+        let ser_val_updated_exist_rb = bincode::serialize(&val_updated_exist_rb).unwrap();
+        let ser_val_del_rb = bincode::serialize(&val_del_rb).unwrap();
 
         match exec
             .execute_command(Command::FindByIndex {
@@ -1439,7 +1447,7 @@ mod tests {
             ),
             _ => panic!("Expected Values"),
         }
-        let ser_val_old_exist = serialize_data_type(&val_old_exist).unwrap();
+        let ser_val_old_exist = bincode::serialize(&val_old_exist).unwrap();
         match exec
             .execute_command(Command::FindByIndex {
                 index_name: "default_value_index".to_string(),
@@ -1470,7 +1478,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mvcc_find_by_index_visibility() {
+    fn test_mvcc_find_by_index_visibility() -> Result<(), OxidbError> {
         let mut exec_mvcc_find = create_mvcc_test_executor();
         let key1 = b"fbk_mvcc_k1".to_vec();
         let key2 = b"fbk_mvcc_k2".to_vec();
@@ -1478,7 +1486,8 @@ mod tests {
         let common_val = DataType::String(common_val_str.clone());
         let other_val_str = "other_val_mvcc".to_string();
         let other_val = DataType::String(other_val_str.clone());
-        let ser_common_val = serialize_data_type(&common_val).unwrap();
+        let ser_common_val = bincode::serialize(&common_val)
+            .map_err(|e| OxidbError::Serialization(e.to_string()))?;
 
         assert_eq!(
             exec_mvcc_find
@@ -1543,6 +1552,7 @@ mod tests {
             _ => panic!("TX3: Expected Values from FindByIndex"),
         }
         exec_mvcc_find.execute_command(Command::CommitTransaction).unwrap();
+        Ok(())
     }
 
     #[test]
@@ -1611,7 +1621,7 @@ mod tests {
         // Execute UPDATE
         // For UPDATE, handle_update in update_execution.rs is called.
         // It first does a SELECT then a PUT. The PUT is what gets the LSN we're interested in for prev_lsn.
-        let assignments = vec![SqlAssignment { column: "some_field".to_string(), value: val_updated.clone() }];
+        let _assignments = vec![SqlAssignment { column: "some_field".to_string(), value: val_updated.clone() }];
         // Condition doesn't matter much as we're targeting the key directly for this test's focus on prev_lsn.
         // The handle_update logic uses a SELECT plan based on source and condition.
         // For simplicity, assuming SimpleFileKvStore where source is not strictly table-based for raw key updates.

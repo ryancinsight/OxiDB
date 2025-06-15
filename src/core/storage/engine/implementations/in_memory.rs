@@ -45,20 +45,35 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
         key: &Vec<u8>,
         snapshot_id: u64,
         committed_ids: &HashSet<u64>,
-    ) -> Result<Option<Vec<u8>>, OxidbError> { // Changed
+    ) -> Result<Option<Vec<u8>>, OxidbError> {
         if let Some(versions) = self.data.get(key) {
             for version in versions.iter().rev() {
-                if version.created_tx_id <= snapshot_id
-                    && (version.created_tx_id == snapshot_id
-                        || committed_ids.contains(&version.created_tx_id))
-                {
-                    match version.expired_tx_id {
-                        None => return Ok(Some(version.value.clone())),
-                        Some(expired_id) => {
-                            if expired_id > snapshot_id || !committed_ids.contains(&expired_id) {
-                                return Ok(Some(version.value.clone()));
-                            }
+                // Is the version itself visible?
+                // Case 1: Reading within a transaction (snapshot_id != 0)
+                //         - Version created by the current transaction.
+                // Case 2: Reading committed state (snapshot_id == 0 or snapshot_id != 0)
+                //         - Version created by a committed transaction.
+                // Case 3: Special handling for "auto-committed" data (created_tx_id == 0)
+                //         when read by a "no active transaction" snapshot (snapshot_id == 0).
+                let created_by_current_tx = snapshot_id != 0 && version.created_tx_id == snapshot_id;
+                let is_committed_creator = committed_ids.contains(&version.created_tx_id);
+                let is_autocommit_data_visible_to_autocommit_snapshot = version.created_tx_id == 0 && snapshot_id == 0;
+
+                if created_by_current_tx || is_committed_creator || is_autocommit_data_visible_to_autocommit_snapshot {
+                    // If visible, check if it's also visibly expired
+                    if let Some(expired_tx_id) = version.expired_tx_id {
+                        let expired_by_current_tx = snapshot_id != 0 && expired_tx_id == snapshot_id;
+                        let is_committed_expirer = committed_ids.contains(&expired_tx_id);
+                        let is_autocommit_expiry_visible_to_autocommit_snapshot = expired_tx_id == 0 && snapshot_id == 0;
+
+                        if !(expired_by_current_tx || is_committed_expirer || is_autocommit_expiry_visible_to_autocommit_snapshot) {
+                            // Not visibly expired, so this version is the one
+                            return Ok(Some(version.value.clone()));
                         }
+                        // If visibly expired, continue to older version
+                    } else {
+                        // No expiration, so this version is the one
+                        return Ok(Some(version.value.clone()));
                     }
                 }
             }

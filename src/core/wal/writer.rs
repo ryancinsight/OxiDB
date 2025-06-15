@@ -13,6 +13,7 @@ pub struct WalWriter {
 
 impl WalWriter {
     pub fn new(wal_file_path: PathBuf) -> Self {
+        eprintln!("[core::wal::writer::WalWriter::new] Initialized with wal_file_path: {:?}", &wal_file_path);
         WalWriter {
             buffer: Vec::new(),
             wal_file_path,
@@ -20,9 +21,11 @@ impl WalWriter {
     }
 
     pub fn add_record(&mut self, record: LogRecord) -> Result<(), IoError> {
+        eprintln!("[core::wal::writer::WalWriter::add_record] Adding record: {:?}, current buffer size: {}", &record, self.buffer.len());
         self.buffer.push(record.clone()); // Clone record to store in buffer
 
         if let LogRecord::CommitTransaction { .. } = record {
+            eprintln!("[core::wal::writer::WalWriter::add_record] Commit record, calling flush.");
             self.flush()
         } else {
             Ok(())
@@ -31,14 +34,21 @@ impl WalWriter {
 
     pub fn flush(&mut self) -> Result<(), IoError> {
         if self.buffer.is_empty() {
+            eprintln!("[core::wal::writer::WalWriter::flush] Buffer empty, nothing to flush.");
             return Ok(());
         }
-
-        let file = OpenOptions::new()
+        eprintln!("[core::wal::writer::WalWriter::flush] Flushing {} records. Attempting to open/create file: {:?}", self.buffer.len(), &self.wal_file_path);
+        let file_result = OpenOptions::new()
             .create(true)
             .append(true)
-            .open(&self.wal_file_path)?;
+            .open(&self.wal_file_path);
 
+        if let Err(e) = &file_result {
+            eprintln!("[core::wal::writer::WalWriter::flush] Error opening file {:?}: {}", &self.wal_file_path, e);
+        } else {
+            eprintln!("[core::wal::writer::WalWriter::flush] Successfully opened/created file: {:?}", &self.wal_file_path);
+        }
+        let file = file_result?;
         let mut writer = BufWriter::new(file);
 
         for record in self.buffer.iter() {
@@ -146,7 +156,7 @@ mod tests {
 
         let mut writer = WalWriter::new(test_file_path.clone());
         let mut lsn_counter: u64 = 0;
-        let next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
+        let mut next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
 
 
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(789) }; // Added lsn, use TransactionId()
@@ -208,7 +218,7 @@ mod tests {
 
         let mut writer = WalWriter::new(test_file_path.clone());
         let mut lsn_counter: u64 = 0;
-        let next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
+        let mut next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
 
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1) }; // Added lsn, use TransactionId()
         // Adding a non-commit record should not flush and return Ok(())
@@ -281,7 +291,7 @@ mod tests {
 
         let mut writer = WalWriter::new(test_file_path.clone());
         let mut lsn_counter: u64 = 0;
-        let next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
+        let mut next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
 
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(10) }; // Added lsn
         let record2 = LogRecord::CommitTransaction { lsn: next_lsn(), tx_id: TransactionId(10), prev_lsn: 1 }; // Added lsn
@@ -317,7 +327,7 @@ mod tests {
 
         let mut writer = WalWriter::new(test_file_path.clone());
         let mut lsn_counter: u64 = 0;
-        let next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
+        let mut next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
 
         // First batch
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(20) }; // Added lsn

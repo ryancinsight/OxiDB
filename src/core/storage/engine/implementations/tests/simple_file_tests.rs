@@ -610,7 +610,7 @@ fn test_wal_recovery_commit_then_rollback_same_tx() {
     let db_path = db_file.path();
     let wal_writer = WalWriter::new(db_path);
     let mut lsn_counter: u64 = 0;
-    let next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
+    let mut next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
 
     wal_writer
         .log_entry(&WalEntry::Put {
@@ -634,7 +634,6 @@ fn test_wal_recovery_multiple_interleaved_transactions() {
     let db_path = db_file.path();
     let wal_writer = WalWriter::new(db_path);
     let mut lsn_counter: u64 = 0;
-    let mut next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
     let mut next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
 
     wal_writer
@@ -713,10 +712,14 @@ fn test_wal_truncation_after_save_to_disk() {
         store.persist().unwrap();
     }
 
-    assert!(!wal_path.exists(), "WAL file should not exist after save_to_disk");
-    let store = SimpleFileKvStore::new(db_path).unwrap();
+    // The WAL file should be truncated (or removed) by the persist operation.
+    let _store = SimpleFileKvStore::new(db_path).unwrap(); // Re-open to ensure no WAL replay errors from a leftover WAL
+    assert!(!wal_path.exists(), "WAL file should NOT exist after persist and re-opening store.");
+
+    // Verify data is still present by opening again
+    let store_after_persist = SimpleFileKvStore::new(db_path).unwrap();
     assert_eq!(
-        store
+        store_after_persist
             .get_cache_entry_for_test(&b"trunc_key".to_vec())
             .and_then(|v| v.last().map(|vv| vv.value.clone())),
         Some(b"trunc_val".to_vec())

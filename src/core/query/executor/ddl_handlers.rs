@@ -1,7 +1,8 @@
 use super::{ExecutionResult, QueryExecutor};
 use crate::core::common::OxidbError;
-use crate::core::common::serialization::{deserialize_data_type}; // serialize_data_type removed
+// use crate::core::common::serialization::{deserialize_data_type}; // No longer needed here
 use crate::core::common::types::TransactionId;
+use bincode; // Added bincode
 // Key removed
 use crate::core::storage::engine::traits::KeyValueStore;
 // LockType removed
@@ -64,14 +65,16 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                     // For "default_value_index", it's assumed it indexes the serialized DataType.
                     if serialized_data_from_store == value {
                         // This comparison logic might need adjustment based on what the index actually stores
-                        match deserialize_data_type(&serialized_data_from_store) {
+                        match bincode::deserialize(&serialized_data_from_store) { // Replaced deserialize_data_type
                             Ok(data_type) => results_vec.push(data_type),
                             Err(deserialize_err) => {
+                                // Convert bincode::Error to OxidbError or handle appropriately
                                 eprintln!(
-                                    "Error deserializing data for key {:?}: {}",
+                                    "Error deserializing data with bincode for key {:?}: {}",
                                     primary_key, deserialize_err
                                 );
-                                // Depending on strictness, might return Err(deserialize_err) or continue
+                                // Propagate as Deserialization error for now
+                                return Err(OxidbError::Deserialization(deserialize_err.to_string()));
                             }
                         }
                     }

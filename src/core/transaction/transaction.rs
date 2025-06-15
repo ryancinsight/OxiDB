@@ -60,6 +60,11 @@ impl Transaction {
         self.state = state;
     }
 
+    /// Adds an undo operation to the transaction's undo log.
+    pub fn add_undo_operation(&mut self, op: UndoOperation) {
+        self.undo_log.push(op);
+    }
+
     /// Clones the transaction for storage operations, excluding logs.
     /// The store itself doesn't need to know about the undo/redo logs for its basic put/get/delete.
     pub fn clone_for_store(&self) -> Self {

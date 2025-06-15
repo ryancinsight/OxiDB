@@ -23,6 +23,7 @@ use crate::core::storage::engine::traits::KeyValueStore;
 use crate::core::storage::engine::SimpleFileKvStore;
 use crate::core::transaction::lock_manager::LockManager;
 use crate::core::transaction::manager::TransactionManager;
+use crate::core::transaction::LockType; // Added LockType import
 use crate::core::transaction::Transaction;
 use crate::core::types::DataType;
 use std::collections::HashSet; // Added HashSet import
@@ -103,6 +104,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             .current_active_transaction_id()
             .unwrap_or(TransactionId(0)); // Use TransactionId struct
 
+        // Acquire Exclusive lock if in an active transaction
+        if current_op_tx_id != TransactionId(0) {
+            self.lock_manager.acquire_lock(current_op_tx_id.0, &key, LockType::Exclusive)?;
+        }
+
         // Create a temporary transaction representation for the store operation
         let tx_for_store = Transaction::new(current_op_tx_id); // Pass TransactionId struct
 
@@ -132,19 +138,36 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         // For this example, we'll serialize the entire DataType for indexing.
         let serialized_value_for_index = bincode::serialize(&value)
             .map_err(|e| OxidbError::Serialization(format!("Failed to serialize value for indexing: {}", e)))?;
-        indexed_values_map.insert("default_value_index".to_string(), serialized_value_for_index);
+        indexed_values_map.insert("default_value_index".to_string(), serialized_value_for_index.clone()); // Clone for undo log
 
         self.index_manager.on_insert_data(&indexed_values_map, &key)?;
 
+        // Add to undo log for index if in an active transaction
+        if current_op_tx_id != TransactionId(0) {
+            if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
+                active_tx_mut.add_undo_operation(crate::core::transaction::transaction::UndoOperation::IndexRevertInsert {
+                    index_name: "default_value_index".to_string(),
+                    key: key.clone(),
+                    value_for_index: serialized_value_for_index, // Already cloned
+                });
+            }
+        }
         Ok(ExecutionResult::Success)
     }
 
     pub(crate) fn handle_get(&mut self, key: Vec<u8>) -> Result<ExecutionResult, OxidbError> {
-        let snapshot_id = self.transaction_manager.current_active_transaction_id().unwrap_or(TransactionId(0)); // Use TransactionId
-        // Collect TransactionId.0 (u64) for HashSet<u64>
+        let current_tx_id_opt = self.transaction_manager.current_active_transaction_id();
+
+        // Acquire Shared lock if in an active transaction
+        if let Some(current_tx_id) = current_tx_id_opt {
+            if current_tx_id != TransactionId(0) { // Don't acquire for "auto-commit" tx
+                self.lock_manager.acquire_lock(current_tx_id.0, &key, LockType::Shared)?;
+            }
+        }
+
+        let snapshot_id = current_tx_id_opt.unwrap_or(TransactionId(0));
         let committed_ids_set: HashSet<u64> = self.transaction_manager.get_committed_tx_ids_snapshot().into_iter().map(|tx_id| tx_id.0).collect();
 
-        // The KeyValueStore::get method expects snapshot_id as u64.
         let result_bytes_opt = self.store.read().unwrap().get(&key, snapshot_id.0, &committed_ids_set)?;
 
         match result_bytes_opt {
@@ -162,6 +185,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             .transaction_manager
             .current_active_transaction_id()
             .unwrap_or(TransactionId(0)); // Use TransactionId struct
+
+        // Acquire Exclusive lock if in an active transaction
+        if current_op_tx_id != TransactionId(0) {
+            self.lock_manager.acquire_lock(current_op_tx_id.0, &key, LockType::Exclusive)?;
+        }
 
         let tx_for_store = Transaction::new(current_op_tx_id); // Pass TransactionId struct
 
@@ -192,8 +220,19 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 // Indexing: Use on_delete_data
                 let mut indexed_values_map = std::collections::HashMap::new();
                 // Assuming the "default_value_index" indexed the serialized version of the DataType
-                indexed_values_map.insert("default_value_index".to_string(), value_bytes);
+                indexed_values_map.insert("default_value_index".to_string(), value_bytes.clone()); // Clone for undo log
                 self.index_manager.on_delete_data(&indexed_values_map, &key)?;
+
+                // Add to undo log for index if in an active transaction
+                if current_op_tx_id != TransactionId(0) {
+                    if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
+                        active_tx_mut.add_undo_operation(crate::core::transaction::transaction::UndoOperation::IndexRevertDelete {
+                            index_name: "default_value_index".to_string(),
+                            key: key.clone(),
+                            old_value_for_index: value_bytes, // Already cloned
+                        });
+                    }
+                }
             }
         }
         Ok(ExecutionResult::Deleted(deleted))
