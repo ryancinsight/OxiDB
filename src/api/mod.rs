@@ -1,10 +1,22 @@
+// src/api/mod.rs
 //! # Oxidb API Module
 //!
 //! This module provides the public API for interacting with the Oxidb key-value store.
 //! It exposes the `Oxidb` struct, which is the main entry point for database operations.
 
-pub mod db;
-pub use db::Oxidb;
+// pub mod db; // Removed
+pub mod types;
+pub mod traits;
+pub mod errors;
+pub mod api_impl;
+
+pub use self::types::Oxidb; // Changed from db::Oxidb
+pub use self::errors::ApiError; // Added as per plan
+
+// Re-export key types/traits for easier use by external crates, if desired.
+// For example:
+// pub use self::types::{ApiRequest, ApiResponse};
+// pub use self::traits::ApiRequestHandler; // Example, not activated yet
 
 // If you want to make tests accessible from outside the api module (usually not needed)
 // pub mod tests;

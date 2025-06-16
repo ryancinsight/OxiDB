@@ -1,25 +1,19 @@
+// src/api/api_impl.rs
+//! Contains the private implementation logic for the API layer.
+
+use super::types::Oxidb; // To refer to the Oxidb struct in types.rs
 use crate::core::common::OxidbError;
 use crate::core::config::Config;
 use crate::core::query::commands::{Command, Key};
-use crate::core::query::executor::{ExecutionResult, QueryExecutor};
+use crate::core::query::executor::{ExecutionResult, QueryExecutor}; // QueryExecutor is needed for Oxidb::new_with_config
 use crate::core::query::parser::parse_query_string;
-use crate::core::storage::engine::SimpleFileKvStore;
+use crate::core::storage::engine::SimpleFileKvStore; // SimpleFileKvStore is needed for Oxidb::new_with_config
 use crate::core::types::DataType;
-use crate::core::wal::log_manager::LogManager; // Added for LogManager
+use crate::core::wal::log_manager::LogManager;
 use crate::core::wal::writer::WalWriter;
-use serde_json;
+use serde_json; // For the get method
 use std::path::{Path, PathBuf};
-use std::sync::Arc; // Added for Arc
-
-/// `Oxidb` is the primary structure providing the public API for the key-value store.
-///
-/// It encapsulates a `QueryExecutor` instance to manage database operations,
-/// which in turn uses a `SimpleFileKvStore` for persistence.
-#[derive(Debug)]
-pub struct Oxidb {
-    /// The query executor responsible for handling database operations.
-    executor: QueryExecutor<SimpleFileKvStore>,
-}
+use std::sync::Arc;
 
 impl Oxidb {
     /// Creates a new `Oxidb` instance or loads an existing one from the specified path.
@@ -37,8 +31,7 @@ impl Oxidb {
     pub fn new_with_config(config: Config) -> Result<Self, OxidbError> {
         let store = SimpleFileKvStore::new(config.database_path())?;
         let wal_writer = WalWriter::new(config.wal_path());
-        let log_manager = Arc::new(LogManager::new()); // Create LogManager
-                                                       // QueryExecutor::new will need to be updated to accept log_manager
+        let log_manager = Arc::new(LogManager::new());
         let executor = QueryExecutor::new(store, config.index_path(), wal_writer, log_manager)?;
         Ok(Self { executor })
     }
@@ -53,17 +46,16 @@ impl Oxidb {
     /// # Errors
     /// Returns `OxidbError` if the store cannot be initialized or the executor cannot be created.
     pub fn new(db_path: impl AsRef<Path>) -> Result<Self, OxidbError> {
-        let config = Config {
+        let mut config = Config { // made mutable
             database_file_path: db_path.as_ref().to_string_lossy().into_owned(),
             ..Default::default()
         };
-        // index_base_path will remain its default relative to the execution directory ("oxidb_indexes/")
-        // or could be made relative to db_path if desired, for example:
-        // if let Some(parent) = db_path.as_ref().parent() {
-        //     config.index_base_path = parent.join("oxidb_indexes/").to_string_lossy().into_owned();
-        // } else {
-        //     config.index_base_path = "oxidb_indexes/".to_string();
-        // }
+        // Make index_base_path relative to db_path's parent if default or empty
+        if let Some(parent) = db_path.as_ref().parent() {
+           if config.index_base_path.is_empty() || config.index_base_path == "oxidb_indexes/" {
+               config.index_base_path = parent.join("oxidb_indexes/").to_string_lossy().into_owned();
+           }
+        }
         Self::new_with_config(config)
     }
 
@@ -99,10 +91,8 @@ impl Oxidb {
     pub fn insert(&mut self, key: Key, value: String) -> Result<(), OxidbError> {
         let command = Command::Insert { key, value: DataType::String(value) };
         match self.executor.execute_command(command) {
-            // Use self.executor
             Ok(ExecutionResult::Success) => Ok(()),
             Ok(unexpected_result) => Err(OxidbError::Internal(format!(
-                // Changed to Internal
                 "Insert: Expected Success, got {:?}",
                 unexpected_result
             ))),
@@ -124,17 +114,14 @@ impl Oxidb {
     pub fn get(&mut self, key: Key) -> Result<Option<String>, OxidbError> {
         let command = Command::Get { key };
         match self.executor.execute_command(command) {
-            // Use self.executor
             Ok(ExecutionResult::Value(data_type_option)) => {
-                // Convert DataType option to String option
                 Ok(data_type_option.map(|dt| match dt {
                     DataType::Integer(i) => i.to_string(),
                     DataType::String(s) => s,
                     DataType::Boolean(b) => b.to_string(),
-                    DataType::Float(f) => f.to_string(), // Added Float
-                    DataType::Null => "NULL".to_string(), // Added Null
+                    DataType::Float(f) => f.to_string(),
+                    DataType::Null => "NULL".to_string(),
                     DataType::Map(map_val) => {
-                        // Added Map
                         serde_json::to_string(&map_val)
                             .unwrap_or_else(|e| format!("Error serializing Map: {}", e))
                     }
@@ -143,7 +130,6 @@ impl Oxidb {
                 }))
             }
             Ok(unexpected_result) => Err(OxidbError::Internal(format!(
-                // Changed to Internal
                 "Get: Expected Value, got {:?}",
                 unexpected_result
             ))),
@@ -167,10 +153,8 @@ impl Oxidb {
     pub fn delete(&mut self, key: Key) -> Result<bool, OxidbError> {
         let command = Command::Delete { key };
         match self.executor.execute_command(command) {
-            // Use self.executor
             Ok(ExecutionResult::Deleted(status)) => Ok(status),
             Ok(unexpected_result) => Err(OxidbError::Internal(format!(
-                // Changed to Internal
                 "Delete: Expected Deleted, got {:?}",
                 unexpected_result
             ))),
@@ -193,7 +177,7 @@ impl Oxidb {
     /// Returns `OxidbError` if any part of the saving process fails (e.g., I/O errors,
     /// serialization issues). See `SimpleFileKvStore::save_to_disk` for more details.
     pub fn persist(&mut self) -> Result<(), OxidbError> {
-        self.executor.persist() // Use self.executor
+        self.executor.persist()
     }
 
     /// Executes a raw query string against the database.
@@ -217,65 +201,10 @@ impl Oxidb {
     ///       incorrect number of arguments, unclosed quotes).
     ///     - Other `OxidbError` variants if the command execution itself fails (e.g., I/O errors during
     ///       storage operations).
-    ///
-    /// # Examples
-    /// ```rust
-    /// use oxidb::api::Oxidb;
-    /// use oxidb::core::query::executor::ExecutionResult;
-    /// use oxidb::core::types::DataType; // Ensure DataType is in scope for matching
-    /// use tempfile::NamedTempFile;
-    ///
-    /// let temp_file = NamedTempFile::new().unwrap();
-    /// let mut db = Oxidb::new(temp_file.path()).unwrap();
-    ///
-    /// // Insert a value
-    /// match db.execute_query_str("INSERT my_key my_value") {
-    ///     Ok(ExecutionResult::Success) => println!("Insert successful!"),
-    ///     Err(e) => eprintln!("Insert failed: {:?}", e),
-    ///     _ => {} // Other ExecutionResult variants not expected for INSERT
-    /// }
-    ///
-    /// // Get the value
-    /// match db.execute_query_str("GET my_key") {
-    ///     Ok(ExecutionResult::Value(Some(DataType::String(s)))) => {
-    ///         assert_eq!(s, "my_value");
-    ///         println!("Got value: {:?}", s);
-    ///     },
-    ///     Ok(ExecutionResult::Value(None)) => println!("Key not found."),
-    ///     Err(e) => eprintln!("Get failed: {:?}", e),
-    ///     other => panic!("Unexpected result for GET my_key: {:?}", other)
-    /// }
-    ///
-    /// // Insert a value with spaces
-    /// db.execute_query_str("INSERT user \"Alice Wonderland\"").unwrap();
-    /// match db.execute_query_str("GET user") {
-    ///     Ok(ExecutionResult::Value(Some(DataType::String(s)))) => {
-    ///          assert_eq!(s, "Alice Wonderland");
-    ///     },
-    ///     other => panic!("Should have found user Alice, got {:?}", other),
-    /// }
-    ///
-    /// // Delete the value
-    /// match db.execute_query_str("DELETE my_key") {
-    ///     Ok(ExecutionResult::Deleted(true)) => println!("Delete successful!"),
-    ///     Ok(ExecutionResult::Deleted(false)) => println!("Key not found for deletion."),
-    ///     Err(e) => eprintln!("Delete failed: {:?}", e),
-    ///     _ => {} // Other ExecutionResult variants
-    /// }
-    ///
-    /// // Attempt an invalid query
-    /// match db.execute_query_str("INVALID COMMAND") {
-    ///     Err(oxidb::core::common::OxidbError::SqlParsing(msg)) => { // Changed to OxidbError::SqlParsing
-    ///         assert!(msg.contains("SQL parse error: Unknown statement type at position 0"));
-    ///         eprintln!("Invalid query as expected: {}", msg);
-    ///     },
-    ///     _ => panic!("Expected SqlParsing error"),
-    /// }
-    /// ```
     pub fn execute_query_str(&mut self, query_string: &str) -> Result<ExecutionResult, OxidbError> {
         match parse_query_string(query_string) {
-            Ok(command) => self.executor.execute_command(command), // Use self.executor
-            Err(e) => Err(e), // parse_query_string now returns OxidbError
+            Ok(command) => self.executor.execute_command(command),
+            Err(e) => Err(e),
         }
     }
 

@@ -6,7 +6,7 @@ This ledger tracks the status of major features and components of the Oxidb cath
 
 | Feature             | Status        | Required Components (Illustrative) | Notes                                      |
 |---------------------|---------------|------------------------------------|--------------------------------------------|
-| **API Layer**       | In Design     | `api/mod.rs`, `api/db.rs`          | External interface for database interaction. |
+| **API Layer**       | Under Construction | `api/mod.rs`, `api/types.rs`, `api/errors.rs`, `api/traits.rs`, `api/api_impl.rs` | External interface for database interaction. |
 | **Query Processor** | In Design     | `core/query/parser/`, `core/query/executor/`, `core/query/optimizer/` | Parsing, validation, optimization, execution. |
 | **Transaction Mgr.**| In Design     | `core/transaction/manager.rs`      | ACID properties, concurrency.              |
 | **Storage Engine**  | Under Construction | `core/storage/engine/`, `core/storage/wal/`, `core/storage/indexing/` | Physical data storage and retrieval.       |
@@ -15,13 +15,14 @@ This ledger tracks the status of major features and components of the Oxidb cath
 ## Detailed Component Status
 
 ### API Layer (`src/api`)
-*   Status: In Design
+*   Status: Under Construction
 *   Checklist:
-    *   [ ] `mod.rs` (Public API definition)
-    *   [ ] `db.rs` (Database interaction logic)
-    *   [ ] `types.rs` (API specific data types, if any)
-    *   [ ] `errors.rs` (API specific error types, if any)
-    *   [ ] ADR for API design choices
+    *   [x] `mod.rs` (Public API definition, updated)
+    *   [x] `types.rs` (API specific data types)
+    *   [x] `errors.rs` (API specific error types, boilerplate)
+    *   [x] `traits.rs` (API specific traits, boilerplate)
+    *   [x] `api_impl.rs` (API implementation logic)
+    *   [ ] ADR for API design choices (specific to API behavior, structure governed by ADR-000)
 
 ### Query Processor (`src/core/query`)
 *   Status: In Design
