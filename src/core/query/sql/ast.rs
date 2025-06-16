@@ -50,9 +50,30 @@ pub struct UpdateStatement {
 // Future statements: InsertStatement, DeleteStatement, CreateTableStatement etc.
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct ColumnDef {
+    pub name: String,
+    pub data_type: String, // Using String for type for now, can be an enum later
+                           // Add constraints like PRIMARY KEY, NOT NULL later if needed
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct CreateTableStatement {
+    pub table_name: String,
+    pub columns: Vec<ColumnDef>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct InsertStatement {
+    pub table_name: String,
+    pub columns: Option<Vec<String>>, // Optional: e.g., INSERT INTO foo VALUES (...) vs INSERT INTO foo (col1, col2) VALUES (...)
+    pub values: Vec<Vec<AstLiteralValue>>, // Support for multi-value inserts: VALUES (...), (...)
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     Select(SelectStatement),
     Update(UpdateStatement),
-    // Insert(InsertStatement),
+    CreateTable(CreateTableStatement),
+    Insert(InsertStatement),
     // Delete(DeleteStatement),
 }

@@ -16,11 +16,13 @@ pub struct IndexManager {
 }
 
 impl IndexManager {
-    pub fn new(base_path: PathBuf) -> Result<Self, OxidbError> { // Changed
+    pub fn new(base_path: PathBuf) -> Result<Self, OxidbError> {
+        // Changed
         if !base_path.exists() {
             std::fs::create_dir_all(&base_path).map_err(OxidbError::Io)?; // Changed
         } else if !base_path.is_dir() {
-            return Err(OxidbError::Io(std::io::Error::new( // Changed
+            return Err(OxidbError::Io(std::io::Error::new(
+                // Changed
                 std::io::ErrorKind::InvalidInput,
                 "Base path for indexes must be a directory.",
             )));
@@ -28,9 +30,11 @@ impl IndexManager {
         Ok(IndexManager { indexes: HashMap::new(), base_path })
     }
 
-    pub fn create_index(&mut self, index_name: String, index_type: &str) -> Result<(), OxidbError> { // Changed
+    pub fn create_index(&mut self, index_name: String, index_type: &str) -> Result<(), OxidbError> {
+        // Changed
         if self.indexes.contains_key(&index_name) {
-            return Err(OxidbError::Index(format!( // Changed
+            return Err(OxidbError::Index(format!(
+                // Changed
                 "Index with name '{}' already exists.",
                 index_name
             )));
@@ -42,7 +46,8 @@ impl IndexManager {
                 Arc::new(RwLock::new(hash_index))
             }
             _ => {
-                return Err(OxidbError::Index(format!("Unsupported index type: {}", index_type))); // Changed
+                return Err(OxidbError::Index(format!("Unsupported index type: {}", index_type)));
+                // Changed
             }
         };
 
@@ -63,16 +68,19 @@ impl IndexManager {
         index_name: &str,
         value: &Value,
         primary_key: &PrimaryKey,
-    ) -> Result<(), OxidbError> { // Changed
+    ) -> Result<(), OxidbError> {
+        // Changed
         match self.indexes.get(index_name) {
             Some(index_arc) => {
                 let mut index = index_arc.write().map_err(|_| {
-                    OxidbError::Lock("Failed to acquire write lock on index".to_string()) // Changed
+                    OxidbError::Lock("Failed to acquire write lock on index".to_string())
+                    // Changed
                 })?;
                 index.insert(value, primary_key)
             }
             None => {
-                Err(OxidbError::Index(format!("Index '{}' not found for insertion.", index_name))) // Changed
+                Err(OxidbError::Index(format!("Index '{}' not found for insertion.", index_name)))
+                // Changed
             }
         }
     }
@@ -81,12 +89,17 @@ impl IndexManager {
         &self,
         indexed_values: &HashMap<String, Value>,
         primary_key: &PrimaryKey,
-    ) -> Result<(), OxidbError> { // Changed
+    ) -> Result<(), OxidbError> {
+        // Changed
         for (index_name, value) in indexed_values {
-            eprintln!("[IndexManager::on_insert_data] index_name: {}, value: {:?}, pk: {:?}", index_name, value, primary_key);
+            eprintln!(
+                "[IndexManager::on_insert_data] index_name: {}, value: {:?}, pk: {:?}",
+                index_name, value, primary_key
+            );
             if let Some(index_arc) = self.indexes.get(index_name) {
                 let mut index = index_arc.write().map_err(|_| {
-                    OxidbError::Lock("Failed to acquire write lock on index".to_string()) // Changed
+                    OxidbError::Lock("Failed to acquire write lock on index".to_string())
+                    // Changed
                 })?;
                 index.insert(value, primary_key)?;
             } else {
@@ -101,16 +114,19 @@ impl IndexManager {
         index_name: &str,
         value: &Value,
         primary_key: Option<&PrimaryKey>,
-    ) -> Result<(), OxidbError> { // Changed
+    ) -> Result<(), OxidbError> {
+        // Changed
         match self.indexes.get(index_name) {
             Some(index_arc) => {
                 let mut index = index_arc.write().map_err(|_| {
-                    OxidbError::Lock("Failed to acquire write lock on index".to_string()) // Changed
+                    OxidbError::Lock("Failed to acquire write lock on index".to_string())
+                    // Changed
                 })?;
                 index.delete(value, primary_key)
             }
             None => {
-                Err(OxidbError::Index(format!("Index '{}' not found for deletion.", index_name))) // Changed
+                Err(OxidbError::Index(format!("Index '{}' not found for deletion.", index_name)))
+                // Changed
             }
         }
     }
@@ -119,12 +135,17 @@ impl IndexManager {
         &self,
         indexed_values: &HashMap<String, Value>,
         primary_key: &PrimaryKey,
-    ) -> Result<(), OxidbError> { // Changed
+    ) -> Result<(), OxidbError> {
+        // Changed
         for (index_name, value) in indexed_values {
-            eprintln!("[IndexManager::on_delete_data] index_name: {}, value: {:?}, pk: {:?}", index_name, value, primary_key);
+            eprintln!(
+                "[IndexManager::on_delete_data] index_name: {}, value: {:?}, pk: {:?}",
+                index_name, value, primary_key
+            );
             if let Some(index_arc) = self.indexes.get(index_name) {
                 let mut index = index_arc.write().map_err(|_| {
-                    OxidbError::Lock("Failed to acquire write lock on index".to_string()) // Changed
+                    OxidbError::Lock("Failed to acquire write lock on index".to_string())
+                    // Changed
                 })?;
                 index.delete(value, Some(primary_key))?;
             } else {
@@ -139,13 +160,15 @@ impl IndexManager {
         old_values_map: &HashMap<String, Value>,
         new_values_map: &HashMap<String, Value>,
         primary_key: &PrimaryKey,
-    ) -> Result<(), OxidbError> { // Changed
+    ) -> Result<(), OxidbError> {
+        // Changed
         for (index_name, index_arc) in &self.indexes {
             if let (Some(old_value), Some(new_value)) =
                 (old_values_map.get(index_name), new_values_map.get(index_name))
             {
                 let mut index = index_arc.write().map_err(|_| {
-                    OxidbError::Lock(format!( // Changed
+                    OxidbError::Lock(format!(
+                        // Changed
                         "Failed to acquire write lock on index '{}' for update.",
                         index_name
                     ))
@@ -160,40 +183,48 @@ impl IndexManager {
         &self,
         index_name: &str,
         value: &Value,
-    ) -> Result<Option<Vec<PrimaryKey>>, OxidbError> { // Changed
+    ) -> Result<Option<Vec<PrimaryKey>>, OxidbError> {
+        // Changed
         eprintln!("[IndexManager::find_by_index] index_name: {}, value: {:?}", index_name, value);
         match self.indexes.get(index_name) {
             Some(index_arc) => {
                 let index = index_arc.read().map_err(|_| {
-                    OxidbError::Lock("Failed to acquire read lock on index".to_string()) // Changed
+                    OxidbError::Lock("Failed to acquire read lock on index".to_string())
+                    // Changed
                 })?;
                 index.find(value)
             }
-            None => Err(OxidbError::Index(format!( // Changed
+            None => Err(OxidbError::Index(format!(
+                // Changed
                 "Index '{}' not found for find operation.",
                 index_name
             ))),
         }
     }
 
-    pub fn save_all_indexes(&self) -> Result<(), OxidbError> { // Changed
+    pub fn save_all_indexes(&self) -> Result<(), OxidbError> {
+        // Changed
         for index_arc in self.indexes.values() {
             let index = index_arc.read().map_err(|_| {
-                OxidbError::Lock("Failed to acquire read lock for saving index".to_string()) // Changed
+                OxidbError::Lock("Failed to acquire read lock for saving index".to_string())
+                // Changed
             })?;
             index.save()?;
         }
         Ok(())
     }
 
-    pub fn load_all_indexes(&mut self) -> Result<(), OxidbError> { // Changed
+    pub fn load_all_indexes(&mut self) -> Result<(), OxidbError> {
+        // Changed
         for (name, index_arc) in &self.indexes {
             let mut index = index_arc.write().map_err(|_| {
-                OxidbError::Lock(format!("Failed to lock index {} for loading", name)) // Changed
+                OxidbError::Lock(format!("Failed to lock index {} for loading", name))
+                // Changed
             })?;
             index
                 .load()
-                .map_err(|e| OxidbError::Index(format!("Error loading index {}: {}", name, e)))?; // Changed
+                .map_err(|e| OxidbError::Index(format!("Error loading index {}: {}", name, e)))?;
+            // Changed
         }
         Ok(())
     }
@@ -217,7 +248,8 @@ mod tests {
     }
 
     #[test]
-    fn test_new_index_manager() -> Result<(), OxidbError> { // Changed
+    fn test_new_index_manager() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let base_path = temp_dir.path().join("test_db_indexes");
 
@@ -233,23 +265,27 @@ mod tests {
     }
 
     #[test]
-    fn test_new_index_manager_base_path_is_file() -> Result<(), OxidbError> { // Changed
+    fn test_new_index_manager_base_path_is_file() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let file_path = temp_dir.path().join("file_not_dir.txt");
         File::create(&file_path).expect("Failed to create test file");
 
         let result = IndexManager::new(file_path);
         assert!(result.is_err());
-        if let Err(OxidbError::Io(io_err)) = result { // Changed
+        if let Err(OxidbError::Io(io_err)) = result {
+            // Changed
             assert_eq!(io_err.kind(), std::io::ErrorKind::InvalidInput);
         } else {
-            panic!("Expected OxidbError::Io for base_path being a file, got {:?}", result); // Changed
+            panic!("Expected OxidbError::Io for base_path being a file, got {:?}", result);
+            // Changed
         }
         Ok(())
     }
 
     #[test]
-    fn test_create_index() -> Result<(), OxidbError> { // Changed
+    fn test_create_index() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut manager = IndexManager::new(temp_dir.path().to_path_buf())?;
 
@@ -267,7 +303,8 @@ mod tests {
     }
 
     #[test]
-    fn test_create_index_loads_existing_file() -> Result<(), OxidbError> { // Changed
+    fn test_create_index_loads_existing_file() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let index_name = "preexisting_idx".to_string();
         let base_path = temp_dir.path();
@@ -294,7 +331,8 @@ mod tests {
     }
 
     #[test]
-    fn test_get_index() -> Result<(), OxidbError> { // Changed
+    fn test_get_index() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut manager = IndexManager::new(temp_dir.path().to_path_buf())?;
         manager.create_index("idx1".to_string(), "hash")?;
@@ -305,7 +343,8 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_operations() -> Result<(), OxidbError> { // Changed
+    fn test_insert_operations() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut manager = IndexManager::new(temp_dir.path().to_path_buf())?;
         let index_name = "insert_op_idx".to_string();
@@ -335,7 +374,8 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_operations() -> Result<(), OxidbError> { // Changed
+    fn test_delete_operations() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut manager = IndexManager::new(temp_dir.path().to_path_buf())?;
         let index_name = "delete_op_idx".to_string();
@@ -377,7 +417,8 @@ mod tests {
     }
 
     #[test]
-    fn test_find_by_index_behavior() -> Result<(), OxidbError> { // Changed
+    fn test_find_by_index_behavior() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut manager = IndexManager::new(temp_dir.path().to_path_buf())?;
         let index_name = "find_test_idx".to_string();
@@ -402,7 +443,8 @@ mod tests {
     }
 
     #[test]
-    fn test_save_and_load_all_indexes() -> Result<(), OxidbError> { // Changed
+    fn test_save_and_load_all_indexes() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let base_path = temp_dir.path().to_path_buf();
 
@@ -445,7 +487,8 @@ mod tests {
     }
 
     #[test]
-    fn test_on_update_data_calls_index_update() -> Result<(), OxidbError> { // Changed
+    fn test_on_update_data_calls_index_update() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut manager = IndexManager::new(temp_dir.path().to_path_buf())?;
         let index_name = "update_test_idx".to_string();
@@ -481,7 +524,8 @@ mod tests {
     }
 
     #[test]
-    fn test_on_update_data_value_unchanged_in_index() -> Result<(), OxidbError> { // Changed
+    fn test_on_update_data_value_unchanged_in_index() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut manager = IndexManager::new(temp_dir.path().to_path_buf())?;
         let index_name = "update_unchanged_test_idx".to_string();
@@ -507,7 +551,8 @@ mod tests {
     }
 
     #[test]
-    fn test_on_update_data_index_not_in_maps() -> Result<(), OxidbError> { // Changed
+    fn test_on_update_data_index_not_in_maps() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut manager = IndexManager::new(temp_dir.path().to_path_buf())?;
         let index_name = "update_missing_maps_idx".to_string();

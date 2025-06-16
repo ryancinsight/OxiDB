@@ -3,7 +3,8 @@ use crate::core::common::OxidbError; // Changed
 use crate::core::query::commands::{self, Command};
 use crate::core::types::DataType;
 
-pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command, OxidbError> { // Changed
+pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command, OxidbError> {
+    // Changed
     match ast_statement {
         ast::Statement::Select(select_ast) => {
             let columns_spec = translate_select_columns(select_ast.columns);
@@ -33,10 +34,66 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
                 condition: condition_cmd,
             })
         }
+        ast::Statement::CreateTable(create_ast) => {
+            let mut command_columns = Vec::new();
+            for ast_col_def in create_ast.columns {
+                // Basic type mapping, can be expanded
+                // This mapping should align with types supported by DataType and schema system
+                let uppercase_type_str = ast_col_def.data_type.to_uppercase();
+                let data_type = if uppercase_type_str.starts_with("INTEGER")
+                    || uppercase_type_str.starts_with("INT")
+                {
+                    DataType::Integer(0)
+                } else if uppercase_type_str.starts_with("TEXT")
+                    || uppercase_type_str.starts_with("STRING")
+                    || uppercase_type_str.starts_with("VARCHAR")
+                {
+                    DataType::String("".to_string())
+                } else if uppercase_type_str.starts_with("BOOLEAN")
+                    || uppercase_type_str.starts_with("BOOL")
+                {
+                    DataType::Boolean(false)
+                } else if uppercase_type_str.starts_with("FLOAT")
+                    || uppercase_type_str.starts_with("REAL")
+                    || uppercase_type_str.starts_with("DOUBLE")
+                {
+                    DataType::Float(0.0)
+                } else {
+                    return Err(OxidbError::SqlParsing(format!(
+                        "Unsupported column type during CREATE TABLE translation: {}",
+                        ast_col_def.data_type
+                    )));
+                };
+                command_columns.push(crate::core::types::schema::ColumnDef {
+                    // Path was already correct here, re-affirming
+                    name: ast_col_def.name,
+                    data_type,
+                    // Constraints like primary_key, nullable, etc., would be handled here
+                    // For now, they are not part of ast::ColumnDef or schema::ColumnDef
+                });
+            }
+            Ok(Command::CreateTable { table_name: create_ast.table_name, columns: command_columns })
+        }
+        ast::Statement::Insert(insert_ast) => {
+            let mut translated_values_list = Vec::new();
+            for row_values_ast in insert_ast.values {
+                let mut translated_row = Vec::new();
+                for val_ast in row_values_ast {
+                    translated_row.push(translate_literal(&val_ast)?);
+                }
+                translated_values_list.push(translated_row);
+            }
+            Ok(Command::SqlInsert {
+                table_name: insert_ast.table_name,
+                columns: insert_ast.columns,
+                values: translated_values_list,
+            })
+        }
     }
 }
 
-fn translate_literal(literal: &ast::AstLiteralValue) -> Result<DataType, OxidbError> { // Changed
+fn translate_literal(literal: &ast::AstLiteralValue) -> Result<DataType, OxidbError> {
+    // Changed
     match literal {
         ast::AstLiteralValue::String(s) => Ok(DataType::String(s.clone())),
         ast::AstLiteralValue::Number(n_str) => {
@@ -45,7 +102,8 @@ fn translate_literal(literal: &ast::AstLiteralValue) -> Result<DataType, OxidbEr
             } else if let Ok(f_val) = n_str.parse::<f64>() {
                 Ok(DataType::Float(f_val))
             } else {
-                Err(OxidbError::SqlParsing(format!("Cannot parse numeric literal '{}'", n_str))) // Changed
+                Err(OxidbError::SqlParsing(format!("Cannot parse numeric literal '{}'", n_str)))
+                // Changed
             }
         }
         ast::AstLiteralValue::Boolean(b) => Ok(DataType::Boolean(*b)),
@@ -55,7 +113,8 @@ fn translate_literal(literal: &ast::AstLiteralValue) -> Result<DataType, OxidbEr
 
 fn translate_condition_to_sql_condition(
     ast_condition: &ast::Condition,
-) -> Result<commands::SqlCondition, OxidbError> { // Changed
+) -> Result<commands::SqlCondition, OxidbError> {
+    // Changed
     let value = translate_literal(&ast_condition.value)?;
     Ok(commands::SqlCondition {
         column: ast_condition.column.clone(),
@@ -66,7 +125,8 @@ fn translate_condition_to_sql_condition(
 
 fn translate_assignment_to_sql_assignment(
     ast_assignment: &ast::Assignment,
-) -> Result<commands::SqlAssignment, OxidbError> { // Changed
+) -> Result<commands::SqlAssignment, OxidbError> {
+    // Changed
     let value = translate_literal(&ast_assignment.value)?;
     Ok(commands::SqlAssignment { column: ast_assignment.column.clone(), value })
 }
@@ -119,7 +179,9 @@ mod tests {
     #[test]
     fn test_translate_literal_float() {
         let ast_literal = TestAstLiteralValue::Number("123.45".to_string());
-        assert!(matches!(translate_literal(&ast_literal), Ok(DataType::Float(f)) if (f - 123.45).abs() < f64::EPSILON));
+        assert!(
+            matches!(translate_literal(&ast_literal), Ok(DataType::Float(f)) if (f - 123.45).abs() < f64::EPSILON)
+        );
     }
 
     #[test]
@@ -131,14 +193,17 @@ mod tests {
     #[test]
     fn test_translate_literal_negative_float() {
         let ast_literal = TestAstLiteralValue::Number("-50.75".to_string());
-        assert!(matches!(translate_literal(&ast_literal), Ok(DataType::Float(f)) if (f - -50.75).abs() < f64::EPSILON));
+        assert!(
+            matches!(translate_literal(&ast_literal), Ok(DataType::Float(f)) if (f - -50.75).abs() < f64::EPSILON)
+        );
     }
 
     #[test]
     fn test_translate_literal_invalid_number() {
         let ast_literal = TestAstLiteralValue::Number("abc".to_string());
         match translate_literal(&ast_literal) {
-            Err(OxidbError::SqlParsing(msg)) => { // Changed
+            Err(OxidbError::SqlParsing(msg)) => {
+                // Changed
                 assert!(msg.contains("Cannot parse numeric literal 'abc'"));
             }
             _ => panic!("Expected SqlParsing error for unparsable number string."), // Changed
@@ -149,7 +214,8 @@ mod tests {
     fn test_translate_literal_number_with_alpha_suffix() {
         let ast_literal = TestAstLiteralValue::Number("123xyz".to_string());
         match translate_literal(&ast_literal) {
-            Err(OxidbError::SqlParsing(msg)) => { // Changed
+            Err(OxidbError::SqlParsing(msg)) => {
+                // Changed
                 assert!(msg.contains("Cannot parse numeric literal '123xyz'"));
             }
             _ => panic!("Expected SqlParsing error for unparsable number string."), // Changed
@@ -187,7 +253,9 @@ mod tests {
             operator: "=".to_string(),
             value: DataType::String("test_user".to_string()),
         };
-        assert!(matches!(translate_condition_to_sql_condition(&ast_cond), Ok(ref res_cond) if *res_cond == expected_sql_cond));
+        assert!(
+            matches!(translate_condition_to_sql_condition(&ast_cond), Ok(ref res_cond) if *res_cond == expected_sql_cond)
+        );
     }
 
     #[test]
@@ -203,7 +271,9 @@ mod tests {
             operator: ">".to_string(),
             value: DataType::Integer(30),
         };
-        assert!(matches!(translate_condition_to_sql_condition(&ast_cond), Ok(ref res_cond) if *res_cond == expected_sql_cond));
+        assert!(
+            matches!(translate_condition_to_sql_condition(&ast_cond), Ok(ref res_cond) if *res_cond == expected_sql_cond)
+        );
     }
 
     #[test]
@@ -216,7 +286,9 @@ mod tests {
             column: "email".to_string(),
             value: DataType::String("new@example.com".to_string()),
         };
-        assert!(matches!(translate_assignment_to_sql_assignment(&ast_assign), Ok(ref res_assign) if *res_assign == expected_sql_assign));
+        assert!(
+            matches!(translate_assignment_to_sql_assignment(&ast_assign), Ok(ref res_assign) if *res_assign == expected_sql_assign)
+        );
     }
 
     #[test]
@@ -229,7 +301,9 @@ mod tests {
             column: "is_active".to_string(),
             value: DataType::Boolean(true),
         };
-        assert!(matches!(translate_assignment_to_sql_assignment(&ast_assign), Ok(ref res_assign) if *res_assign == expected_sql_assign));
+        assert!(
+            matches!(translate_assignment_to_sql_assignment(&ast_assign), Ok(ref res_assign) if *res_assign == expected_sql_assign)
+        );
     }
 
     #[test]

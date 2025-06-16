@@ -5,9 +5,9 @@ use std::io::{BufReader, BufWriter, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
 // Specific imports for types used in tests, from their canonical paths
-use crate::core::common::OxidbError;
 use crate::core::common::traits::{DataDeserializer, DataSerializer};
 use crate::core::common::types::TransactionId;
+use crate::core::common::OxidbError;
 use crate::core::storage::engine::traits::{KeyValueStore, VersionedValue};
 use crate::core::storage::engine::wal::{WalEntry, WalWriter};
 use crate::core::transaction::Transaction;
@@ -17,7 +17,8 @@ use tempfile::{Builder, NamedTempFile};
 use crate::core::storage::engine::implementations::simple_file::SimpleFileKvStore;
 
 // Helper to create a main DB file with specific key-value data
-fn create_db_file_with_kv_data(path: &Path, data: &[(Vec<u8>, Vec<u8>)]) -> Result<(), OxidbError> { // Changed
+fn create_db_file_with_kv_data(path: &Path, data: &[(Vec<u8>, Vec<u8>)]) -> Result<(), OxidbError> {
+    // Changed
     let file = OpenOptions::new()
         .write(true)
         .create(true)
@@ -49,17 +50,20 @@ fn derive_wal_path(db_path: &Path) -> PathBuf {
 }
 
 // Helper to read all entries from a WAL file
-fn read_all_wal_entries(wal_path: &Path) -> Result<Vec<WalEntry>, OxidbError> { // Changed
+fn read_all_wal_entries(wal_path: &Path) -> Result<Vec<WalEntry>, OxidbError> {
+    // Changed
     let file = StdFile::open(wal_path).map_err(OxidbError::Io)?; // Changed
     let mut reader = BufReader::new(file);
     let mut entries = Vec::new();
     loop {
         match <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut reader) {
             Ok(entry) => entries.push(entry),
-            Err(OxidbError::Io(e)) if e.kind() == ErrorKind::UnexpectedEof => { // Changed
+            Err(OxidbError::Io(e)) if e.kind() == ErrorKind::UnexpectedEof => {
+                // Changed
                 break;
             }
-            Err(e) => { // e is OxidbError
+            Err(e) => {
+                // e is OxidbError
                 return Err(e);
             }
         }
@@ -355,7 +359,10 @@ fn test_load_from_malformed_file_key_eof() {
     match result.unwrap_err() {
         OxidbError::Storage(msg) => {
             assert!(msg.contains("Failed to deserialize key"));
-            assert!(msg.contains("failed to fill whole buffer") || msg.contains("Io(Error { kind: UnexpectedEof"));
+            assert!(
+                msg.contains("failed to fill whole buffer")
+                    || msg.contains("Io(Error { kind: UnexpectedEof")
+            );
         }
         e => panic!("Unexpected error type for malformed key (EOF): {:?}", e),
     }
@@ -377,9 +384,12 @@ fn test_load_from_malformed_file_value_eof() {
     let result = SimpleFileKvStore::new(path);
     assert!(result.is_err());
     match result.unwrap_err() {
-            OxidbError::Storage(msg) => {
+        OxidbError::Storage(msg) => {
             assert!(msg.contains("Failed to deserialize value for key"));
-            assert!(msg.contains("failed to fill whole buffer") || msg.contains("Io(Error { kind: UnexpectedEof"));
+            assert!(
+                msg.contains("failed to fill whole buffer")
+                    || msg.contains("Io(Error { kind: UnexpectedEof")
+            );
         }
         e => panic!("Unexpected error type for malformed value (EOF): {:?}", e),
     }
@@ -407,7 +417,8 @@ fn test_put_writes_to_wal_and_cache() {
     let entries = read_all_wal_entries(&wal_path).unwrap();
     assert_eq!(entries.len(), 1);
     match &entries[0] {
-        WalEntry::Put { lsn, transaction_id, key: k, value: v } => { // Added lsn
+        WalEntry::Put { lsn, transaction_id, key: k, value: v } => {
+            // Added lsn
             assert_eq!(*lsn, dummy_lsn); // Check LSN
             assert_eq!(*transaction_id, 0);
             assert_eq!(k, &key);
@@ -444,7 +455,8 @@ fn test_delete_writes_to_wal_and_cache() {
     let entries = read_all_wal_entries(&wal_path).unwrap();
     assert_eq!(entries.len(), 2);
     match &entries[0] {
-        WalEntry::Put { lsn, transaction_id, key: k, value: v } => { // Added lsn
+        WalEntry::Put { lsn, transaction_id, key: k, value: v } => {
+            // Added lsn
             assert_eq!(*lsn, dummy_lsn_put);
             assert_eq!(*transaction_id, tx_put.id.0); // Compare with u64
             assert_eq!(k, &key);
@@ -453,7 +465,8 @@ fn test_delete_writes_to_wal_and_cache() {
         _ => panic!("Expected Put entry as first entry"),
     }
     match &entries[1] {
-        WalEntry::Delete { lsn, transaction_id, key: k } => { // Added lsn
+        WalEntry::Delete { lsn, transaction_id, key: k } => {
+            // Added lsn
             assert_eq!(*lsn, dummy_lsn_delete);
             assert_eq!(*transaction_id, tx_delete.id.0); // Compare with u64
             assert_eq!(k, &key);
@@ -501,7 +514,11 @@ fn test_load_from_disk_with_wal_replay() {
     let wal_writer = WalWriter::new(db_path);
     let mut lsn_counter: u64 = 0;
 
-    let mut next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
+    let mut next_lsn = || {
+        let current = lsn_counter;
+        lsn_counter += 1;
+        current
+    };
 
     wal_writer
         .log_entry(&WalEntry::Put {
@@ -511,8 +528,12 @@ fn test_load_from_disk_with_wal_replay() {
             value: b"val1".to_vec(),
         })
         .unwrap();
-    wal_writer.log_entry(&WalEntry::Delete { lsn: next_lsn(), transaction_id: 1, key: key0.clone() }).unwrap();
-    wal_writer.log_entry(&WalEntry::TransactionCommit { lsn: next_lsn(), transaction_id: 1 }).unwrap();
+    wal_writer
+        .log_entry(&WalEntry::Delete { lsn: next_lsn(), transaction_id: 1, key: key0.clone() })
+        .unwrap();
+    wal_writer
+        .log_entry(&WalEntry::TransactionCommit { lsn: next_lsn(), transaction_id: 1 })
+        .unwrap();
 
     wal_writer
         .log_entry(&WalEntry::Put {
@@ -522,7 +543,9 @@ fn test_load_from_disk_with_wal_replay() {
             value: b"val2".to_vec(),
         })
         .unwrap();
-    wal_writer.log_entry(&WalEntry::TransactionRollback { lsn: next_lsn(), transaction_id: 2 }).unwrap();
+    wal_writer
+        .log_entry(&WalEntry::TransactionRollback { lsn: next_lsn(), transaction_id: 2 })
+        .unwrap();
 
     wal_writer
         .log_entry(&WalEntry::Put {
@@ -541,8 +564,12 @@ fn test_load_from_disk_with_wal_replay() {
             value: b"val4".to_vec(),
         })
         .unwrap();
-    wal_writer.log_entry(&WalEntry::TransactionCommit { lsn: next_lsn(), transaction_id: 4 }).unwrap();
-    wal_writer.log_entry(&WalEntry::TransactionRollback { lsn: next_lsn(), transaction_id: 4 }).unwrap();
+    wal_writer
+        .log_entry(&WalEntry::TransactionCommit { lsn: next_lsn(), transaction_id: 4 })
+        .unwrap();
+    wal_writer
+        .log_entry(&WalEntry::TransactionRollback { lsn: next_lsn(), transaction_id: 4 })
+        .unwrap();
 
     wal_writer
         .log_entry(&WalEntry::Put {
@@ -552,8 +579,12 @@ fn test_load_from_disk_with_wal_replay() {
             value: b"val5".to_vec(),
         })
         .unwrap();
-    wal_writer.log_entry(&WalEntry::TransactionRollback { lsn: next_lsn(), transaction_id: 5 }).unwrap();
-    wal_writer.log_entry(&WalEntry::TransactionCommit { lsn: next_lsn(), transaction_id: 5 }).unwrap();
+    wal_writer
+        .log_entry(&WalEntry::TransactionRollback { lsn: next_lsn(), transaction_id: 5 })
+        .unwrap();
+    wal_writer
+        .log_entry(&WalEntry::TransactionCommit { lsn: next_lsn(), transaction_id: 5 })
+        .unwrap();
     drop(wal_writer);
 
     let store = SimpleFileKvStore::new(db_path).unwrap();
@@ -593,8 +624,12 @@ fn test_wal_recovery_after_simulated_crash() {
 
     {
         let mut store = SimpleFileKvStore::new(db_path).unwrap();
-        store.put(key_a.clone(), val_a.clone(), &Transaction::new(TransactionId(100)), dummy_lsn).unwrap();
-        store.put(key_b.clone(), val_b.clone(), &Transaction::new(TransactionId(100)), dummy_lsn).unwrap();
+        store
+            .put(key_a.clone(), val_a.clone(), &Transaction::new(TransactionId(100)), dummy_lsn)
+            .unwrap();
+        store
+            .put(key_b.clone(), val_b.clone(), &Transaction::new(TransactionId(100)), dummy_lsn)
+            .unwrap();
         std::mem::forget(store);
     }
     assert!(wal_path.exists());
@@ -610,7 +645,11 @@ fn test_wal_recovery_commit_then_rollback_same_tx() {
     let db_path = db_file.path();
     let wal_writer = WalWriter::new(db_path);
     let mut lsn_counter: u64 = 0;
-    let mut next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
+    let mut next_lsn = || {
+        let current = lsn_counter;
+        lsn_counter += 1;
+        current
+    };
 
     wal_writer
         .log_entry(&WalEntry::Put {
@@ -620,8 +659,12 @@ fn test_wal_recovery_commit_then_rollback_same_tx() {
             value: b"val_cr".to_vec(),
         })
         .unwrap();
-    wal_writer.log_entry(&WalEntry::TransactionCommit { lsn: next_lsn(), transaction_id: 1 }).unwrap();
-    wal_writer.log_entry(&WalEntry::TransactionRollback { lsn: next_lsn(), transaction_id: 1 }).unwrap();
+    wal_writer
+        .log_entry(&WalEntry::TransactionCommit { lsn: next_lsn(), transaction_id: 1 })
+        .unwrap();
+    wal_writer
+        .log_entry(&WalEntry::TransactionRollback { lsn: next_lsn(), transaction_id: 1 })
+        .unwrap();
     drop(wal_writer);
 
     let store = SimpleFileKvStore::new(db_path).unwrap();
@@ -634,7 +677,11 @@ fn test_wal_recovery_multiple_interleaved_transactions() {
     let db_path = db_file.path();
     let wal_writer = WalWriter::new(db_path);
     let mut lsn_counter: u64 = 0;
-    let mut next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
+    let mut next_lsn = || {
+        let current = lsn_counter;
+        lsn_counter += 1;
+        current
+    };
 
     wal_writer
         .log_entry(&WalEntry::Put {
@@ -660,7 +707,9 @@ fn test_wal_recovery_multiple_interleaved_transactions() {
             value: b"val10_2".to_vec(),
         })
         .unwrap();
-    wal_writer.log_entry(&WalEntry::TransactionCommit { lsn: next_lsn(), transaction_id: 10 }).unwrap();
+    wal_writer
+        .log_entry(&WalEntry::TransactionCommit { lsn: next_lsn(), transaction_id: 10 })
+        .unwrap();
     wal_writer
         .log_entry(&WalEntry::Put {
             lsn: next_lsn(),
@@ -669,9 +718,15 @@ fn test_wal_recovery_multiple_interleaved_transactions() {
             value: b"val30_1".to_vec(),
         })
         .unwrap();
-    wal_writer.log_entry(&WalEntry::TransactionRollback { lsn: next_lsn(), transaction_id: 30 }).unwrap();
     wal_writer
-        .log_entry(&WalEntry::Delete { lsn: next_lsn(), transaction_id: 20, key: b"some_other_key".to_vec() })
+        .log_entry(&WalEntry::TransactionRollback { lsn: next_lsn(), transaction_id: 30 })
+        .unwrap();
+    wal_writer
+        .log_entry(&WalEntry::Delete {
+            lsn: next_lsn(),
+            transaction_id: 20,
+            key: b"some_other_key".to_vec(),
+        })
         .unwrap();
     drop(wal_writer);
 
@@ -707,7 +762,9 @@ fn test_wal_truncation_after_save_to_disk() {
 
     {
         let mut store = SimpleFileKvStore::new(db_path).unwrap();
-        store.put(b"trunc_key".to_vec(), b"trunc_val".to_vec(), &dummy_transaction, dummy_lsn).unwrap();
+        store
+            .put(b"trunc_key".to_vec(), b"trunc_val".to_vec(), &dummy_transaction, dummy_lsn)
+            .unwrap();
         assert!(wal_path.exists());
         store.persist().unwrap();
     }
@@ -742,10 +799,19 @@ fn test_wal_replay_stops_on_corruption() {
             OpenOptions::new().write(true).create(true).truncate(true).open(&wal_path).unwrap();
         let mut writer = BufWriter::new(wal_file_handle);
         let mut lsn_counter: u64 = 0;
-        let mut next_lsn = || { let current = lsn_counter; lsn_counter += 1; current };
+        let mut next_lsn = || {
+            let current = lsn_counter;
+            lsn_counter += 1;
+            current
+        };
 
         <WalEntry as DataSerializer<WalEntry>>::serialize(
-            &WalEntry::Put { lsn: next_lsn(), transaction_id: 0, key: key_good.clone(), value: value_good.clone() },
+            &WalEntry::Put {
+                lsn: next_lsn(),
+                transaction_id: 0,
+                key: key_good.clone(),
+                value: value_good.clone(),
+            },
             &mut writer,
         )
         .unwrap();
@@ -760,7 +826,12 @@ fn test_wal_replay_stops_on_corruption() {
         writer.flush().unwrap();
 
         <WalEntry as DataSerializer<WalEntry>>::serialize(
-            &WalEntry::Put { lsn: next_lsn(), transaction_id: 1, key: key_bad.clone(), value: value_bad.clone() },
+            &WalEntry::Put {
+                lsn: next_lsn(),
+                transaction_id: 1,
+                key: key_bad.clone(),
+                value: value_bad.clone(),
+            },
             &mut writer,
         )
         .unwrap();
@@ -890,24 +961,27 @@ fn test_physical_wal_lsn_integration() {
     let mut oxidb = crate::api::db::Oxidb::new(&db_path).expect("Failed to create Oxidb instance");
 
     // 2. Execute Operations
-    oxidb.execute_query_str("CREATE TABLE test_lsn (id INTEGER PRIMARY KEY, name VARCHAR(255))")
+    oxidb
+        .execute_query_str("CREATE TABLE test_lsn (id INTEGER PRIMARY KEY, name VARCHAR(255))")
         .expect("CREATE TABLE failed");
 
     // Insert Op 1 (LSN should be 0 or initial)
-    oxidb.execute_query_str("INSERT INTO test_lsn (id, name) VALUES (1, 'Alice')")
+    oxidb
+        .execute_query_str("INSERT INTO test_lsn (id, name) VALUES (1, 'Alice')")
         .expect("INSERT 1 failed");
 
     // Insert Op 2 (LSN should be 1 or next)
-    oxidb.execute_query_str("INSERT INTO test_lsn (id, name) VALUES (2, 'Bob')")
+    oxidb
+        .execute_query_str("INSERT INTO test_lsn (id, name) VALUES (2, 'Bob')")
         .expect("INSERT 2 failed");
 
     // Update Op (LSN should be 2 or next)
-    oxidb.execute_query_str("UPDATE test_lsn SET name = 'Alicia' WHERE id = 1")
+    oxidb
+        .execute_query_str("UPDATE test_lsn SET name = 'Alicia' WHERE id = 1")
         .expect("UPDATE failed");
 
     // Delete Op (LSN should be 3 or next)
-    oxidb.execute_query_str("DELETE FROM test_lsn WHERE id = 2")
-        .expect("DELETE failed");
+    oxidb.execute_query_str("DELETE FROM test_lsn WHERE id = 2").expect("DELETE failed");
 
     // Transactional operations
     // BeginTransaction itself (logical) logs with LSN via TransactionManager.
@@ -915,20 +989,24 @@ fn test_physical_wal_lsn_integration() {
     // CommitTransaction (logical) logs with LSN via TransactionManager.
     // If QueryExecutor also logs a physical WalEntry::TransactionCommit, that will have an LSN.
     oxidb.execute_query_str("BEGIN TRANSACTION").expect("BEGIN failed");
-    oxidb.execute_query_str("INSERT INTO test_lsn (id, name) VALUES (3, 'Charlie')")
+    oxidb
+        .execute_query_str("INSERT INTO test_lsn (id, name) VALUES (3, 'Charlie')")
         .expect("INSERT 3 (in txn) failed");
     oxidb.execute_query_str("COMMIT").expect("COMMIT failed");
-
 
     // 3. Read and Verify Physical WAL
     // The SimpleFileKvStore's WAL writer uses a path derived from the main DB path.
     // Oxidb::new creates SimpleFileKvStore which then derives its WAL path.
     // The WalWriter in SimpleFileKvStore is `crate::core::storage::engine::wal::WalWriter`
     let physical_wal_path = derive_wal_path(&db_path);
-    assert!(physical_wal_path.exists(), "Physical WAL file should exist at {:?}", physical_wal_path);
+    assert!(
+        physical_wal_path.exists(),
+        "Physical WAL file should exist at {:?}",
+        physical_wal_path
+    );
 
-    let wal_entries = read_all_wal_entries(&physical_wal_path)
-        .expect("Failed to read physical WAL entries");
+    let wal_entries =
+        read_all_wal_entries(&physical_wal_path).expect("Failed to read physical WAL entries");
 
     // Expected number of physical WAL entries:
     // INSERT (Alice) -> Put
@@ -975,20 +1053,32 @@ fn test_physical_wal_lsn_integration() {
     for entry in &wal_entries {
         match entry {
             WalEntry::Put { lsn, transaction_id, .. } => {
-                assert_eq!(*lsn, expected_lsn, "LSN mismatch for Put entry with tx_id {}", transaction_id);
+                assert_eq!(
+                    *lsn, expected_lsn,
+                    "LSN mismatch for Put entry with tx_id {}",
+                    transaction_id
+                );
                 expected_lsn += 1;
-                physical_data_ops +=1;
+                physical_data_ops += 1;
             }
             WalEntry::Delete { lsn, transaction_id, .. } => {
-                assert_eq!(*lsn, expected_lsn, "LSN mismatch for Delete entry with tx_id {}", transaction_id);
+                assert_eq!(
+                    *lsn, expected_lsn,
+                    "LSN mismatch for Delete entry with tx_id {}",
+                    transaction_id
+                );
                 expected_lsn += 1;
-                physical_data_ops +=1;
+                physical_data_ops += 1;
             }
             WalEntry::TransactionCommit { lsn, transaction_id, .. } => {
                 // This is for physical auto-commits or explicit physical commits by QueryExecutor
-                assert_eq!(*lsn, expected_lsn, "LSN mismatch for TransactionCommit entry with tx_id {}", transaction_id);
+                assert_eq!(
+                    *lsn, expected_lsn,
+                    "LSN mismatch for TransactionCommit entry with tx_id {}",
+                    transaction_id
+                );
                 expected_lsn += 1;
-                physical_commit_ops +=1;
+                physical_commit_ops += 1;
             }
             WalEntry::TransactionRollback { .. } => {
                 // Not explicitly tested here, but if it occurred, it should also have an LSN
@@ -1036,9 +1126,15 @@ fn test_physical_wal_lsn_integration() {
     // The logical commit is handled by TransactionManager's WAL.
 
     assert_eq!(physical_data_ops, 5, "Expected 5 data operations (Put/Delete) in physical WAL");
-    assert_eq!(physical_commit_ops, 1, "Expected 1 auto-commit TransactionCommit from UPDATE in physical WAL");
-    assert_eq!(wal_entries.len(), physical_data_ops + physical_commit_ops, "Total WAL entries mismatch");
-
+    assert_eq!(
+        physical_commit_ops, 1,
+        "Expected 1 auto-commit TransactionCommit from UPDATE in physical WAL"
+    );
+    assert_eq!(
+        wal_entries.len(),
+        physical_data_ops + physical_commit_ops,
+        "Total WAL entries mismatch"
+    );
 
     // 4. Cleanup
     temp_dir.close().expect("Failed to remove temp dir");

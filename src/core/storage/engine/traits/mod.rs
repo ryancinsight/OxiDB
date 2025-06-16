@@ -1,7 +1,7 @@
 // Assuming OxidbError will be defined in crate::core::common::error
 // Adjust the path if error.rs is structured within a module e.g. crate::core::common::error::OxidbError
-use crate::core::common::OxidbError;
 use crate::core::common::types::Lsn; // Added Lsn
+use crate::core::common::OxidbError;
 use crate::core::transaction::Transaction;
 use std::collections::HashSet;
 
@@ -18,7 +18,13 @@ pub struct VersionedValue<V> {
 pub trait KeyValueStore<K, V>: Send + Sync + 'static {
     /// Inserts a key-value pair into the store.
     /// If the key already exists, its value is updated.
-    fn put(&mut self, key: K, value: V, transaction: &Transaction, lsn: Lsn) -> Result<(), OxidbError>;
+    fn put(
+        &mut self,
+        key: K,
+        value: V,
+        transaction: &Transaction,
+        lsn: Lsn,
+    ) -> Result<(), OxidbError>;
 
     /// Retrieves the value associated with a key.
     /// Returns `Ok(Some(value))` if the key exists, `Ok(None)` otherwise.
@@ -66,7 +72,8 @@ pub trait KeyValueStore<K, V>: Send + Sync + 'static {
     ///
     /// # Type Bounds
     /// Requires `K: Clone` and `V: Clone` as it returns owned copies.
-    fn scan(&self) -> Result<Vec<(K, V)>, OxidbError> // Changed
+    fn scan(&self) -> Result<Vec<(K, V)>, OxidbError>
+    // Changed
     where
         K: Clone,
         V: Clone;

@@ -35,9 +35,9 @@ impl Frame {
 }
 
 pub struct BufferPoolManager {
-    frames: Vec<Mutex<Frame>>, // Frames in the buffer pool
+    frames: Vec<Mutex<Frame>>,                // Frames in the buffer pool
     page_table: HashMap<CommonPageId, usize>, // page_id to frame_index
-    free_list: VecDeque<usize>, // List of frame indices that are free
+    free_list: VecDeque<usize>,               // List of frame indices that are free
     replacer_queue: VecDeque<usize>, // Frame indices considered for replacement (FIFO for unpinned frames)
     disk_manager: Arc<Mutex<DiskManager>>,
     // pool_size: usize, // Removed unused field
@@ -93,7 +93,10 @@ impl BufferPoolManager {
         None
     }
 
-    pub fn fetch_page(&mut self, page_id: CommonPageId) -> Result<Arc<RwLock<[u8; PAGE_SIZE]>>, OxidbError> {
+    pub fn fetch_page(
+        &mut self,
+        page_id: CommonPageId,
+    ) -> Result<Arc<RwLock<[u8; PAGE_SIZE]>>, OxidbError> {
         // 1. Check if page is already in buffer pool
         if let Some(&frame_idx) = self.page_table.get(&page_id) {
             let mut frame = self.frames[frame_idx].lock().unwrap();
@@ -111,22 +114,23 @@ impl BufferPoolManager {
             // This check isn't strictly necessary for correctness of retain, but good for understanding.
             assert!(self.replacer_queue.len() <= original_len);
 
-
             return Ok(Arc::clone(&frame.data));
         }
 
         // 2. Page not in buffer pool (cache miss) - find a victim frame
-        let victim_frame_idx = self.find_victim_frame_index()
-            .ok_or_else(|| OxidbError::BufferPool("No free or unpinned frames available".to_string()))?;
+        let victim_frame_idx = self.find_victim_frame_index().ok_or_else(|| {
+            OxidbError::BufferPool("No free or unpinned frames available".to_string())
+        })?;
 
         let mut victim_frame = self.frames[victim_frame_idx].lock().unwrap();
 
         // 3. If victim frame is dirty and occupied, write its content to disk
         if victim_frame.is_dirty {
             if let Some(old_page_id) = victim_frame.page_id {
-                { // Scope for data_guard
+                {
+                    // Scope for data_guard
                     let data_guard = victim_frame.data.read().unwrap(); // Read lock for page data
-                    // It's important to unlock disk_manager after use.
+                                                                        // It's important to unlock disk_manager after use.
                     self.disk_manager.lock().unwrap().write_page(old_page_id, &*data_guard)?;
                 } // data_guard is dropped here
                 victim_frame.is_dirty = false;
@@ -148,11 +152,11 @@ impl BufferPoolManager {
 
         // 6. Read page data from disk into the frame's data buffer
         // Need a write lock on the frame's data to modify it.
-        { // Scope for data_guard to release lock quickly
+        {
+            // Scope for data_guard to release lock quickly
             let mut data_guard = victim_frame.data.write().unwrap();
             self.disk_manager.lock().unwrap().read_page(page_id, &mut *data_guard)?;
         }
-
 
         // 7. Add new page_id to page_table and return the data Arc
         self.page_table.insert(page_id, victim_frame_idx);
@@ -164,13 +168,20 @@ impl BufferPoolManager {
     }
 
     pub fn unpin_page(&mut self, page_id: CommonPageId, is_dirty: bool) -> Result<(), OxidbError> {
-        let frame_idx = self.page_table.get(&page_id)
-            .ok_or_else(|| OxidbError::BufferPool(format!("Page {} not found in buffer pool page_table", page_id.0)))?;
+        let frame_idx = self.page_table.get(&page_id).ok_or_else(|| {
+            OxidbError::BufferPool(format!(
+                "Page {} not found in buffer pool page_table",
+                page_id.0
+            ))
+        })?;
 
         let mut frame = self.frames[*frame_idx].lock().unwrap();
 
         if frame.pin_count == 0 {
-            return Err(OxidbError::BufferPool(format!("Page {} pin count is already zero", page_id.0)));
+            return Err(OxidbError::BufferPool(format!(
+                "Page {} pin count is already zero",
+                page_id.0
+            )));
         }
 
         frame.pin_count -= 1;
@@ -187,8 +198,9 @@ impl BufferPoolManager {
             // else (like a previous unpin) already made it a candidate.
             // A simple FIFO queue typically just adds it. If it's processed while pinned,
             // find_victim_frame_index handles that.
-            if !self.replacer_queue.contains(frame_idx) { // Added a check to prevent duplicates, might be overly cautious or not needed depending on strict FIFO interpretation
-                 self.replacer_queue.push_back(*frame_idx);
+            if !self.replacer_queue.contains(frame_idx) {
+                // Added a check to prevent duplicates, might be overly cautious or not needed depending on strict FIFO interpretation
+                self.replacer_queue.push_back(*frame_idx);
             }
         }
         Ok(())
@@ -201,7 +213,8 @@ impl BufferPoolManager {
             if frame.is_dirty {
                 // Ensure page_id in frame matches, though it should if it's in page_table
                 if frame.page_id == Some(page_id) {
-                    { // Scope for data_guard
+                    {
+                        // Scope for data_guard
                         let data_guard = frame.data.read().unwrap();
                         self.disk_manager.lock().unwrap().write_page(page_id, &*data_guard)?;
                     } // data_guard is dropped here
@@ -272,7 +285,6 @@ mod tests {
         let bpm = BufferPoolManager::new(pool_size, Arc::clone(&disk_manager));
         (bpm, disk_manager, temp_file)
     }
-
 
     #[test]
     fn test_bpm_new() {
@@ -396,7 +408,10 @@ mod tests {
 
         // Flush page
         bpm.flush_page(page_id).unwrap();
-        assert!(!bpm.frames[frame_idx].lock().unwrap().is_dirty, "Page should not be dirty after flush");
+        assert!(
+            !bpm.frames[frame_idx].lock().unwrap().is_dirty,
+            "Page should not be dirty after flush"
+        );
 
         // Verify data on disk
         let mut dm = disk_manager_arc.lock().unwrap();
@@ -411,11 +426,15 @@ mod tests {
         let (mut bpm, _disk_manager_arc, _temp_file) = setup_bpm(POOL_SIZE);
 
         let (p0, p0_arc) = bpm.new_page().unwrap();
-        { p0_arc.write().unwrap()[0] = 1; }
+        {
+            p0_arc.write().unwrap()[0] = 1;
+        }
         bpm.unpin_page(p0, true).unwrap(); // dirty
 
         let (p1, p1_arc) = bpm.new_page().unwrap();
-         { p1_arc.write().unwrap()[0] = 2; }
+        {
+            p1_arc.write().unwrap()[0] = 2;
+        }
         bpm.unpin_page(p1, true).unwrap(); // dirty
 
         bpm.flush_all_pages().unwrap();
@@ -426,14 +445,13 @@ mod tests {
         assert!(!bpm.frames[f1_idx].lock().unwrap().is_dirty);
     }
 
-
     #[test]
     fn test_pin_count_limits_replacement() {
         const POOL_SIZE: usize = 1;
         let (mut bpm, _disk_manager_arc, _temp_file) = setup_bpm(POOL_SIZE);
 
         let (_page_id0, _page0_arc) = bpm.new_page().unwrap(); // Pinned (count=1)
-        // Pool is full, page0 is pinned.
+                                                               // Pool is full, page0 is pinned.
 
         let result = bpm.new_page(); // Should fail as no frame can be victimized
         assert!(matches!(result, Err(OxidbError::BufferPool(_))));
@@ -453,12 +471,12 @@ mod tests {
 
     #[test]
     fn test_unpin_already_zero_pin_count() {
-         let (mut bpm, _disk_manager, _temp_file) = setup_bpm(1);
-         let (page_id, _) = bpm.new_page().unwrap();
-         bpm.unpin_page(page_id, false).unwrap(); // pin_count is now 0
-         let result = bpm.unpin_page(page_id, false); // unpin again
-         assert!(matches!(result, Err(OxidbError::BufferPool(_))));
-         if let Err(OxidbError::BufferPool(msg)) = result {
+        let (mut bpm, _disk_manager, _temp_file) = setup_bpm(1);
+        let (page_id, _) = bpm.new_page().unwrap();
+        bpm.unpin_page(page_id, false).unwrap(); // pin_count is now 0
+        let result = bpm.unpin_page(page_id, false); // unpin again
+        assert!(matches!(result, Err(OxidbError::BufferPool(_))));
+        if let Err(OxidbError::BufferPool(msg)) = result {
             assert!(msg.contains("pin count is already zero"));
         } else {
             panic!("Expected BufferPool error");

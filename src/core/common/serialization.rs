@@ -1,7 +1,7 @@
 // src/core/common/serialization.rs
 
-use crate::core::common::OxidbError; // Changed
 use crate::core::common::traits::{DataDeserializer, DataSerializer}; // Added
+use crate::core::common::OxidbError; // Changed
 use crate::core::types::DataType;
 use serde_json;
 use std::io::{Read, Write}; // Added
@@ -30,11 +30,18 @@ impl DataDeserializer<Vec<u8>> for Vec<u8> {
     fn deserialize<R: Read>(reader: &mut R) -> Result<Vec<u8>, OxidbError> {
         let mut len_bytes = [0u8; 8];
         reader.read_exact(&mut len_bytes)?; // Relies on From<std::io::Error> for OxidbError
-        let len = u64::from_be_bytes(len_bytes) as usize;
+        let len_u64 = u64::from_be_bytes(len_bytes);
+        let len = usize::try_from(len_u64).map_err(|_| {
+            OxidbError::Deserialization(format!(
+                "Vec<u8> length {} exceeds usize capabilities",
+                len_u64
+            ))
+        })?;
         // Basic protection against extremely large allocations
         if len > 1_000_000_000 {
             // 1GB limit, adjust as needed
-            return Err(OxidbError::Deserialization(format!( // Changed
+            return Err(OxidbError::Deserialization(format!(
+                // Changed
                 "Vec<u8> length {} exceeds maximum allowed size",
                 len
             )));
@@ -89,7 +96,8 @@ mod tests {
         let result = deserialize_data_type(bytes);
         assert!(result.is_err());
         match result.unwrap_err() {
-            OxidbError::Json(e) => { // Changed
+            OxidbError::Json(e) => {
+                // Changed
                 assert!(e.to_string().contains("expected value at line 1 column 1"));
             }
             _ => panic!("Expected OxidbError::Json"), // Changed
@@ -103,7 +111,8 @@ mod tests {
         let result = deserialize_data_type(bytes);
         assert!(result.is_err());
         match result.unwrap_err() {
-            OxidbError::Json(e) => { // Changed
+            OxidbError::Json(e) => {
+                // Changed
                 // The exact error message might vary based on serde's internal logic
                 // It might complain about missing fields for any of the DataType variants
                 // or an unknown variant.

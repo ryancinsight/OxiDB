@@ -1,5 +1,5 @@
-use crate::core::common::OxidbError;
 use crate::core::common::serialization::deserialize_data_type;
+use crate::core::common::OxidbError;
 use crate::core::execution::{ExecutionOperator, Tuple};
 use crate::core::query::commands::Key;
 use crate::core::storage::engine::traits::KeyValueStore;
@@ -32,9 +32,11 @@ impl<S: KeyValueStore<Key, Vec<u8>>> TableScanOperator<S> {
 impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for TableScanOperator<S> {
     fn execute(
         &mut self,
-    ) -> Result<Box<dyn Iterator<Item = Result<Tuple, OxidbError>> + Send + Sync>, OxidbError> { // Changed
+    ) -> Result<Box<dyn Iterator<Item = Result<Tuple, OxidbError>> + Send + Sync>, OxidbError> {
+        // Changed
         if self.executed {
-            return Err(OxidbError::Internal( // Changed
+            return Err(OxidbError::Internal(
+                // Changed
                 "TableScanOperator cannot be executed more than once".to_string(),
             ));
         }
@@ -43,12 +45,13 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for TableScanOp
         // Now self.store is Arc<RwLock<S>>, so we need to lock it for reading.
         let store_guard = self.store.read().unwrap();
         let all_kvs = store_guard.scan()?; // This can return OxidbError
-        // Drop the guard explicitly after scan is done if possible, though iterator might hold it implicitly.
-        // For filter_map, the guard might be held longer. This needs careful thought in real async scenarios.
-        // For now, this synchronous version should be okay.
+                                           // Drop the guard explicitly after scan is done if possible, though iterator might hold it implicitly.
+                                           // For filter_map, the guard might be held longer. This needs careful thought in real async scenarios.
+                                           // For now, this synchronous version should be okay.
 
         let iterator =
-            all_kvs.into_iter().filter_map(move |(_key, value_bytes)| match deserialize_data_type( // deserialize_data_type now returns OxidbError
+            all_kvs.into_iter().filter_map(move |(_key, value_bytes)| match deserialize_data_type(
+                // deserialize_data_type now returns OxidbError
                 &value_bytes,
             ) {
                 Ok(data_type) => {

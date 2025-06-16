@@ -80,7 +80,8 @@ impl TransactionManager {
         self.current_active_transaction_id.and_then(move |id| self.active_transactions.get_mut(&id))
     }
 
-    pub fn current_active_transaction_id(&self) -> Option<CommonTransactionId> { // Use CommonTransactionId
+    pub fn current_active_transaction_id(&self) -> Option<CommonTransactionId> {
+        // Use CommonTransactionId
         self.current_active_transaction_id
     }
 
@@ -97,7 +98,10 @@ impl TransactionManager {
                 // Indicates an inconsistent state.
                 return Err(IoError::new(
                     std::io::ErrorKind::NotFound,
-                    format!("Transaction {} not found in active transactions during commit.", current_tx_id),
+                    format!(
+                        "Transaction {} not found in active transactions during commit.",
+                        current_tx_id
+                    ),
                 ));
             }
         };
@@ -132,9 +136,12 @@ impl TransactionManager {
         let mut transaction = match self.active_transactions.remove(&current_tx_id) {
             Some(txn) => txn,
             None => {
-                 return Err(IoError::new(
+                return Err(IoError::new(
                     std::io::ErrorKind::NotFound,
-                    format!("Transaction {} not found in active transactions during abort.", current_tx_id),
+                    format!(
+                        "Transaction {} not found in active transactions during abort.",
+                        current_tx_id
+                    ),
                 ));
             }
         };
@@ -159,26 +166,30 @@ impl TransactionManager {
         Ok(())
     }
 
-
-    pub fn is_committed(&self, tx_id: CommonTransactionId) -> bool { // Use CommonTransactionId
+    pub fn is_committed(&self, tx_id: CommonTransactionId) -> bool {
+        // Use CommonTransactionId
         self.committed_tx_ids.binary_search(&tx_id).is_ok()
     }
 
-    pub fn get_committed_tx_ids_snapshot(&self) -> Vec<CommonTransactionId> { // Use CommonTransactionId
+    pub fn get_committed_tx_ids_snapshot(&self) -> Vec<CommonTransactionId> {
+        // Use CommonTransactionId
         self.committed_tx_ids.clone()
     }
 
-    pub fn add_committed_tx_id(&mut self, tx_id: CommonTransactionId) { // Use CommonTransactionId
+    pub fn add_committed_tx_id(&mut self, tx_id: CommonTransactionId) {
+        // Use CommonTransactionId
         if !self.committed_tx_ids.contains(&tx_id) {
             self.committed_tx_ids.push(tx_id);
         }
     }
 
-    pub fn get_oldest_active_tx_id(&self) -> Option<CommonTransactionId> { // Use CommonTransactionId
+    pub fn get_oldest_active_tx_id(&self) -> Option<CommonTransactionId> {
+        // Use CommonTransactionId
         self.active_transactions.values().map(|tx| tx.id).min()
     }
 
-    pub fn get_next_transaction_id_peek(&self) -> CommonTransactionId { // Use CommonTransactionId
+    pub fn get_next_transaction_id_peek(&self) -> CommonTransactionId {
+        // Use CommonTransactionId
         self.next_transaction_id
     }
 
@@ -212,18 +223,16 @@ mod tests {
     use crate::core::wal::writer::WalWriter;
     // Removed unused CommonTransactionId_Test alias
     use std::fs::{self, File};
-    use std::io::{BufReader, Read, ErrorKind as IoErrorKind, Error as IoError};
+    use std::io::{BufReader, Error as IoError, ErrorKind as IoErrorKind, Read};
     use std::path::{Path, PathBuf};
     use std::sync::Arc; // For Arc<LogManager>
 
-    // Helper function to clean up test files
-    fn cleanup_file(path: &Path) {
-        let _ = fs::remove_file(path);
-    }
-
     // Helper function to clean up a directory
     fn cleanup_dir(path: &Path) {
-        let _ = fs::remove_dir_all(path);
+        // Now specifically cleans the test's own directory
+        if path.exists() {
+            let _ = fs::remove_dir_all(path);
+        }
     }
 
     fn read_records_from_file(path: &Path) -> Result<Vec<LogRecord>, IoError> {
@@ -238,34 +247,42 @@ mod tests {
                 Err(e) => return Err(e),
             }
             let len = u32::from_be_bytes(len_bytes);
-            if len == 0 { break; }
+            if len == 0 {
+                break;
+            }
             let mut record_bytes = vec![0u8; len as usize];
             reader.read_exact(&mut record_bytes)?;
-            let record: LogRecord = bincode::deserialize(&record_bytes)
-                .map_err(|e| IoError::new(IoErrorKind::InvalidData, format!("Deserialization failed: {}", e)))?;
+            let record: LogRecord = bincode::deserialize(&record_bytes).map_err(|e| {
+                IoError::new(IoErrorKind::InvalidData, format!("Deserialization failed: {}", e))
+            })?;
             records.push(record);
         }
         Ok(records)
     }
 
-    const TEST_WAL_DIR: &str = "test_tm_wal_files/";
+    const TEST_WAL_BASE_DIR: &str = "test_tm_wal_files_isolated/";
 
-    fn setup_test_tm(test_name: &str) -> (TransactionManager, PathBuf) {
-        let wal_base_path = PathBuf::from(TEST_WAL_DIR);
-        if !wal_base_path.exists() {
-            fs::create_dir_all(&wal_base_path).expect("Failed to create test WAL directory.");
+    fn setup_test_tm(test_name: &str) -> (TransactionManager, PathBuf, PathBuf) {
+        let base_dir = PathBuf::from(TEST_WAL_BASE_DIR);
+        let test_specific_dir = base_dir.join(test_name);
+
+        if test_specific_dir.exists() {
+            cleanup_dir(&test_specific_dir); // Clean up from previous run if necessary
         }
-        let wal_path = wal_base_path.join(format!("{}.wal", test_name));
-        cleanup_file(&wal_path);
+        fs::create_dir_all(&test_specific_dir)
+            .expect("Failed to create test-specific WAL directory.");
+
+        let wal_path = test_specific_dir.join("test.wal");
+        // cleanup_file(&wal_path); // Not needed as whole dir is cleaned
 
         let wal_writer = WalWriter::new(wal_path.clone());
         let log_manager = Arc::new(LogManager::new());
-        (TransactionManager::new(wal_writer, log_manager), wal_path)
+        (TransactionManager::new(wal_writer, log_manager), wal_path, test_specific_dir)
     }
 
     #[test]
     fn test_begin_transaction_logs_record() {
-        let (mut manager, wal_path) = setup_test_tm("begin_tx_logs");
+        let (mut manager, wal_path, test_dir_path) = setup_test_tm("begin_tx_logs");
 
         let transaction_result = manager.begin_transaction();
         assert!(transaction_result.is_ok());
@@ -284,12 +301,12 @@ mod tests {
             }
             other => panic!("Expected BeginTransaction, got {:?}", other),
         }
-        cleanup_dir(&PathBuf::from(TEST_WAL_DIR));
+        cleanup_dir(&test_dir_path);
     }
 
     #[test]
     fn test_commit_transaction_writes_correct_log_record() {
-        let (mut manager, wal_path) = setup_test_tm("commit_tx_correct_log");
+        let (mut manager, wal_path, test_dir_path) = setup_test_tm("commit_tx_correct_log");
 
         let begin_tx = manager.begin_transaction().unwrap();
         let tx_id_val = begin_tx.id; // This is TransactionId
@@ -319,12 +336,12 @@ mod tests {
         }
 
         assert!(manager.is_committed(tx_id_val)); // Pass TransactionId
-        cleanup_dir(&PathBuf::from(TEST_WAL_DIR));
+        cleanup_dir(&test_dir_path);
     }
 
     #[test]
     fn test_abort_transaction_logs_record() {
-        let (mut manager, wal_path) = setup_test_tm("abort_tx_logs");
+        let (mut manager, wal_path, test_dir_path) = setup_test_tm("abort_tx_logs");
 
         let begin_tx = manager.begin_transaction().unwrap();
         let tx_id_val = begin_tx.id; // This is TransactionId
@@ -346,36 +363,42 @@ mod tests {
         }
         assert!(!manager.is_committed(tx_id_val)); // Pass TransactionId
         assert!(manager.active_transactions.get(&tx_id_val).is_none()); // Use TransactionId for get
-        cleanup_dir(&PathBuf::from(TEST_WAL_DIR));
+        cleanup_dir(&test_dir_path);
     }
-
 
     #[test]
     fn test_commit_transaction_fails_if_wal_write_fails() {
-        let wal_fail_dir = PathBuf::from(TEST_WAL_DIR).join("commit_fail_dir.wal");
-        cleanup_dir(&wal_fail_dir);
-        fs::create_dir_all(&wal_fail_dir).expect("Should create dir to cause WAL write fail");
+        let base_dir = PathBuf::from(TEST_WAL_BASE_DIR);
+        let test_specific_dir = base_dir.join("commit_fail_dir");
+        if test_specific_dir.exists() {
+            cleanup_dir(&test_specific_dir);
+        }
+        // Do not create the directory, make WalWriter::new use a path that will fail on open/create
+        // To make it fail, we make the *parent* a file, or make the path itself a directory.
+        // Let's make the path itself a directory for WalWriter to fail.
+        fs::create_dir_all(&test_specific_dir).expect("Should create dir to cause WAL write fail");
 
-        let wal_writer = WalWriter::new(wal_fail_dir.clone());
+        let wal_writer = WalWriter::new(test_specific_dir.clone()); // WalWriter will try to open this directory as a file
         let log_manager = Arc::new(LogManager::new());
         let mut manager = TransactionManager::new(wal_writer, log_manager);
 
+        // Begin transaction might also fail if it tries to flush to a directory
         let begin_result = manager.begin_transaction();
         if begin_result.is_ok() {
-            let tx_id_val = begin_result.unwrap().id; // This is TransactionId
+            let tx_id_val = begin_result.unwrap().id;
             let commit_result = manager.commit_transaction();
             assert!(commit_result.is_err(), "Commit should fail due to WAL write error");
-            assert!(!manager.is_committed(tx_id_val)); // Pass TransactionId
+            assert!(!manager.is_committed(tx_id_val));
         } else {
+            // This path is more likely if WalWriter::new doesn't fail but flush does.
             assert!(begin_result.is_err(), "Begin transaction should fail if WAL is broken.");
         }
-
-        cleanup_dir(&PathBuf::from(TEST_WAL_DIR));
+        cleanup_dir(&test_specific_dir); // Clean up the created directory
     }
 
     #[test]
     fn test_prev_lsn_after_begin_transaction() {
-        let (mut manager, _wal_path) = setup_test_tm("prev_lsn_begin");
+        let (mut manager, _wal_path, test_dir_path) = setup_test_tm("prev_lsn_begin");
 
         // LSNs start from 0. First call to next_lsn() in begin_transaction will return 0.
         let expected_begin_lsn = 0;
@@ -392,8 +415,11 @@ mod tests {
         // Verify that the LogManager's counter has advanced.
         // current_lsn() returns the *next* LSN to be allocated if called after fetch_add.
         // So, if 0 was allocated, current_lsn (which loads the atomic) should be 1.
-        assert_eq!(manager.log_manager.current_lsn(), expected_begin_lsn + 1,
-                   "LogManager current_lsn should have advanced past the allocated LSN.");
+        assert_eq!(
+            manager.log_manager.current_lsn(),
+            expected_begin_lsn + 1,
+            "LogManager current_lsn should have advanced past the allocated LSN."
+        );
 
         // Begin another transaction to see LSN increment
         let expected_next_begin_lsn = 1;
@@ -404,9 +430,12 @@ mod tests {
             next_transaction.prev_lsn, expected_next_begin_lsn,
             "Second Transaction.prev_lsn should be updated to the next LSN."
         );
-        assert_eq!(manager.log_manager.current_lsn(), expected_next_begin_lsn + 1,
-                   "LogManager current_lsn should have advanced again.");
+        assert_eq!(
+            manager.log_manager.current_lsn(),
+            expected_next_begin_lsn + 1,
+            "LogManager current_lsn should have advanced again."
+        );
 
-        cleanup_dir(&PathBuf::from(TEST_WAL_DIR));
+        cleanup_dir(&test_dir_path);
     }
 }

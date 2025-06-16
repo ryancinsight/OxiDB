@@ -53,7 +53,8 @@ impl LockManager {
         transaction_id: u64,
         key: &LockTableKey,
         requested_mode: LockType,
-    ) -> Result<(), OxidbError> { // Changed
+    ) -> Result<(), OxidbError> {
+        // Changed
         let key_specific_locks = self.lock_table.entry(key.clone()).or_default();
 
         // Check for conflicting locks held by *other* transactions
@@ -61,7 +62,8 @@ impl LockManager {
             if existing_lock.transaction_id != transaction_id {
                 // Conflict if an existing lock from another transaction is Exclusive
                 if existing_lock.mode == LockType::Exclusive {
-                    return Err(OxidbError::LockConflict { // Changed
+                    return Err(OxidbError::LockConflict {
+                        // Changed
                         key: key.clone(),
                         current_tx: transaction_id,
                         locked_by_tx: Some(existing_lock.transaction_id),
@@ -69,7 +71,8 @@ impl LockManager {
                 }
                 // Conflict if requesting Exclusive and an existing lock from another transaction is Shared
                 if requested_mode == LockType::Exclusive && existing_lock.mode == LockType::Shared {
-                    return Err(OxidbError::LockConflict { // Changed
+                    return Err(OxidbError::LockConflict {
+                        // Changed
                         key: key.clone(),
                         current_tx: transaction_id,
                         locked_by_tx: Some(existing_lock.transaction_id),
@@ -204,7 +207,8 @@ mod tests {
         assert!(manager.acquire_lock(1, &key1, LockType::Exclusive).is_ok());
 
         match manager.acquire_lock(2, &key1, LockType::Exclusive) {
-            Err(OxidbError::LockConflict { key, current_tx, locked_by_tx }) => { // Changed
+            Err(OxidbError::LockConflict { key, current_tx, locked_by_tx }) => {
+                // Changed
                 assert_eq!(key, key1);
                 assert_eq!(current_tx, 2);
                 assert_eq!(locked_by_tx, Some(1));
@@ -221,7 +225,8 @@ mod tests {
         assert!(manager.acquire_lock(1, &key1, LockType::Exclusive).is_ok());
 
         match manager.acquire_lock(2, &key1, LockType::Shared) {
-            Err(OxidbError::LockConflict { key, current_tx, locked_by_tx }) => { // Changed
+            Err(OxidbError::LockConflict { key, current_tx, locked_by_tx }) => {
+                // Changed
                 assert_eq!(key, key1);
                 assert_eq!(current_tx, 2);
                 assert_eq!(locked_by_tx, Some(1));
@@ -266,7 +271,8 @@ mod tests {
 
         // TX3 tries to get Exclusive
         match manager.acquire_lock(3, &key1, LockType::Exclusive) {
-            Err(OxidbError::LockConflict { key, current_tx, locked_by_tx }) => { // Changed
+            Err(OxidbError::LockConflict { key, current_tx, locked_by_tx }) => {
+                // Changed
                 assert_eq!(key, key1);
                 assert_eq!(current_tx, 3);
                 // locked_by_tx could be Some(1) or Some(2) depending on iteration order.
@@ -304,7 +310,8 @@ mod tests {
 
         // TX1 tries to upgrade to Exclusive, should fail due to TX2's Shared lock
         match manager.acquire_lock(1, &key1, LockType::Exclusive) {
-            Err(OxidbError::LockConflict { key, current_tx, locked_by_tx }) => { // Changed
+            Err(OxidbError::LockConflict { key, current_tx, locked_by_tx }) => {
+                // Changed
                 assert_eq!(key, key1);
                 assert_eq!(current_tx, 1);
                 assert_eq!(locked_by_tx, Some(2)); // Conflict with TX2

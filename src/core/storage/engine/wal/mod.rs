@@ -1,6 +1,6 @@
-use crate::core::common::OxidbError;
-use crate::core::common::types::Lsn; // Added Lsn
 use crate::core::common::traits::{DataDeserializer, DataSerializer};
+use crate::core::common::types::Lsn; // Added Lsn
+use crate::core::common::OxidbError;
 use crc32fast::Hasher;
 use std::fs::OpenOptions;
 use std::io::{BufWriter, Read, Write};
@@ -15,28 +15,13 @@ const TRANSACTION_ROLLBACK_OPERATION: u8 = 0x04;
 #[derive(Debug, PartialEq, Clone)]
 pub enum WalEntry {
     /// Represents a 'Put' operation with a key and a value.
-    Put {
-        lsn: Lsn,
-        transaction_id: u64,
-        key: Vec<u8>,
-        value: Vec<u8>,
-    },
+    Put { lsn: Lsn, transaction_id: u64, key: Vec<u8>, value: Vec<u8> },
     /// Represents a 'Delete' operation with a key.
-    Delete {
-        lsn: Lsn,
-        transaction_id: u64,
-        key: Vec<u8>,
-    },
+    Delete { lsn: Lsn, transaction_id: u64, key: Vec<u8> },
     /// Marks the commit of a transaction.
-    TransactionCommit {
-        lsn: Lsn,
-        transaction_id: u64,
-    },
+    TransactionCommit { lsn: Lsn, transaction_id: u64 },
     /// Marks the rollback of a transaction.
-    TransactionRollback {
-        lsn: Lsn,
-        transaction_id: u64,
-    },
+    TransactionRollback { lsn: Lsn, transaction_id: u64 },
 }
 
 impl DataSerializer<WalEntry> for WalEntry {
@@ -99,11 +84,8 @@ mod tests {
             key: b"test_key".to_vec(),
             value: b"test_value".to_vec(),
         };
-        let delete_entry = WalEntry::Delete {
-            lsn: 1,
-            transaction_id: 2,
-            key: b"test_key_delete".to_vec(),
-        };
+        let delete_entry =
+            WalEntry::Delete { lsn: 1, transaction_id: 2, key: b"test_key_delete".to_vec() };
         let commit_entry = WalEntry::TransactionCommit { lsn: 2, transaction_id: 3 };
         let rollback_entry = WalEntry::TransactionRollback { lsn: 3, transaction_id: 4 };
 
@@ -190,17 +172,24 @@ impl WalWriter {
     /// Logs a `WalEntry` to the WAL file.
     /// This involves serializing the entry and appending it to the file.
     /// The write is flushed and synced to disk to ensure durability.
-    pub fn log_entry(&self, entry: &WalEntry) -> Result<(), OxidbError> { // Changed
-        eprintln!("[engine::wal::WalWriter::log_entry] Attempting to log to: {:?}, entry: {:?}", &self.wal_file_path, entry);
-        let file_result = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.wal_file_path);
+    pub fn log_entry(&self, entry: &WalEntry) -> Result<(), OxidbError> {
+        // Changed
+        eprintln!(
+            "[engine::wal::WalWriter::log_entry] Attempting to log to: {:?}, entry: {:?}",
+            &self.wal_file_path, entry
+        );
+        let file_result = OpenOptions::new().create(true).append(true).open(&self.wal_file_path);
 
         if let Err(e) = &file_result {
-            eprintln!("[engine::wal::WalWriter::log_entry] Error opening file {:?}: {}", &self.wal_file_path, e);
+            eprintln!(
+                "[engine::wal::WalWriter::log_entry] Error opening file {:?}: {}",
+                &self.wal_file_path, e
+            );
         } else {
-            eprintln!("[engine::wal::WalWriter::log_entry] Successfully opened/created file: {:?}", &self.wal_file_path);
+            eprintln!(
+                "[engine::wal::WalWriter::log_entry] Successfully opened/created file: {:?}",
+                &self.wal_file_path
+            );
         }
         let file = file_result.map_err(OxidbError::Io)?;
 
@@ -239,14 +228,16 @@ impl DataDeserializer<WalEntry> for WalEntry {
     /// - `Ok(WalEntry)` if deserialization is successful.
     /// - `Err(OxidbError::Io)` for any I/O issues, including unexpected EOF.
     /// - `Err(OxidbError::Deserialization)` for checksum mismatches or unknown operation types.
-    fn deserialize<R: Read>(reader: &mut R) -> Result<WalEntry, OxidbError> { // Changed
+    fn deserialize<R: Read>(reader: &mut R) -> Result<WalEntry, OxidbError> {
+        // Changed
         let mut operation_type_buffer = [0u8; 1];
         match reader.read_exact(&mut operation_type_buffer) {
             Ok(_) => (),
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 // This typically means the WAL file ended cleanly or is empty.
                 // If called when expecting an entry (e.g. mid-recovery), it's an error.
-                return Err(OxidbError::Io(std::io::Error::new( // Changed
+                return Err(OxidbError::Io(std::io::Error::new(
+                    // Changed
                     std::io::ErrorKind::UnexpectedEof,
                     "Reached end of WAL stream while expecting operation type",
                 )));
@@ -266,7 +257,9 @@ impl DataDeserializer<WalEntry> for WalEntry {
                 data_to_checksum.extend_from_slice(&lsn_bytes);
 
                 let mut tx_id_bytes = [0u8; 8];
-                reader.read_exact(&mut tx_id_bytes).map_err(|e| map_eof_error(e, "transaction ID for PUT"))?;
+                reader
+                    .read_exact(&mut tx_id_bytes)
+                    .map_err(|e| map_eof_error(e, "transaction ID for PUT"))?;
                 let transaction_id = u64::from_le_bytes(tx_id_bytes);
                 data_to_checksum.extend_from_slice(&tx_id_bytes);
 
@@ -286,12 +279,16 @@ impl DataDeserializer<WalEntry> for WalEntry {
             }
             DELETE_OPERATION => {
                 let mut lsn_bytes = [0u8; 8];
-                reader.read_exact(&mut lsn_bytes).map_err(|e| map_eof_error(e, "LSN for DELETE"))?;
+                reader
+                    .read_exact(&mut lsn_bytes)
+                    .map_err(|e| map_eof_error(e, "LSN for DELETE"))?;
                 let lsn = u64::from_le_bytes(lsn_bytes);
                 data_to_checksum.extend_from_slice(&lsn_bytes);
 
                 let mut tx_id_bytes = [0u8; 8];
-                reader.read_exact(&mut tx_id_bytes).map_err(|e| map_eof_error(e, "transaction ID for DELETE"))?;
+                reader
+                    .read_exact(&mut tx_id_bytes)
+                    .map_err(|e| map_eof_error(e, "transaction ID for DELETE"))?;
                 let transaction_id = u64::from_le_bytes(tx_id_bytes);
                 data_to_checksum.extend_from_slice(&tx_id_bytes);
 
@@ -305,24 +302,32 @@ impl DataDeserializer<WalEntry> for WalEntry {
             }
             TRANSACTION_COMMIT_OPERATION => {
                 let mut lsn_bytes = [0u8; 8];
-                reader.read_exact(&mut lsn_bytes).map_err(|e| map_eof_error(e, "LSN for COMMIT"))?;
+                reader
+                    .read_exact(&mut lsn_bytes)
+                    .map_err(|e| map_eof_error(e, "LSN for COMMIT"))?;
                 let lsn = u64::from_le_bytes(lsn_bytes);
                 data_to_checksum.extend_from_slice(&lsn_bytes);
 
                 let mut tx_id_bytes = [0u8; 8];
-                reader.read_exact(&mut tx_id_bytes).map_err(|e| map_eof_error(e, "transaction ID for COMMIT"))?;
+                reader
+                    .read_exact(&mut tx_id_bytes)
+                    .map_err(|e| map_eof_error(e, "transaction ID for COMMIT"))?;
                 let transaction_id = u64::from_le_bytes(tx_id_bytes);
                 data_to_checksum.extend_from_slice(&tx_id_bytes);
                 WalEntry::TransactionCommit { lsn, transaction_id }
             }
             TRANSACTION_ROLLBACK_OPERATION => {
                 let mut lsn_bytes = [0u8; 8];
-                reader.read_exact(&mut lsn_bytes).map_err(|e| map_eof_error(e, "LSN for ROLLBACK"))?;
+                reader
+                    .read_exact(&mut lsn_bytes)
+                    .map_err(|e| map_eof_error(e, "LSN for ROLLBACK"))?;
                 let lsn = u64::from_le_bytes(lsn_bytes);
                 data_to_checksum.extend_from_slice(&lsn_bytes);
 
                 let mut tx_id_bytes = [0u8; 8];
-                reader.read_exact(&mut tx_id_bytes).map_err(|e| map_eof_error(e, "transaction ID for ROLLBACK"))?;
+                reader
+                    .read_exact(&mut tx_id_bytes)
+                    .map_err(|e| map_eof_error(e, "transaction ID for ROLLBACK"))?;
                 let transaction_id = u64::from_le_bytes(tx_id_bytes);
                 data_to_checksum.extend_from_slice(&tx_id_bytes);
                 WalEntry::TransactionRollback { lsn, transaction_id }
@@ -344,7 +349,8 @@ impl DataDeserializer<WalEntry> for WalEntry {
         let calculated_checksum = hasher.finalize();
 
         if expected_checksum != calculated_checksum {
-            return Err(OxidbError::Deserialization("WAL entry checksum mismatch".to_string())); // Changed
+            return Err(OxidbError::Deserialization("WAL entry checksum mismatch".to_string()));
+            // Changed
         }
 
         Ok(entry)
@@ -352,9 +358,11 @@ impl DataDeserializer<WalEntry> for WalEntry {
 }
 
 // Helper function to map EOF errors for deserialization steps
-fn map_eof_error(e: std::io::Error, context: &str) -> OxidbError { // Changed
+fn map_eof_error(e: std::io::Error, context: &str) -> OxidbError {
+    // Changed
     if e.kind() == std::io::ErrorKind::UnexpectedEof {
-        OxidbError::Io(std::io::Error::new( // Changed
+        OxidbError::Io(std::io::Error::new(
+            // Changed
             std::io::ErrorKind::UnexpectedEof,
             format!("Reached end of WAL stream while expecting {}", context),
         ))
@@ -363,10 +371,13 @@ fn map_eof_error(e: std::io::Error, context: &str) -> OxidbError { // Changed
     }
 }
 
-fn map_deserialization_eof(e: OxidbError, context: &str) -> OxidbError { // Changed
-    if let OxidbError::Io(io_err) = &e { // Changed
+fn map_deserialization_eof(e: OxidbError, context: &str) -> OxidbError {
+    // Changed
+    if let OxidbError::Io(io_err) = &e {
+        // Changed
         if io_err.kind() == std::io::ErrorKind::UnexpectedEof {
-            return OxidbError::Io(std::io::Error::new( // Changed
+            return OxidbError::Io(std::io::Error::new(
+                // Changed
                 std::io::ErrorKind::UnexpectedEof,
                 format!("Reached end of WAL stream while expecting {}", context),
             ));

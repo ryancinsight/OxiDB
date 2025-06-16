@@ -27,7 +27,8 @@ impl HashIndex {
     ///
     /// The actual index file will be named `[name].[DEFAULT_INDEX_FILE_EXTENSION]`
     /// within the `base_path`.
-    pub fn new(name: String, base_path: &Path) -> Result<Self, OxidbError> { // Changed
+    pub fn new(name: String, base_path: &Path) -> Result<Self, OxidbError> {
+        // Changed
         let mut file_path = base_path.to_path_buf();
         file_path.push(format!("{}.{}", name, DEFAULT_INDEX_FILE_EXTENSION));
 
@@ -36,7 +37,8 @@ impl HashIndex {
         // Try to load existing index data if the file exists
         if index.file_path.exists() {
             index.load().map_err(|e| {
-                OxidbError::Index(format!("Failed to load index {}: {}", index.name, e)) // Changed
+                OxidbError::Index(format!("Failed to load index {}: {}", index.name, e))
+                // Changed
             })?;
         }
 
@@ -49,7 +51,8 @@ impl Index for HashIndex {
         &self.name
     }
 
-    fn insert(&mut self, value: &Value, primary_key: &PrimaryKey) -> Result<(), OxidbError> { // Changed
+    fn insert(&mut self, value: &Value, primary_key: &PrimaryKey) -> Result<(), OxidbError> {
+        // Changed
         eprintln!("[HashIndex::insert] Top: value: {:?}, pk: {:?}", value, primary_key);
         eprintln!("[HashIndex::insert] Store BEFORE: {:?}", self.store);
         let primary_keys = self.store.entry(value.clone()).or_default();
@@ -63,7 +66,12 @@ impl Index for HashIndex {
         Ok(())
     }
 
-    fn delete(&mut self, value: &Value, primary_key: Option<&PrimaryKey>) -> Result<(), OxidbError> { // Changed
+    fn delete(
+        &mut self,
+        value: &Value,
+        primary_key: Option<&PrimaryKey>,
+    ) -> Result<(), OxidbError> {
+        // Changed
         if let Some(primary_keys) = self.store.get_mut(value) {
             if let Some(pk_to_delete) = primary_key {
                 primary_keys.retain(|pk| pk != pk_to_delete);
@@ -79,13 +87,15 @@ impl Index for HashIndex {
         Ok(())
     }
 
-    fn find(&self, value: &Value) -> Result<Option<Vec<PrimaryKey>>, OxidbError> { // Changed
+    fn find(&self, value: &Value) -> Result<Option<Vec<PrimaryKey>>, OxidbError> {
+        // Changed
         let result = self.store.get(value).cloned();
         eprintln!("[HashIndex::find] value: {:?}, found_pks: {:?}", value, result);
         Ok(result)
     }
 
-    fn save(&self) -> Result<(), OxidbError> { // Changed
+    fn save(&self) -> Result<(), OxidbError> {
+        // Changed
         let file = OpenOptions::new()
             .write(true)
             .create(true)
@@ -94,11 +104,13 @@ impl Index for HashIndex {
             .map_err(OxidbError::Io)?; // Changed
         let writer = BufWriter::new(file);
         bincode::serialize_into(writer, &self.store).map_err(|e| {
-            OxidbError::Serialization(format!("Failed to serialize index data: {}", e)) // Changed
+            OxidbError::Serialization(format!("Failed to serialize index data: {}", e))
+            // Changed
         })
     }
 
-    fn load(&mut self) -> Result<(), OxidbError> { // Changed
+    fn load(&mut self) -> Result<(), OxidbError> {
+        // Changed
         if !self.file_path.exists() {
             // If the file doesn't exist, it's not an error; it just means no data to load.
             // Initialize with an empty store, which is already the case.
@@ -106,7 +118,8 @@ impl Index for HashIndex {
             return Ok(());
         }
         let file = File::open(&self.file_path).map_err(OxidbError::Io)?; // Changed
-        if file.metadata().map_err(OxidbError::Io)?.len() == 0 { // Changed
+        if file.metadata().map_err(OxidbError::Io)?.len() == 0 {
+            // Changed
             // File is empty, treat as no data.
             self.store = HashMap::new();
             return Ok(());
@@ -125,10 +138,16 @@ impl Index for HashIndex {
                 // rather than propagating error, to prevent app crash on corrupted index.
                 // However, for testing, propagating might be better to catch issues.
                 // The original code propagated. Let's stick to that but ensure store is empty.
-                eprintln!("Failed to deserialize index data for {}: {}, index will be empty.", self.name, e);
+                eprintln!(
+                    "Failed to deserialize index data for {}: {}, index will be empty.",
+                    self.name, e
+                );
                 // self.store is already empty.
                 // Propagate the error as per original logic to make failures visible in tests.
-                Err(OxidbError::Deserialization(format!("Failed to deserialize index data for {}: {}", self.name, e)))
+                Err(OxidbError::Deserialization(format!(
+                    "Failed to deserialize index data for {}: {}",
+                    self.name, e
+                )))
             }
         }
     }
@@ -138,7 +157,8 @@ impl Index for HashIndex {
         old_value_for_index: &Value,
         new_value_for_index: &Value,
         primary_key: &PrimaryKey,
-    ) -> Result<(), OxidbError> { // Changed
+    ) -> Result<(), OxidbError> {
+        // Changed
         if old_value_for_index == new_value_for_index {
             // If the indexed value hasn't changed, no update to the index is needed for this specific key.
             // However, ensure the primary_key is associated with new_value_for_index if it wasn't before
@@ -193,7 +213,8 @@ mod tests {
     }
 
     #[test]
-    fn test_new_empty_index() -> Result<(), OxidbError> { // Changed
+    fn test_new_empty_index() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let index = HashIndex::new("test_idx".to_string(), temp_dir.path())?;
 
@@ -203,7 +224,8 @@ mod tests {
     }
 
     #[test]
-    fn test_new_loads_existing() -> Result<(), OxidbError> { // Changed
+    fn test_new_loads_existing() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let index_name = "existing_idx".to_string();
         let value1 = val("value1");
@@ -227,7 +249,8 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_and_find() -> Result<(), OxidbError> { // Changed
+    fn test_insert_and_find() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("insert_idx".to_string(), temp_dir.path())?;
 
@@ -261,7 +284,8 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_duplicate_pk_for_same_value() -> Result<(), OxidbError> { // Changed
+    fn test_insert_duplicate_pk_for_same_value() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("duplicate_pk_idx".to_string(), temp_dir.path())?;
         let value1 = val("value1");
@@ -277,7 +301,8 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_specific_pk_from_multiple() -> Result<(), OxidbError> { // Changed
+    fn test_delete_specific_pk_from_multiple() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("delete_specific_pk_idx".to_string(), temp_dir.path())?;
         let value1 = val("value1");
@@ -295,7 +320,8 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_last_pk_removes_value() -> Result<(), OxidbError> { // Changed
+    fn test_delete_last_pk_removes_value() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("delete_last_pk_idx".to_string(), temp_dir.path())?;
         let value1 = val("value1");
@@ -312,7 +338,8 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_all_pks_for_value() -> Result<(), OxidbError> { // Changed
+    fn test_delete_all_pks_for_value() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("delete_all_pks_idx".to_string(), temp_dir.path())?;
         let value1 = val("value1");
@@ -331,7 +358,8 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_non_existent_value() -> Result<(), OxidbError> { // Changed
+    fn test_delete_non_existent_value() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("delete_non_value_idx".to_string(), temp_dir.path())?;
         let value1 = val("value1"); // Not inserted
@@ -342,7 +370,8 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_non_existent_pk() -> Result<(), OxidbError> { // Changed
+    fn test_delete_non_existent_pk() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("delete_non_pk_idx".to_string(), temp_dir.path())?;
         let value1 = val("value1");
@@ -358,7 +387,8 @@ mod tests {
     }
 
     #[test]
-    fn test_save_and_load_persistence() -> Result<(), OxidbError> { // Changed
+    fn test_save_and_load_persistence() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir for persistence test");
         let index_name = "persistence_idx".to_string();
         let index_path = temp_dir.path();
@@ -397,7 +427,8 @@ mod tests {
     }
 
     #[test]
-    fn test_load_from_empty_file() -> Result<(), OxidbError> { // Changed
+    fn test_load_from_empty_file() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let index_name = "empty_file_idx".to_string();
         let index_file_path =
@@ -415,7 +446,8 @@ mod tests {
     }
 
     #[test]
-    fn test_load_from_non_existent_file() -> Result<(), OxidbError> { // Changed
+    fn test_load_from_non_existent_file() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         // HashIndex::new will attempt to load, but file won't exist.
         let index = HashIndex::new("non_existent_file_idx".to_string(), temp_dir.path())?;
@@ -424,7 +456,8 @@ mod tests {
     }
 
     #[test]
-    fn test_index_update_value_changed() -> Result<(), OxidbError> { // Changed
+    fn test_index_update_value_changed() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("update_idx".to_string(), temp_dir.path())?;
 
@@ -450,7 +483,8 @@ mod tests {
     }
 
     #[test]
-    fn test_index_update_value_unchanged() -> Result<(), OxidbError> { // Changed
+    fn test_index_update_value_unchanged() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("update_unchanged_idx".to_string(), temp_dir.path())?;
 
@@ -479,7 +513,8 @@ mod tests {
     }
 
     #[test]
-    fn test_index_update_multiple_pks_one_changes() -> Result<(), OxidbError> { // Changed
+    fn test_index_update_multiple_pks_one_changes() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("update_multi_pk_idx".to_string(), temp_dir.path())?;
 
@@ -507,7 +542,8 @@ mod tests {
     }
 
     #[test]
-    fn test_index_update_from_non_existent_old_value() -> Result<(), OxidbError> { // Changed
+    fn test_index_update_from_non_existent_old_value() -> Result<(), OxidbError> {
+        // Changed
         let temp_dir = tempdir().expect("Failed to create temp dir");
         let mut index = HashIndex::new("update_non_old_idx".to_string(), temp_dir.path())?;
 

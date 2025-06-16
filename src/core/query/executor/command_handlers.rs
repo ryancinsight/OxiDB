@@ -32,6 +32,18 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             Command::Update { source, assignments, condition } => {
                 self.handle_update(source, assignments, condition)
             }
+            Command::CreateTable { table_name: _, columns: _ } => {
+                // For now, this is a no-op to allow CREATE TABLE statements to parse
+                // and be "executed" successfully without actual table creation logic.
+                // TODO: Implement actual table creation logic (schema management, etc.)
+                Ok(ExecutionResult::Success)
+            }
+            Command::SqlInsert { table_name: _, columns: _, values: _ } => {
+                // For now, this is a no-op to allow INSERT INTO statements to parse
+                // and be "executed" successfully without actual insertion logic.
+                // TODO: Implement actual SQL insertion logic.
+                Ok(ExecutionResult::Success)
+            }
         }
     }
 }

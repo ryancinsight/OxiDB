@@ -54,18 +54,23 @@ pub struct Config {
 fn default_database_file_path() -> String {
     "oxidb.db".to_string()
 } // Added
+/// Returns the default index base path.
 fn default_index_base_path() -> String {
     "oxidb_indexes/".to_string()
 } // Added
+/// Returns the default WAL file path.
 fn default_wal_file_path() -> String {
     "oxidb.wal".to_string()
 }
+/// Returns the default WAL enabled status.
 fn default_wal_enabled() -> bool {
     true
 }
+/// Returns the default cache size in MB.
 fn default_cache_size_mb() -> usize {
     64
 }
+/// Returns the default isolation level.
 fn default_isolation_level() -> String {
     "Serializable".to_string()
 }
@@ -98,7 +103,8 @@ impl Config {
     pub fn load_from_file(path: &Path) -> Result<Self, OxidbError> {
         match fs::read_to_string(path) {
             Ok(contents) => toml::from_str(&contents).map_err(|e| {
-                OxidbError::Configuration(format!( // Changed
+                OxidbError::Configuration(format!(
+                    // Changed
                     "Failed to parse config file '{}': {}",
                     path.display(),
                     e
@@ -229,7 +235,8 @@ mod tests {
 
         let result = Config::load_from_file(temp_file.path());
         assert!(result.is_err());
-        if let Err(OxidbError::Configuration(msg)) = result { // Changed
+        if let Err(OxidbError::Configuration(msg)) = result {
+            // Changed
             assert!(msg.contains("Failed to parse config file"));
         } else {
             panic!("Expected OxidbError::Configuration, got {:?}", result); // Changed

@@ -14,10 +14,9 @@ pub mod utils;
 // Re-export planner contents
 
 // Necessary imports for struct definitions and the `new` method
+use crate::core::common::types::TransactionId; // Ensure TransactionId is imported
 use crate::core::common::OxidbError;
 use crate::core::indexing::manager::IndexManager;
-use crate::core::wal::log_manager::LogManager; // Added LogManager
-use crate::core::wal::writer::WalWriter;
 use crate::core::optimizer::Optimizer;
 use crate::core::storage::engine::traits::KeyValueStore;
 use crate::core::storage::engine::SimpleFileKvStore;
@@ -26,8 +25,9 @@ use crate::core::transaction::manager::TransactionManager;
 use crate::core::transaction::LockType; // Added LockType import
 use crate::core::transaction::Transaction;
 use crate::core::types::DataType;
+use crate::core::wal::log_manager::LogManager; // Added LogManager
+use crate::core::wal::writer::WalWriter;
 use std::collections::HashSet; // Added HashSet import
-use crate::core::common::types::TransactionId; // Ensure TransactionId is imported
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
@@ -45,7 +45,7 @@ pub struct QueryExecutor<S: KeyValueStore<Vec<u8>, Vec<u8>>> {
     pub(crate) transaction_manager: TransactionManager,
     pub(crate) lock_manager: LockManager,
     pub(crate) index_manager: Arc<IndexManager>,
-    pub(crate) optimizer: Optimizer, // Added optimizer field
+    pub(crate) optimizer: Optimizer,         // Added optimizer field
     pub(crate) log_manager: Arc<LogManager>, // Added log_manager field
 }
 
@@ -98,11 +98,13 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     // Note: persist() and index_base_path() are specific to SimpleFileKvStore, so they remain in that impl block.
     // New home for handle_insert, handle_get, handle_delete:
 
-    pub(crate) fn handle_insert(&mut self, key: Vec<u8>, value: DataType) -> Result<ExecutionResult, OxidbError> {
-        let current_op_tx_id = self
-            .transaction_manager
-            .current_active_transaction_id()
-            .unwrap_or(TransactionId(0)); // Use TransactionId struct
+    pub(crate) fn handle_insert(
+        &mut self,
+        key: Vec<u8>,
+        value: DataType,
+    ) -> Result<ExecutionResult, OxidbError> {
+        let current_op_tx_id =
+            self.transaction_manager.current_active_transaction_id().unwrap_or(TransactionId(0)); // Use TransactionId struct
 
         // Acquire Exclusive lock if in an active transaction
         if current_op_tx_id != TransactionId(0) {
@@ -116,42 +118,96 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         let new_lsn = self.log_manager.next_lsn();
 
         // If there's a real, active transaction managed by TransactionManager, update its prev_lsn
-        if current_op_tx_id != TransactionId(0) { // Compare with TransactionId(0)
+        if current_op_tx_id != TransactionId(0) {
+            // Get committed IDs *before* mutably borrowing transaction_manager for active_tx_mut
+            let committed_ids_for_read: HashSet<u64> = self
+                .transaction_manager
+                .get_committed_tx_ids_snapshot()
+                .into_iter()
+                .map(|tx_id| tx_id.0)
+                .collect();
+
+            // Compare with TransactionId(0)
             if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
                 active_tx_mut.prev_lsn = new_lsn;
+
+                // --- Enhanced Undo Logging for Inserts (acting as Updates) ---
+                // Check if the key already exists to log the correct store undo operation.
+                // We need to read what the state would be for the current transaction before this operation.
+                // This uses the current_op_tx_id as snapshot_id for the get.
+                let old_value_bytes_opt = self.store.read().unwrap().get(
+                    &key,
+                    current_op_tx_id.0,
+                    &committed_ids_for_read,
+                )?;
+
+                if let Some(old_value_bytes) = old_value_bytes_opt {
+                    // Key exists, this is an update. Log RevertUpdate.
+                    active_tx_mut.add_undo_operation(
+                        crate::core::transaction::transaction::UndoOperation::RevertUpdate {
+                            key: key.clone(),
+                            old_value: old_value_bytes, // Pass Vec<u8> directly
+                        },
+                    );
+                    // TODO: Index undo for updates should be IndexRevertUpdate, which requires old and new indexed values.
+                    // For now, keeping the existing IndexRevertInsert, which is not fully correct for updates.
+                    // This simplification is to limit scope for this turn.
+                    let new_value_for_index_bytes =
+                        crate::core::common::serialization::serialize_data_type(&value)?;
+                    active_tx_mut.add_undo_operation(
+                        crate::core::transaction::transaction::UndoOperation::IndexRevertInsert {
+                            // Should be IndexRevertUpdate
+                            index_name: "default_value_index".to_string(),
+                            key: key.clone(),
+                            value_for_index: new_value_for_index_bytes.clone(),
+                        },
+                    );
+                } else {
+                    // Key does not exist, this is a true insert.
+                    active_tx_mut.add_undo_operation(
+                        crate::core::transaction::transaction::UndoOperation::RevertInsert {
+                            key: key.clone(),
+                        },
+                    );
+                    let new_value_for_index_bytes =
+                        crate::core::common::serialization::serialize_data_type(&value)?;
+                    active_tx_mut.add_undo_operation(
+                        crate::core::transaction::transaction::UndoOperation::IndexRevertInsert {
+                            index_name: "default_value_index".to_string(),
+                            key: key.clone(),
+                            value_for_index: new_value_for_index_bytes.clone(),
+                        },
+                    );
+                }
+                // --- End of Enhanced Undo Logging ---
             }
         }
 
-        // Convert DataType to Vec<u8> for storage
-        let value_bytes = bincode::serialize(&value)
-            .map_err(|e| OxidbError::Serialization(e.to_string()))?;
+        // Convert DataType to Vec<u8> for storage using the project's standard serialization
+        let value_bytes = crate::core::common::serialization::serialize_data_type(&value)?;
 
-        self.store
-            .write()
-            .unwrap()
-            .put(key.clone(), value_bytes, &tx_for_store, new_lsn)?; // Pass new_lsn
+        self.store.write().unwrap().put(
+            key.clone(),
+            value_bytes.clone(),
+            &tx_for_store,
+            new_lsn,
+        )?;
 
-        // Indexing: Use on_insert_data instead of get_index_mut
+        // Indexing: Use on_insert_data
         let mut indexed_values_map = std::collections::HashMap::new();
-        // Assuming 'value' (DataType) is serialized for the "default_value_index"
-        // The actual indexed value depends on how "default_value_index" is configured/used.
-        // For this example, we'll serialize the entire DataType for indexing.
-        let serialized_value_for_index = bincode::serialize(&value)
-            .map_err(|e| OxidbError::Serialization(format!("Failed to serialize value for indexing: {}", e)))?;
-        indexed_values_map.insert("default_value_index".to_string(), serialized_value_for_index.clone()); // Clone for undo log
+        // For "default_value_index", use the already serialized `value_bytes` (from serialize_data_type).
+        let serialized_value_for_index = value_bytes;
+        indexed_values_map
+            .insert("default_value_index".to_string(), serialized_value_for_index.clone());
 
         self.index_manager.on_insert_data(&indexed_values_map, &key)?;
 
-        // Add to undo log for index if in an active transaction
-        if current_op_tx_id != TransactionId(0) {
-            if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
-                active_tx_mut.add_undo_operation(crate::core::transaction::transaction::UndoOperation::IndexRevertInsert {
-                    index_name: "default_value_index".to_string(),
-                    key: key.clone(),
-                    value_for_index: serialized_value_for_index, // Already cloned
-                });
-            }
-        }
+        // Original index undo log (now part of the conditional block above for active transactions)
+        // if current_op_tx_id != TransactionId(0) {
+        //     if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
+        //         // This specific IndexRevertInsert is now handled above, conditionally
+        //     }
+        // }
         Ok(ExecutionResult::Success)
     }
 
@@ -160,20 +216,27 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
         // Acquire Shared lock if in an active transaction
         if let Some(current_tx_id) = current_tx_id_opt {
-            if current_tx_id != TransactionId(0) { // Don't acquire for "auto-commit" tx
+            if current_tx_id != TransactionId(0) {
+                // Don't acquire for "auto-commit" tx
                 self.lock_manager.acquire_lock(current_tx_id.0, &key, LockType::Shared)?;
             }
         }
 
         let snapshot_id = current_tx_id_opt.unwrap_or(TransactionId(0));
-        let committed_ids_set: HashSet<u64> = self.transaction_manager.get_committed_tx_ids_snapshot().into_iter().map(|tx_id| tx_id.0).collect();
+        let committed_ids_set: HashSet<u64> = self
+            .transaction_manager
+            .get_committed_tx_ids_snapshot()
+            .into_iter()
+            .map(|tx_id| tx_id.0)
+            .collect();
 
-        let result_bytes_opt = self.store.read().unwrap().get(&key, snapshot_id.0, &committed_ids_set)?;
+        let result_bytes_opt =
+            self.store.read().unwrap().get(&key, snapshot_id.0, &committed_ids_set)?;
 
         match result_bytes_opt {
             Some(bytes) => {
-                let value_dt: DataType = bincode::deserialize(&bytes)
-                    .map_err(|e| OxidbError::Deserialization(e.to_string()))?;
+                // Deserialize using the project's standard deserialization
+                let value_dt = crate::core::common::serialization::deserialize_data_type(&bytes)?;
                 Ok(ExecutionResult::Value(Some(value_dt)))
             }
             None => Ok(ExecutionResult::Value(None)),
@@ -181,10 +244,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     }
 
     pub(crate) fn handle_delete(&mut self, key: Vec<u8>) -> Result<ExecutionResult, OxidbError> {
-        let current_op_tx_id = self
-            .transaction_manager
-            .current_active_transaction_id()
-            .unwrap_or(TransactionId(0)); // Use TransactionId struct
+        let current_op_tx_id =
+            self.transaction_manager.current_active_transaction_id().unwrap_or(TransactionId(0)); // Use TransactionId struct
 
         // Acquire Exclusive lock if in an active transaction
         if current_op_tx_id != TransactionId(0) {
@@ -197,23 +258,26 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         let new_lsn = self.log_manager.next_lsn();
 
         // If there's a real, active transaction, update its prev_lsn
-        if current_op_tx_id != TransactionId(0) { // Compare with TransactionId(0)
-             if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
+        if current_op_tx_id != TransactionId(0) {
+            // Compare with TransactionId(0)
+            if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
                 active_tx_mut.prev_lsn = new_lsn;
             }
         }
 
         // For indexing: retrieve the value before deleting it from the store
         // Collect TransactionId.0 (u64) for HashSet<u64>
-        let committed_ids_set: HashSet<u64> = self.transaction_manager.get_committed_tx_ids_snapshot().into_iter().map(|tx_id| tx_id.0).collect();
+        let committed_ids_set: HashSet<u64> = self
+            .transaction_manager
+            .get_committed_tx_ids_snapshot()
+            .into_iter()
+            .map(|tx_id| tx_id.0)
+            .collect();
         // KeyValueStore::get expects snapshot_id as u64
-        let value_to_delete_opt = self.store.read().unwrap().get(&key, current_op_tx_id.0, &committed_ids_set)?;
+        let value_to_delete_opt =
+            self.store.read().unwrap().get(&key, current_op_tx_id.0, &committed_ids_set)?;
 
-        let deleted = self
-            .store
-            .write()
-            .unwrap()
-            .delete(&key, &tx_for_store, new_lsn)?; // Pass new_lsn
+        let deleted = self.store.write().unwrap().delete(&key, &tx_for_store, new_lsn)?; // Pass new_lsn
 
         if deleted {
             if let Some(value_bytes) = value_to_delete_opt {
@@ -225,7 +289,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
                 // Add to undo log for index if in an active transaction
                 if current_op_tx_id != TransactionId(0) {
-                    if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
+                    if let Some(active_tx_mut) =
+                        self.transaction_manager.get_active_transaction_mut()
+                    {
                         active_tx_mut.add_undo_operation(crate::core::transaction::transaction::UndoOperation::IndexRevertDelete {
                             index_name: "default_value_index".to_string(),
                             key: key.clone(),

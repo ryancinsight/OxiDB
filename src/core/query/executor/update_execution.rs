@@ -1,8 +1,8 @@
 use super::{ExecutionResult, QueryExecutor};
-use crate::core::common::OxidbError; // Changed
 use crate::core::common::serialization::{deserialize_data_type, serialize_data_type};
-use crate::core::query::commands::{Key, SqlAssignment, SqlCondition};
 use crate::core::common::types::TransactionId; // Added TransactionId import
+use crate::core::common::OxidbError; // Changed
+use crate::core::query::commands::{Key, SqlAssignment, SqlCondition};
 use crate::core::query::sql::ast::{
     Condition as AstCondition, SelectColumn, Statement as AstStatement,
 };
@@ -28,7 +28,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             plan_snapshot_id = active_tx_for_plan.id;
             plan_committed_ids_vec = self.transaction_manager.get_committed_tx_ids_snapshot();
         } else {
-            plan_snapshot_id = self.transaction_manager.current_active_transaction_id().unwrap_or(TransactionId(0));
+            plan_snapshot_id = self
+                .transaction_manager
+                .current_active_transaction_id()
+                .unwrap_or(TransactionId(0));
             plan_committed_ids_vec = self.transaction_manager.get_committed_tx_ids_snapshot();
         }
         let plan_committed_ids_u64_set =
@@ -67,7 +70,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         for tuple_result in rows_iter {
             let tuple = tuple_result?;
             if tuple.is_empty() {
-                return Err(OxidbError::Internal( // Changed
+                return Err(OxidbError::Internal(
+                    // Changed
                     "Execution plan for UPDATE yielded empty tuple.".to_string(),
                 ));
             }
@@ -75,10 +79,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 DataType::String(s) => keys_to_update.push(s.into_bytes()),
                 DataType::Integer(i) => keys_to_update.push(i.to_le_bytes().to_vec()),
                 val => {
-                    return Err(OxidbError::Type(format!( // Changed
+                    return Err(OxidbError::Type(format!(
+                        // Changed
                         "Unsupported key type {:?} from UPDATE selection plan.",
                         val
-                    )))
+                    )));
                 }
             }
         }
@@ -97,11 +102,21 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
             if let Some(active_tx) = self.transaction_manager.get_active_transaction() {
                 current_op_tx_id = active_tx.id;
-                committed_ids_for_get_u64_set = self.transaction_manager.get_committed_tx_ids_snapshot().into_iter().map(|id| id.0).collect();
+                committed_ids_for_get_u64_set = self
+                    .transaction_manager
+                    .get_committed_tx_ids_snapshot()
+                    .into_iter()
+                    .map(|id| id.0)
+                    .collect();
                 is_auto_commit = false;
             } else {
                 current_op_tx_id = TransactionId(0);
-                committed_ids_for_get_u64_set = self.transaction_manager.get_committed_tx_ids_snapshot().into_iter().map(|id| id.0).collect();
+                committed_ids_for_get_u64_set = self
+                    .transaction_manager
+                    .get_committed_tx_ids_snapshot()
+                    .into_iter()
+                    .map(|id| id.0)
+                    .collect();
                 is_auto_commit = true;
             }
 
@@ -111,8 +126,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 crate::core::transaction::lock_manager::LockType::Exclusive,
             )?;
 
-            let current_value_bytes_opt =
-                self.store.read().unwrap().get(&key, current_op_tx_id.0, &committed_ids_for_get_u64_set)?;
+            let current_value_bytes_opt = self.store.read().unwrap().get(
+                &key,
+                current_op_tx_id.0,
+                &committed_ids_for_get_u64_set,
+            )?;
 
             if let Some(current_value_bytes) = current_value_bytes_opt {
                 let mut current_data_type = deserialize_data_type(&current_value_bytes)?;
@@ -128,8 +146,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     if is_auto_commit {
                         self.lock_manager.release_locks(current_op_tx_id.0); // Use .0 for u64
                     }
-                    return Err(OxidbError::NotImplemented{feature:
-                        "Cannot apply field assignments to non-Map DataType".to_string(),
+                    return Err(OxidbError::NotImplemented {
+                        feature: "Cannot apply field assignments to non-Map DataType".to_string(),
                     });
                 }
 
@@ -184,7 +202,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 // If there's a real active transaction, update its prev_lsn
                 // This check is slightly different from insert/delete as active_tx_mut is already fetched above
                 if !is_auto_commit {
-                    if let Some(active_tx_mut_for_lsn) = self.transaction_manager.get_active_transaction_mut() {
+                    if let Some(active_tx_mut_for_lsn) =
+                        self.transaction_manager.get_active_transaction_mut()
+                    {
                         active_tx_mut_for_lsn.prev_lsn = new_lsn;
                     }
                 }
@@ -205,7 +225,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                             transaction_id: current_op_tx_id.0, // Use .0 for u64
                         };
                     self.store.write().unwrap().log_wal_entry(&commit_entry)?;
-                    self.transaction_manager.add_committed_tx_id(current_op_tx_id); // Pass TransactionId
+                    self.transaction_manager.add_committed_tx_id(current_op_tx_id);
+                    // Pass TransactionId
                 }
                 _updated_count += 1;
             }

@@ -3,10 +3,10 @@ use crate::core::config::Config;
 use crate::core::query::commands::{Command, Key};
 use crate::core::query::executor::{ExecutionResult, QueryExecutor};
 use crate::core::query::parser::parse_query_string;
-use crate::core::wal::log_manager::LogManager; // Added for LogManager
-use crate::core::wal::writer::WalWriter;
 use crate::core::storage::engine::SimpleFileKvStore;
 use crate::core::types::DataType;
+use crate::core::wal::log_manager::LogManager; // Added for LogManager
+use crate::core::wal::writer::WalWriter;
 use serde_json;
 use std::path::{Path, PathBuf};
 use std::sync::Arc; // Added for Arc
@@ -17,6 +17,7 @@ use std::sync::Arc; // Added for Arc
 /// which in turn uses a `SimpleFileKvStore` for persistence.
 #[derive(Debug)]
 pub struct Oxidb {
+    /// The query executor responsible for handling database operations.
     executor: QueryExecutor<SimpleFileKvStore>,
 }
 
@@ -37,7 +38,7 @@ impl Oxidb {
         let store = SimpleFileKvStore::new(config.database_path())?;
         let wal_writer = WalWriter::new(config.wal_path());
         let log_manager = Arc::new(LogManager::new()); // Create LogManager
-        // QueryExecutor::new will need to be updated to accept log_manager
+                                                       // QueryExecutor::new will need to be updated to accept log_manager
         let executor = QueryExecutor::new(store, config.index_path(), wal_writer, log_manager)?;
         Ok(Self { executor })
     }
@@ -47,13 +48,15 @@ impl Oxidb {
     ///
     /// # Arguments
     /// * `db_path` - A path-like object (e.g., `&str`, `PathBuf`) specifying the location
-    ///            of the database file. This will override `database_file_path` in the default config.
+    ///  of the database file. This will override `database_file_path` in the default config.
     ///
     /// # Errors
     /// Returns `OxidbError` if the store cannot be initialized or the executor cannot be created.
     pub fn new(db_path: impl AsRef<Path>) -> Result<Self, OxidbError> {
-        let mut config = Config::default();
-        config.database_file_path = db_path.as_ref().to_string_lossy().into_owned();
+        let config = Config {
+            database_file_path: db_path.as_ref().to_string_lossy().into_owned(),
+            ..Default::default()
+        };
         // index_base_path will remain its default relative to the execution directory ("oxidb_indexes/")
         // or could be made relative to db_path if desired, for example:
         // if let Some(parent) = db_path.as_ref().parent() {
@@ -98,7 +101,8 @@ impl Oxidb {
         match self.executor.execute_command(command) {
             // Use self.executor
             Ok(ExecutionResult::Success) => Ok(()),
-            Ok(unexpected_result) => Err(OxidbError::Internal(format!( // Changed to Internal
+            Ok(unexpected_result) => Err(OxidbError::Internal(format!(
+                // Changed to Internal
                 "Insert: Expected Success, got {:?}",
                 unexpected_result
             ))),
@@ -138,7 +142,8 @@ impl Oxidb {
                         .unwrap_or_else(|e| format!("Error serializing JsonBlob: {}", e)),
                 }))
             }
-            Ok(unexpected_result) => Err(OxidbError::Internal(format!( // Changed to Internal
+            Ok(unexpected_result) => Err(OxidbError::Internal(format!(
+                // Changed to Internal
                 "Get: Expected Value, got {:?}",
                 unexpected_result
             ))),
@@ -164,7 +169,8 @@ impl Oxidb {
         match self.executor.execute_command(command) {
             // Use self.executor
             Ok(ExecutionResult::Deleted(status)) => Ok(status),
-            Ok(unexpected_result) => Err(OxidbError::Internal(format!( // Changed to Internal
+            Ok(unexpected_result) => Err(OxidbError::Internal(format!(
+                // Changed to Internal
                 "Delete: Expected Deleted, got {:?}",
                 unexpected_result
             ))),
@@ -274,6 +280,7 @@ impl Oxidb {
     }
 
     /// Returns the path to the main database file.
+    #[allow(clippy::unwrap_used)] // Panicking on poisoned lock is acceptable here
     pub fn database_path(&self) -> PathBuf {
         self.executor.store.read().unwrap().file_path().to_path_buf()
     }

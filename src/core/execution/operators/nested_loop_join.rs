@@ -6,30 +6,57 @@ use std::sync::Arc;
 // as NestedLoopJoinOperator itself doesn't directly use them. Its inputs might.
 
 // Define the actual iterator struct to be returned by NestedLoopJoinOperator::execute
+/// Internal iterator for `NestedLoopJoinOperator`.
+///
+/// This struct manages the state of the nested loop join iteration,
+/// including the current left tuple, the buffer of right tuples, and the join predicate.
 struct NestedLoopJoinIteratorInternal {
+    /// Iterator for the left input of the join.
     left_input_iter: Box<dyn Iterator<Item = Result<Tuple, OxidbError>> + Send + Sync>, // Changed
+    /// The join predicate, if any.
     join_predicate: Option<JoinPredicate>,
+    /// The current tuple from the left input.
     current_left_tuple: Option<Tuple>,
+    /// A buffer holding all tuples from the right input.
     right_tuples_buffer: Arc<Vec<Tuple>>,
+    /// An iterator over the `right_tuples_buffer`.
     current_right_buffer_iter: std::vec::IntoIter<Tuple>,
 }
 
 impl NestedLoopJoinIteratorInternal {
+    /// Evaluates the join predicate for a given pair of left and right tuples.
+    ///
+    /// # Arguments
+    /// * `left_tuple` - The tuple from the left input.
+    /// * `right_tuple` - The tuple from the right input.
+    ///
+    /// # Returns
+    /// * `Ok(true)` if the join predicate evaluates to true or if there is no predicate.
+    /// * `Ok(false)` if the join predicate evaluates to false.
+    /// * `Err(OxidbError)` if an error occurs during evaluation (e.g., invalid column index).
     fn evaluate_join_predicate(
         &self,
         left_tuple: &Tuple,
         right_tuple: &Tuple,
-    ) -> Result<bool, OxidbError> { // Changed
+    ) -> Result<bool, OxidbError> {
+        // Changed
         if let Some(ref predicate) = self.join_predicate {
             let left_col_idx = predicate.left_column.parse::<usize>().map_err(|_| {
-                OxidbError::Internal(format!("Invalid left column index: {}", predicate.left_column)) // Changed
+                OxidbError::Internal(format!(
+                    "Invalid left column index: {}",
+                    predicate.left_column
+                )) // Changed
             })?;
             let right_col_idx = predicate.right_column.parse::<usize>().map_err(|_| {
-                OxidbError::Internal(format!("Invalid right column index: {}", predicate.right_column)) // Changed
+                OxidbError::Internal(format!(
+                    "Invalid right column index: {}",
+                    predicate.right_column
+                )) // Changed
             })?;
 
             if left_col_idx >= left_tuple.len() || right_col_idx >= right_tuple.len() {
-                return Err(OxidbError::Internal( // Changed
+                return Err(OxidbError::Internal(
+                    // Changed
                     "Join predicate column index out of bounds.".to_string(),
                 ));
             }
@@ -57,6 +84,7 @@ impl Iterator for NestedLoopJoinIteratorInternal {
                 }
             }
 
+            #[allow(clippy::unwrap_used)] // Logic ensures current_left_tuple is Some here
             let left_tuple = self.current_left_tuple.as_ref().unwrap();
 
             while let Some(right_tuple) = self.current_right_buffer_iter.next() {
@@ -76,9 +104,13 @@ impl Iterator for NestedLoopJoinIteratorInternal {
 }
 
 pub struct NestedLoopJoinOperator {
+    /// The left input operator for the join.
     left_input: Box<dyn ExecutionOperator + Send + Sync>,
+    /// The right input operator for the join.
     right_input: Box<dyn ExecutionOperator + Send + Sync>,
+    /// The join predicate, if any.
     join_predicate: Option<JoinPredicate>,
+    /// A buffer for tuples from the right input, populated on first execution.
     right_tuples_buffer: Option<Vec<Tuple>>,
 }
 
@@ -100,7 +132,8 @@ impl NestedLoopJoinOperator {
 impl ExecutionOperator for NestedLoopJoinOperator {
     fn execute(
         &mut self,
-    ) -> Result<Box<dyn Iterator<Item = Result<Tuple, OxidbError>> + Send + Sync>, OxidbError> { // Changed
+    ) -> Result<Box<dyn Iterator<Item = Result<Tuple, OxidbError>> + Send + Sync>, OxidbError> {
+        // Changed
         if self.right_tuples_buffer.is_none() {
             let mut right_buffer_for_iter = Vec::new();
             let right_exec = self.right_input.execute()?;

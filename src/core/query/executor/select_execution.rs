@@ -27,7 +27,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         } else {
             // For a SELECT without an active transaction, snapshot should see all committed data.
             // Using TransactionId(0) as a convention.
-            snapshot_id = self.transaction_manager.current_active_transaction_id().unwrap_or(crate::core::common::types::TransactionId(0));
+            snapshot_id = self
+                .transaction_manager
+                .current_active_transaction_id()
+                .unwrap_or(crate::core::common::types::TransactionId(0));
             committed_ids_vec = self.transaction_manager.get_committed_tx_ids_snapshot();
         }
 
@@ -64,8 +67,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         let initial_plan = self.optimizer.build_initial_plan(&ast_statement)?;
         let optimized_plan = self.optimizer.optimize(initial_plan)?;
 
-        let mut execution_tree_root =
-            self.build_execution_tree(optimized_plan, snapshot_id.0, committed_ids_u64_set.clone())?; // Pass snapshot_id.0 (u64)
+        let mut execution_tree_root = self.build_execution_tree(
+            optimized_plan,
+            snapshot_id.0,
+            committed_ids_u64_set.clone(),
+        )?; // Pass snapshot_id.0 (u64)
 
         let results_iter = execution_tree_root.execute()?;
         let mut all_datatypes_from_tuples: Vec<DataType> = Vec::new();

@@ -1,9 +1,9 @@
 use crate::core::common::error::OxidbError;
-use crate::core::common::types::PageId;
 use crate::core::common::types::Lsn; // Corrected Lsn import path
+use crate::core::common::types::PageId;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use std::io::Cursor;
 use std::convert::TryFrom;
+use std::io::Cursor;
 
 // Define a standard page size.
 pub const PAGE_SIZE: usize = 4096;
@@ -55,7 +55,7 @@ impl From<PageType> for u8 {
 pub struct PageHeader {
     pub page_id: PageId,
     pub page_type: PageType,
-    pub lsn: Lsn, // Log Sequence Number
+    pub lsn: Lsn,  // Log Sequence Number
     pub flags: u8, // e.g., is_dirty, is_pinned
 }
 
@@ -95,12 +95,7 @@ impl PageHeader {
         let lsn = cursor.read_u64::<LittleEndian>()?; // Lsn is u64
         let flags = cursor.read_u8()?;
 
-        Ok(PageHeader {
-            page_id,
-            page_type,
-            lsn,
-            flags,
-        })
+        Ok(PageHeader { page_id, page_type, lsn, flags })
     }
 }
 
@@ -115,10 +110,7 @@ impl Page {
         let header = PageHeader::new(page_id, page_type);
         // Data initialized to zeros, size of PAGE_SIZE - PAGE_HEADER_SIZE
         let data_size = PAGE_SIZE - PAGE_HEADER_SIZE;
-        Page {
-            header,
-            data: vec![0; data_size],
-        }
+        Page { header, data: vec![0; data_size] }
     }
 
     pub fn get_page_id(&self) -> PageId {
@@ -137,7 +129,9 @@ impl Page {
 
         if data_end_offset > PAGE_SIZE {
             // This case should ideally not happen if page.data is sized correctly upon creation/modification
-            return Err(OxidbError::Serialization("Page data exceeds available page size".to_string()));
+            return Err(OxidbError::Serialization(
+                "Page data exceeds available page size".to_string(),
+            ));
         }
         buffer[data_start_offset..data_end_offset].copy_from_slice(&self.data);
 
@@ -258,8 +252,16 @@ mod tests {
             assert_eq!(serialized_page_zeroed.len(), PAGE_SIZE);
 
             let deserialized_page_zeroed = Page::deserialize(&serialized_page_zeroed).unwrap();
-            assert_eq!(page_zeroed.header, deserialized_page_zeroed.header, "Header mismatch for zeroed PageType::{:?}", page_type);
-            assert_eq!(page_zeroed.data, deserialized_page_zeroed.data, "Data mismatch for zeroed PageType::{:?}", page_type);
+            assert_eq!(
+                page_zeroed.header, deserialized_page_zeroed.header,
+                "Header mismatch for zeroed PageType::{:?}",
+                page_type
+            );
+            assert_eq!(
+                page_zeroed.data, deserialized_page_zeroed.data,
+                "Data mismatch for zeroed PageType::{:?}",
+                page_type
+            );
             assert_eq!(deserialized_page_zeroed.data.len(), PAGE_SIZE - PAGE_HEADER_SIZE);
 
             // Test with fully populated data
@@ -272,13 +274,21 @@ mod tests {
             page_populated.header.lsn = 101112; // Lsn is u64
             page_populated.header.flags = 0xAA;
 
-
             let serialized_page_populated = page_populated.serialize().unwrap();
             assert_eq!(serialized_page_populated.len(), PAGE_SIZE);
 
-            let deserialized_page_populated = Page::deserialize(&serialized_page_populated).unwrap();
-            assert_eq!(page_populated.header, deserialized_page_populated.header, "Header mismatch for populated PageType::{:?}", page_type);
-            assert_eq!(page_populated.data, deserialized_page_populated.data, "Data mismatch for populated PageType::{:?}", page_type);
+            let deserialized_page_populated =
+                Page::deserialize(&serialized_page_populated).unwrap();
+            assert_eq!(
+                page_populated.header, deserialized_page_populated.header,
+                "Header mismatch for populated PageType::{:?}",
+                page_type
+            );
+            assert_eq!(
+                page_populated.data, deserialized_page_populated.data,
+                "Data mismatch for populated PageType::{:?}",
+                page_type
+            );
             assert_eq!(deserialized_page_populated.data.len(), PAGE_SIZE - PAGE_HEADER_SIZE);
         }
     }

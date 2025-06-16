@@ -16,9 +16,7 @@ impl LogManager {
     /// Creates a new LogManager.
     /// LSNs will start from 0.
     pub fn new() -> Self {
-        LogManager {
-            lsn_counter: Arc::new(AtomicU64::new(0)),
-        }
+        LogManager { lsn_counter: Arc::new(AtomicU64::new(0)) }
     }
 
     /// Allocates and returns a new LSN.

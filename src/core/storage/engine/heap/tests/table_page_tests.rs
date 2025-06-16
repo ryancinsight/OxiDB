@@ -5,11 +5,12 @@
 use crate::core::common::error::OxidbError;
 use crate::core::common::types::ids::SlotId;
 use crate::core::storage::engine::heap::table_page::{
-    TablePage, Slot, SLOTS_ARRAY_DATA_OFFSET, // Make consts from TablePage pub(super) or pub if needed by tests directly
-                                              // For now, assuming they might be needed for complex assertions or setup.
-                                              // If tests only use public TablePage API, these are not needed.
+    Slot,
+    TablePage,
+    SLOTS_ARRAY_DATA_OFFSET, // Make consts from TablePage pub(super) or pub if needed by tests directly
+                             // For now, assuming they might be needed for complex assertions or setup.
+                             // If tests only use public TablePage API, these are not needed.
 };
-
 
 // Helper function to create test page data, adjusted for new location
 fn create_test_page_data() -> Vec<u8> {
@@ -40,7 +41,10 @@ fn test_init_table_page() {
     // If not, these assertions need to be rethought.
     // For now, let's assume they are accessible for the sake of moving code.
     assert_eq!(TablePage::get_num_records(&page_data).unwrap(), 0);
-    assert_eq!(TablePage::get_free_space_pointer(&page_data).unwrap(), SLOTS_ARRAY_DATA_OFFSET as u16);
+    assert_eq!(
+        TablePage::get_free_space_pointer(&page_data).unwrap(),
+        SLOTS_ARRAY_DATA_OFFSET as u16
+    );
 }
 
 #[test]
@@ -71,7 +75,8 @@ fn test_insert_and_get_record() {
     let retrieved2 = TablePage::get_record(&page_data, slot_id2).unwrap().unwrap();
     assert_eq!(retrieved2, record_data2);
 
-    let expected_slot_array_end_for_2_slots = (SLOTS_ARRAY_DATA_OFFSET + 2 * Slot::SERIALIZED_SIZE) as u16;
+    let expected_slot_array_end_for_2_slots =
+        (SLOTS_ARRAY_DATA_OFFSET + 2 * Slot::SERIALIZED_SIZE) as u16;
     let expected_data_offset2 = expected_slot_array_end_for_2_slots.max(expected_fsp1);
 
     let s_info2 = TablePage::get_slot_info(&page_data, slot_id2).unwrap().unwrap();
@@ -93,7 +98,9 @@ fn test_page_full_on_insert_data() {
     let large_data = vec![0u8; available_data_space + 1];
 
     let result = TablePage::insert_record(&mut page_data, &large_data);
-    assert!(matches!(result, Err(OxidbError::Storage(msg)) if msg.contains("no space for record data (after considering slot array)")));
+    assert!(
+        matches!(result, Err(OxidbError::Storage(msg)) if msg.contains("no space for record data (after considering slot array)"))
+    );
 }
 
 #[test]
@@ -102,20 +109,28 @@ fn test_page_full_on_insert_slot_metadata() {
     let small_data = [0u8; 1];
     let mut successful_inserts = 0;
 
-    for i in 0..(TablePage::PAGE_DATA_AREA_SIZE) { // Use the const from TablePage
+    for i in 0..(TablePage::PAGE_DATA_AREA_SIZE) {
+        // Use the const from TablePage
         match TablePage::insert_record(&mut page_data, &small_data) {
             Ok(_) => {
                 successful_inserts += 1;
             }
             Err(e) => {
-                assert!(matches!(e, OxidbError::Storage(ref msg) if msg.contains("Page full")),
-                    "Test insert {}: Expected 'Page full' error, got {:?}", i, e);
+                assert!(
+                    matches!(e, OxidbError::Storage(ref msg) if msg.contains("Page full")),
+                    "Test insert {}: Expected 'Page full' error, got {:?}",
+                    i,
+                    e
+                );
                 return;
             }
         }
     }
-    panic!("Page did not fill up after {} successful inserts. Loop limit was {}.",
-           successful_inserts, TablePage::PAGE_DATA_AREA_SIZE); // Use the const here too
+    panic!(
+        "Page did not fill up after {} successful inserts. Loop limit was {}.",
+        successful_inserts,
+        TablePage::PAGE_DATA_AREA_SIZE
+    ); // Use the const here too
 }
 
 #[test]
@@ -175,7 +190,10 @@ fn test_insert_reuses_deleted_slot() {
     assert_eq!(s_info3.offset, original_fsp);
     assert_eq!(s_info3.length, record_data3.len() as u16);
 
-    assert_eq!(TablePage::get_free_space_pointer(&page_data).unwrap(), original_fsp + record_data3.len() as u16);
+    assert_eq!(
+        TablePage::get_free_space_pointer(&page_data).unwrap(),
+        original_fsp + record_data3.len() as u16
+    );
 }
 
 #[test]
@@ -239,7 +257,7 @@ fn test_get_invalid_slot() {
     assert!(result.unwrap().is_none());
 
     let result_info = TablePage::get_slot_info(&page_data, SlotId(0));
-     assert!(result_info.is_ok());
+    assert!(result_info.is_ok());
     assert!(result_info.unwrap().is_none());
 }
 

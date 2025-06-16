@@ -15,11 +15,13 @@ pub(crate) const NUM_RECORDS_METADATA_SIZE: usize = 2;
 // Offset for the free space pointer (u16).
 // This pointer indicates the offset where the next record *data* can be written.
 // Record data grows from left to right (low addresses to high addresses).
-pub(crate) const FREE_SPACE_POINTER_METADATA_OFFSET: usize = NUM_RECORDS_METADATA_OFFSET + NUM_RECORDS_METADATA_SIZE;
+pub(crate) const FREE_SPACE_POINTER_METADATA_OFFSET: usize =
+    NUM_RECORDS_METADATA_OFFSET + NUM_RECORDS_METADATA_SIZE;
 pub(crate) const FREE_SPACE_POINTER_METADATA_SIZE: usize = 2;
 
 // Offset where the actual slot array begins.
-pub(crate) const SLOTS_ARRAY_DATA_OFFSET: usize = FREE_SPACE_POINTER_METADATA_OFFSET + FREE_SPACE_POINTER_METADATA_SIZE;
+pub(crate) const SLOTS_ARRAY_DATA_OFFSET: usize =
+    FREE_SPACE_POINTER_METADATA_OFFSET + FREE_SPACE_POINTER_METADATA_SIZE;
 
 /// Represents a slot in the TablePage.
 /// A slot stores the location and size of a record's data.
@@ -76,14 +78,16 @@ pub struct TablePage;
 impl TablePage {
     // This constant is specific to TablePage's data area, not the overall Page.
     // It's used by tests, so pub(crate) or pub.
-pub(crate) const PAGE_DATA_AREA_SIZE: usize = PAGE_SIZE - PAGE_HEADER_SIZE; // Uncommented for tests
-
+    #[allow(dead_code)] // Used in tests, but clippy doesn't see it
+    pub(crate) const PAGE_DATA_AREA_SIZE: usize = PAGE_SIZE - PAGE_HEADER_SIZE; // Uncommented for tests
 
     /// Gets the number of records currently stored in the page.
     /// This corresponds to the number of occupied/valid slots.
     pub(crate) fn get_num_records(page_data: &[u8]) -> Result<u16, OxidbError> {
         if page_data.len() < NUM_RECORDS_METADATA_OFFSET + NUM_RECORDS_METADATA_SIZE {
-            return Err(OxidbError::Internal("Page data too small for num_records metadata".into()));
+            return Err(OxidbError::Internal(
+                "Page data too small for num_records metadata".into(),
+            ));
         }
         let mut cursor = Cursor::new(&page_data[NUM_RECORDS_METADATA_OFFSET..]);
         Ok(cursor.read_u16::<LittleEndian>()?)
@@ -92,7 +96,9 @@ pub(crate) const PAGE_DATA_AREA_SIZE: usize = PAGE_SIZE - PAGE_HEADER_SIZE; // U
     /// Sets the number of records in the page.
     pub(crate) fn set_num_records(page_data: &mut [u8], count: u16) -> Result<(), OxidbError> {
         if page_data.len() < NUM_RECORDS_METADATA_OFFSET + NUM_RECORDS_METADATA_SIZE {
-            return Err(OxidbError::Internal("Page data too small for num_records metadata".into()));
+            return Err(OxidbError::Internal(
+                "Page data too small for num_records metadata".into(),
+            ));
         }
         let mut cursor = Cursor::new(&mut page_data[NUM_RECORDS_METADATA_OFFSET..]);
         cursor.write_u16::<LittleEndian>(count)?;
@@ -104,16 +110,23 @@ pub(crate) const PAGE_DATA_AREA_SIZE: usize = PAGE_SIZE - PAGE_HEADER_SIZE; // U
     /// *data* can begin to be written.
     pub(crate) fn get_free_space_pointer(page_data: &[u8]) -> Result<u16, OxidbError> {
         if page_data.len() < FREE_SPACE_POINTER_METADATA_OFFSET + FREE_SPACE_POINTER_METADATA_SIZE {
-            return Err(OxidbError::Internal("Page data too small for free_space_pointer metadata".into()));
+            return Err(OxidbError::Internal(
+                "Page data too small for free_space_pointer metadata".into(),
+            ));
         }
         let mut cursor = Cursor::new(&page_data[FREE_SPACE_POINTER_METADATA_OFFSET..]);
         Ok(cursor.read_u16::<LittleEndian>()?)
     }
 
     /// Sets the free space pointer.
-    pub(crate) fn set_free_space_pointer(page_data: &mut [u8], pointer: u16) -> Result<(), OxidbError> {
+    pub(crate) fn set_free_space_pointer(
+        page_data: &mut [u8],
+        pointer: u16,
+    ) -> Result<(), OxidbError> {
         if page_data.len() < FREE_SPACE_POINTER_METADATA_OFFSET + FREE_SPACE_POINTER_METADATA_SIZE {
-             return Err(OxidbError::Internal("Page data too small for free_space_pointer metadata".into()));
+            return Err(OxidbError::Internal(
+                "Page data too small for free_space_pointer metadata".into(),
+            ));
         }
         let mut cursor = Cursor::new(&mut page_data[FREE_SPACE_POINTER_METADATA_OFFSET..]);
         cursor.write_u16::<LittleEndian>(pointer)?;
@@ -122,43 +135,55 @@ pub(crate) const PAGE_DATA_AREA_SIZE: usize = PAGE_SIZE - PAGE_HEADER_SIZE; // U
 
     // Removed get_max_slot_capacity as it's no longer used with the new init/insert logic.
 
-
     /// Retrieves a slot's metadata. Returns `None` if SlotId is out of bounds of current num_records.
     /// Note: This doesn't mean the slot is occupied, check Slot.length.
-    pub(crate) fn get_slot_info(page_data: &[u8], slot_id: SlotId) -> Result<Option<Slot>, OxidbError> {
+    pub(crate) fn get_slot_info(
+        page_data: &[u8],
+        slot_id: SlotId,
+    ) -> Result<Option<Slot>, OxidbError> {
         let num_records = Self::get_num_records(page_data)?;
         if slot_id.0 >= num_records {
             // Requesting a slot_id beyond the current number of active/initialized slots
             return Ok(None);
         }
 
-        let slot_offset_in_page_data = SLOTS_ARRAY_DATA_OFFSET + (slot_id.0 as usize * Slot::SERIALIZED_SIZE);
+        let slot_offset_in_page_data =
+            SLOTS_ARRAY_DATA_OFFSET + (slot_id.0 as usize * Slot::SERIALIZED_SIZE);
         // Check if reading this slot's metadata would go out of bounds of the page_data slice itself.
         if slot_offset_in_page_data + Slot::SERIALIZED_SIZE > page_data.len() {
             return Err(OxidbError::Internal(format!(
                 "SlotId {} metadata read out of bounds for page_data len {}",
-                slot_id.0, page_data.len()
+                slot_id.0,
+                page_data.len()
             )));
         }
 
-        let slot_data = &page_data[slot_offset_in_page_data..slot_offset_in_page_data + Slot::SERIALIZED_SIZE];
+        let slot_data =
+            &page_data[slot_offset_in_page_data..slot_offset_in_page_data + Slot::SERIALIZED_SIZE];
         Ok(Some(Slot::deserialize(slot_data)?))
     }
 
     /// Writes a slot's metadata to the specified SlotId.
     /// Assumes slot_id is valid and within current num_records or is the next available slot.
-    pub(crate) fn set_slot_info(page_data: &mut [u8], slot_id: SlotId, slot: Slot) -> Result<(), OxidbError> {
-        let slot_offset_in_page_data = SLOTS_ARRAY_DATA_OFFSET + (slot_id.0 as usize * Slot::SERIALIZED_SIZE);
+    pub(crate) fn set_slot_info(
+        page_data: &mut [u8],
+        slot_id: SlotId,
+        slot: Slot,
+    ) -> Result<(), OxidbError> {
+        let slot_offset_in_page_data =
+            SLOTS_ARRAY_DATA_OFFSET + (slot_id.0 as usize * Slot::SERIALIZED_SIZE);
 
         // Check if writing this slot's metadata would go out of bounds.
         if slot_offset_in_page_data + Slot::SERIALIZED_SIZE > page_data.len() {
             return Err(OxidbError::Internal(format!(
                 "Cannot set SlotId {} metadata as it's out of bounds for page_data len {}",
-                slot_id.0, page_data.len()
+                slot_id.0,
+                page_data.len()
             )));
         }
 
-        let slot_buffer = &mut page_data[slot_offset_in_page_data..slot_offset_in_page_data + Slot::SERIALIZED_SIZE];
+        let slot_buffer = &mut page_data
+            [slot_offset_in_page_data..slot_offset_in_page_data + Slot::SERIALIZED_SIZE];
         slot.serialize(slot_buffer)?;
         Ok(())
     }
@@ -166,8 +191,11 @@ pub(crate) const PAGE_DATA_AREA_SIZE: usize = PAGE_SIZE - PAGE_HEADER_SIZE; // U
     /// Initializes a new TablePage structure on a raw page_data buffer.
     /// Sets num_records to 0 and free_space_pointer to the start of where data can be written.
     pub fn init(page_data: &mut [u8]) -> Result<(), OxidbError> {
-        if page_data.len() < SLOTS_ARRAY_DATA_OFFSET { // Check if page can even hold the basic header
-             return Err(OxidbError::Storage("Page data too small to initialize as TablePage".to_string()));
+        if page_data.len() < SLOTS_ARRAY_DATA_OFFSET {
+            // Check if page can even hold the basic header
+            return Err(OxidbError::Storage(
+                "Page data too small to initialize as TablePage".to_string(),
+            ));
         }
         Self::set_num_records(page_data, 0)?;
         // free_space_pointer now indicates the beginning of where record data can be written.
@@ -178,17 +206,24 @@ pub(crate) const PAGE_DATA_AREA_SIZE: usize = PAGE_SIZE - PAGE_HEADER_SIZE; // U
         Ok(())
     }
 
-
     pub fn insert_record(page_data: &mut [u8], data: &[u8]) -> Result<SlotId, OxidbError> {
         if data.is_empty() {
-            return Err(OxidbError::InvalidInput { message: "Record data cannot be empty".to_string() });
+            return Err(OxidbError::InvalidInput {
+                message: "Record data cannot be empty".to_string(),
+            });
         }
         let data_len = data.len() as u16;
-        if data_len == 0 { // Should be caught by is_empty, but as u16 check.
-             return Err(OxidbError::InvalidInput { message: "Record data length cannot be zero".to_string() });
+        if data_len == 0 {
+            // Should be caught by is_empty, but as u16 check.
+            return Err(OxidbError::InvalidInput {
+                message: "Record data length cannot be zero".to_string(),
+            });
         }
-        if data.len() > u16::MAX as usize { // data_len already u16, this check is more about original data.len()
-            return Err(OxidbError::InvalidInput { message: "Record data too large for u16 length".to_string() });
+        if data.len() > u16::MAX as usize {
+            // data_len already u16, this check is more about original data.len()
+            return Err(OxidbError::InvalidInput {
+                message: "Record data too large for u16 length".to_string(),
+            });
         }
 
         let num_records = Self::get_num_records(page_data)?;
@@ -201,7 +236,8 @@ pub(crate) const PAGE_DATA_AREA_SIZE: usize = PAGE_SIZE - PAGE_HEADER_SIZE; // U
         for i in 0..num_records {
             let slot_id = SlotId(i);
             if let Some(slot_info) = Self::get_slot_info(page_data, slot_id)? {
-                if slot_info.length == 0 { // Found an empty (deleted) slot
+                if slot_info.length == 0 {
+                    // Found an empty (deleted) slot
                     target_slot_id_obj = Some(slot_id);
                     break;
                 }
@@ -223,20 +259,26 @@ pub(crate) const PAGE_DATA_AREA_SIZE: usize = PAGE_SIZE - PAGE_HEADER_SIZE; // U
         let end_of_slot_array_if_op_completes = if is_new_slot {
             SLOTS_ARRAY_DATA_OFFSET + ((num_records + 1) as usize * Slot::SERIALIZED_SIZE)
         } else {
-            SLOTS_ARRAY_DATA_OFFSET + (num_records as usize * Slot::SERIALIZED_SIZE) // Current end
+            SLOTS_ARRAY_DATA_OFFSET + (num_records as usize * Slot::SERIALIZED_SIZE)
+            // Current end
         };
 
         // Data must be written after the slot array.
         // Also, data is appended to where previous data ended (current_data_append_ptr).
         // So, the actual write offset for data is the max of these two.
-        let record_data_write_offset = (end_of_slot_array_if_op_completes as u16).max(current_data_append_ptr);
+        let record_data_write_offset =
+            (end_of_slot_array_if_op_completes as u16).max(current_data_append_ptr);
 
-        let record_data_write_end = record_data_write_offset.checked_add(data_len)
-            .ok_or_else(|| OxidbError::Storage("Record data offset calculation overflow".to_string()))?;
+        let record_data_write_end =
+            record_data_write_offset.checked_add(data_len).ok_or_else(|| {
+                OxidbError::Storage("Record data offset calculation overflow".to_string())
+            })?;
 
         // Final space check: does the end of data exceed page capacity?
         if record_data_write_end as usize > page_data.len() {
-            return Err(OxidbError::Storage("Page full: no space for record data (after considering slot array)".to_string()));
+            return Err(OxidbError::Storage(
+                "Page full: no space for record data (after considering slot array)".to_string(),
+            ));
         }
 
         // The overlap check `end_of_slot_array_after_this_op > record_data_write_offset`
@@ -246,7 +288,8 @@ pub(crate) const PAGE_DATA_AREA_SIZE: usize = PAGE_SIZE - PAGE_HEADER_SIZE; // U
 
         // All checks passed, proceed with writes:
         // 1. Write record data
-        page_data[record_data_write_offset as usize .. record_data_write_end as usize].copy_from_slice(data);
+        page_data[record_data_write_offset as usize..record_data_write_end as usize]
+            .copy_from_slice(data);
 
         // 2. Write/Update slot information for `final_slot_id`
         let slot_info = Slot { offset: record_data_write_offset, length: data_len };
@@ -275,7 +318,7 @@ pub(crate) const PAGE_DATA_AREA_SIZE: usize = PAGE_SIZE - PAGE_HEADER_SIZE; // U
                         slot_id.0, slot.offset, slot.length, page_data.len()
                     )));
                 }
-                Ok(Some(page_data[slot.offset as usize .. data_end].to_vec()))
+                Ok(Some(page_data[slot.offset as usize..data_end].to_vec()))
             }
             Some(_) => Ok(None), // Slot exists but is empty (length == 0)
             None => Ok(None),    // SlotId is out of bounds of current num_records
@@ -285,12 +328,18 @@ pub(crate) const PAGE_DATA_AREA_SIZE: usize = PAGE_SIZE - PAGE_HEADER_SIZE; // U
     pub fn delete_record(page_data: &mut [u8], slot_id: SlotId) -> Result<(), OxidbError> {
         let num_records = Self::get_num_records(page_data)?;
         if slot_id.0 >= num_records {
-            return Err(OxidbError::NotFound{key: format!("SlotId {} out of bounds", slot_id.0)});
+            return Err(OxidbError::NotFound {
+                key: format!("SlotId {} out of bounds", slot_id.0),
+            });
         }
 
         let mut slot_info = match Self::get_slot_info(page_data, slot_id)? {
             Some(s) if s.length > 0 => s,
-            _ => return Err(OxidbError::NotFound{key: format!("Record at SlotId {} not found or already deleted", slot_id.0)}),
+            _ => {
+                return Err(OxidbError::NotFound {
+                    key: format!("Record at SlotId {} not found or already deleted", slot_id.0),
+                })
+            }
         };
 
         // Mark slot as empty by setting its length to 0.
@@ -310,29 +359,45 @@ pub(crate) const PAGE_DATA_AREA_SIZE: usize = PAGE_SIZE - PAGE_HEADER_SIZE; // U
         Ok(())
     }
 
-    pub fn update_record(page_data: &mut [u8], slot_id: SlotId, new_data: &[u8]) -> Result<(), OxidbError> {
+    pub fn update_record(
+        page_data: &mut [u8],
+        slot_id: SlotId,
+        new_data: &[u8],
+    ) -> Result<(), OxidbError> {
         if new_data.is_empty() {
-            return Err(OxidbError::InvalidInput { message: "New record data cannot be empty".to_string() });
+            return Err(OxidbError::InvalidInput {
+                message: "New record data cannot be empty".to_string(),
+            });
         }
         if new_data.len() > u16::MAX as usize {
-            return Err(OxidbError::InvalidInput { message: "New record data too large for u16 length".to_string() });
+            return Err(OxidbError::InvalidInput {
+                message: "New record data too large for u16 length".to_string(),
+            });
         }
 
         let num_records = Self::get_num_records(page_data)?;
         if slot_id.0 >= num_records {
-             return Err(OxidbError::NotFound{key: format!("SlotId {} out of bounds", slot_id.0)});
+            return Err(OxidbError::NotFound {
+                key: format!("SlotId {} out of bounds", slot_id.0),
+            });
         }
 
         let current_slot_info = match Self::get_slot_info(page_data, slot_id)? {
             Some(s) if s.length > 0 => s,
-            _ => return Err(OxidbError::NotFound{key: format!("Record at SlotId {} not found or has been deleted", slot_id.0)}),
+            _ => {
+                return Err(OxidbError::NotFound {
+                    key: format!("Record at SlotId {} not found or has been deleted", slot_id.0),
+                })
+            }
         };
 
         let new_data_len = new_data.len() as u16;
 
         if new_data_len <= current_slot_info.length {
             // New data is smaller or same size, update in place
-            page_data[current_slot_info.offset as usize .. (current_slot_info.offset + new_data_len) as usize].copy_from_slice(new_data);
+            page_data[current_slot_info.offset as usize
+                ..(current_slot_info.offset + new_data_len) as usize]
+                .copy_from_slice(new_data);
             // If new data is smaller, the remaining part of the old record is now "dead space" within that slot's allocation.
             // Update slot length.
             let updated_slot_info = Slot { offset: current_slot_info.offset, length: new_data_len };

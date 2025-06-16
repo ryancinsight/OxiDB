@@ -1,5 +1,5 @@
-use crate::core::common::OxidbError; // Changed
 use crate::core::common::traits::{DataDeserializer, DataSerializer};
+use crate::core::common::OxidbError; // Changed
 use crate::core::storage::engine::traits::VersionedValue;
 use std::collections::HashMap;
 use std::fs::{rename, File, OpenOptions};
@@ -28,7 +28,8 @@ pub(super) fn load_data_from_disk(
     file_path: &Path,
     _wal_path: &Path, // Kept for signature compatibility if needed, but not used directly here
     cache: &mut HashMap<Vec<u8>, Vec<VersionedValue<Vec<u8>>>>,
-) -> Result<(), OxidbError> { // Changed
+) -> Result<(), OxidbError> {
+    // Changed
     let temp_file_path = file_path.with_extension("tmp");
 
     if temp_file_path.exists() {
@@ -70,7 +71,8 @@ pub(super) fn load_data_from_disk(
 fn read_data_into_cache_internal(
     cache: &mut HashMap<Vec<u8>, Vec<VersionedValue<Vec<u8>>>>,
     file_to_load: &Path,
-) -> Result<(), OxidbError> { // Changed
+) -> Result<(), OxidbError> {
+    // Changed
     cache.clear();
     let file = match File::open(file_to_load) {
         Ok(f) => f,
@@ -89,7 +91,8 @@ fn read_data_into_cache_internal(
 
         let key =
             <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(&mut reader).map_err(|e| {
-                OxidbError::Storage(format!( // Changed
+                OxidbError::Storage(format!(
+                    // Changed
                     "Failed to deserialize key from {}: {}",
                     file_to_load.display(),
                     e
@@ -99,7 +102,8 @@ fn read_data_into_cache_internal(
         // Need to check for EOF again before deserializing value, in case file ends after a valid key.
         let buffer_val_check = reader.fill_buf().map_err(OxidbError::Io)?; // Changed
         if buffer_val_check.is_empty() {
-            return Err(OxidbError::Storage(format!( // Changed
+            return Err(OxidbError::Storage(format!(
+                // Changed
                 "Unexpected EOF after reading key {:?} from {}",
                 String::from_utf8_lossy(&key),
                 file_to_load.display()
@@ -108,7 +112,8 @@ fn read_data_into_cache_internal(
 
         let value_bytes = <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(&mut reader)
             .map_err(|e| {
-                OxidbError::Storage(format!( // Changed
+                OxidbError::Storage(format!(
+                    // Changed
                     "Failed to deserialize value for key {:?} from {}: {}",
                     String::from_utf8_lossy(&key),
                     file_to_load.display(),
@@ -130,7 +135,8 @@ fn read_data_into_cache_internal(
 pub(super) fn save_data_to_disk(
     file_path: &Path,
     cache: &HashMap<Vec<u8>, Vec<VersionedValue<Vec<u8>>>>,
-) -> Result<(), OxidbError> { // Changed
+) -> Result<(), OxidbError> {
+    // Changed
     let temp_file_path = file_path.with_extension("tmp");
 
     struct TempFileGuard<'a>(&'a PathBuf);
@@ -166,7 +172,8 @@ pub(super) fn save_data_to_disk(
             <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut writer)
                 .map_err(|e| OxidbError::Storage(format!("Failed to serialize key: {}", e)))?; // Changed
             <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(&value_to_write, &mut writer)
-                .map_err(|e| OxidbError::Storage(format!("Failed to serialize value: {}", e)))?; // Changed
+                .map_err(|e| OxidbError::Storage(format!("Failed to serialize value: {}", e)))?;
+            // Changed
         }
     }
 
@@ -182,7 +189,10 @@ pub(super) fn save_data_to_disk(
     let wal_file_path = derive_wal_path(file_path);
     eprintln!("[save_data_to_disk] Attempting to delete WAL file: {:?}", &wal_file_path);
     if wal_file_path.exists() {
-        eprintln!("[save_data_to_disk] WAL file {:?} exists, proceeding with deletion.", &wal_file_path);
+        eprintln!(
+            "[save_data_to_disk] WAL file {:?} exists, proceeding with deletion.",
+            &wal_file_path
+        );
         if let Err(e) = std::fs::remove_file(&wal_file_path) {
             eprintln!(
                 "[save_data_to_disk] Error: Failed to delete WAL file {}: {}. Main data save was successful.",
@@ -195,7 +205,10 @@ pub(super) fn save_data_to_disk(
             eprintln!("[save_data_to_disk] Successfully deleted WAL file: {:?}", &wal_file_path);
         }
     } else {
-        eprintln!("[save_data_to_disk] WAL file {:?} did not exist, no deletion needed.", &wal_file_path);
+        eprintln!(
+            "[save_data_to_disk] WAL file {:?} did not exist, no deletion needed.",
+            &wal_file_path
+        );
     }
     Ok(())
 }

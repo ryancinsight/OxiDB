@@ -300,7 +300,8 @@ mod tests {
         let result = Oxidb::new_from_config_file(temp_config_file.path());
         assert!(result.is_err());
         match result.unwrap_err() {
-            crate::OxidbError::Configuration(msg) => { // Changed DbError::ConfigError to OxidbError::Configuration
+            crate::OxidbError::Configuration(msg) => {
+                // Changed DbError::ConfigError to OxidbError::Configuration
                 assert!(msg.contains("Failed to parse config file"));
             }
             e => panic!("Expected OxidbError::Configuration, got {:?}", e), // Changed

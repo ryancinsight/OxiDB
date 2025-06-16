@@ -1,6 +1,6 @@
 // src/core/storage/engine/implementations/in_memory.rs
-use crate::core::common::OxidbError;
 use crate::core::common::types::Lsn; // Added Lsn import
+use crate::core::common::OxidbError;
 use crate::core::storage::engine::traits::{KeyValueStore, VersionedValue};
 use crate::core::storage::engine::wal::WalEntry;
 use crate::core::transaction::Transaction;
@@ -55,18 +55,28 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
                 //         - Version created by a committed transaction.
                 // Case 3: Special handling for "auto-committed" data (created_tx_id == 0)
                 //         when read by a "no active transaction" snapshot (snapshot_id == 0).
-                let created_by_current_tx = snapshot_id != 0 && version.created_tx_id == snapshot_id;
+                let created_by_current_tx =
+                    snapshot_id != 0 && version.created_tx_id == snapshot_id;
                 let is_committed_creator = committed_ids.contains(&version.created_tx_id);
-                let is_autocommit_data_visible_to_autocommit_snapshot = version.created_tx_id == 0 && snapshot_id == 0;
+                let is_autocommit_data_visible_to_autocommit_snapshot =
+                    version.created_tx_id == 0 && snapshot_id == 0;
 
-                if created_by_current_tx || is_committed_creator || is_autocommit_data_visible_to_autocommit_snapshot {
+                if created_by_current_tx
+                    || is_committed_creator
+                    || is_autocommit_data_visible_to_autocommit_snapshot
+                {
                     // If visible, check if it's also visibly expired
                     if let Some(expired_tx_id) = version.expired_tx_id {
-                        let expired_by_current_tx = snapshot_id != 0 && expired_tx_id == snapshot_id;
+                        let expired_by_current_tx =
+                            snapshot_id != 0 && expired_tx_id == snapshot_id;
                         let is_committed_expirer = committed_ids.contains(&expired_tx_id);
-                        let is_autocommit_expiry_visible_to_autocommit_snapshot = expired_tx_id == 0 && snapshot_id == 0;
+                        let is_autocommit_expiry_visible_to_autocommit_snapshot =
+                            expired_tx_id == 0 && snapshot_id == 0;
 
-                        if !(expired_by_current_tx || is_committed_expirer || is_autocommit_expiry_visible_to_autocommit_snapshot) {
+                        if !(expired_by_current_tx
+                            || is_committed_expirer
+                            || is_autocommit_expiry_visible_to_autocommit_snapshot)
+                        {
                             // Not visibly expired, so this version is the one
                             return Ok(Some(version.value.clone()));
                         }
@@ -81,7 +91,13 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
         Ok(None)
     }
 
-    fn delete(&mut self, key: &Vec<u8>, transaction: &Transaction, _lsn: Lsn) -> Result<bool, OxidbError> { // Added _lsn
+    fn delete(
+        &mut self,
+        key: &Vec<u8>,
+        transaction: &Transaction,
+        _lsn: Lsn,
+    ) -> Result<bool, OxidbError> {
+        // Added _lsn
         if let Some(versions) = self.data.get_mut(key) {
             for version in versions.iter_mut().rev() {
                 // Compare TransactionId directly if Transaction.id is TransactionId struct
@@ -93,7 +109,8 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
                 // Based on Transaction struct, id is TransactionId. So comparison should be with transaction.id.0.
                 if version.created_tx_id <= transaction.id.0 // Use .0 if transaction.id is TransactionId struct
                     && (version.expired_tx_id.is_none()
-                        || version.expired_tx_id.unwrap() > transaction.id.0) // Use .0
+                        || version.expired_tx_id.unwrap() > transaction.id.0)
+                // Use .0
                 {
                     if version.expired_tx_id.is_none() {
                         version.expired_tx_id = Some(transaction.id.0); // Use .0
@@ -112,15 +129,18 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
         key: &Vec<u8>,
         snapshot_id: u64,
         committed_ids: &HashSet<u64>,
-    ) -> Result<bool, OxidbError> { // Changed
+    ) -> Result<bool, OxidbError> {
+        // Changed
         self.get(key, snapshot_id, committed_ids).map(|opt| opt.is_some())
     }
 
-    fn log_wal_entry(&mut self, _entry: &WalEntry) -> Result<(), OxidbError> { // Changed
+    fn log_wal_entry(&mut self, _entry: &WalEntry) -> Result<(), OxidbError> {
+        // Changed
         Ok(())
     }
 
-    fn gc(&mut self, low_water_mark: u64, committed_ids: &HashSet<u64>) -> Result<(), OxidbError> { // Changed
+    fn gc(&mut self, low_water_mark: u64, committed_ids: &HashSet<u64>) -> Result<(), OxidbError> {
+        // Changed
         self.data.retain(|_key, versions| {
             versions.retain_mut(|v| {
                 let created_by_committed = committed_ids.contains(&v.created_tx_id);
@@ -140,7 +160,8 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
         Ok(())
     }
 
-    fn scan(&self) -> Result<Vec<(Vec<u8>, Vec<u8>)>, OxidbError> { // Changed
+    fn scan(&self) -> Result<Vec<(Vec<u8>, Vec<u8>)>, OxidbError> {
+        // Changed
         let mut results = Vec::new();
         for (key, version_vec) in self.data.iter() {
             if let Some(_latest_version) = version_vec.last() {

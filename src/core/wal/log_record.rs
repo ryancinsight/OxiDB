@@ -1,6 +1,6 @@
-use serde::{Serialize, Deserialize};
 use crate::core::common::types::ids::{PageId, SlotId};
 use crate::core::common::types::{Lsn, TransactionId};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Copy)]
 pub enum PageType {
@@ -70,14 +70,15 @@ pub enum LogRecord {
         page_type: PageType,
         prev_lsn: Lsn,
     },
-    CompensationLogRecord { // CLR
+    CompensationLogRecord {
+        // CLR
         lsn: Lsn,
         tx_id: TransactionId,
         page_id: PageId,
         slot_id: Option<SlotId>, // Some operations might be page-level
-        undone_lsn: Lsn, // LSN of the log record that was undone
+        undone_lsn: Lsn,         // LSN of the log record that was undone
         data_for_redo_of_undo: Vec<u8>,
-        prev_lsn: Lsn, // Previous LSN for this transaction
+        prev_lsn: Lsn,              // Previous LSN for this transaction
         next_undo_lsn: Option<Lsn>, // For traversing undo chain for this transaction
     },
     CheckpointBegin {
@@ -95,8 +96,8 @@ pub enum LogRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bincode;
     use crate::core::common::types::ids::{PageId, SlotId};
+    use bincode;
 
     // Note: Existing tests will fail due to the added 'lsn' field.
     // These tests need to be updated to include the 'lsn' field in their assertions.
@@ -113,7 +114,8 @@ mod tests {
 
     #[test]
     fn test_serialize_deserialize_commit_transaction() {
-        let original_record = LogRecord::CommitTransaction { lsn: 1, tx_id: TransactionId(123), prev_lsn: 0 }; // Use TransactionId()
+        let original_record =
+            LogRecord::CommitTransaction { lsn: 1, tx_id: TransactionId(123), prev_lsn: 0 }; // Use TransactionId()
         let serialized = bincode::serialize(&original_record).unwrap();
         let deserialized: LogRecord = bincode::deserialize(&serialized).unwrap();
         assert_eq!(original_record, deserialized);
@@ -121,7 +123,8 @@ mod tests {
 
     #[test]
     fn test_serialize_deserialize_abort_transaction() {
-        let original_record = LogRecord::AbortTransaction { lsn: 2, tx_id: TransactionId(123), prev_lsn: 1 }; // Use TransactionId()
+        let original_record =
+            LogRecord::AbortTransaction { lsn: 2, tx_id: TransactionId(123), prev_lsn: 1 }; // Use TransactionId()
         let serialized = bincode::serialize(&original_record).unwrap();
         let deserialized: LogRecord = bincode::deserialize(&serialized).unwrap();
         assert_eq!(original_record, deserialized);

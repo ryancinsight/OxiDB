@@ -4,8 +4,8 @@
 use crate::core::optimizer::QueryPlanNode;
 use crate::core::optimizer::{Expression, SimplePredicate};
 // Use fully qualified paths for SQL AST items to avoid ambiguity
-use crate::core::common::OxidbError; // Changed
 use crate::core::common::serialization::serialize_data_type;
+use crate::core::common::OxidbError; // Changed
 use crate::core::indexing::manager::IndexManager;
 use crate::core::query::sql::ast::{
     AstLiteralValue as AstSqlLiteralValue, Condition as AstSqlCondition,
@@ -24,7 +24,11 @@ impl Optimizer {
         Optimizer { index_manager }
     }
 
-    pub fn build_initial_plan(&self, statement: &AstStatement) -> Result<QueryPlanNode, OxidbError> { // Changed
+    pub fn build_initial_plan(
+        &self,
+        statement: &AstStatement,
+    ) -> Result<QueryPlanNode, OxidbError> {
+        // Changed
         match statement {
             AstStatement::Select(select_ast) => {
                 let mut plan_node =
@@ -50,7 +54,8 @@ impl Optimizer {
                 if projection_columns.is_empty()
                     && !select_ast.columns.iter().any(|c| matches!(c, AstSqlSelectColumn::Asterisk))
                 {
-                    return Err(OxidbError::SqlParsing( // Changed
+                    return Err(OxidbError::SqlParsing(
+                        // Changed
                         "SELECT statement with no columns specified.".to_string(),
                     ));
                 }
@@ -77,8 +82,26 @@ impl Optimizer {
                     columns: vec!["*".to_string()],
                 };
                 Ok(plan_node)
-            } // If other AstStatement variants (like Insert, Delete) are added,
-              // this match will become non-exhaustive, requiring updates.
+            }
+            AstStatement::CreateTable(_) => {
+                // CREATE TABLE is a DDL operation and does not produce a data-retrieval plan
+                // in the same way SELECT or UPDATE (which starts with a selection) does.
+                // It could be handled by returning a specific DDL plan node if the executor
+                // expects it, or an error if the optimizer is only for DML.
+                // For now, returning NotImplemented seems appropriate for build_initial_plan.
+                Err(OxidbError::NotImplemented {
+                    feature: "Query planning for CREATE TABLE statements".to_string(),
+                })
+            }
+            AstStatement::Insert(_) => {
+                // INSERT statements, like CREATE TABLE, are DDL/DML that don't produce a plan for data retrieval
+                // in the same way SELECT does. They are typically handled more directly by the executor.
+                // The optimizer might have a role in validating or rewriting them in complex systems,
+                // but for now, indicating it's not a plannable query here is sufficient.
+                Err(OxidbError::NotImplemented {
+                    feature: "Query planning for INSERT statements".to_string(),
+                })
+            }
         }
     }
 
@@ -86,7 +109,8 @@ impl Optimizer {
     fn ast_sql_condition_to_optimizer_expression(
         &self,
         ast_cond: &AstSqlCondition,
-    ) -> Result<Expression, OxidbError> { // Changed
+    ) -> Result<Expression, OxidbError> {
+        // Changed
         let value = match &ast_cond.value {
             AstSqlLiteralValue::String(s) => DataType::String(s.clone()),
             AstSqlLiteralValue::Number(n_str) => {
@@ -95,7 +119,8 @@ impl Optimizer {
                 } else if let Ok(f_val) = n_str.parse::<f64>() {
                     DataType::Float(f_val)
                 } else {
-                    return Err(OxidbError::SqlParsing(format!( // Changed
+                    return Err(OxidbError::SqlParsing(format!(
+                        // Changed
                         "Cannot parse numeric literal '{}'",
                         n_str
                     )));
@@ -114,7 +139,8 @@ impl Optimizer {
 
     // Removed the old ast_condition_to_expression_new as it was based on incorrect assumptions about ast::Expression
 
-    pub fn optimize(&self, plan: QueryPlanNode) -> Result<QueryPlanNode, OxidbError> { // Changed
+    pub fn optimize(&self, plan: QueryPlanNode) -> Result<QueryPlanNode, OxidbError> {
+        // Changed
         let plan = self.apply_predicate_pushdown(plan);
         let plan = self.apply_index_selection(plan)?;
         Ok(plan)
@@ -151,7 +177,8 @@ impl Optimizer {
         }
     }
 
-    fn apply_index_selection(&self, plan_node: QueryPlanNode) -> Result<QueryPlanNode, OxidbError> { // Changed
+    fn apply_index_selection(&self, plan_node: QueryPlanNode) -> Result<QueryPlanNode, OxidbError> {
+        // Changed
         match plan_node {
             QueryPlanNode::Filter { input, predicate } => {
                 let optimized_input = self.apply_index_selection(*input)?;

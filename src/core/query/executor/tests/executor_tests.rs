@@ -16,8 +16,8 @@ mod tests {
     // use std::any::TypeId; // For conditional test logic if needed, though trying to avoid - REMOVED
     use crate::core::common::OxidbError;
     // use std::collections::HashSet; // REMOVED - Not directly used in this test file
-    use std::sync::{Arc, RwLock};
-    use crate::core::wal::writer::WalWriter; // Added for WalWriter
+    use crate::core::wal::writer::WalWriter;
+    use std::sync::{Arc, RwLock}; // Added for WalWriter
 
     use crate::core::common::serialization::serialize_data_type;
     use crate::core::transaction::transaction::Transaction; // Removed UndoOperation
@@ -167,7 +167,10 @@ mod tests {
         wal_path
     }
 
-    fn read_all_wal_entries_for_test(wal_path: &std::path::Path) -> Result<Vec<WalEntry>, OxidbError> { // Changed
+    fn read_all_wal_entries_for_test(
+        wal_path: &std::path::Path,
+    ) -> Result<Vec<WalEntry>, OxidbError> {
+        // Changed
         if !wal_path.exists() {
             return Ok(Vec::new());
         }
@@ -192,7 +195,8 @@ mod tests {
         let index_path = temp_dir.path().to_path_buf();
         let temp_store_file = NamedTempFile::new().expect("Failed to create temp db file");
         let store_path = temp_store_file.path().to_path_buf();
-        let temp_store = SimpleFileKvStore::new(&store_path).expect("Failed to create SimpleFileKvStore");
+        let temp_store =
+            SimpleFileKvStore::new(&store_path).expect("Failed to create SimpleFileKvStore");
 
         // Ensure TransactionManager's WalWriter uses a distinct path from SimpleFileKvStore's internal WAL.
         // SimpleFileKvStore's internal WAL typically defaults to <db_name>.db.wal or <db_name>.wal
@@ -210,7 +214,8 @@ mod tests {
         let index_path = temp_dir.path().to_path_buf();
         let store = InMemoryKvStore::new();
 
-        let wal_temp_file = NamedTempFile::new().expect("Failed to create temp wal file for in-memory test");
+        let wal_temp_file =
+            NamedTempFile::new().expect("Failed to create temp wal file for in-memory test");
         let wal_writer = WalWriter::new(wal_temp_file.path().to_path_buf());
         let log_manager_arc = Arc::new(crate::core::wal::log_manager::LogManager::new());
 
@@ -263,15 +268,21 @@ mod tests {
         let dummy_lsn = 0;
         // Ensure this direct store.put call is correct. It was already updated in Turn 4 of previous session.
         // If KeyValueStore::put now expects LSN, this call is correct.
-        executor.store.write().unwrap().put(key.clone(), malformed_bytes, &dummy_tx, dummy_lsn).unwrap();
+        executor
+            .store
+            .write()
+            .unwrap()
+            .put(key.clone(), malformed_bytes, &dummy_tx, dummy_lsn)
+            .unwrap();
 
         let get_command = Command::Get { key: key.clone() };
         let result = executor.execute_command(get_command);
 
         assert!(result.is_err());
         match result.unwrap_err() {
-            OxidbError::Deserialization(_) => { /* Expected, as handle_get uses bincode which returns Deserialization error */ }
-            other_err => panic!("Expected OxidbError::Deserialization, got {:?}", other_err),
+            OxidbError::Json(_) => { /* Expected, as handle_get now uses serde_json via deserialize_data_type */
+            }
+            other_err => panic!("Expected OxidbError::Json, got {:?}", other_err),
         }
     }
 
@@ -553,7 +564,10 @@ mod tests {
     fn test_commit_transaction_command_no_active_tx() {
         let mut executor = create_file_executor();
         let commit_cmd = Command::CommitTransaction;
-        assert!(matches!(executor.execute_command(commit_cmd), Err(OxidbError::NoActiveTransaction))); // Changed
+        assert!(matches!(
+            executor.execute_command(commit_cmd),
+            Err(OxidbError::NoActiveTransaction)
+        )); // Changed
     }
 
     #[test]
@@ -801,12 +815,12 @@ mod tests {
     }
 
     #[test]
-    fn test_index_insert_auto_commit() -> Result<(), OxidbError> { // Changed
+    fn test_index_insert_auto_commit() -> Result<(), OxidbError> {
+        // Changed
         let mut executor = create_file_executor();
         let key = b"idx_key_auto".to_vec();
         let value = DataType::String("idx_val_auto".to_string());
-        let serialized_value = bincode::serialize(&value)
-            .map_err(|e| OxidbError::Serialization(e.to_string()))?;
+        let serialized_value = serialize_data_type(&value)?;
 
         let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
         assert_eq!(executor.execute_command(insert_cmd)?, ExecutionResult::Success);
@@ -820,12 +834,12 @@ mod tests {
     }
 
     #[test]
-    fn test_index_insert_transactional_commit() -> Result<(), OxidbError> { // Changed
+    fn test_index_insert_transactional_commit() -> Result<(), OxidbError> {
+        // Changed
         let mut executor = create_file_executor();
         let key = b"idx_key_tx_commit".to_vec();
         let value = DataType::String("idx_val_tx_commit".to_string());
-        let serialized_value = bincode::serialize(&value)
-            .map_err(|e| OxidbError::Serialization(e.to_string()))?;
+        let serialized_value = serialize_data_type(&value)?;
 
         executor.execute_command(Command::BeginTransaction)?;
         let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
@@ -841,12 +855,12 @@ mod tests {
     }
 
     #[test]
-    fn test_index_insert_transactional_rollback() -> Result<(), OxidbError> { // Changed
+    fn test_index_insert_transactional_rollback() -> Result<(), OxidbError> {
+        // Changed
         let mut executor = create_file_executor();
         let key = b"idx_key_tx_rollback".to_vec();
         let value = DataType::String("idx_val_tx_rollback".to_string());
-        let serialized_value = bincode::serialize(&value)
-            .map_err(|e| OxidbError::Serialization(e.to_string()))?;
+        let serialized_value = serialize_data_type(&value)?;
 
         executor.execute_command(Command::BeginTransaction)?;
         let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
@@ -873,12 +887,12 @@ mod tests {
     }
 
     #[test]
-    fn test_index_delete_auto_commit() -> Result<(), OxidbError> { // Changed
+    fn test_index_delete_auto_commit() -> Result<(), OxidbError> {
+        // Changed
         let mut executor = create_file_executor();
         let key = b"idx_del_key_auto".to_vec();
         let value = DataType::String("idx_del_val_auto".to_string());
-        let serialized_value = bincode::serialize(&value)
-            .map_err(|e| OxidbError::Serialization(e.to_string()))?;
+        let serialized_value = serialize_data_type(&value)?;
 
         let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
         executor.execute_command(insert_cmd)?;
@@ -901,7 +915,8 @@ mod tests {
     }
 
     #[test]
-    fn test_index_delete_transactional_commit() -> Result<(), OxidbError> { // Changed
+    fn test_index_delete_transactional_commit() -> Result<(), OxidbError> {
+        // Changed
         let mut executor = create_file_executor();
         let key = b"idx_del_key_tx_commit".to_vec();
         let value = DataType::String("idx_del_val_tx_commit".to_string());
@@ -925,12 +940,12 @@ mod tests {
     }
 
     #[test]
-    fn test_index_delete_transactional_rollback() -> Result<(), OxidbError> { // Changed
+    fn test_index_delete_transactional_rollback() -> Result<(), OxidbError> {
+        // Changed
         let mut executor = create_file_executor();
         let key = b"idx_del_key_tx_rollback".to_vec();
         let value = DataType::String("idx_del_val_tx_rollback".to_string());
-        let serialized_value = bincode::serialize(&value)
-            .map_err(|e| OxidbError::Serialization(e.to_string()))?;
+        let serialized_value = serialize_data_type(&value)?;
 
         let insert_cmd = Command::Insert { key: key.clone(), value: value.clone() };
         executor.execute_command(insert_cmd)?;
@@ -963,13 +978,13 @@ mod tests {
     }
 
     #[test]
-    fn test_find_by_index_command() -> Result<(), OxidbError> { // Changed
+    fn test_find_by_index_command() -> Result<(), OxidbError> {
+        // Changed
         let mut executor = create_file_executor();
         let common_value_str = "indexed_value_common".to_string();
         let common_value = DataType::String(common_value_str.clone());
-        // Ensure bincode serialization is used for the test, matching handle_insert
-        let serialized_common_value = bincode::serialize(&common_value)
-            .map_err(|e| OxidbError::Serialization(e.to_string()))?;
+        // Use project's standard serialization for the value to be found in the index
+        let serialized_common_value = serialize_data_type(&common_value)?;
 
         let key1 = b"fbk1".to_vec();
         let key2 = b"fbk2".to_vec();
@@ -1021,15 +1036,15 @@ mod tests {
     }
 
     #[test]
-    fn test_index_persistence_via_executor_persist() -> Result<(), OxidbError> { // Changed
+    fn test_index_persistence_via_executor_persist() -> Result<(), OxidbError> {
+        // Changed
         let temp_main_dir =
             tempfile::tempdir().expect("Failed to create main temp dir for persistence test");
         let db_file_path = temp_main_dir.path().join("test_db.dat");
 
         let key = b"persist_idx_key".to_vec();
         let value = DataType::String("persist_idx_val".to_string());
-        let serialized_value = bincode::serialize(&value)
-            .map_err(|e| OxidbError::Serialization(e.to_string()))?;
+        let serialized_value = serialize_data_type(&value)?;
 
         {
             let wal_path1 = db_file_path.with_extension("wal1");
@@ -1053,9 +1068,9 @@ mod tests {
         // though it implies executor2 wouldn't see WAL from executor1 if that was intended.
         // Given persist() should clear WAL, using the same path for a "re-opened" scenario is logical.
         let wal_path2 = db_file_path.with_extension("wal1"); // Re-using wal1 to simulate re-opening.
-                                                          // If persist clears it, this is fine.
-                                                          // If SimpleFileKvStore on new() is meant to recover from this WAL,
-                                                          // then the test logic might need adjustment based on desired behavior.
+                                                             // If persist clears it, this is fine.
+                                                             // If SimpleFileKvStore on new() is meant to recover from this WAL,
+                                                             // then the test logic might need adjustment based on desired behavior.
         let wal_writer2 = WalWriter::new(wal_path2);
         let log_manager2 = Arc::new(crate::core::wal::log_manager::LogManager::new());
         let mut executor2 = QueryExecutor::new(
@@ -1085,7 +1100,8 @@ mod tests {
         let index_path = temp_dir.path().to_path_buf();
         let store = InMemoryKvStore::new();
 
-        let wal_temp_file = NamedTempFile::new().expect("Failed to create temp wal file for mvcc test");
+        let wal_temp_file =
+            NamedTempFile::new().expect("Failed to create temp wal file for mvcc test");
         let wal_writer = WalWriter::new(wal_temp_file.path().to_path_buf());
         let log_manager_mvcc = Arc::new(crate::core::wal::log_manager::LogManager::new());
 
@@ -1308,9 +1324,9 @@ mod tests {
             ExecutionResult::Value(None)
         );
 
-        let ser_val_new = bincode::serialize(&val_new).unwrap();
-        let ser_val_new_exist = bincode::serialize(&val_new_exist).unwrap();
-        let ser_val_del = bincode::serialize(&val_del).unwrap();
+        let ser_val_new = serialize_data_type(&val_new).unwrap();
+        let ser_val_new_exist = serialize_data_type(&val_new_exist).unwrap();
+        let ser_val_del = serialize_data_type(&val_del).unwrap();
 
         match exec
             .execute_command(Command::FindByIndex {
@@ -1417,9 +1433,9 @@ mod tests {
             "Rolled back delete should restore value"
         );
 
-        let ser_val_new_rb = bincode::serialize(&val_new_rb).unwrap();
-        let ser_val_updated_exist_rb = bincode::serialize(&val_updated_exist_rb).unwrap();
-        let ser_val_del_rb = bincode::serialize(&val_del_rb).unwrap();
+        let ser_val_new_rb = serialize_data_type(&val_new_rb).unwrap();
+        let ser_val_updated_exist_rb = serialize_data_type(&val_updated_exist_rb).unwrap();
+        let ser_val_del_rb = serialize_data_type(&val_del_rb).unwrap();
 
         match exec
             .execute_command(Command::FindByIndex {
@@ -1447,7 +1463,7 @@ mod tests {
             ),
             _ => panic!("Expected Values"),
         }
-        let ser_val_old_exist = bincode::serialize(&val_old_exist).unwrap();
+        let ser_val_old_exist = serialize_data_type(&val_old_exist).unwrap();
         match exec
             .execute_command(Command::FindByIndex {
                 index_name: "default_value_index".to_string(),
@@ -1486,8 +1502,7 @@ mod tests {
         let common_val = DataType::String(common_val_str.clone());
         let other_val_str = "other_val_mvcc".to_string();
         let other_val = DataType::String(other_val_str.clone());
-        let ser_common_val = bincode::serialize(&common_val)
-            .map_err(|e| OxidbError::Serialization(e.to_string()))?;
+        let ser_common_val = serialize_data_type(&common_val)?;
 
         assert_eq!(
             exec_mvcc_find
@@ -1569,7 +1584,10 @@ mod tests {
         executor.execute_command(Command::BeginTransaction).expect("BEGIN failed");
         let lsn_after_begin;
         {
-            let active_tx = executor.transaction_manager.get_active_transaction().expect("No active transaction after BEGIN");
+            let active_tx = executor
+                .transaction_manager
+                .get_active_transaction()
+                .expect("No active transaction after BEGIN");
             lsn_after_begin = active_tx.prev_lsn; // LSN of BeginTransaction record
             assert_eq!(lsn_after_begin, 0, "LSN after BEGIN should be 0");
         }
@@ -1577,12 +1595,16 @@ mod tests {
         // Execute INSERT
         let key_insert = b"prev_lsn_insert_key".to_vec();
         let val_insert = DataType::String("val_insert".to_string());
-        executor.execute_command(Command::Insert { key: key_insert.clone(), value: val_insert.clone() })
+        executor
+            .execute_command(Command::Insert { key: key_insert.clone(), value: val_insert.clone() })
             .expect("INSERT failed");
 
         let expected_lsn_after_insert = lsn_after_begin + 1;
         {
-            let active_tx_after_insert = executor.transaction_manager.get_active_transaction().expect("No active transaction after INSERT");
+            let active_tx_after_insert = executor
+                .transaction_manager
+                .get_active_transaction()
+                .expect("No active transaction after INSERT");
             assert_eq!(
                 active_tx_after_insert.prev_lsn, expected_lsn_after_insert,
                 "Transaction.prev_lsn should be updated to LSN of INSERT operation."
@@ -1590,7 +1612,11 @@ mod tests {
         }
 
         // Check LogManager's state
-        assert_eq!(executor.log_manager.current_lsn(), expected_lsn_after_insert + 1, "LogManager current_lsn should be advanced past INSERT LSN.");
+        assert_eq!(
+            executor.log_manager.current_lsn(),
+            expected_lsn_after_insert + 1,
+            "LogManager current_lsn should be advanced past INSERT LSN."
+        );
 
         executor.execute_command(Command::CommitTransaction).expect("COMMIT failed");
     }
@@ -1604,7 +1630,11 @@ mod tests {
         let val_initial = DataType::String("val_initial_for_update".to_string());
         let val_updated = DataType::String("val_updated".to_string());
         // Auto-commit insert for setup
-        executor.execute_command(Command::Insert { key: key_update.clone(), value: val_initial.clone() })
+        executor
+            .execute_command(Command::Insert {
+                key: key_update.clone(),
+                value: val_initial.clone(),
+            })
             .expect("Initial INSERT for UPDATE test failed");
 
         let lsn_after_setup_insert = executor.log_manager.current_lsn(); // Next LSN to be assigned
@@ -1613,15 +1643,22 @@ mod tests {
         executor.execute_command(Command::BeginTransaction).expect("BEGIN failed");
         let lsn_after_begin;
         {
-            let active_tx = executor.transaction_manager.get_active_transaction().expect("No active transaction after BEGIN");
+            let active_tx = executor
+                .transaction_manager
+                .get_active_transaction()
+                .expect("No active transaction after BEGIN");
             lsn_after_begin = active_tx.prev_lsn;
-            assert_eq!(lsn_after_begin, lsn_after_setup_insert, "LSN after BEGIN should be the LSN from LogManager");
+            assert_eq!(
+                lsn_after_begin, lsn_after_setup_insert,
+                "LSN after BEGIN should be the LSN from LogManager"
+            );
         }
 
         // Execute UPDATE
         // For UPDATE, handle_update in update_execution.rs is called.
         // It first does a SELECT then a PUT. The PUT is what gets the LSN we're interested in for prev_lsn.
-        let _assignments = vec![SqlAssignment { column: "some_field".to_string(), value: val_updated.clone() }];
+        let _assignments =
+            vec![SqlAssignment { column: "some_field".to_string(), value: val_updated.clone() }];
         // Condition doesn't matter much as we're targeting the key directly for this test's focus on prev_lsn.
         // The handle_update logic uses a SELECT plan based on source and condition.
         // For simplicity, assuming SimpleFileKvStore where source is not strictly table-based for raw key updates.
@@ -1655,12 +1692,19 @@ mod tests {
         // Instead of full UPDATE, let's do another INSERT to test chained prev_lsn
         let key_insert2 = b"prev_lsn_insert_key2".to_vec();
         let val_insert2 = DataType::String("val_insert2".to_string());
-        executor.execute_command(Command::Insert { key: key_insert2.clone(), value: val_insert2.clone() })
+        executor
+            .execute_command(Command::Insert {
+                key: key_insert2.clone(),
+                value: val_insert2.clone(),
+            })
             .expect("Second INSERT failed");
 
         let expected_lsn_after_insert2 = lsn_after_begin + 1;
         {
-            let active_tx_after_insert2 = executor.transaction_manager.get_active_transaction().expect("No active transaction after second INSERT");
+            let active_tx_after_insert2 = executor
+                .transaction_manager
+                .get_active_transaction()
+                .expect("No active transaction after second INSERT");
             assert_eq!(
                 active_tx_after_insert2.prev_lsn, expected_lsn_after_insert2,
                 "Transaction.prev_lsn should be updated to LSN of the second INSERT operation."
@@ -1678,7 +1722,11 @@ mod tests {
         // Setup: Insert a record to delete
         let key_delete = b"prev_lsn_delete_key".to_vec();
         let val_delete_setup = DataType::String("val_for_delete".to_string());
-        executor.execute_command(Command::Insert { key: key_delete.clone(), value: val_delete_setup.clone() })
+        executor
+            .execute_command(Command::Insert {
+                key: key_delete.clone(),
+                value: val_delete_setup.clone(),
+            })
             .expect("Initial INSERT for DELETE test failed");
 
         let lsn_after_setup_insert = executor.log_manager.current_lsn();
@@ -1687,18 +1735,25 @@ mod tests {
         executor.execute_command(Command::BeginTransaction).expect("BEGIN failed");
         let lsn_after_begin;
         {
-            let active_tx = executor.transaction_manager.get_active_transaction().expect("No active transaction after BEGIN");
+            let active_tx = executor
+                .transaction_manager
+                .get_active_transaction()
+                .expect("No active transaction after BEGIN");
             lsn_after_begin = active_tx.prev_lsn;
             assert_eq!(lsn_after_begin, lsn_after_setup_insert);
         }
 
         // Execute DELETE
-        executor.execute_command(Command::Delete { key: key_delete.clone() })
+        executor
+            .execute_command(Command::Delete { key: key_delete.clone() })
             .expect("DELETE failed");
 
         let expected_lsn_after_delete = lsn_after_begin + 1;
         {
-            let active_tx_after_delete = executor.transaction_manager.get_active_transaction().expect("No active transaction after DELETE");
+            let active_tx_after_delete = executor
+                .transaction_manager
+                .get_active_transaction()
+                .expect("No active transaction after DELETE");
             assert_eq!(
                 active_tx_after_delete.prev_lsn, expected_lsn_after_delete,
                 "Transaction.prev_lsn should be updated to LSN of DELETE operation."

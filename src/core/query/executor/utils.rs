@@ -7,7 +7,8 @@ pub fn compare_data_types(
     val1: &DataType,
     val2: &DataType,
     operator: &str,
-) -> Result<bool, OxidbError> { // Changed
+) -> Result<bool, OxidbError> {
+    // Changed
     match operator {
         "=" => Ok(val1 == val2),
         "!=" => Ok(val1 != val2),
@@ -69,7 +70,8 @@ pub fn compare_data_types(
 }
 
 // New helper function as planned
-pub fn datatype_to_ast_literal(data_type: &DataType) -> Result<AstLiteralValue, OxidbError> { // Changed
+pub fn datatype_to_ast_literal(data_type: &DataType) -> Result<AstLiteralValue, OxidbError> {
+    // Changed
     match data_type {
         DataType::Integer(i) => Ok(AstLiteralValue::Number(i.to_string())),
         DataType::String(s) => Ok(AstLiteralValue::String(s.clone())),

@@ -1,10 +1,14 @@
 use std::fmt;
 use std::ops::AddAssign;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct PageId(pub u64);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub struct TransactionId(pub u64);
 
 impl fmt::Display for TransactionId {
@@ -14,6 +18,7 @@ impl fmt::Display for TransactionId {
 }
 
 impl AddAssign<u64> for TransactionId {
+    #[allow(clippy::arithmetic_side_effects)]
     fn add_assign(&mut self, rhs: u64) {
         self.0 += rhs;
     }

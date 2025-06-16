@@ -60,6 +60,16 @@ pub enum Command {
         assignments: Vec<SqlAssignment>,
         condition: Option<SqlCondition>,
     },
+    CreateTable {
+        table_name: String,
+        columns: Vec<crate::core::types::schema::ColumnDef>, // Ensuring correct path
+    },
+    SqlInsert {
+        // For SQL INSERT INTO table (cols) VALUES (vals)
+        table_name: String,
+        columns: Option<Vec<String>>, // None if columns are not specified
+        values: Vec<Vec<DataType>>,   // Outer Vec for rows, inner Vec for values in a row
+    },
     // Potentially others later, like:
     // Scan { prefix: Option<Key> },
 }

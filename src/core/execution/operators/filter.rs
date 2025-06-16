@@ -4,7 +4,9 @@ use crate::core::optimizer::Expression;
 use crate::core::types::DataType;
 
 pub struct FilterOperator {
+    /// The input operator that provides tuples.
     input: Box<dyn ExecutionOperator + Send + Sync>,
+    /// The expression used to filter tuples.
     predicate: Expression,
 }
 
@@ -14,21 +16,39 @@ impl FilterOperator {
     }
 
     // Static version of evaluate_predicate for use in the closure
-    fn static_evaluate_predicate(tuple: &Tuple, predicate: &Expression) -> Result<bool, OxidbError> { // Changed DbError to OxidbError
+    /// Evaluates a predicate against a tuple.
+    ///
+    /// This is a static method used internally by the `FilterOperator`.
+    ///
+    /// # Arguments
+    /// * `tuple` - The tuple to evaluate the predicate against.
+    /// * `predicate` - The expression representing the predicate.
+    ///
+    /// # Returns
+    /// * `Ok(true)` if the predicate evaluates to true for the tuple.
+    /// * `Ok(false)` if the predicate evaluates to false for the tuple.
+    /// * `Err(OxidbError)` if an error occurs during evaluation (e.g., type mismatch, unimplemented operator).
+    fn static_evaluate_predicate(
+        tuple: &Tuple,
+        predicate: &Expression,
+    ) -> Result<bool, OxidbError> {
+        // Changed DbError to OxidbError
         match predicate {
             Expression::Predicate(simple_predicate) => {
-                let column_index = match simple_predicate.column.parse::<usize>() {
-                    Ok(idx) => idx,
-                    Err(_) => {
-                        return Err(OxidbError::NotImplemented{feature: format!( // Changed
+                let column_index =
+                    match simple_predicate.column.parse::<usize>() {
+                        Ok(idx) => idx,
+                        Err(_) => {
+                            return Err(OxidbError::NotImplemented{feature: format!( // Changed
                             "Column name resolution ('{}') not implemented. Use numeric index.",
                             simple_predicate.column
                         )});
-                    }
-                };
+                        }
+                    };
 
                 if column_index >= tuple.len() {
-                    return Err(OxidbError::Internal(format!( // Changed
+                    return Err(OxidbError::Internal(format!(
+                        // Changed
                         "Predicate column index {} out of bounds.",
                         column_index
                     )));
@@ -52,10 +72,13 @@ impl FilterOperator {
                         (DataType::String(a), DataType::String(b)) => Ok(a < b),
                         _ => Err(OxidbError::Type("Type mismatch for '<' operator".into())), // Changed
                     },
-                    _ => Err(OxidbError::NotImplemented{feature: format!( // Changed
-                        "Operator '{}' not implemented.",
-                        simple_predicate.operator
-                    )}),
+                    _ => Err(OxidbError::NotImplemented {
+                        feature: format!(
+                            // Changed
+                            "Operator '{}' not implemented.",
+                            simple_predicate.operator
+                        ),
+                    }),
                 }
             } // Since Expression only has one variant (Predicate), this match is exhaustive.
               // If other Expression variants are added, this match will need to be updated.
@@ -66,7 +89,8 @@ impl FilterOperator {
 impl ExecutionOperator for FilterOperator {
     fn execute(
         &mut self,
-    ) -> Result<Box<dyn Iterator<Item = Result<Tuple, OxidbError>> + Send + Sync>, OxidbError> { // Changed DbError to OxidbError
+    ) -> Result<Box<dyn Iterator<Item = Result<Tuple, OxidbError>> + Send + Sync>, OxidbError> {
+        // Changed DbError to OxidbError
         let input_iter = self.input.execute()?;
         let predicate_clone = self.predicate.clone();
 

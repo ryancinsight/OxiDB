@@ -39,7 +39,8 @@ pub trait Index: Debug {
     /// # Errors
     ///
     /// Returns `OxidbError` if the deletion fails.
-    fn delete(&mut self, value: &Value, primary_key: Option<&PrimaryKey>) -> Result<(), OxidbError>; // Changed
+    fn delete(&mut self, value: &Value, primary_key: Option<&PrimaryKey>)
+        -> Result<(), OxidbError>; // Changed
 
     /// Finds primary keys associated with a given indexed value.
     ///

@@ -7,6 +7,12 @@ use std::collections::HashMap; // Added for SimpleMap
 // Define SimpleMap type alias
 pub type SimpleMap = HashMap<Vec<u8>, DataType>;
 
+// Re-export ID types from their actual location in common::types::ids
+pub use crate::core::common::types::ids::{PageId, SlotId, TransactionId};
+
+pub mod schema;
+pub use schema::{ColumnDef, Schema};
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum DataType {
     Integer(i64),
@@ -42,3 +48,16 @@ impl DataType {
 // fn create_string_type(val: String) -> DataType {
 //     DataType::String(val)
 // }
+
+// LSN type alias - this was from a previous session, ensure it's correct.
+pub type Lsn = u64;
+
+// Re-export Row and Value for convenience, assuming they are defined in their respective modules
+// pub mod row; // Assuming row.rs exists
+// pub use row::Row;
+// pub mod value; // Assuming value.rs exists
+// pub use value::Value;
+
+// Tests module (if any specific to types/mod.rs, otherwise it's usually in individual type files)
+// #[cfg(test)]
+// mod tests; // Removed as src/core/types/tests.rs does not exist

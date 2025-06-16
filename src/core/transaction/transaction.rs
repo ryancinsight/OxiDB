@@ -45,7 +45,8 @@ pub enum UndoOperation {
 
 impl Transaction {
     /// Creates a new transaction with the given ID and an initial state of `Active`.
-    pub fn new(id: TransactionId) -> Self { // Changed id type from u64
+    pub fn new(id: TransactionId) -> Self {
+        // Changed id type from u64
         Transaction {
             id,
             state: TransactionState::Active,
@@ -71,7 +72,7 @@ impl Transaction {
         Transaction {
             id: self.id,
             state: self.state.clone(), // State might be relevant for some store implementations (e.g. MVCC visibility)
-            prev_lsn: self.prev_lsn, // Clone prev_lsn
+            prev_lsn: self.prev_lsn,   // Clone prev_lsn
             undo_log: Vec::new(),
             redo_log: Vec::new(),
         }

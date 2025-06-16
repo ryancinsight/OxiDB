@@ -1,6 +1,6 @@
 use crate::core::common::error::OxidbError;
-use std::io;
-use std::error::Error; // Import the Error trait
+use std::error::Error;
+use std::io; // Import the Error trait
 
 #[test]
 fn test_error_display_and_source() {

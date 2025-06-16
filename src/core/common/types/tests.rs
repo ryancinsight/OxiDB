@@ -1,6 +1,6 @@
 use super::*;
+use serde::{Deserialize, Serialize};
 use serde_json;
-use serde::{Serialize, Deserialize};
 
 #[test]
 fn test_data_type_serialization() {
@@ -75,14 +75,9 @@ fn test_value_serialization_and_get_type() {
 
 #[test]
 fn test_row_serialization() {
-    let row = Row {
-        values: vec![Value::Integer(1), Value::Text("test".to_string())],
-    };
+    let row = Row { values: vec![Value::Integer(1), Value::Text("test".to_string())] };
     let serialized = serde_json::to_string(&row).unwrap();
-    assert_eq!(
-        serialized,
-        "{\"values\":[{\"Integer\":1},{\"Text\":\"test\"}]}"
-    );
+    assert_eq!(serialized, "{\"values\":[{\"Integer\":1},{\"Text\":\"test\"}]}");
     let deserialized: Row = serde_json::from_str(&serialized).unwrap();
     assert_eq!(deserialized, row);
 }
@@ -91,14 +86,8 @@ fn test_row_serialization() {
 fn test_schema_serialization_and_get_column_index() {
     let schema = Schema {
         columns: vec![
-            ColumnDef {
-                name: "id".to_string(),
-                data_type: DataType::Integer,
-            },
-            ColumnDef {
-                name: "name".to_string(),
-                data_type: DataType::Text,
-            },
+            ColumnDef { name: "id".to_string(), data_type: DataType::Integer },
+            ColumnDef { name: "name".to_string(), data_type: DataType::Text },
         ],
     };
 
@@ -140,7 +129,6 @@ fn test_value_partial_ord() {
     assert!(Value::Null == Value::Null);
     assert!(!(Value::Null < Value::Null));
     assert!(!(Value::Null > Value::Null));
-
 
     // Comparisons between different, non-compatible Value variants
     assert!(Value::Integer(1).partial_cmp(&Value::Text("a".to_string())).is_none());
@@ -222,7 +210,9 @@ fn test_page_id_serialization() {
     // or a struct `MyWrapper { page_id: 123 }`.
     // Given the type is `PageId`, let's assume it's a struct that serializes like this:
     #[derive(Serialize, Deserialize, Debug, PartialEq)]
-    struct PageIdWrapper { page_id: u32 } // Changed to snake_case
+    struct PageIdWrapper {
+        page_id: u32,
+    } // Changed to snake_case
     let page_id_wrapper = PageIdWrapper { page_id: 123 };
     let serialized_wrapper = serde_json::to_string(&page_id_wrapper).unwrap(); // Renamed to avoid conflict if original `serialized` was kept
     assert_eq!(serialized_wrapper, "{\"page_id\":123}"); // Updated JSON string
@@ -264,7 +254,6 @@ fn test_page_id_serialization() {
     assert_eq!(serialized_actual, "456");
     let deserialized_actual: super::PageId = serde_json::from_str(&serialized_actual).unwrap();
     assert_eq!(deserialized_actual, actual_page_id);
-
 }
 
 #[test]
@@ -276,15 +265,19 @@ fn test_transaction_id_serialization() {
     let actual_tx_id = super::TransactionId(789);
     let serialized_actual = serde_json::to_string(&actual_tx_id).unwrap();
     assert_eq!(serialized_actual, "789"); // Typical for such newtypes or type aliases.
-    let deserialized_actual: super::TransactionId = serde_json::from_str(&serialized_actual).unwrap();
+    let deserialized_actual: super::TransactionId =
+        serde_json::from_str(&serialized_actual).unwrap();
     assert_eq!(deserialized_actual, actual_tx_id);
 
     // If the structure was intended to be `{"transaction_id":789}` to match the prompt's original format style:
     #[derive(Serialize, Deserialize, Debug, PartialEq)]
-    struct TransactionIdWrapper { transaction_id: u64 } // Changed to snake_case
+    struct TransactionIdWrapper {
+        transaction_id: u64,
+    } // Changed to snake_case
     let tx_id_wrapper = TransactionIdWrapper { transaction_id: 789 };
     let serialized_wrapper = serde_json::to_string(&tx_id_wrapper).unwrap();
     assert_eq!(serialized_wrapper, "{\"transaction_id\":789}"); // Updated JSON string
-    let deserialized_wrapper: TransactionIdWrapper = serde_json::from_str(&serialized_wrapper).unwrap();
+    let deserialized_wrapper: TransactionIdWrapper =
+        serde_json::from_str(&serialized_wrapper).unwrap();
     assert_eq!(deserialized_wrapper, tx_id_wrapper);
 }

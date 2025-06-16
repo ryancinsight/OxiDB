@@ -18,7 +18,8 @@ impl ProjectOperator {
 impl ExecutionOperator for ProjectOperator {
     fn execute(
         &mut self,
-    ) -> Result<Box<dyn Iterator<Item = Result<Tuple, OxidbError>> + Send + Sync>, OxidbError> { // Changed
+    ) -> Result<Box<dyn Iterator<Item = Result<Tuple, OxidbError>> + Send + Sync>, OxidbError> {
+        // Changed
         let input_iter = self.input.execute()?;
 
         if self.column_indices.is_empty() {
@@ -34,7 +35,8 @@ impl ExecutionOperator for ProjectOperator {
                         if index < tuple.len() {
                             projected_tuple.push(tuple[index].clone());
                         } else {
-                            return Err(OxidbError::Internal(format!( // Changed
+                            return Err(OxidbError::Internal(format!(
+                                // Changed
                                 "Projection index {} out of bounds for tuple length {}",
                                 index,
                                 tuple.len()

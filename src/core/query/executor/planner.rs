@@ -1,5 +1,5 @@
-use crate::core::common::OxidbError; // Changed
 use crate::core::common::serialization::serialize_data_type;
+use crate::core::common::OxidbError; // Changed
 use crate::core::execution::operators::{
     FilterOperator, IndexScanOperator, NestedLoopJoinOperator, ProjectOperator, TableScanOperator,
 };
@@ -17,7 +17,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         plan: QueryPlanNode,
         snapshot_id: u64,
         committed_ids: Arc<HashSet<u64>>,
-    ) -> Result<Box<dyn ExecutionOperator + Send + Sync>, OxidbError> { // Changed
+    ) -> Result<Box<dyn ExecutionOperator + Send + Sync>, OxidbError> {
+        // Changed
         match plan {
             QueryPlanNode::TableScan { table_name, alias: _ } => {
                 // Alias is ignored for now by TableScanOperator
@@ -38,7 +39,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 // scan_condition is Option<SimplePredicate>
                 // IndexScanOperator requires a specific value to scan for.
                 let simple_predicate = scan_condition.ok_or_else(|| {
-                    OxidbError::SqlParsing("IndexScan requires a scan condition".to_string()) // Changed
+                    OxidbError::SqlParsing("IndexScan requires a scan condition".to_string())
+                    // Changed
                 })?;
                 let scan_value_dt = simple_predicate.value; // This is already a DataType
 
@@ -92,7 +94,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                             Ok(idx) => column_indices.push(idx),
                             Err(_) => {
                                 // If a column is not "*" and not parseable to usize, it's an error.
-                                return Err(OxidbError::SqlParsing(format!( // Changed
+                                return Err(OxidbError::SqlParsing(format!(
+                                    // Changed
                                     "Project column '{}' is not a valid numeric index and not '*'.",
                                     col_str
                                 )));

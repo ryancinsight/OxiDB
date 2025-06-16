@@ -1,9 +1,9 @@
-use std::fs::{File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write, ErrorKind, Error as IoError};
-use std::path::PathBuf;
 use crate::core::common::error::OxidbError;
 use crate::core::common::types::PageId; // Assuming PageId is u64 from common::types::ids
 use crate::core::storage::engine::page::PAGE_SIZE;
+use std::fs::{File, OpenOptions};
+use std::io::{Error as IoError, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::path::PathBuf;
 
 pub struct DiskManager {
     db_file: File,
@@ -15,18 +15,27 @@ impl DiskManager {
     pub fn open(db_path: PathBuf) -> Result<Self, OxidbError> {
         let is_new_db = !db_path.exists();
 
-        let db_file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(&db_path)
-            .map_err(|e| OxidbError::Io(IoError::new(ErrorKind::Other, format!("Failed to open database file '{}': {}", db_path.display(), e))))?;
+        let db_file =
+            OpenOptions::new().read(true).write(true).create(true).open(&db_path).map_err(|e| {
+                OxidbError::Io(IoError::new(
+                    ErrorKind::Other,
+                    format!("Failed to open database file '{}': {}", db_path.display(), e),
+                ))
+            })?;
 
         let next_page_id = if is_new_db {
             PageId(0)
         } else {
-            let metadata = db_file.metadata()
-                .map_err(|e| OxidbError::Io(IoError::new(ErrorKind::Other, format!("Failed to read metadata for database file '{}': {}", db_path.display(), e))))?;
+            let metadata = db_file.metadata().map_err(|e| {
+                OxidbError::Io(IoError::new(
+                    ErrorKind::Other,
+                    format!(
+                        "Failed to read metadata for database file '{}': {}",
+                        db_path.display(),
+                        e
+                    ),
+                ))
+            })?;
             PageId((metadata.len() / PAGE_SIZE as u64) as u64) // PageId is u64
         };
 
@@ -39,51 +48,78 @@ impl DiskManager {
 
     pub fn write_page(&mut self, page_id: PageId, page_data: &[u8]) -> Result<(), OxidbError> {
         if page_data.len() != PAGE_SIZE {
-            return Err(OxidbError::Io(IoError::new(ErrorKind::InvalidInput, format!(
-                "Page data length mismatch: expected {}, got {}",
-                PAGE_SIZE,
-                page_data.len()
-            ))));
+            return Err(OxidbError::Io(IoError::new(
+                ErrorKind::InvalidInput,
+                format!(
+                    "Page data length mismatch: expected {}, got {}",
+                    PAGE_SIZE,
+                    page_data.len()
+                ),
+            )));
         }
 
         let offset = page_id.0 * PAGE_SIZE as u64;
-        self.db_file.seek(SeekFrom::Start(offset))
-            .map_err(|e| OxidbError::Io(IoError::new(ErrorKind::Other, format!("Failed to seek to page {} offset {}: {}", page_id.0, offset, e))))?;
+        self.db_file.seek(SeekFrom::Start(offset)).map_err(|e| {
+            OxidbError::Io(IoError::new(
+                ErrorKind::Other,
+                format!("Failed to seek to page {} offset {}: {}", page_id.0, offset, e),
+            ))
+        })?;
 
-        self.db_file.write_all(page_data)
-            .map_err(|e| OxidbError::Io(IoError::new(ErrorKind::Other, format!("Failed to write page {}: {}", page_id.0, e))))?;
+        self.db_file.write_all(page_data).map_err(|e| {
+            OxidbError::Io(IoError::new(
+                ErrorKind::Other,
+                format!("Failed to write page {}: {}", page_id.0, e),
+            ))
+        })?;
 
         Ok(())
     }
 
-    pub fn read_page(&mut self, page_id: PageId, page_data_buf: &mut [u8]) -> Result<(), OxidbError> {
+    pub fn read_page(
+        &mut self,
+        page_id: PageId,
+        page_data_buf: &mut [u8],
+    ) -> Result<(), OxidbError> {
         if page_data_buf.len() != PAGE_SIZE {
-            return Err(OxidbError::Io(IoError::new(ErrorKind::InvalidInput, format!(
-                "Page data buffer length mismatch: expected {}, got {}",
-                PAGE_SIZE,
-                page_data_buf.len()
-            ))));
+            return Err(OxidbError::Io(IoError::new(
+                ErrorKind::InvalidInput,
+                format!(
+                    "Page data buffer length mismatch: expected {}, got {}",
+                    PAGE_SIZE,
+                    page_data_buf.len()
+                ),
+            )));
         }
 
         if page_id.0 >= self.next_page_id.0 {
-            return Err(OxidbError::Io(IoError::new(ErrorKind::NotFound, format!(
-                "Page ID {} out of bounds (next_page_id is {})",
-                page_id.0, self.next_page_id.0
-            ))));
+            return Err(OxidbError::Io(IoError::new(
+                ErrorKind::NotFound,
+                format!(
+                    "Page ID {} out of bounds (next_page_id is {})",
+                    page_id.0, self.next_page_id.0
+                ),
+            )));
         }
 
         let offset = page_id.0 * PAGE_SIZE as u64;
-        self.db_file.seek(SeekFrom::Start(offset))
-            .map_err(|e| OxidbError::Io(IoError::new(ErrorKind::Other, format!("Failed to seek to page {} offset {}: {}", page_id.0, offset, e))))?;
+        self.db_file.seek(SeekFrom::Start(offset)).map_err(|e| {
+            OxidbError::Io(IoError::new(
+                ErrorKind::Other,
+                format!("Failed to seek to page {} offset {}: {}", page_id.0, offset, e),
+            ))
+        })?;
 
         match self.db_file.read_exact(page_data_buf) {
             Ok(_) => Ok(()),
-            Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
-                Err(OxidbError::Io(IoError::new(ErrorKind::UnexpectedEof, format!(
-                    "Unexpected EOF when reading page {}: not enough bytes", page_id.0
-                ))))
-            }
-            Err(e) => Err(OxidbError::Io(IoError::new(ErrorKind::Other, format!("Failed to read page {}: {}", page_id.0, e)))),
+            Err(e) if e.kind() == ErrorKind::UnexpectedEof => Err(OxidbError::Io(IoError::new(
+                ErrorKind::UnexpectedEof,
+                format!("Unexpected EOF when reading page {}: not enough bytes", page_id.0),
+            ))),
+            Err(e) => Err(OxidbError::Io(IoError::new(
+                ErrorKind::Other,
+                format!("Failed to read page {}: {}", page_id.0, e),
+            ))),
         }
     }
 
@@ -108,8 +144,8 @@ impl DiskManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
-    use crate::core::storage::engine::page::PAGE_SIZE; // Already imported at module level but good for clarity
+    use crate::core::storage::engine::page::PAGE_SIZE;
+    use tempfile::NamedTempFile; // Already imported at module level but good for clarity
 
     fn create_temp_db_file() -> NamedTempFile {
         NamedTempFile::new().expect("Failed to create temp file")
@@ -217,8 +253,8 @@ mod tests {
 
         // Try to read PageId(1) which is not yet allocated but next_page_id is 1
         let result_next = dm.read_page(PageId(1), &mut read_buf);
-         assert!(matches!(result_next, Err(OxidbError::Io(_))));
-         if let Err(OxidbError::Io(err)) = result_next {
+        assert!(matches!(result_next, Err(OxidbError::Io(_))));
+        if let Err(OxidbError::Io(err)) = result_next {
             assert!(err.to_string().contains("out of bounds"));
         } else {
             panic!("Expected IO error for out of bounds read of next_page_id");

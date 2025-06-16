@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 // Required by QueryExecutor for the store it holds.
 
-use crate::core::common::OxidbError;
 use crate::core::common::types::Lsn; // Added Lsn
+use crate::core::common::OxidbError;
 use crate::core::storage::engine::traits::{KeyValueStore, VersionedValue};
 use crate::core::storage::engine::wal::WalWriter;
 use crate::core::transaction::Transaction;
@@ -21,7 +21,8 @@ pub struct SimpleFileKvStore {
 
 impl SimpleFileKvStore {
     /// Creates a new `SimpleFileKvStore` instance.
-    pub fn new(path: impl AsRef<Path>) -> Result<Self, OxidbError> { // Changed
+    pub fn new(path: impl AsRef<Path>) -> Result<Self, OxidbError> {
+        // Changed
         let path_buf = path.as_ref().to_path_buf();
 
         let mut wal_file_path = path_buf.clone();
@@ -55,7 +56,8 @@ impl SimpleFileKvStore {
 
     /// Persists the current state of the cache to disk.
     /// This is equivalent to the old `save_to_disk` method.
-    pub fn persist(&self) -> Result<(), OxidbError> { // Changed
+    pub fn persist(&self) -> Result<(), OxidbError> {
+        // Changed
         persistence::save_data_to_disk(&self.file_path, &self.cache)
     }
 
@@ -117,18 +119,28 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
                 //         - Version created by a committed transaction.
                 // Case 3: Special handling for "auto-committed" data (created_tx_id == 0)
                 //         when read by a "no active transaction" snapshot (snapshot_id == 0).
-                let created_by_current_tx = snapshot_id != 0 && version.created_tx_id == snapshot_id;
+                let created_by_current_tx =
+                    snapshot_id != 0 && version.created_tx_id == snapshot_id;
                 let is_committed_creator = committed_ids.contains(&version.created_tx_id);
-                let is_autocommit_data_visible_to_autocommit_snapshot = version.created_tx_id == 0 && snapshot_id == 0;
+                let is_autocommit_data_visible_to_autocommit_snapshot =
+                    version.created_tx_id == 0 && snapshot_id == 0;
 
-                if created_by_current_tx || is_committed_creator || is_autocommit_data_visible_to_autocommit_snapshot {
+                if created_by_current_tx
+                    || is_committed_creator
+                    || is_autocommit_data_visible_to_autocommit_snapshot
+                {
                     // If visible, check if it's also visibly expired
                     if let Some(expired_tx_id) = version.expired_tx_id {
-                        let expired_by_current_tx = snapshot_id != 0 && expired_tx_id == snapshot_id;
+                        let expired_by_current_tx =
+                            snapshot_id != 0 && expired_tx_id == snapshot_id;
                         let is_committed_expirer = committed_ids.contains(&expired_tx_id);
-                        let is_autocommit_expiry_visible_to_autocommit_snapshot = expired_tx_id == 0 && snapshot_id == 0;
+                        let is_autocommit_expiry_visible_to_autocommit_snapshot =
+                            expired_tx_id == 0 && snapshot_id == 0;
 
-                        if !(expired_by_current_tx || is_committed_expirer || is_autocommit_expiry_visible_to_autocommit_snapshot) {
+                        if !(expired_by_current_tx
+                            || is_committed_expirer
+                            || is_autocommit_expiry_visible_to_autocommit_snapshot)
+                        {
                             // Not visibly expired, so this version is the one
                             return Ok(Some(version.value.clone()));
                         }
@@ -143,7 +155,12 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         Ok(None)
     }
 
-    fn delete(&mut self, key: &Vec<u8>, transaction: &Transaction, lsn: Lsn) -> Result<bool, OxidbError> {
+    fn delete(
+        &mut self,
+        key: &Vec<u8>,
+        transaction: &Transaction,
+        lsn: Lsn,
+    ) -> Result<bool, OxidbError> {
         let wal_entry = crate::core::storage::engine::wal::WalEntry::Delete {
             lsn,
             transaction_id: transaction.id.0, // Use .0 for u64 field
@@ -155,7 +172,8 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
             for version in versions.iter_mut().rev() {
                 if version.created_tx_id <= transaction.id.0 // Use .0 for comparison
                     && (version.expired_tx_id.is_none()
-                        || version.expired_tx_id.unwrap() > transaction.id.0) // Use .0 for comparison
+                        || version.expired_tx_id.unwrap() > transaction.id.0)
+                // Use .0 for comparison
                 {
                     if version.expired_tx_id.is_none() {
                         version.expired_tx_id = Some(transaction.id.0); // Use .0 for assignment
@@ -174,20 +192,31 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         _key: &Vec<u8>,
         _snapshot_id: u64,
         _committed_ids: &HashSet<u64>,
-    ) -> Result<bool, OxidbError> { // Changed
+    ) -> Result<bool, OxidbError> {
+        // Changed
         Ok(false) // Placeholder as in original
     }
 
-    fn log_wal_entry(&mut self, entry: &super::super::super::wal::WalEntry) -> Result<(), OxidbError> { // Changed
+    fn log_wal_entry(
+        &mut self,
+        entry: &super::super::super::wal::WalEntry,
+    ) -> Result<(), OxidbError> {
+        // Changed
         // Adjusted path
         self.wal_writer.log_entry(entry) // Reverted to log_entry, no separate flush needed as log_entry syncs
     }
 
-    fn gc(&mut self, _low_water_mark: u64, _committed_ids: &HashSet<u64>) -> Result<(), OxidbError> { // Changed
+    fn gc(
+        &mut self,
+        _low_water_mark: u64,
+        _committed_ids: &HashSet<u64>,
+    ) -> Result<(), OxidbError> {
+        // Changed
         Ok(()) // Placeholder as in original
     }
 
-    fn scan(&self) -> Result<Vec<(Vec<u8>, Vec<u8>)>, OxidbError> // Changed
+    fn scan(&self) -> Result<Vec<(Vec<u8>, Vec<u8>)>, OxidbError>
+    // Changed
     where
         Vec<u8>: Clone,
         Vec<u8>: Clone,

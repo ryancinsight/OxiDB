@@ -2,13 +2,12 @@ use super::{ExecutionResult, QueryExecutor};
 use crate::core::common::OxidbError;
 // use crate::core::common::serialization::{deserialize_data_type}; // No longer needed here
 use crate::core::common::types::TransactionId;
-use bincode; // Added bincode
 // Key removed
 use crate::core::storage::engine::traits::KeyValueStore;
 // LockType removed
 // Transaction, TransactionState, UndoOperation removed
 // DataType removed
-use std::collections::{HashSet}; // HashMap removed
+use std::collections::HashSet; // HashMap removed
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     // handle_insert, handle_delete, and handle_get were removed.
@@ -18,7 +17,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         &mut self,
         index_name: String,
         value: Vec<u8>, // This is the serialized form of the value being searched
-    ) -> Result<ExecutionResult, OxidbError> { // Changed
+    ) -> Result<ExecutionResult, OxidbError> {
+        // Changed
         let candidate_keys = match self.index_manager.find_by_index(&index_name, &value) {
             Ok(Some(keys)) => keys,
             Ok(None) => Vec::new(),
@@ -42,7 +42,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             // If this is for a read operation without a transaction, it should see all committed data.
             // A "snapshot_id" of 0 and an empty committed_ids (or all committed_ids if available) might be more appropriate
             // if TransactionId(0) is special. For now, let's assume it aligns with unwrap_or(TransactionId(0)).
-            snapshot_id = self.transaction_manager.current_active_transaction_id().unwrap_or(TransactionId(0));
+            snapshot_id = self
+                .transaction_manager
+                .current_active_transaction_id()
+                .unwrap_or(TransactionId(0));
             committed_ids_vec = self.transaction_manager.get_committed_tx_ids_snapshot();
         }
 
@@ -56,7 +59,12 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 
         let mut results_vec = Vec::new();
         for primary_key in candidate_keys {
-            match self.store.read().unwrap().get(&primary_key, snapshot_id.0, &committed_ids_for_store) { // Use snapshot_id.0 (u64)
+            match self.store.read().unwrap().get(
+                &primary_key,
+                snapshot_id.0,
+                &committed_ids_for_store,
+            ) {
+                // Use snapshot_id.0 (u64)
                 Ok(Some(serialized_data_from_store)) => {
                     // The `value` parameter to this function is the serialized indexed field's value.
                     // If the index ("default_value_index") stores the entire serialized DataType,
@@ -65,16 +73,18 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                     // For "default_value_index", it's assumed it indexes the serialized DataType.
                     if serialized_data_from_store == value {
                         // This comparison logic might need adjustment based on what the index actually stores
-                        match bincode::deserialize(&serialized_data_from_store) { // Replaced deserialize_data_type
+                        match crate::core::common::serialization::deserialize_data_type(
+                            &serialized_data_from_store,
+                        ) {
                             Ok(data_type) => results_vec.push(data_type),
                             Err(deserialize_err) => {
-                                // Convert bincode::Error to OxidbError or handle appropriately
+                                // deserialize_data_type already returns OxidbError.
+                                // Log the original error context if needed, then propagate.
                                 eprintln!(
-                                    "Error deserializing data with bincode for key {:?}: {}",
+                                    "Error deserializing data (via deserialize_data_type) for key {:?}: {}",
                                     primary_key, deserialize_err
                                 );
-                                // Propagate as Deserialization error for now
-                                return Err(OxidbError::Deserialization(deserialize_err.to_string()));
+                                return Err(deserialize_err);
                             }
                         }
                     }
