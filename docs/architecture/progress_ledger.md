@@ -7,10 +7,10 @@ This ledger tracks the status of major features and components of the Oxidb cath
 | Feature             | Status        | Required Components (Illustrative) | Notes                                      |
 |---------------------|---------------|------------------------------------|--------------------------------------------|
 | **API Layer**       | Under Construction | `api/mod.rs`, `api/types.rs`, `api/errors.rs`, `api/traits.rs`, `api/api_impl.rs` | External interface for database interaction. |
-| **Query Processor** | Under Construction | `core/query/parser/`, `core/query/executor/`, `core/query/optimizer/` | Parsing, validation, optimization, execution. |
+| **Query Processor** | Partially Implemented | `core/query/parser/`, `core/query/executor/`, `core/query/optimizer/` | Parsing, validation, optimization, execution. |
 | **Transaction Mgr.**| Partially Implemented | `core/transaction/manager.rs`      | ACID properties, concurrency.              |
-| **Storage Engine**  | Under Construction | `core/storage/engine/`, `core/storage/wal/`, `core/storage/indexing/` | Physical data storage and retrieval.       |
-| **Common Utilities**| Under Construction | `core/common/error.rs`, `core/common/types.rs`, `core/common/serialization.rs` | Shared types, errors, utils.             |
+| **Storage Engine**  | Partially Implemented | `core/storage/engine/`, `core/storage/wal/`, `core/storage/indexing/` | Physical data storage and retrieval.       |
+| **Common Utilities**| Substantially Implemented | `core/common/error.rs`, `core/common/types.rs`, `core/common/serialization.rs` | Shared types, errors, utils.             |
 
 ## Detailed Component Status
 
@@ -20,12 +20,12 @@ This ledger tracks the status of major features and components of the Oxidb cath
     *   [x] `mod.rs` (Public API definition, updated)
     *   [x] `types.rs` (API specific data types)
     *   [x] `errors.rs` (API specific error types, boilerplate)
-    *   [ ] `traits.rs` (API specific traits, to be defined)
+    *   [?] `traits.rs` (File exists but is empty of definitions, API specific traits to be defined)
     *   [x] `api_impl.rs` (API implementation logic)
     *   [ ] ADR for API design choices (specific to API behavior, structure governed by ADR-000)
 
 ### Query Processor (`src/core/query`)
-*   Status: Under Construction
+*   Status: Partially Implemented
 *   Sub-Modules:
     *   **Parser** (`src/core/query/parser`)
         *   Status: Partially Implemented
@@ -36,17 +36,17 @@ This ledger tracks the status of major features and components of the Oxidb cath
             *   [x] `sql/parser/ (core.rs, statement.rs, etc.)` (Note: Parser modules are within `src/core/query/sql/`)
             *   [ ] ADR for query language/parser design
     *   **Binder** (`src/core/query/binder`)
-        *   Status: Not Started
+        *   Status: Partially Implemented
         *   Checklist:
-            *   [ ] `mod.rs` (exists as .gitkeep)
-            *   [ ] `binder.rs` (not present)
+            *   [x] `mod.rs` (Created with module definition for binder.rs)
+            *   [x] `binder.rs` (Initial implementation with Binder struct, placeholder BoundStatement/BindError, and bind_statement method. Currently returns NotImplemented.)
     *   **Planner** (`src/core/query/planner`)
         *   Status: Not Started
         *   Checklist:
             *   [ ] `mod.rs` (exists as .gitkeep)
             *   [ ] `logical_planner.rs` (not present)
             *   [ ] `physical_planner.rs` (not present)
-        *   Note: Initial planning logic present in `src/core/query/executor/planner.rs` and `optimizer.rs`.
+        *   Note: Update to reflect that `src/core/query/executor/planner.rs` handles physical plan translation (QueryPlanNode to ExecutionOperator tree) and `src/core/optimizer/optimizer.rs` (specifically `build_initial_plan`) handles logical plan generation (AST to QueryPlanNode).
     *   **Optimizer** (`src/core/optimizer`)
         *   Status: Partially Implemented
         *   Checklist:
@@ -58,7 +58,7 @@ This ledger tracks the status of major features and components of the Oxidb cath
         *   Status: Partially Implemented
         *   Checklist:
             *   [x] `mod.rs`
-            *   [?] `operator logic` (Operator logic integrated within executor and plan nodes, no separate operators/ dir found)
+            *   [x] `operator logic` (Dedicated operator implementations exist in `src/core/execution/operators/`)
             *   [ ] ADR for execution model
 
 ### Transaction Manager (`src/core/transaction`)
@@ -68,45 +68,46 @@ This ledger tracks the status of major features and components of the Oxidb cath
     *   [x] `transaction.rs` (Transaction struct and lifecycle implemented)
     *   [x] `manager.rs` (Transaction management implemented with WAL logging)
     *   [x] `lock_manager.rs` (Locking mechanisms implemented)
-    *   [ ] `errors.rs` (File missing, transaction-specific errors to be defined or confirmed if covered by global error handling)
+    *   [ ] `errors.rs` (File missing, transaction-specific errors currently part of global `OxidbError`)
     *   [ ] ADR for concurrency control strategy
 
 ### Storage Engine (`src/core/storage`)
-*   Status: Under Construction
+*   Status: Partially Implemented
 *   Sub-Modules:
     *   **Engine** (`src/core/storage/engine`)
-        *   Status: Partially Implemented (SimpleFileKvStore exists)
+        *   Status: Partially Implemented
         *   Checklist:
-            *   [ ] `mod.rs`
-            *   [ ] `traits.rs` (Core storage traits)
-            *   [ ] `simple_file_kv_store.rs` (or other specific KV store)
-            *   [ ] `page_manager.rs` (Future)
-            *   [ ] `buffer_pool.rs` (Future)
+            *   [x] `mod.rs` (Exists and defines module structure)
+            *   [x] `traits/mod.rs` (Core storage traits defined in `traits/mod.rs`)
+            *   [x] `simple_file/store.rs` (SimpleFileKvStore implemented in `implementations/simple_file/store.rs`)
+            *   [?] `page_manager.rs` (No specific high-level page_manager.rs; `disk_manager.rs` handles low-level page I/O, `page.rs` defines page structure)
+            *   [x] `buffer_pool_manager.rs` (BufferPoolManager implemented in `buffer_pool_manager.rs`, `buffer_pool/` dir is placeholder)
             *   [x] ADR for storage formats and strategies (ADR-001)
     *   **Write-Ahead Log (WAL)** (`src/core/wal`)
         *   Status: Partially Implemented
         *   Checklist:
-            *   [ ] `mod.rs`
-            *   [ ] `log_manager.rs`
-            *   [ ] `log_record.rs`
-            *   [ ] `writer.rs`
+            *   [x] `mod.rs` (Exists and defines module structure)
+            *   [x] `log_manager.rs` (LogManager for LSN allocation implemented)
+            *   [x] `log_record.rs` (LogRecord enum with various record types defined)
+            *   [x] `writer.rs` (WalWriter for buffering and writing log records implemented)
             *   [ ] ADR for WAL implementation
     *   **Indexing** (`src/core/indexing`)
         *   Status: Partially Implemented
         *   Checklist:
-            *   [ ] `mod.rs`
-            *   [ ] `traits.rs` (Indexing traits)
-            *   [ ] `hash_index.rs` (Example index)
+            *   [x] `mod.rs` (Exists and defines module structure)
+            *   [x] `traits.rs` (Index trait defined)
+            *   [x] `hash_index.rs` (HashIndex implementation present)
+            *   [x] `manager.rs` (IndexManager for managing multiple indexes implemented)
             *   [ ] `btree/` (Future B-Tree implementation)
             *   [ ] ADR for indexing strategies
 
 ### Common Utilities (`src/core/common`)
-*   Status: Under Construction
+*   Status: Substantially Implemented
 *   Checklist:
-    *   [ ] `mod.rs`
-    *   [ ] `types.rs` (Core data types, newtypes)
-    *   [ ] `error.rs` (Centralized DbError enum)
-    *   [ ] `serialization.rs` (Serialization/Deserialization traits and impls)
-    *   [ ] `traits.rs` (Commonly used traits)
+    *   [x] `mod.rs` (Exists and defines module structure)
+    *   [x] `types/` (Core data types like Value, PageId, TransactionId, Schema, Row, LSN alias defined in `types/` subdirectory with multiple files. Note potential `DataType` definition variance.)
+    *   [x] `error.rs` (Centralized `OxidbError` enum implemented)
+    *   [x] `serialization.rs` (Serialization helpers for `DataType` and `DataSerializer`/`DataDeserializer` traits for `Vec<u8>` implemented)
+    *   [x] `traits.rs` (Commonly used traits like `DataSerializer`/`DataDeserializer` defined)
 
 This ledger will be updated as work progresses on each component. "Required Components" are illustrative and will be refined in specific ADRs for each feature.
