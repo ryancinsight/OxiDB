@@ -20,7 +20,7 @@ This ledger tracks the status of major features and components of the Oxidb cath
     *   [x] `mod.rs` (Public API definition, updated)
     *   [x] `types.rs` (API specific data types)
     *   [x] `errors.rs` (API specific error types, boilerplate)
-    *   [?] `traits.rs` (File exists but is empty of definitions, API specific traits to be defined)
+    *   [x] `traits.rs` (Initial API traits (OxidbApi) defined.)
     *   [x] `api_impl.rs` (API implementation logic)
     *   [ ] ADR for API design choices (specific to API behavior, structure governed by ADR-000)
 
@@ -68,7 +68,7 @@ This ledger tracks the status of major features and components of the Oxidb cath
     *   [x] `transaction.rs` (Transaction struct and lifecycle implemented)
     *   [x] `manager.rs` (Transaction management implemented with WAL logging)
     *   [x] `lock_manager.rs` (Locking mechanisms implemented)
-    *   [ ] `errors.rs` (File missing, transaction-specific errors currently part of global `OxidbError`)
+    *   [x] `errors.rs` (TransactionError enum defined for specific transaction issues)
     *   [ ] ADR for concurrency control strategy
 
 ### Storage Engine (`src/core/storage`)

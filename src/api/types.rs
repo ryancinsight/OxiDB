@@ -18,6 +18,15 @@ pub struct Oxidb {
     pub(crate) executor: QueryExecutor<SimpleFileKvStore>,
 }
 
+/// Represents the result of a query execution.
+/// Placeholder: This will be expanded with more detailed variants.
+#[derive(Debug)]
+pub enum QueryResult {
+    Success, // Placeholder for successful operations that don't return data
+    Data(String), // Placeholder for operations that return data (e.g., SELECT)
+    RowsAffected(usize), // For INSERT, UPDATE, DELETE
+}
+
 // Example (to be expanded later):
 // pub struct ApiRequest { /* ... */ }
 // pub enum ApiResponse { /* ... */ }
