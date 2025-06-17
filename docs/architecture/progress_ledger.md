@@ -7,8 +7,8 @@ This ledger tracks the status of major features and components of the Oxidb cath
 | Feature             | Status        | Required Components (Illustrative) | Notes                                      |
 |---------------------|---------------|------------------------------------|--------------------------------------------|
 | **API Layer**       | Under Construction | `api/mod.rs`, `api/types.rs`, `api/errors.rs`, `api/traits.rs`, `api/api_impl.rs` | External interface for database interaction. |
-| **Query Processor** | In Design     | `core/query/parser/`, `core/query/executor/`, `core/query/optimizer/` | Parsing, validation, optimization, execution. |
-| **Transaction Mgr.**| In Design     | `core/transaction/manager.rs`      | ACID properties, concurrency.              |
+| **Query Processor** | Under Construction | `core/query/parser/`, `core/query/executor/`, `core/query/optimizer/` | Parsing, validation, optimization, execution. |
+| **Transaction Mgr.**| Partially Implemented | `core/transaction/manager.rs`      | ACID properties, concurrency.              |
 | **Storage Engine**  | Under Construction | `core/storage/engine/`, `core/storage/wal/`, `core/storage/indexing/` | Physical data storage and retrieval.       |
 | **Common Utilities**| Under Construction | `core/common/error.rs`, `core/common/types.rs`, `core/common/serialization.rs` | Shared types, errors, utils.             |
 
@@ -20,54 +20,55 @@ This ledger tracks the status of major features and components of the Oxidb cath
     *   [x] `mod.rs` (Public API definition, updated)
     *   [x] `types.rs` (API specific data types)
     *   [x] `errors.rs` (API specific error types, boilerplate)
-    *   [x] `traits.rs` (API specific traits, boilerplate)
+    *   [ ] `traits.rs` (API specific traits, to be defined)
     *   [x] `api_impl.rs` (API implementation logic)
     *   [ ] ADR for API design choices (specific to API behavior, structure governed by ADR-000)
 
 ### Query Processor (`src/core/query`)
-*   Status: In Design
+*   Status: Under Construction
 *   Sub-Modules:
     *   **Parser** (`src/core/query/parser`)
         *   Status: Partially Implemented
         *   Checklist:
-            *   [ ] `mod.rs`
-            *   [ ] `lexer.rs`
-            *   [ ] `ast.rs`
-            *   [ ] `parser.rs`
+            *   [x] `mod.rs`
+            *   [x] `sql/tokenizer.rs` (Note: Tokenizer is within `src/core/query/sql/`)
+            *   [x] `sql/ast.rs` (Note: AST definitions are within `src/core/query/sql/`)
+            *   [x] `sql/parser/ (core.rs, statement.rs, etc.)` (Note: Parser modules are within `src/core/query/sql/`)
             *   [ ] ADR for query language/parser design
     *   **Binder** (`src/core/query/binder`)
         *   Status: Not Started
         *   Checklist:
-            *   [ ] `mod.rs`
-            *   [ ] `binder.rs`
+            *   [ ] `mod.rs` (exists as .gitkeep)
+            *   [ ] `binder.rs` (not present)
     *   **Planner** (`src/core/query/planner`)
         *   Status: Not Started
         *   Checklist:
-            *   [ ] `mod.rs`
-            *   [ ] `logical_planner.rs`
-            *   [ ] `physical_planner.rs`
+            *   [ ] `mod.rs` (exists as .gitkeep)
+            *   [ ] `logical_planner.rs` (not present)
+            *   [ ] `physical_planner.rs` (not present)
+        *   Note: Initial planning logic present in `src/core/query/executor/planner.rs` and `optimizer.rs`.
     *   **Optimizer** (`src/core/optimizer`)
-        *   Status: Not Started
-        *   Checklist:
-            *   [ ] `mod.rs`
-            *   [ ] `optimizer.rs`
-            *   [ ] `rules/`
-            *   [ ] ADR for optimization strategies
-    *   **Executor** (`src/core/execution`)
         *   Status: Partially Implemented
         *   Checklist:
-            *   [ ] `mod.rs`
-            *   [ ] `operators/` (various operator implementations)
+            *   [x] `mod.rs` (Defines plan nodes and core structures)
+            *   [x] `optimizer.rs` (Initial plan building and basic optimization passes implemented)
+            *   [ ] `rules/` (Directory exists, no rules implemented)
+            *   [ ] ADR for optimization strategies
+    *   **Executor** (`src/core/query/executor/`)
+        *   Status: Partially Implemented
+        *   Checklist:
+            *   [x] `mod.rs`
+            *   [?] `operator logic` (Operator logic integrated within executor and plan nodes, no separate operators/ dir found)
             *   [ ] ADR for execution model
 
 ### Transaction Manager (`src/core/transaction`)
 *   Status: Partially Implemented
 *   Checklist:
-    *   [ ] `mod.rs`
-    *   [ ] `transaction.rs` (Transaction struct and lifecycle)
-    *   [ ] `manager.rs` (Transaction management, concurrency control)
-    *   [ ] `lock_manager.rs` (Locking mechanisms)
-    *   [ ] `errors.rs`
+    *   [x] `mod.rs`
+    *   [x] `transaction.rs` (Transaction struct and lifecycle implemented)
+    *   [x] `manager.rs` (Transaction management implemented with WAL logging)
+    *   [x] `lock_manager.rs` (Locking mechanisms implemented)
+    *   [ ] `errors.rs` (File missing, transaction-specific errors to be defined or confirmed if covered by global error handling)
     *   [ ] ADR for concurrency control strategy
 
 ### Storage Engine (`src/core/storage`)
