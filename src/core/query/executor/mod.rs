@@ -4,6 +4,7 @@
 pub mod command_handlers;
 pub mod ddl_handlers;
 pub mod planner; // Added planner module
+pub mod processors;
 pub mod select_execution;
 #[cfg(test)]
 pub mod tests;

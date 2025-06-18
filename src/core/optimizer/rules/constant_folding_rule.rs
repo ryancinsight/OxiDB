@@ -90,7 +90,7 @@ fn fold_expression(expression: Expression) -> Expression {
                     }
 
                     let result = match op.as_str() {
-                        "=" => match (left_val, right_val) {
+                        "=" | "==" => match (left_val, right_val) { // Added "=="
                             (DataType::Integer(l), DataType::Integer(r)) => DataType::Boolean(l == r),
                             (DataType::Float(l), DataType::Float(r)) => DataType::Boolean(l == r),
                             (DataType::String(l), DataType::String(r)) => DataType::Boolean(l == r),
@@ -100,7 +100,7 @@ fn fold_expression(expression: Expression) -> Expression {
                             (DataType::Float(l), DataType::Integer(r)) => DataType::Boolean(*l == (*r as f64)),
                             _ => return Expression::CompareOp { left: folded_left, op, right: folded_right }, // Type mismatch
                         },
-                        "!=" => match (left_val, right_val) {
+                        "!=" | "<>" => match (left_val, right_val) { // Added "<>" as an alias for "!="
                             (DataType::Integer(l), DataType::Integer(r)) => DataType::Boolean(l != r),
                             (DataType::Float(l), DataType::Float(r)) => DataType::Boolean(l != r),
                             (DataType::String(l), DataType::String(r)) => DataType::Boolean(l != r),
@@ -176,7 +176,7 @@ pub fn apply_constant_folding_rule(plan: QueryPlanNode) -> QueryPlanNode {
             QueryPlanNode::NestedLoopJoin { left: new_left, right: new_right, join_predicate }
         }
         QueryPlanNode::TableScan { .. } => plan, // No expressions to fold, no inputs to recurse
-        QueryPlanNode::IndexScan { scan_condition, .. } => {
+        QueryPlanNode::IndexScan { ref scan_condition, .. } => {
             // The scan_condition is Option<SimplePredicate>. SimplePredicate contains a DataType literal.
             // It's not an Expression, so fold_expression() doesn't directly apply.
             // If SimplePredicate.value could somehow be an expression (it can't by current def),

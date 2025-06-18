@@ -32,56 +32,92 @@ impl FilterOperator {
         tuple: &Tuple,
         predicate: &Expression,
     ) -> Result<bool, OxidbError> {
-        // Changed DbError to OxidbError
         match predicate {
-            Expression::Predicate(simple_predicate) => {
-                let column_index =
-                    match simple_predicate.column.parse::<usize>() {
-                        Ok(idx) => idx,
-                        Err(_) => {
-                            return Err(OxidbError::NotImplemented{feature: format!( // Changed
-                            "Column name resolution ('{}') not implemented. Use numeric index.",
-                            simple_predicate.column
-                        )});
+            Expression::CompareOp { left, op, right } => {
+                // Assumption: left is Column, right is Literal for now, to match old logic.
+                // A full expression evaluation system would be needed for arbitrary expressions.
+                let left_val = match &**left {
+                    Expression::Column(col_name) => {
+                        let column_index = match col_name.parse::<usize>() {
+                            Ok(idx) => idx,
+                            Err(_) => {
+                                return Err(OxidbError::NotImplemented {
+                                    feature: format!(
+                                        "Column name resolution ('{}') not implemented. Use numeric index.",
+                                        col_name
+                                    ),
+                                });
+                            }
+                        };
+                        if column_index >= tuple.len() {
+                            return Err(OxidbError::Internal(format!(
+                                "Predicate column index {} out of bounds.",
+                                column_index
+                            )));
                         }
-                    };
+                        &tuple[column_index]
+                    }
+                    Expression::Literal(val) => val, // Allow literal on left side
+                    _ => return Err(OxidbError::NotImplemented {
+                        feature: "Complex expressions in left side of CompareOp not supported yet".to_string(),
+                    }),
+                };
 
-                if column_index >= tuple.len() {
-                    return Err(OxidbError::Internal(format!(
-                        // Changed
-                        "Predicate column index {} out of bounds.",
-                        column_index
-                    )));
-                }
+                let right_val = match &**right {
+                    Expression::Literal(val) => val,
+                    Expression::Column(col_name) => { // Allow column on right side
+                        let column_index = match col_name.parse::<usize>() {
+                            Ok(idx) => idx,
+                            Err(_) => {
+                                return Err(OxidbError::NotImplemented {
+                                    feature: format!(
+                                        "Column name resolution ('{}') not implemented. Use numeric index.",
+                                        col_name
+                                    ),
+                                });
+                            }
+                        };
+                        if column_index >= tuple.len() {
+                            return Err(OxidbError::Internal(format!(
+                                "Predicate column index {} out of bounds.",
+                                column_index
+                            )));
+                        }
+                        &tuple[column_index]
+                    }
+                    _ => return Err(OxidbError::NotImplemented {
+                        feature: "Complex expressions in right side of CompareOp not supported yet".to_string(),
+                    }),
+                };
 
-                let tuple_value = &tuple[column_index];
-                let condition_value = &simple_predicate.value;
-
-                match simple_predicate.operator.as_str() {
-                    "=" => Ok(tuple_value == condition_value),
-                    "!=" => Ok(tuple_value != condition_value),
-                    ">" => match (tuple_value, condition_value) {
+                match op.as_str() {
+                    "=" => Ok(left_val == right_val),
+                    "!=" => Ok(left_val != right_val),
+                    ">" => match (left_val, right_val) {
                         (DataType::Integer(a), DataType::Integer(b)) => Ok(a > b),
                         (DataType::Float(a), DataType::Float(b)) => Ok(a > b),
                         (DataType::String(a), DataType::String(b)) => Ok(a > b),
-                        _ => Err(OxidbError::Type("Type mismatch for '>' operator".into())), // Changed
+                        _ => Err(OxidbError::Type("Type mismatch for '>' operator".into())),
                     },
-                    "<" => match (tuple_value, condition_value) {
+                    "<" => match (left_val, right_val) {
                         (DataType::Integer(a), DataType::Integer(b)) => Ok(a < b),
                         (DataType::Float(a), DataType::Float(b)) => Ok(a < b),
                         (DataType::String(a), DataType::String(b)) => Ok(a < b),
-                        _ => Err(OxidbError::Type("Type mismatch for '<' operator".into())), // Changed
+                        _ => Err(OxidbError::Type("Type mismatch for '<' operator".into())),
                     },
+                    // TODO: Add other operators like ">=", "<=", "AND", "OR" etc.
+                    // For "AND", "OR", the structure of CompareOp might not be appropriate,
+                    // and a more general Expression::BinaryOp might be used.
                     _ => Err(OxidbError::NotImplemented {
-                        feature: format!(
-                            // Changed
-                            "Operator '{}' not implemented.",
-                            simple_predicate.operator
-                        ),
+                        feature: format!("Operator '{}' not implemented.", op),
                     }),
                 }
-            } // Since Expression only has one variant (Predicate), this match is exhaustive.
-              // If other Expression variants are added, this match will need to be updated.
+            }
+            // If other Expression variants (Literal, Column, BinaryOp) can be predicates:
+            Expression::Literal(DataType::Boolean(b)) => Ok(*b), // e.g. WHERE true
+            _ => Err(OxidbError::NotImplemented {
+                feature: "This type of expression is not supported as a predicate yet".to_string(),
+            }),
         }
     }
 }

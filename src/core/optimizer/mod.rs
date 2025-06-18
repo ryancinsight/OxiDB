@@ -45,7 +45,7 @@ pub struct SimplePredicate {
 }
 
 #[allow(dead_code)] // TODO: Remove this when Expression is used
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Literal(DataType),
     Column(String),
