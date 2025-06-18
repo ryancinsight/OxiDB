@@ -47,12 +47,13 @@ fn test_update_empty_set_clause() {
         result
     );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
-        assert!(expected.to_lowercase().contains("identifier"));
-        assert!(found.to_lowercase().contains("semicolon"));
+        assert_eq!(expected.to_lowercase(), "expected column name for assignment");
+        assert_eq!(found.to_lowercase(), "semicolon");
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // also possible, if input is just "UPDATE table SET"
+        panic!("UnexpectedEOF, expected UnexpectedToken for 'UPDATE table SET;'");
     } else {
-        panic!("Wrong error type for empty SET clause: {:?}", result);
+        panic!("Wrong error type for empty SET clause: {:?}, expected UnexpectedToken", result);
     }
 }
 
@@ -117,12 +118,13 @@ fn test_update_trailing_comma_in_assignment_list() {
         result
     );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
-        assert!(expected.to_lowercase().contains("identifier"));
-        assert!(found.to_lowercase().contains("semicolon")); // Restoring original assertion
+        assert_eq!(expected.to_lowercase(), "expected column name for assignment");
+        assert_eq!(found.to_lowercase(), "semicolon");
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // also possible
+        panic!("UnexpectedEOF, expected UnexpectedToken for 'UPDATE table SET field = 'val', ;'");
     } else {
-        panic!("Wrong error type for trailing comma in assignment: {:?}", result);
+        panic!("Wrong error type for trailing comma in assignment: {:?}, expected UnexpectedToken", result);
     }
 }
 
@@ -140,12 +142,13 @@ fn test_update_empty_where_clause() {
         result
     );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
-        assert!(expected.to_lowercase().contains("identifier")); // This part is fine
-        assert_eq!(found, "Table", "Found token was {:?}, debug of Semicolon seems to be 'Table'", found); // Expect "Table"
+        assert_eq!(expected.to_lowercase(), "expected column name for condition");
+        assert_eq!(found.to_lowercase(), "semicolon");
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
-        // also possible
+        // also possible if input is "UPDATE table SET field = 'val' WHERE"
+        panic!("UnexpectedEOF, expected UnexpectedToken for 'WHERE;'");
     } else {
-        panic!("Wrong error type for empty WHERE clause (UPDATE): {:?}", result);
+        panic!("Wrong error type for empty WHERE clause (UPDATE): {:?}, expected UnexpectedToken", result);
     }
 }
 
@@ -437,8 +440,8 @@ fn test_select_missing_columns() {
         result
     );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
-        assert_eq!(expected, "Identifier");
-        assert_eq!(found, "From");
+        assert_eq!(expected.to_lowercase(), "expected column name or '*'");
+        assert_eq!(found.to_lowercase(), "from");
     } else {
         panic!("Wrong error type: {:?}", result);
     }
@@ -473,8 +476,8 @@ fn test_select_trailing_comma_in_column_list() {
         result
     );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
-        assert_eq!(expected, "Identifier");
-        assert_eq!(found, "From");
+        assert_eq!(expected.to_lowercase(), "expected column name or '*'");
+        assert_eq!(found.to_lowercase(), "from");
     } else {
         panic!("Wrong error type: {:?}", result);
     }
@@ -495,12 +498,13 @@ fn test_select_missing_table_name() {
     );
 
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
-        assert!(expected.contains("Identifier")); // Expecting column name for condition
-        assert!(found.contains("Semicolon"));
+        assert_eq!(expected.to_lowercase(), "expected table name after from");
+        assert_eq!(found.to_lowercase(), "semicolon");
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
-        // This case is also possible
+        // This case is also possible if input is "SELECT col FROM"
+        panic!("UnexpectedEOF, expected UnexpectedToken for 'FROM;'");
     } else {
-        panic!("Wrong error type for empty WHERE clause (SELECT): {:?}", result);
+        panic!("Wrong error type for missing table name: {:?}, expected UnexpectedToken", result);
     }
 }
 
@@ -518,12 +522,18 @@ fn test_select_empty_where_clause() {
         result
     );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
-        assert!(expected.to_lowercase().contains("identifier")); // This part is fine
-        assert_eq!(found, "Table", "Found token was {:?}, debug of Semicolon seems to be 'Table'", found); // Expect "Table"
+        assert_eq!(expected.to_lowercase(), "expected column name for condition");
+        assert_eq!(found.to_lowercase(), "semicolon");
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
-        // This case is also possible
+        // This case is also possible if input is "SELECT col FROM table WHERE"
+        // For "SELECT col FROM table WHERE;", it should be UnexpectedToken
+        // Let's assume the test aims for UnexpectedToken primarily.
+        // If UnexpectedEOF is a valid outcome for some variant of this test,
+        // the test should be more specific or split. Given current strictness,
+        // "SELECT col FROM table WHERE;" should yield UnexpectedToken.
+        panic!("UnexpectedEOF, expected UnexpectedToken for 'WHERE;'");
     } else {
-        panic!("Wrong error type: {:?}", result); // Keep this panic for unexpected errors
+        panic!("Wrong error type: {:?}, expected UnexpectedToken", result);
     }
 }
 
@@ -600,7 +610,14 @@ fn test_select_extra_token_after_semicolon() {
         result
     );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
-        assert!(expected.to_lowercase().contains("end of statement or eof"));
+        let expected_lower = expected.to_lowercase();
+        println!("Actual expected (with semi): '{}'", expected_lower); // Keep for logging during test run
+        assert_eq!(
+            expected_lower,
+            "end of statement or eof",
+            "Assertion failed: expected_lower was '{}', expected 'end of statement or eof'",
+            expected_lower
+        );
         assert!(found.to_lowercase().contains("identifier(\"extra_token\")"));
     } else {
         panic!("Wrong error type for select extra token (with semi): {:?}", result);

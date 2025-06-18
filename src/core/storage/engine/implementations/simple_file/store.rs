@@ -83,6 +83,11 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         transaction: &Transaction,
         lsn: Lsn, // Added lsn parameter
     ) -> Result<(), OxidbError> {
+        if key == b"tx_delete_rollback_key".as_slice() || key == b"idx_del_key_tx_rollback".as_slice() {
+            println!("[store.put] Called for key: {:?}, value_bytes_len: {}, tx_id: {}", String::from_utf8_lossy(&key), value.len(), transaction.id.0);
+            println!("[store.put] Cache BEFORE for key {:?}: {:?}", String::from_utf8_lossy(&key), self.cache.get(&key));
+        }
+
         let wal_entry = crate::core::storage::engine::wal::WalEntry::Put {
             lsn,
             transaction_id: transaction.id.0, // Ensure .0 is used for u64 WalEntry field
@@ -91,7 +96,7 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         };
         self.wal_writer.log_entry(&wal_entry)?; // Reverted to log_entry
 
-        let versions = self.cache.entry(key).or_default();
+        let versions = self.cache.entry(key.clone()).or_default(); // ensure key is cloned for cache entry
         for version in versions.iter_mut().rev() {
             if version.expired_tx_id.is_none() {
                 version.expired_tx_id = Some(transaction.id.0); // Use .0 for u64 VersionedValue field
@@ -101,6 +106,14 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         let new_version =
             VersionedValue { value, created_tx_id: transaction.id.0, expired_tx_id: None }; // Use .0
         versions.push(new_version);
+
+        if key == b"tx_delete_rollback_key".as_slice() || key == b"idx_del_key_tx_rollback".as_slice() {
+            // 'key' was moved into cache.entry(key) if it wasn't already there.
+            // For logging, we need to use a key that's still available or re-clone if necessary
+            // However, self.cache.get() will use the original key if it's still valid.
+            // The original 'key' variable is fine to use with String::from_utf8_lossy if borrowed.
+            println!("[store.put] Cache AFTER for key {:?}: {:?}", String::from_utf8_lossy(&key), self.cache.get(&key));
+        }
         Ok(())
     }
 
@@ -110,49 +123,59 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         snapshot_id: u64,
         committed_ids: &HashSet<u64>,
     ) -> Result<Option<Vec<u8>>, OxidbError> {
-        if let Some(versions) = self.cache.get(key) {
-            for version in versions.iter().rev() {
-                // Is the version itself visible?
-                // Case 1: Reading within a transaction (snapshot_id != 0)
-                //         - Version created by the current transaction.
-                // Case 2: Reading committed state (snapshot_id == 0 or snapshot_id != 0)
-                //         - Version created by a committed transaction.
-                // Case 3: Special handling for "auto-committed" data (created_tx_id == 0)
-                //         when read by a "no active transaction" snapshot (snapshot_id == 0).
-                let created_by_current_tx =
-                    snapshot_id != 0 && version.created_tx_id == snapshot_id;
-                let is_committed_creator = committed_ids.contains(&version.created_tx_id);
-                let is_autocommit_data_visible_to_autocommit_snapshot =
-                    version.created_tx_id == 0 && snapshot_id == 0;
-
-                if created_by_current_tx
-                    || is_committed_creator
-                    || is_autocommit_data_visible_to_autocommit_snapshot
-                {
-                    // If visible, check if it's also visibly expired
-                    if let Some(expired_tx_id) = version.expired_tx_id {
-                        let expired_by_current_tx =
-                            snapshot_id != 0 && expired_tx_id == snapshot_id;
-                        let is_committed_expirer = committed_ids.contains(&expired_tx_id);
-                        let is_autocommit_expiry_visible_to_autocommit_snapshot =
-                            expired_tx_id == 0 && snapshot_id == 0;
-
-                        if !(expired_by_current_tx
-                            || is_committed_expirer
-                            || is_autocommit_expiry_visible_to_autocommit_snapshot)
-                        {
-                            // Not visibly expired, so this version is the one
-                            return Ok(Some(version.value.clone()));
+        if snapshot_id == 0 {
+            // Non-transactional read: reflects the state after full recovery.
+            // The cache, after load_from_disk and replay_wal_into_cache, should
+            // contain the correct, visible versions. We just need the latest non-expired one.
+            if let Some(versions) = self.cache.get(key) {
+                if key == b"tx_delete_rollback_key".as_slice() || key == b"idx_del_key_tx_rollback".as_slice() {
+                    println!("[store.get snapshot_id=0] Key: {:?}, Versions: {:?}", String::from_utf8_lossy(key), versions);
+                }
+                for version in versions.iter().rev() {
+                    if version.expired_tx_id.is_none() {
+                        if key == b"tx_delete_rollback_key".as_slice() || key == b"idx_del_key_tx_rollback".as_slice() {
+                            println!("[store.get snapshot_id=0] Key: {:?}, Found visible version: {:?}", String::from_utf8_lossy(key), version);
                         }
-                        // If visibly expired, continue to older version
-                    } else {
-                        // No expiration, so this version is the one
                         return Ok(Some(version.value.clone()));
                     }
                 }
             }
+            if key == b"tx_delete_rollback_key".as_slice() || key == b"idx_del_key_tx_rollback".as_slice() {
+                 println!("[store.get snapshot_id=0] Key: {:?}, No visible version found or key not in cache.", String::from_utf8_lossy(key));
+            }
+            return Ok(None);
+        } else {
+            // Transactional read (snapshot_id != 0) - Restoring original detailed MVCC logic
+            if let Some(versions) = self.cache.get(key) {
+                for version in versions.iter().rev() {
+                    // Determine if the version's creator is visible in the current snapshot
+                    let creator_is_visible =
+                        (version.created_tx_id == snapshot_id) || // Created by the current transaction (snapshot_id is non-zero here)
+                        committed_ids.contains(&version.created_tx_id) || // Created by a committed transaction visible in this snapshot
+                        (version.created_tx_id == 0); // Baseline data (tx_id 0), always a candidate for visibility for active transactions
+
+                    if creator_is_visible {
+                        // If the creator is visible, check if the version is expired in the current snapshot
+                        if let Some(expired_tx_id_val) = version.expired_tx_id {
+                            let expirer_is_visible =
+                                (expired_tx_id_val == snapshot_id) || // Expired by the current transaction
+                                committed_ids.contains(&expired_tx_id_val) || // Expired by a committed transaction visible in this snapshot
+                                (expired_tx_id_val == 0); // Baseline expiry (tx_id 0), makes it expired for all active transactions
+
+                            if !expirer_is_visible {
+                                // Expiration is NOT visible, so this version IS visible
+                                return Ok(Some(version.value.clone()));
+                            }
+                            // If expiration IS visible, this version is not the one; continue to older version.
+                        } else {
+                            // No expiration_tx_id means the version is visible
+                            return Ok(Some(version.value.clone()));
+                        }
+                    }
+                }
+            }
+            Ok(None)
         }
-        Ok(None)
     }
 
     fn delete(

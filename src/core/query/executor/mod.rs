@@ -292,10 +292,16 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     if let Some(active_tx_mut) =
                         self.transaction_manager.get_active_transaction_mut()
                     {
+                        // Add UndoOperation for the data itself
+                        active_tx_mut.add_undo_operation(crate::core::transaction::transaction::UndoOperation::RevertDelete {
+                            key: key.clone(),
+                            old_value: value_bytes.clone(), // value_bytes is Vec<u8>
+                        });
+                        // Add UndoOperation for the index
                         active_tx_mut.add_undo_operation(crate::core::transaction::transaction::UndoOperation::IndexRevertDelete {
                             index_name: "default_value_index".to_string(),
                             key: key.clone(),
-                            old_value_for_index: value_bytes, // Already cloned
+                            old_value_for_index: value_bytes, // Pass the original serialized value
                         });
                     }
                 }

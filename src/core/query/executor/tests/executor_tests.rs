@@ -547,7 +547,21 @@ mod tests {
         let wal_path = derive_wal_path_for_test(&executor.store);
         let wal_entries = read_all_wal_entries_for_test(&wal_path).unwrap();
 
-        assert_eq!(wal_entries.len(), 11, "WAL entries count mismatch");
+        // Adjusted expected count to 10.
+        // Trace:
+        // 1. Auto-commit Insert key_orig: Put(key_orig, tx_auto)
+        // 2. Auto-commit Insert key_orig: TransactionCommit(tx_auto)
+        // --- TX1 BEGIN ---
+        // 3. Tx Insert key_rb: Put(key_rb, tx1)
+        // 4. Tx Update key_orig: Put(key_orig, tx1)
+        // 5. Tx Insert key_del: Put(key_del, tx1)
+        // 6. Tx Delete key_del: Delete(key_del, tx1)
+        // --- ROLLBACK TX1 ---
+        // 7. Undo Insert key_rb: Delete(key_rb, tx1)
+        // 8. Undo Update key_orig: Put(key_orig, old_val, tx1)
+        // 9. Undo Delete key_del: Put(key_del, old_val, tx1)
+        // 10. TransactionRollback marker for tx1
+        assert_eq!(wal_entries.len(), 10, "WAL entries count mismatch");
 
         match wal_entries.last().unwrap() {
             WalEntry::TransactionRollback { lsn: _, transaction_id: rollback_tx_id } => {

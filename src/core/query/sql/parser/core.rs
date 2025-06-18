@@ -65,12 +65,22 @@ impl SqlParser {
 
     pub(super) fn expect_identifier(
         &mut self,
-        _error_message: &str,
+        context_message: &str, // Changed from _error_message to use it
     ) -> Result<String, SqlParseError> {
-        match self.consume_any() {
+        let consumed_token = self.consume_any();
+        match consumed_token {
             Some(Token::Identifier(name)) => Ok(name),
+            // Hack: Allow Token::Table to be treated as an identifier string "Table"
+            // This is to address the immediate issue where 'table' is tokenized to Token::Table
+            // and then expect_identifier fails. A proper fix might involve tokenizer changes
+            // or a more sophisticated way to parse identifiers that can be keywords.
+            Some(Token::Table) => {
+                // Ideally, we'd get the original string ("table", "Table", etc.)
+                // but Token::Table doesn't store it. For now, canonical "Table".
+                Ok("Table".to_string())
+            }
             Some(other) => Err(SqlParseError::UnexpectedToken {
-                expected: "Identifier".to_string(), // Reverted to original
+                expected: context_message.to_string(), // Use context_message for better error
                 found: format!("{:?}", other),
                 position: self.current_token_pos() - 1, // Position of the consumed token
             }),
