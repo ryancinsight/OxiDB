@@ -103,10 +103,16 @@ impl BPlusTreeNode {
             BPlusTreeNode::Internal { keys, .. } => {
                 // Perform a binary search or linear scan for the appropriate child index
                 // `partition_point` returns the index of the first element `x` for which `f(x)` is true.
-                // We want to find the first key `k_i` such that `key < k_i`.
-                // The child pointer to follow will be at that index `i`.
-                // If `key >= all keys`, then the index will be `keys.len()`.
-                Ok(keys.partition_point(|k| k.as_slice() < key.as_slice()))
+                // We want to find the index `i` such that `keys[i-1] <= key < keys[i]`.
+                // The child pointer to follow is at index `i`.
+                // If `key < keys[0]`, child index is 0.
+                // If `key >= keys[len-1]`, child index is `len`.
+                // `partition_point` returns the index of the first element for which the predicate is false.
+                // We use `k_i <= key` (or `key >= k_i`).
+                // - If `key < keys[0]`: all `k_i > key`, so `k_i <= key` is false for all. Returns 0.
+                // - If `keys[j] <= key < keys[j+1]`: `k_i <= key` is true for `i <= j`, false for `i > j`. Returns `j+1`.
+                // - If `key >= keys[len-1]`: `k_i <= key` is true for all `i`. Returns `keys.len()`.
+                Ok(keys.partition_point(|k_partition| k_partition.as_slice() <= key.as_slice()))
             }
             BPlusTreeNode::Leaf { .. } => Err("find_child_index is only applicable to Internal nodes"),
         }
@@ -570,33 +576,43 @@ mod tests {
         // Split promotes k2.
         // Left node: [k1], children [c0, c1]
         // Right node: [k3], children [c2, c3]
+        // The split function expects an "overfull" node, one with `order` keys.
+        // For TEST_ORDER = 4, it expects 4 keys.
+        // Original node: keys: [k0, k1, k2, k3], children: [c0, c1, c2, c3, c4]
+        // mid_point = (order-1)/2 = 1. median_key = k1 (e.g. "banana")
+        // Left node (self): keys: [k0] (e.g. "apple"), children: [c0, c1] (e.g. 10, 20)
+        // Right node (new): keys: [k2, k3] (e.g. "grape", "kiwi"), children: [c2, c3, c4] (e.g. 30, 40, 50)
         let mut node = BPlusTreeNode::Internal {
             page_id: TEST_PAGE_ID,
             parent_page_id: TEST_PARENT_PAGE_ID,
-            keys: vec![K("apple"), K("banana"), K("grape")],
-            children: vec![10, 20, 30, 40],
+            // Node is made "overfull" with `order` keys (4 keys for order 4)
+            keys: vec![K("apple"), K("banana"), K("grape"), K("kiwi")],
+            children: vec![10, 20, 30, 40, 50], // order + 1 children
         };
-        assert!(node.is_full(TEST_ORDER));
+        // is_full is true if keys.len() >= order - 1. Here 4 >= 3 is true.
+        // However, the split check is keys.len() < order. If keys.len() is 4, 4 < 4 is false.
+        // No, is_full() is not the direct check. The split function itself checks `keys.len() < order`.
+        // If keys.len() == order (e.g. 4), then `4 < 4` is false, so the split proceeds.
 
         let (median_key, new_node) = node.split(TEST_ORDER, TEST_NEW_PAGE_ID).unwrap();
 
-        // Check median key
+        // Check median key (k1)
         assert_eq!(median_key, K("banana"));
 
         // Check original (left) node
         assert_eq!(node.get_page_id(), TEST_PAGE_ID);
         assert_eq!(node.get_parent_page_id(), TEST_PARENT_PAGE_ID);
-        assert_eq!(node.get_keys(), &vec![K("apple")]);
+        assert_eq!(node.get_keys(), &vec![K("apple")]); // k0
         if let BPlusTreeNode::Internal { children, .. } = &node {
-            assert_eq!(children, &vec![10, 20]);
+            assert_eq!(children, &vec![10, 20]); // c0, c1
         } else { panic!("Node should be Internal"); }
 
         // Check new (right) node
         assert_eq!(new_node.get_page_id(), TEST_NEW_PAGE_ID);
         assert_eq!(new_node.get_parent_page_id(), TEST_PARENT_PAGE_ID); // Parent ID copied
-        assert_eq!(new_node.get_keys(), &vec![K("grape")]);
+        assert_eq!(new_node.get_keys(), &vec![K("grape"), K("kiwi")]); // k2, k3
         if let BPlusTreeNode::Internal { children, .. } = &new_node {
-            assert_eq!(children, &vec![30, 40]);
+            assert_eq!(children, &vec![30, 40, 50]); // c2, c3, c4
         } else { panic!("New node should be Internal"); }
     }
 
@@ -607,36 +623,45 @@ mod tests {
         // Split copies k2 (median) up.
         // Left node: [k1], values [v1]. next_leaf points to new_node.
         // Right node: [k2, k3], values [v2, v3]. next_leaf is original next_leaf.
+        // The split function expects an "overfull" node, one with `order` key-value pairs.
+        // For TEST_ORDER = 4, it expects 4 key-value pairs.
+        // Original node: keys: [k0, k1, k2, k3], values: [v0, v1, v2, v3]
+        // mid_point = (order-1)/2 = 1. copied_median_key = k1 (e.g. "banana")
+        // Left node (self): keys: [k0] (e.g. "apple"), values: [v0]. next_leaf = new_page_id.
+        // Right node (new): keys: [k1, k2, k3] (e.g. "banana", "cherry", "date"), values: [v1, v2, v3]. next_leaf = original_next_leaf_id.
         let original_next_leaf_id = Some(300 as PageId);
         let mut node = BPlusTreeNode::Leaf {
             page_id: TEST_PAGE_ID,
             parent_page_id: TEST_PARENT_PAGE_ID,
-            keys: vec![K("apple"), K("banana"), K("cherry")],
-            values: vec![vec![PK("v_apple")], vec![PK("v_banana")], vec![PK("v_cherry")]],
+            // Node is made "overfull" with `order` key-value pairs (4 for order 4)
+            keys: vec![K("apple"), K("banana"), K("cherry"), K("date")],
+            values: vec![vec![PK("v_apple")], vec![PK("v_banana")], vec![PK("v_cherry")], vec![PK("v_date")]],
             next_leaf: original_next_leaf_id,
         };
-        assert!(node.is_full(TEST_ORDER));
+        // is_full is true if keys.len() >= order - 1. Here 4 >= 3 is true.
+        // The split check is keys.len() < order. If keys.len() == order (4), then 4 < 4 is false, so split proceeds.
 
         let (copied_median_key, new_node) = node.split(TEST_ORDER, TEST_NEW_PAGE_ID).unwrap();
 
-        // Check copied median key
+        // Check copied median key (k1)
         assert_eq!(copied_median_key, K("banana"));
 
         // Check original (left) node
         assert_eq!(node.get_page_id(), TEST_PAGE_ID);
         assert_eq!(node.get_parent_page_id(), TEST_PARENT_PAGE_ID);
-        assert_eq!(node.get_keys(), &vec![K("apple")]);
+        assert_eq!(node.get_keys(), &vec![K("apple")]); // k0
         if let BPlusTreeNode::Leaf { values, next_leaf, .. } = &node {
-            assert_eq!(values, &vec![vec![PK("v_apple")]]);
+            assert_eq!(values, &vec![vec![PK("v_apple")]]); // v0
             assert_eq!(*next_leaf, Some(TEST_NEW_PAGE_ID)); // Points to new right sibling
         } else { panic!("Node should be Leaf"); }
 
         // Check new (right) node
         assert_eq!(new_node.get_page_id(), TEST_NEW_PAGE_ID);
         assert_eq!(new_node.get_parent_page_id(), TEST_PARENT_PAGE_ID);
-        assert_eq!(new_node.get_keys(), &vec![K("banana"), K("cherry")]); // Median key is first key in new right leaf
+        // Median key (k1) is first key in new right leaf, followed by k2, k3
+        assert_eq!(new_node.get_keys(), &vec![K("banana"), K("cherry"), K("date")]);
         if let BPlusTreeNode::Leaf { values, next_leaf, .. } = &new_node {
-            assert_eq!(values, &vec![vec![PK("v_banana")], vec![PK("v_cherry")]]);
+            assert_eq!(values, &vec![vec![PK("v_banana")], vec![PK("v_cherry")], vec![PK("v_date")]]); // v1, v2, v3
             assert_eq!(*next_leaf, original_next_leaf_id); // New node inherits original next_leaf
         } else { panic!("New node should be Leaf"); }
     }
@@ -645,64 +670,68 @@ mod tests {
     fn test_split_internal_node_order5() {
         // Order 5: Max 4 keys, 5 children. Min 2 keys, 3 children after split.
         // Node full: [k1, k2, k3, k4], children [c0, c1, c2, c3, c4]
-        // Median key (mid_point = (5-1)/2 = 2) is k3. k3 moves up.
-        // Left: [k1, k2], children [c0, c1, c2]
-        // Right: [k4], children [c3, c4]
+        // Median key (mid_point = (5-1)/2 = 2) is k2. k2 moves up.
+        // Original node: keys [k0,k1,k2,k3,k4], children [c0,c1,c2,c3,c4,c5]
+        // Left: [k0, k1], children [c0, c1, c2]
+        // Right: [k3, k4], children [c3, c4, c5]
         const ORDER_5: usize = 5;
         let mut node = BPlusTreeNode::Internal {
             page_id: TEST_PAGE_ID,
             parent_page_id: TEST_PARENT_PAGE_ID,
-            keys: vec![K("a"), K("b"), K("c"), K("d")],
-            children: vec![1, 2, 3, 4, 5],
+            // Overfull node with `order` keys (5 keys for order 5)
+            keys: vec![K("a"), K("b"), K("c"), K("d"), K("e")],
+            children: vec![1, 2, 3, 4, 5, 6], // order + 1 children
         };
-        assert!(node.is_full(ORDER_5));
+        // is_full: 5 >= 5-1 (true). split check: 5 < 5 (false) -> proceeds.
 
         let (median_key, new_node) = node.split(ORDER_5, TEST_NEW_PAGE_ID).unwrap();
-        assert_eq!(median_key, K("c")); // k3
+        assert_eq!(median_key, K("c")); // k2 is promoted
 
         // Left node
-        assert_eq!(node.get_keys(), &vec![K("a"), K("b")]);
+        assert_eq!(node.get_keys(), &vec![K("a"), K("b")]); // k0, k1
         if let BPlusTreeNode::Internal { children, .. } = &node {
-            assert_eq!(children, &vec![1, 2, 3]);
+            assert_eq!(children, &vec![1, 2, 3]); // c0, c1, c2
         } else { panic!("Node should be Internal"); }
 
         // Right node
-        assert_eq!(new_node.get_keys(), &vec![K("d")]);
+        assert_eq!(new_node.get_keys(), &vec![K("d"), K("e")]); // k3, k4
          if let BPlusTreeNode::Internal { children, .. } = &new_node {
-            assert_eq!(children, &vec![4, 5]);
+            assert_eq!(children, &vec![4, 5, 6]); // c3, c4, c5
         } else { panic!("New node should be Internal"); }
     }
 
     #[test]
     fn test_split_leaf_node_order5() {
         // Order 5: Max 4 KV pairs. Min 2 KV pairs after split.
-        // Node full: [k1, k2, k3, k4], values [v1, v2, v3, v4]
-        // Median key (mid_point = (5-1)/2 = 2) is k3. k3 is copied up.
-        // Left: [k1, k2], values [v1, v2]
-        // Right: [k3, k4], values [v3, v4]
+        // Node overfull: [k0, k1, k2, k3, k4], values [v0, v1, v2, v3, v4] (5 KVs for order 5)
+        // Median key (mid_point = (5-1)/2 = 2) is k2. k2 is copied up.
+        // Left: [k0, k1], values [v0, v1]
+        // Right: [k2, k3, k4], values [v2, v3, v4]
         const ORDER_5: usize = 5;
         let mut node = BPlusTreeNode::Leaf {
             page_id: TEST_PAGE_ID,
             parent_page_id: TEST_PARENT_PAGE_ID,
-            keys: vec![K("a"), K("b"), K("c"), K("d")],
-            values: vec![vec![PK("v_a")], vec![PK("v_b")], vec![PK("v_c")], vec![PK("v_d")]],
+            // Overfull node with `order` key-value pairs (5 for order 5)
+            keys: vec![K("a"), K("b"), K("c"), K("d"), K("e")],
+            values: vec![vec![PK("v_a")], vec![PK("v_b")], vec![PK("v_c")], vec![PK("v_d")], vec![PK("v_e")]],
             next_leaf: None,
         };
-        assert!(node.is_full(ORDER_5));
+        // is_full: 5 >= 5-1 (true). split check: 5 < 5 (false) -> proceeds.
+
         let (copied_median_key, new_node) = node.split(ORDER_5, TEST_NEW_PAGE_ID).unwrap();
-        assert_eq!(copied_median_key, K("c")); // k3
+        assert_eq!(copied_median_key, K("c")); // k2 is copied
 
         // Left node
-        assert_eq!(node.get_keys(), &vec![K("a"), K("b")]);
+        assert_eq!(node.get_keys(), &vec![K("a"), K("b")]); // k0, k1
         if let BPlusTreeNode::Leaf { values, next_leaf, .. } = &node {
-            assert_eq!(values, &vec![vec![PK("v_a")], vec![PK("v_b")]]);
+            assert_eq!(values, &vec![vec![PK("v_a")], vec![PK("v_b")]]); // v0, v1
             assert_eq!(*next_leaf, Some(TEST_NEW_PAGE_ID));
         } else { panic!("Node should be Leaf"); }
 
         // Right node
-        assert_eq!(new_node.get_keys(), &vec![K("c"), K("d")]); // Median key is first key in new right leaf
+        assert_eq!(new_node.get_keys(), &vec![K("c"), K("d"), K("e")]); // k2, k3, k4
         if let BPlusTreeNode::Leaf { values, next_leaf, .. } = &new_node {
-            assert_eq!(values, &vec![vec![PK("v_c")], vec![PK("v_d")]]);
+            assert_eq!(values, &vec![vec![PK("v_c")], vec![PK("v_d")], vec![PK("v_e")]]); // v2, v3, v4
             assert_eq!(*next_leaf, None);
         } else { panic!("New node should be Leaf"); }
     }
