@@ -9,7 +9,7 @@ use crate::core::indexing::btree::BPlusTreeIndex; // Import BPlusTreeIndex
 use crate::core::query::commands::{Key as PrimaryKey, Value};
 
 // This SharedIndex type implies that the Index trait's methods return crate::core::common::OxidbError
-type SharedIndex = Arc<RwLock<dyn Index<Error = OxidbError> + Send + Sync>>;
+type SharedIndex = Arc<RwLock<dyn Index + Send + Sync>>;
 
 #[derive(Debug)]
 pub struct IndexManager {

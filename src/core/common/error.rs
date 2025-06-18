@@ -69,6 +69,32 @@ pub enum OxidbError {
     BufferPool(String),
 }
 
+impl From<crate::core::indexing::btree::tree::OxidbError> for OxidbError {
+    fn from(err: crate::core::indexing::btree::tree::OxidbError) -> Self {
+        match err {
+            crate::core::indexing::btree::tree::OxidbError::Io(e) => OxidbError::Io(e),
+            crate::core::indexing::btree::tree::OxidbError::Serialization(se) => {
+                OxidbError::Serialization(format!("BTree Node Serialization: {:?}", se))
+            }
+            crate::core::indexing::btree::tree::OxidbError::NodeNotFound(page_id) => {
+                OxidbError::Index(format!("BTree Node not found on page: {}", page_id))
+            }
+            crate::core::indexing::btree::tree::OxidbError::PageFull(s) => {
+                OxidbError::Index(format!("BTree PageFull: {}", s))
+            }
+            crate::core::indexing::btree::tree::OxidbError::UnexpectedNodeType => {
+                OxidbError::Index("BTree Unexpected Node Type".to_string())
+            }
+            crate::core::indexing::btree::tree::OxidbError::TreeLogicError(s) => {
+                OxidbError::Index(format!("BTree Logic Error: {}", s))
+            }
+            crate::core::indexing::btree::tree::OxidbError::BorrowError(s) => {
+                OxidbError::Lock(format!("BTree Borrow Error: {}", s)) // Or a new specific variant
+            }
+        }
+    }
+}
+
 // Note: Removed manual PartialEq. If needed, it should be added carefully,
 // considering that std::io::Error and other wrapped errors might not implement PartialEq.
 // For many error types, direct comparison isn't as common as matching on the variant.

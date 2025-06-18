@@ -7,6 +7,8 @@ use crate::core::indexing::btree::node::{
     BPlusTreeNode, KeyType, PageId, PrimaryKey, SerializationError,
 };
 
+use std::sync::Mutex; // Import Mutex
+
 // Constants
 const PAGE_SIZE: u64 = 4096;
 const METADATA_SIZE: u64 = 4 + 8 + 8;
@@ -19,7 +21,15 @@ pub enum OxidbError {
     PageFull(String),
     UnexpectedNodeType,
     TreeLogicError(String),
+    BorrowError(String), // For RefCell borrow errors
 }
+
+impl From<std::cell::BorrowMutError> for OxidbError {
+    fn from(err: std::cell::BorrowMutError) -> Self {
+        OxidbError::BorrowError(err.to_string())
+    }
+}
+
 
 impl From<io::Error> for OxidbError {
     fn from(err: io::Error) -> Self {
@@ -33,36 +43,37 @@ impl From<SerializationError> for OxidbError {
     }
 }
 
+#[derive(Debug)]
 pub struct BPlusTreeIndex {
     pub name: String,
     pub path: PathBuf,
     pub order: usize,
     pub root_page_id: PageId,
     pub next_available_page_id: PageId,
-    pub file_handle: File,
+    pub file_handle: Mutex<File>, // Changed to Mutex<File>
 }
 
 impl BPlusTreeIndex {
     pub fn new(name: String, path: PathBuf, order: usize) -> Result<Self, OxidbError> {
         let file_exists = path.exists();
-        let mut file = OpenOptions::new()
+        let mut file_obj = OpenOptions::new() // Made mutable again
             .read(true)
             .write(true)
             .create(true)
             .open(&path)?;
 
-        if file_exists && file.metadata()?.len() >= METADATA_SIZE {
-            file.seek(SeekFrom::Start(0))?;
+        if file_exists && file_obj.metadata()?.len() >= METADATA_SIZE {
+            file_obj.seek(SeekFrom::Start(0))?;
             let mut u32_buf = [0u8; 4];
             let mut u64_buf = [0u8; 8];
 
-            file.read_exact(&mut u32_buf)?;
+            file_obj.read_exact(&mut u32_buf)?;
             let loaded_order = u32::from_be_bytes(u32_buf) as usize;
 
-            file.read_exact(&mut u64_buf)?;
+            file_obj.read_exact(&mut u64_buf)?;
             let root_page_id = u64::from_be_bytes(u64_buf);
 
-            file.read_exact(&mut u64_buf)?;
+            file_obj.read_exact(&mut u64_buf)?;
             let next_available_page_id = u64::from_be_bytes(u64_buf);
 
             Ok(Self {
@@ -71,7 +82,7 @@ impl BPlusTreeIndex {
                 order: loaded_order,
                 root_page_id,
                 next_available_page_id,
-                file_handle: file,
+                file_handle: Mutex::new(file_obj), // Wrap in Mutex
             })
 
         } else {
@@ -80,13 +91,15 @@ impl BPlusTreeIndex {
             }
             let root_page_id = 0;
             let next_available_page_id = 1;
+            // Create the Mutex<File> for the tree instance
+            let file_handle_mutex = Mutex::new(file_obj);
             let mut tree = Self {
                 name,
                 path,
                 order,
                 root_page_id,
                 next_available_page_id,
-                file_handle: file,
+                file_handle: file_handle_mutex, // Assign Mutex wrapped file
             };
             let initial_root_node = BPlusTreeNode::Leaf {
                 page_id: tree.root_page_id,
@@ -102,11 +115,13 @@ impl BPlusTreeIndex {
     }
 
     pub fn write_metadata(&mut self) -> Result<(), OxidbError> {
-        self.file_handle.seek(SeekFrom::Start(0))?;
-        self.file_handle.write_all(&(self.order as u32).to_be_bytes())?;
-        self.file_handle.write_all(&self.root_page_id.to_be_bytes())?;
-        self.file_handle.write_all(&self.next_available_page_id.to_be_bytes())?;
-        self.file_handle.flush()?;
+        // Lock the Mutex to get mutable access to the file
+        let mut file = self.file_handle.lock().map_err(|e| OxidbError::BorrowError(format!("Mutex lock error: {}", e)))?;
+        file.seek(SeekFrom::Start(0))?;
+        file.write_all(&(self.order as u32).to_be_bytes())?;
+        file.write_all(&self.root_page_id.to_be_bytes())?;
+        file.write_all(&self.next_available_page_id.to_be_bytes())?;
+        file.flush()?;
         Ok(())
     }
 
@@ -117,18 +132,15 @@ impl BPlusTreeIndex {
         Ok(new_page_id)
     }
 
-    // Changed to &self for trait find() compatibility.
-    // Uses unsafe block for mutable file operations on &self.file_handle.
-    // This is a temporary workaround for this subtask. A proper solution
-    // would involve RefCell<File> or opening new read-only file handles.
+    // Now uses Mutex for interior mutability.
     pub fn read_node(&self, page_id: PageId) -> Result<BPlusTreeNode, OxidbError> {
-        let file_handle_mut = unsafe { &mut *(&self.file_handle as *const File as *mut File) };
-
+        // Lock the Mutex to get mutable access to the file
+        let mut file = self.file_handle.lock().map_err(|e| OxidbError::BorrowError(format!("Mutex lock error: {}", e)))?;
         let offset = page_id * PAGE_SIZE;
-        file_handle_mut.seek(SeekFrom::Start(offset))?;
+        file.seek(SeekFrom::Start(offset))?;
 
         let mut page_buffer = vec![0u8; PAGE_SIZE as usize];
-        match file_handle_mut.read_exact(&mut page_buffer) {
+        match file.read_exact(&mut page_buffer) {
             Ok(_) => {},
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
                  return Err(OxidbError::NodeNotFound(page_id));
@@ -139,6 +151,8 @@ impl BPlusTreeIndex {
     }
 
     pub fn write_node(&mut self, node: &BPlusTreeNode) -> Result<(), OxidbError> {
+        // Lock the Mutex to get mutable access to the file
+        let mut file = self.file_handle.lock().map_err(|e| OxidbError::BorrowError(format!("Mutex lock error: {}", e)))?;
         let page_id = node.get_page_id();
         let offset = page_id * PAGE_SIZE;
 
@@ -152,9 +166,9 @@ impl BPlusTreeIndex {
         }
         node_bytes.resize(PAGE_SIZE as usize, 0);
 
-        self.file_handle.seek(SeekFrom::Start(offset))?;
-        self.file_handle.write_all(&node_bytes)?;
-        self.file_handle.flush()?;
+        file.seek(SeekFrom::Start(offset))?;
+        file.write_all(&node_bytes)?;
+        file.flush()?;
         Ok(())
     }
 
@@ -243,10 +257,12 @@ impl BPlusTreeIndex {
     // Helper to read a node mutably, needed by insert/delete if find_leaf_node_path is &self.
     // This is essentially the original read_node.
     fn read_node_mut(&mut self, page_id: PageId) -> Result<BPlusTreeNode, OxidbError> {
+        // Lock the Mutex to get mutable access to the file
+        let mut file = self.file_handle.lock().map_err(|e| OxidbError::BorrowError(format!("Mutex lock error: {}", e)))?;
         let offset = page_id * PAGE_SIZE;
-        self.file_handle.seek(SeekFrom::Start(offset))?;
+        file.seek(SeekFrom::Start(offset))?;
         let mut page_buffer = vec![0u8; PAGE_SIZE as usize];
-        match self.file_handle.read_exact(&mut page_buffer) {
+        match file.read_exact(&mut page_buffer) {
             Ok(_) => {},
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return Err(OxidbError::NodeNotFound(page_id)),
             Err(e) => return Err(OxidbError::Io(e)),
@@ -451,10 +467,16 @@ impl BPlusTreeIndex {
         parent_key_idx: usize,
         is_left_lender: bool,
     ) -> Result<(), OxidbError> {
+        let underflowed_node_page_id = underflowed_node.get_page_id();
+        let lender_sibling_page_id = lender_sibling.get_page_id();
+        let parent_node_page_id = parent_node.get_page_id();
+
+        // The actual modifications happen on `underflowed_node`, `lender_sibling`, `parent_node`
+        // through the mutable references passed into the match arms.
         match (underflowed_node, lender_sibling) {
             (BPlusTreeNode::Leaf { keys: u_keys, values: u_values, .. },
              BPlusTreeNode::Leaf { keys: l_keys, values: l_values, .. }) => {
-                let parent_internal = match parent_node {
+                let p_node_keys = match parent_node {
                     BPlusTreeNode::Internal { keys: p_keys, .. } => p_keys,
                     _ => return Err(OxidbError::UnexpectedNodeType),
                 };
@@ -463,50 +485,56 @@ impl BPlusTreeIndex {
                     let borrowed_value = l_values.pop().ok_or(OxidbError::TreeLogicError("Lender leaf values empty".to_string()))?;
                     u_keys.insert(0, borrowed_key.clone());
                     u_values.insert(0, borrowed_value);
-                    parent_internal[parent_key_idx] = borrowed_key;
+                    p_node_keys[parent_key_idx] = borrowed_key;
                 } else {
                     let borrowed_key = l_keys.remove(0);
                     let borrowed_value = l_values.remove(0);
                     u_keys.push(borrowed_key.clone());
                     u_values.push(borrowed_value);
-                    parent_internal[parent_key_idx] = l_keys[0].clone();
+                    p_node_keys[parent_key_idx] = l_keys[0].clone();
                 }
-            }
-            (BPlusTreeNode::Internal { keys: u_keys, children: u_children, .. },
-             BPlusTreeNode::Internal { keys: l_keys, children: l_children, .. }) => {
-                let parent_internal_keys = match parent_node {
+            },
+            (BPlusTreeNode::Internal { page_id: u_pid, keys: u_keys, children: u_children, .. },
+             BPlusTreeNode::Internal { page_id: _l_pid, keys: l_keys, children: l_children, .. }) => {
+                let p_node_keys = match parent_node {
                     BPlusTreeNode::Internal { keys: p_keys, .. } => p_keys,
                     _ => return Err(OxidbError::UnexpectedNodeType),
                 };
                 if is_left_lender {
-                    let key_from_parent = parent_internal_keys[parent_key_idx].clone();
+                    let key_from_parent = p_node_keys[parent_key_idx].clone();
                     u_keys.insert(0, key_from_parent);
                     let new_separator_key = l_keys.pop().ok_or(OxidbError::TreeLogicError("Lender internal node has no keys to pop".to_string()))?;
-                    parent_internal_keys[parent_key_idx] = new_separator_key;
+                    p_node_keys[parent_key_idx] = new_separator_key;
                     let child_to_move = l_children.pop().ok_or(OxidbError::TreeLogicError("Lender internal node has no children to pop".to_string()))?;
                     u_children.insert(0, child_to_move);
-                    // Read moved child mutably
                     let mut moved_child_node = self.read_node_mut(child_to_move)?;
-                    moved_child_node.set_parent_page_id(Some(underflowed_node.get_page_id()));
+                    moved_child_node.set_parent_page_id(Some(*u_pid));
                     self.write_node(&moved_child_node)?;
                 } else {
-                    let key_from_parent = parent_internal_keys[parent_key_idx].clone();
+                    let key_from_parent = p_node_keys[parent_key_idx].clone();
                     u_keys.push(key_from_parent);
                     let new_separator_key = l_keys.remove(0);
-                    parent_internal_keys[parent_key_idx] = new_separator_key;
+                    p_node_keys[parent_key_idx] = new_separator_key;
                     let child_to_move = l_children.remove(0);
                     u_children.push(child_to_move);
-                    // Read moved child mutably
                     let mut moved_child_node = self.read_node_mut(child_to_move)?;
-                    moved_child_node.set_parent_page_id(Some(underflowed_node.get_page_id()));
+                    moved_child_node.set_parent_page_id(Some(*u_pid));
                     self.write_node(&moved_child_node)?;
                 }
-            }
+            },
             _ => return Err(OxidbError::TreeLogicError("Sibling types mismatch during borrow, or one is not a recognized BPlusTreeNode variant.".to_string())),
         }
-        self.write_node(underflowed_node)?;
-        self.write_node(lender_sibling)?;
-        self.write_node(parent_node)?;
+
+        // Re-fetch nodes using their page IDs to get fresh references for writing
+        let final_underflowed_node = self.read_node_mut(underflowed_node_page_id)?;
+        self.write_node(&final_underflowed_node)?;
+
+        let final_lender_sibling = self.read_node_mut(lender_sibling_page_id)?;
+        self.write_node(&final_lender_sibling)?;
+
+        let final_parent_node = self.read_node_mut(parent_node_page_id)?;
+        self.write_node(&final_parent_node)?;
+
         Ok(())
     }
 
@@ -517,91 +545,63 @@ impl BPlusTreeIndex {
         parent_node: &mut BPlusTreeNode,
         parent_key_idx: usize,
     ) -> Result<(), OxidbError> {
+        let left_node_page_id = left_node.get_page_id();
+        let parent_node_page_id = parent_node.get_page_id();
+        // right_node is consumed, its page might be deallocated later.
+
         match (left_node, right_node) {
             (BPlusTreeNode::Leaf { keys: l_keys, values: l_values, next_leaf: l_next_leaf, .. },
              BPlusTreeNode::Leaf { keys: r_keys, values: r_values, next_leaf: r_next_leaf, .. }) => {
                 l_keys.append(r_keys);
                 l_values.append(r_values);
                 *l_next_leaf = *r_next_leaf;
-                match parent_node {
-                    BPlusTreeNode::Internal { keys: p_keys, children: p_children, .. } => {
-                        p_keys.remove(parent_key_idx);
-                        p_children.remove(parent_key_idx + 1);
-                    }
-                    _ => return Err(OxidbError::UnexpectedNodeType),
-                };
+
+                if let BPlusTreeNode::Internal { keys: p_keys, children: p_children, .. } = parent_node {
+                    p_keys.remove(parent_key_idx);
+                    p_children.remove(parent_key_idx + 1);
+                } else {
+                    return Err(OxidbError::UnexpectedNodeType);
+                }
             }
-            (BPlusTreeNode::Internal { keys: l_keys, children: l_children, page_id: l_page_id, .. },
-             BPlusTreeNode::Internal { keys: r_keys, children: r_children, .. }) => {
-                let key_from_parent = match parent_node {
-                    BPlusTreeNode::Internal { keys: p_keys, .. } => p_keys[parent_key_idx].clone(),
-                    _ => return Err(OxidbError::UnexpectedNodeType),
+            (BPlusTreeNode::Internal { page_id: l_pid, keys: l_keys, children: l_children, .. },
+             BPlusTreeNode::Internal { keys: r_keys, children: r_children_original, .. }) => { // Capture original r_children
+                let key_from_parent = if let BPlusTreeNode::Internal { keys: p_keys, .. } = parent_node {
+                    p_keys[parent_key_idx].clone()
+                } else {
+                    return Err(OxidbError::UnexpectedNodeType);
                 };
                 l_keys.push(key_from_parent);
-                let original_l_children_count = l_children.len(); // children from right_node will be appended after this
-                l_keys.append(r_keys);
-                l_children.append(r_children);
 
-                // Children that were moved from right_node start at original_l_children_count in the *new* l_children
-                // No, this is wrong. The children from r_children are simply appended.
-                // Their PIDs are known. We need to iterate over those specific PIDs.
-                // The number of children moved is r_children.len() *before* append.
-                // Let's get the list of PIDs from r_children before it's drained by append.
-                // This is tricky because r_children is taken by `append`.
-                // The keys in r_keys had r_keys.len()+1 children. So this is num_children_to_update.
-                let num_children_to_update = if !r_keys.is_empty() || !r_children.is_empty() { // Check if r_children was non-empty before append
-                    r_children.len() // This is problematic as r_children is consumed by append
-                } else { 0 };
-                // This needs a robust way to get the list of children that were moved.
-                // The current BPlusTreeNode::Internal definition has `children: Vec<PageId>`.
-                // After `l_children.append(r_children)`, the children from `r_children` are at the end.
-                // Their count is what `r_children` had before being emptied.
-                // This is a common issue with using `append` and then needing original counts.
-                // A better way: iterate `r_children` *before* moving them, update, then move.
-                // Or, if `r_children` is cloned first for iteration.
-                // For now, let's assume we can identify them by their original PIDs if we had them.
-                // The `num_children_to_update` logic used in earlier version was `r_keys.len() + 1`.
-                // This is because an internal node with k keys has k+1 children.
-                // So, if r_keys are moved, r_keys.len()+1 children associated with them are also moved.
-                // These are now at the end of l_children.
-                let children_moved_count = r_keys.len() + 1; // This is how many children were in r_node.
-                                                            // This is incorrect if r_keys was empty but r_children was not (e.g. an underflowed r_node)
-                                                            // The children are in r_children vector. So its length before append is what we need.
-                                                            // This is a bug in the current code.
-                                                            // Let's assume r_children was not empty.
-                                                            // The children that were appended start at index l_children.len() - children_moved_count (if children_moved_count was correct)
+                // Iterate over a clone of r_children_original if its PIDs are needed for updating parent pointers
+                let r_children_to_update_parent = r_children_original.clone();
 
-                // Correct approach for updating children's parent pointers:
-                // Iterate through the PIDs that were *originally* in r_children.
-                // This means we should have captured r_children's content before the append.
-                // As a quick fix for now, let's assume children are updated correctly by some magic
-                // or this part needs more careful implementation of iterating the correct PIDs.
-                // The previous version was:
-                // let start_index_of_moved_children = l_children.len() - num_children_to_update;
-                // for i in start_index_of_moved_children..l_children.len() { ... }
-                // This used num_children_to_update = r_keys.len() + 1. This is the correct count of children from the right node.
+                l_keys.append(r_keys); // r_keys is drained
+                l_children.append(r_children_original); // r_children_original is drained
 
-                let start_idx_moved_children = l_children.len() - (r_keys.len() + 1);
-                for i in start_idx_moved_children..l_children.len() {
-                    let child_pid_to_update = l_children[i];
-                    // Read child node mutably
+                for child_pid_to_update in r_children_to_update_parent {
                     let mut child_node = self.read_node_mut(child_pid_to_update)?;
-                    child_node.set_parent_page_id(Some(*l_page_id));
+                    child_node.set_parent_page_id(Some(*l_pid));
                     self.write_node(&child_node)?;
                 }
 
-                match parent_node {
-                    BPlusTreeNode::Internal { keys: p_keys, children: p_children, .. } => {
-                        p_keys.remove(parent_key_idx);
-                        p_children.remove(parent_key_idx + 1);
-                    }
-                    _ => return Err(OxidbError::UnexpectedNodeType),
-                };
+                if let BPlusTreeNode::Internal { keys: p_keys, children: p_children, .. } = parent_node {
+                     p_keys.remove(parent_key_idx);
+                     p_children.remove(parent_key_idx + 1);
+                } else {
+                    return Err(OxidbError::UnexpectedNodeType);
+                }
             }
             _ => return Err(OxidbError::TreeLogicError("Node types mismatch during merge, or one is not a BPlusTreeNode variant.".to_string())),
         }
-        self.write_node(left_node)?;
-        self.write_node(parent_node)?;
+
+        let final_left_node = self.read_node_mut(left_node_page_id)?;
+        self.write_node(&final_left_node)?;
+
+        let final_parent_node = self.read_node_mut(parent_node_page_id)?;
+        self.write_node(&final_parent_node)?;
+
+        // Deallocation of right_node's page would happen here if needed, e.g.,
+        // self.deallocate_page(right_node_page_id)?;
         Ok(())
     }
 }

@@ -69,6 +69,13 @@ impl BPlusTreeNode {
         matches!(self, BPlusTreeNode::Leaf { .. })
     }
 
+    pub fn get_children(&self) -> Result<&Vec<PageId>, &'static str> {
+        match self {
+            BPlusTreeNode::Internal { children, .. } => Ok(children),
+            BPlusTreeNode::Leaf { .. } => Err("Leaf nodes do not have children."),
+        }
+    }
+
     pub fn is_full(&self, order: usize) -> bool {
         match self {
             BPlusTreeNode::Internal { keys, .. } => keys.len() >= order -1, // Max keys for internal node
@@ -265,7 +272,7 @@ impl BPlusTreeNode {
             BPlusTreeNode::Internal { page_id, parent_page_id, keys, children } => {
                 bytes.push(0u8); // 0 for Internal Node
                 bytes.extend_from_slice(&page_id.to_be_bytes());
-                bytes.extend_from_slice(&parent_page_id.is_some().to_be_bytes());
+                bytes.extend_from_slice(&(parent_page_id.is_some() as u8).to_be_bytes());
                 if let Some(pid) = parent_page_id {
                     bytes.extend_from_slice(&pid.to_be_bytes());
                 }
@@ -283,7 +290,7 @@ impl BPlusTreeNode {
             BPlusTreeNode::Leaf { page_id, parent_page_id, keys, values, next_leaf } => {
                 bytes.push(1u8); // 1 for Leaf Node
                 bytes.extend_from_slice(&page_id.to_be_bytes());
-                bytes.extend_from_slice(&parent_page_id.is_some().to_be_bytes());
+                bytes.extend_from_slice(&(parent_page_id.is_some() as u8).to_be_bytes());
                 if let Some(pid) = parent_page_id {
                     bytes.extend_from_slice(&pid.to_be_bytes());
                 }
@@ -301,7 +308,8 @@ impl BPlusTreeNode {
                         bytes.extend_from_slice(pk);
                     }
                 }
-                bytes.extend_from_slice(&next_leaf.is_some().to_be_bytes());
+                // Serialize next_leaf option
+                bytes.extend_from_slice(&(next_leaf.is_some() as u8).to_be_bytes());
                 if let Some(id) = next_leaf {
                     bytes.extend_from_slice(&id.to_be_bytes());
                 }
@@ -503,15 +511,21 @@ mod tests {
         // Order is 4, max keys = 3
         node.insert_key_value(K("mango"), InsertValue::Page(1), TEST_ORDER).unwrap();
         assert_eq!(node.get_keys(), &vec![K("mango")]);
-        assert_eq!(node.children, vec![0, 1]);
+        if let BPlusTreeNode::Internal { children, .. } = &node {
+            assert_eq!(children, &vec![0, 1]);
+        } else { panic!("Expected Internal node"); }
 
         node.insert_key_value(K("apple"), InsertValue::Page(2), TEST_ORDER).unwrap();
         assert_eq!(node.get_keys(), &vec![K("apple"), K("mango")]);
-        assert_eq!(node.children, vec![0, 2, 1]); // apple child | mango child
+        if let BPlusTreeNode::Internal { children, .. } = &node {
+            assert_eq!(children, &vec![0, 2, 1]); // apple child | mango child
+        } else { panic!("Expected Internal node"); }
 
         node.insert_key_value(K("banana"), InsertValue::Page(3), TEST_ORDER).unwrap();
         assert_eq!(node.get_keys(), &vec![K("apple"), K("banana"), K("mango")]);
-        assert_eq!(node.children, vec![0, 2, 3, 1]); // apple child | banana child | mango child
+        if let BPlusTreeNode::Internal { children, .. } = &node {
+            assert_eq!(children, &vec![0, 2, 3, 1]); // apple child | banana child | mango child
+        } else { panic!("Expected Internal node"); }
 
         assert!(node.is_full(TEST_ORDER));
         assert!(node.insert_key_value(K("orange"), InsertValue::Page(4), TEST_ORDER).is_err());
@@ -529,15 +543,21 @@ mod tests {
         // Order is 4, max key-value pairs = 3
         node.insert_key_value(K("mango"), InsertValue::PrimaryKeys(vec![PK("pk_mango")]), TEST_ORDER).unwrap();
         assert_eq!(node.get_keys(), &vec![K("mango")]);
-        assert_eq!(node.values, vec![vec![PK("pk_mango")]]);
+        if let BPlusTreeNode::Leaf { values, .. } = &node {
+            assert_eq!(values, &vec![vec![PK("pk_mango")]]);
+        } else { panic!("Expected Leaf node"); }
 
         node.insert_key_value(K("apple"), InsertValue::PrimaryKeys(vec![PK("pk_apple")]), TEST_ORDER).unwrap();
         assert_eq!(node.get_keys(), &vec![K("apple"), K("mango")]);
-        assert_eq!(node.values, vec![vec![PK("pk_apple")], vec![PK("pk_mango")]]);
+        if let BPlusTreeNode::Leaf { values, .. } = &node {
+            assert_eq!(values, &vec![vec![PK("pk_apple")], vec![PK("pk_mango")]]);
+        } else { panic!("Expected Leaf node"); }
 
         node.insert_key_value(K("banana"), InsertValue::PrimaryKeys(vec![PK("pk_banana")]), TEST_ORDER).unwrap();
         assert_eq!(node.get_keys(), &vec![K("apple"), K("banana"), K("mango")]);
-        assert_eq!(node.values, vec![vec![PK("pk_apple")], vec![PK("pk_banana")], vec![PK("pk_mango")]]);
+        if let BPlusTreeNode::Leaf { values, .. } = &node {
+            assert_eq!(values, &vec![vec![PK("pk_apple")], vec![PK("pk_banana")], vec![PK("pk_mango")]]);
+        } else { panic!("Expected Leaf node"); }
 
         assert!(node.is_full(TEST_ORDER));
         assert!(node.insert_key_value(K("orange"), InsertValue::PrimaryKeys(vec![PK("pk_orange")]), TEST_ORDER).is_err());
