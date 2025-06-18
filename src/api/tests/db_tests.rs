@@ -1,4 +1,4 @@
-use crate::api::db::Oxidb;
+use crate::api::Oxidb;
 use crate::core::common::OxidbError;
 use crate::core::query::executor::ExecutionResult;
 use crate::core::types::DataType;

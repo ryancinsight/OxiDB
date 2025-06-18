@@ -958,7 +958,7 @@ fn test_physical_wal_lsn_integration() {
     let db_path = temp_dir.path().join("lsn_test.db");
 
     // 1. Setup Oxidb
-    let mut oxidb = crate::api::db::Oxidb::new(&db_path).expect("Failed to create Oxidb instance");
+    let mut oxidb = crate::Oxidb::new(&db_path).expect("Failed to create Oxidb instance");
 
     // 2. Execute Operations
     oxidb

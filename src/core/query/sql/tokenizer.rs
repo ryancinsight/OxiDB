@@ -1,6 +1,8 @@
 use super::errors::SqlTokenizerError;
+use std::fmt;
 
-#[derive(Debug, PartialEq, Clone)]
+// #[derive(Debug, PartialEq, Clone)] // Remove derive
+#[derive(PartialEq, Clone)] // Keep PartialEq and Clone
 pub enum Token {
     // Keywords
     Select,
@@ -32,6 +34,36 @@ pub enum Token {
 
     // End of File
     EOF,
+}
+
+impl fmt::Debug for Token {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Token::Select => write!(f, "Select"),
+            Token::From => write!(f, "From"),
+            Token::Where => write!(f, "Where"),
+            Token::Update => write!(f, "Update"),
+            Token::Set => write!(f, "Set"),
+            Token::Create => write!(f, "Create"),
+            Token::Table => write!(f, "Table"),
+            Token::Insert => write!(f, "Insert"),
+            Token::Into => write!(f, "Into"),
+            Token::Values => write!(f, "Values"),
+            Token::True => write!(f, "True"),
+            Token::False => write!(f, "False"),
+            Token::Identifier(s) => f.debug_tuple("Identifier").field(s).finish(),
+            Token::StringLiteral(s) => f.debug_tuple("StringLiteral").field(s).finish(),
+            Token::NumericLiteral(s) => f.debug_tuple("NumericLiteral").field(s).finish(),
+            Token::BooleanLiteral(b) => f.debug_tuple("BooleanLiteral").field(b).finish(),
+            Token::Operator(s) => f.debug_tuple("Operator").field(s).finish(),
+            Token::LParen => write!(f, "LParen"),
+            Token::RParen => write!(f, "RParen"),
+            Token::Comma => write!(f, "Comma"),
+            Token::Asterisk => write!(f, "Asterisk"),
+            Token::Semicolon => write!(f, "Semicolon"),
+            Token::EOF => write!(f, "EOF"),
+        }
+    }
 }
 
 pub struct Tokenizer<'a> {

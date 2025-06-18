@@ -7,6 +7,8 @@ use crate::core::optimizer::{Expression, SimplePredicate};
 use crate::core::common::serialization::serialize_data_type;
 use crate::core::common::OxidbError; // Changed
 use crate::core::indexing::manager::IndexManager;
+use crate::core::optimizer::rules::apply_constant_folding_rule;
+use crate::core::optimizer::rules::apply_noop_filter_removal_rule;
 use crate::core::query::sql::ast::{
     AstLiteralValue as AstSqlLiteralValue, Condition as AstSqlCondition,
     SelectColumn as AstSqlSelectColumn, Statement as AstStatement,
@@ -143,6 +145,8 @@ impl Optimizer {
         // Changed
         let plan = self.apply_predicate_pushdown(plan);
         let plan = self.apply_index_selection(plan)?;
+        let plan = apply_constant_folding_rule(plan);
+        let plan = apply_noop_filter_removal_rule(plan);
         Ok(plan)
     }
 

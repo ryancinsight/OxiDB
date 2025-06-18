@@ -70,7 +70,7 @@ impl SqlParser {
         match self.consume_any() {
             Some(Token::Identifier(name)) => Ok(name),
             Some(other) => Err(SqlParseError::UnexpectedToken {
-                expected: "Identifier".to_string(),
+                expected: "Identifier".to_string(), // Reverted to original
                 found: format!("{:?}", other),
                 position: self.current_token_pos() - 1, // Position of the consumed token
             }),
@@ -81,12 +81,12 @@ impl SqlParser {
     pub(super) fn expect_operator(
         &mut self,
         op_str: &str,
-        _error_message: &str,
+        _error_message: &str, // _error_message is not used here, could be for consistency or future use
     ) -> Result<String, SqlParseError> {
         match self.consume_any() {
             Some(Token::Operator(s)) if s == op_str => Ok(s),
             Some(other) => Err(SqlParseError::UnexpectedToken {
-                expected: format!("Operator '{}'", op_str),
+                expected: format!("Operator '{}'", op_str), // This is specific enough
                 found: format!("{:?}", other),
                 position: self.current_token_pos() - 1, // Position of the consumed token
             }),

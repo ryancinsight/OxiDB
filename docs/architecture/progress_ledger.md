@@ -41,12 +41,8 @@ This ledger tracks the status of major features and components of the Oxidb cath
             *   [x] `mod.rs` (Created with module definition for binder.rs)
             *   [x] `binder.rs` (Initial implementation with Binder struct, placeholder BoundStatement/BindError, and bind_statement method. Currently returns NotImplemented.)
     *   **Planner** (`src/core/query/planner`)
-        *   Status: Not Started
-        *   Checklist:
-            *   [ ] `mod.rs` (exists as .gitkeep)
-            *   [ ] `logical_planner.rs` (not present)
-            *   [ ] `physical_planner.rs` (not present)
-        *   Note: Update to reflect that `src/core/query/executor/planner.rs` handles physical plan translation (QueryPlanNode to ExecutionOperator tree) and `src/core/optimizer/optimizer.rs` (specifically `build_initial_plan`) handles logical plan generation (AST to QueryPlanNode).
+        *   Status: Implemented (Distributed)
+        *   Note: Logical plan generation (AST to QueryPlanNode) is handled by `build_initial_plan` in `src/core/optimizer/optimizer.rs`. Physical plan translation (QueryPlanNode to ExecutionOperator tree) is handled by `src/core/query/executor/planner.rs`.
     *   **Optimizer** (`src/core/optimizer`)
         *   Status: Partially Implemented
         *   Checklist:

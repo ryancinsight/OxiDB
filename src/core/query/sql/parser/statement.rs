@@ -22,13 +22,17 @@ impl SqlParser {
             None => return Err(SqlParseError::UnexpectedEOF), // Should be caught by is_at_end earlier
         }?;
 
-        // After a statement is parsed (including its optional semicolon),
-        // the next token must be EOF. If not, it means there's trailing garbage.
+        // After specific statement node is parsed (e.g. Select, Update)
+        // Check for optional semicolon
+        if self.match_token(Token::Semicolon) {
+            self.consume(Token::Semicolon)?;
+        }
+
+        // Now, after optional semicolon, the next token MUST be EOF.
         if self.peek() != Some(&Token::EOF) && !self.is_at_end() {
-            // is_at_end() check is redundant if peek is not EOF
             return Err(SqlParseError::UnexpectedToken {
                 expected: "end of statement or EOF".to_string(),
-                found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)), // Should not be None if not EOF
+                found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
                 position: self.current_token_pos(),
             });
         }
@@ -147,10 +151,7 @@ impl SqlParser {
         }
         self.consume(Token::RParen)?; // Consume the final RParen of the column list
 
-        // Optional: consume semicolon
-        if self.match_token(Token::Semicolon) {
-            self.consume(Token::Semicolon)?;
-        }
+        // Semicolon handled by main parse()
         Ok(Statement::CreateTable(CreateTableStatement { table_name, columns }))
     }
 
@@ -199,9 +200,7 @@ impl SqlParser {
 
         // TODO: Add loop here to parse multiple VALUES sets: , (val1, val2), ...
 
-        if self.match_token(Token::Semicolon) {
-            self.consume(Token::Semicolon)?;
-        }
+        // Semicolon handled by main parse()
 
         Ok(Statement::Insert(ast::InsertStatement { table_name, columns, values: values_list }))
     }
@@ -217,9 +216,7 @@ impl SqlParser {
         } else {
             None
         };
-        if self.match_token(Token::Semicolon) {
-            self.consume(Token::Semicolon)?;
-        }
+        // Semicolon handled by main parse()
         Ok(Statement::Select(SelectStatement { columns, source, condition }))
     }
 
@@ -234,9 +231,7 @@ impl SqlParser {
         } else {
             None
         };
-        if self.match_token(Token::Semicolon) {
-            self.consume(Token::Semicolon)?;
-        }
+        // Semicolon handled by main parse()
         Ok(Statement::Update(UpdateStatement { source, assignments, condition }))
     }
 }

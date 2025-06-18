@@ -3,6 +3,7 @@
 // More optimization logic will be added here in the future.
 
 pub mod optimizer; // Added optimizer module
+pub mod rules; // Added rules module
 pub use optimizer::Optimizer; // Re-export Optimizer
 
 use crate::core::types::DataType; // Added import for DataType
