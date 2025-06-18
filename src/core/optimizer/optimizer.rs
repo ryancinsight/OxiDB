@@ -132,11 +132,11 @@ impl Optimizer {
             AstSqlLiteralValue::Null => DataType::Null,
         };
 
-        Ok(Expression::Predicate(SimplePredicate {
-            column: ast_cond.column.clone(),
-            operator: ast_cond.operator.clone(),
-            value,
-        }))
+        Ok(Expression::CompareOp {
+            left: Box::new(Expression::Column(ast_cond.column.clone())),
+            op: ast_cond.operator.clone(),
+            right: Box::new(Expression::Literal(value)),
+        })
     }
 
     // Removed the old ast_condition_to_expression_new as it was based on incorrect assumptions about ast::Expression
@@ -190,22 +190,36 @@ impl Optimizer {
                 let mut new_plan_node = optimized_input.clone();
 
                 if let QueryPlanNode::TableScan { ref table_name, ref alias } = optimized_input {
-                    let Expression::Predicate(simple_predicate) = &predicate;
-                    let index_name_candidate =
-                        format!("idx_{}_{}", table_name, simple_predicate.column);
+                    // Check if the predicate is a CompareOp with Column on left and Literal on right
+                    if let Expression::CompareOp { left, op, right } = &predicate {
+                        if let (Expression::Column(column_name), Expression::Literal(literal_value)) =
+                            (&**left, &**right)
+                        {
+                            let index_name_candidate =
+                                format!("idx_{}_{}", table_name, column_name);
 
-                    if simple_predicate.operator == "="
-                        && self.index_manager.get_index(&index_name_candidate).is_some()
-                    {
-                        let _scan_value_bytes = serialize_data_type(&simple_predicate.value)?;
+                            // Check for specific conditions suitable for index scan (e.g., equality on indexed column)
+                            if *op == "="
+                                && self.index_manager.get_index(&index_name_candidate).is_some()
+                            {
+                                // Ensure serialize_data_type is handled or removed if not strictly needed for this logic block
+                                // let _scan_value_bytes = serialize_data_type(literal_value)?;
 
-                        new_plan_node = QueryPlanNode::IndexScan {
-                            index_name: index_name_candidate,
-                            table_name: table_name.clone(),
-                            alias: alias.clone(),
-                            scan_condition: Some(simple_predicate.clone()),
-                        };
-                        transformed_to_index_scan = true;
+                                let scan_predicate = SimplePredicate {
+                                    column: column_name.clone(),
+                                    operator: op.clone(),
+                                    value: literal_value.clone(),
+                                };
+
+                                new_plan_node = QueryPlanNode::IndexScan {
+                                    index_name: index_name_candidate,
+                                    table_name: table_name.clone(),
+                                    alias: alias.clone(),
+                                    scan_condition: Some(scan_predicate),
+                                };
+                                transformed_to_index_scan = true;
+                            }
+                        }
                     }
                 }
 

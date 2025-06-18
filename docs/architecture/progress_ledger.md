@@ -48,7 +48,7 @@ This ledger tracks the status of major features and components of the Oxidb cath
         *   Checklist:
             *   [x] `mod.rs` (Defines plan nodes and core structures)
             *   [x] `optimizer.rs` (Initial plan building and basic optimization passes implemented)
-            *   [ ] `rules/` (Directory exists, no rules implemented)
+            *   [~] `rules/` (Directory exists, constant_folding_rule.rs implemented)
             *   [ ] ADR for optimization strategies
     *   **Executor** (`src/core/query/executor/`)
         *   Status: Partially Implemented
