@@ -203,7 +203,8 @@ mod tests {
         // Let's use <db_name>.tx.wal for TransactionManager's WalWriter for clarity in tests.
         let mut tm_wal_path = store_path.clone();
         tm_wal_path.set_extension("tx_wal"); // e.g. /tmp/somefile.tx_wal
-        let tm_wal_writer = WalWriter::new(tm_wal_path);
+        let wal_config = crate::core::wal::writer::WalWriterConfig::default();
+        let tm_wal_writer = WalWriter::new(tm_wal_path, wal_config);
         let log_manager_arc = Arc::new(crate::core::wal::log_manager::LogManager::new());
 
         QueryExecutor::new(temp_store, index_path, tm_wal_writer, log_manager_arc).unwrap()
@@ -216,7 +217,8 @@ mod tests {
 
         let wal_temp_file =
             NamedTempFile::new().expect("Failed to create temp wal file for in-memory test");
-        let wal_writer = WalWriter::new(wal_temp_file.path().to_path_buf());
+        let wal_config = crate::core::wal::writer::WalWriterConfig::default();
+        let wal_writer = WalWriter::new(wal_temp_file.path().to_path_buf(), wal_config);
         let log_manager_arc = Arc::new(crate::core::wal::log_manager::LogManager::new());
 
         QueryExecutor::new(store, index_path, wal_writer, log_manager_arc).unwrap()
@@ -1062,7 +1064,8 @@ mod tests {
 
         {
             let wal_path1 = db_file_path.with_extension("wal1");
-            let wal_writer1 = WalWriter::new(wal_path1);
+            let wal_config1 = crate::core::wal::writer::WalWriterConfig::default();
+            let wal_writer1 = WalWriter::new(wal_path1, wal_config1);
             let log_manager1 = Arc::new(crate::core::wal::log_manager::LogManager::new());
             let mut executor1 = QueryExecutor::new(
                 SimpleFileKvStore::new(&db_file_path)?,
@@ -1085,7 +1088,8 @@ mod tests {
                                                              // If persist clears it, this is fine.
                                                              // If SimpleFileKvStore on new() is meant to recover from this WAL,
                                                              // then the test logic might need adjustment based on desired behavior.
-        let wal_writer2 = WalWriter::new(wal_path2);
+        let wal_config2 = crate::core::wal::writer::WalWriterConfig::default();
+        let wal_writer2 = WalWriter::new(wal_path2, wal_config2);
         let log_manager2 = Arc::new(crate::core::wal::log_manager::LogManager::new());
         let mut executor2 = QueryExecutor::new(
             SimpleFileKvStore::new(&db_file_path)?,
@@ -1116,7 +1120,8 @@ mod tests {
 
         let wal_temp_file =
             NamedTempFile::new().expect("Failed to create temp wal file for mvcc test");
-        let wal_writer = WalWriter::new(wal_temp_file.path().to_path_buf());
+        let wal_config = crate::core::wal::writer::WalWriterConfig::default();
+        let wal_writer = WalWriter::new(wal_temp_file.path().to_path_buf(), wal_config);
         let log_manager_mvcc = Arc::new(crate::core::wal::log_manager::LogManager::new());
 
         QueryExecutor::new(store, index_path, wal_writer, log_manager_mvcc).unwrap()

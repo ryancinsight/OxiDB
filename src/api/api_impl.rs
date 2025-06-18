@@ -30,7 +30,8 @@ impl Oxidb {
     /// Returns `OxidbError` if the store cannot be initialized or the executor cannot be created.
     pub fn new_with_config(config: Config) -> Result<Self, OxidbError> {
         let store = SimpleFileKvStore::new(config.database_path())?;
-        let wal_writer = WalWriter::new(config.wal_path());
+        let wal_config = crate::core::wal::writer::WalWriterConfig::default(); // Use default config
+        let wal_writer = WalWriter::new(config.wal_path(), wal_config);
         let log_manager = Arc::new(LogManager::new());
         let executor = QueryExecutor::new(store, config.index_path(), wal_writer, log_manager)?;
         Ok(Self { executor })

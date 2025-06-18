@@ -21,7 +21,8 @@ pub struct TransactionManager {
 impl Default for TransactionManager {
     fn default() -> Self {
         let default_wal_path = PathBuf::from("default_transaction_manager.wal");
-        let wal_writer = WalWriter::new(default_wal_path);
+        let wal_config = crate::core::wal::writer::WalWriterConfig::default();
+        let wal_writer = WalWriter::new(default_wal_path, wal_config);
         let log_manager = Arc::new(LogManager::default());
         TransactionManager {
             active_transactions: HashMap::new(),
@@ -275,7 +276,8 @@ mod tests {
         let wal_path = test_specific_dir.join("test.wal");
         // cleanup_file(&wal_path); // Not needed as whole dir is cleaned
 
-        let wal_writer = WalWriter::new(wal_path.clone());
+        let wal_config = crate::core::wal::writer::WalWriterConfig::default();
+        let wal_writer = WalWriter::new(wal_path.clone(), wal_config);
         let log_manager = Arc::new(LogManager::new());
         (TransactionManager::new(wal_writer, log_manager), wal_path, test_specific_dir)
     }
@@ -378,7 +380,11 @@ mod tests {
         // Let's make the path itself a directory for WalWriter to fail.
         fs::create_dir_all(&test_specific_dir).expect("Should create dir to cause WAL write fail");
 
-        let wal_writer = WalWriter::new(test_specific_dir.clone()); // WalWriter will try to open this directory as a file
+        let wal_config = crate::core::wal::writer::WalWriterConfig {
+            max_buffer_size: 1, // Small buffer to force flush
+            flush_interval_ms: None, // Disable periodic to isolate failure
+        };
+        let wal_writer = WalWriter::new(test_specific_dir.clone(), wal_config); // WalWriter will try to open this directory as a file
         let log_manager = Arc::new(LogManager::new());
         let mut manager = TransactionManager::new(wal_writer, log_manager);
 
