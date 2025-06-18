@@ -6,9 +6,13 @@ use std::fs::OpenOptions;
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf}; // Corrected path for traits
 
+/// Operation type identifier for a 'Put' (insert/update) operation in the WAL.
 const PUT_OPERATION: u8 = 0x01;
+/// Operation type identifier for a 'Delete' operation in the WAL.
 const DELETE_OPERATION: u8 = 0x02;
+/// Operation type identifier for a transaction commit operation in the WAL.
 const TRANSACTION_COMMIT_OPERATION: u8 = 0x03;
+/// Operation type identifier for a transaction rollback operation in the WAL.
 const TRANSACTION_ROLLBACK_OPERATION: u8 = 0x04;
 
 /// Represents an entry in the Write-Ahead Log (WAL).
@@ -93,10 +97,10 @@ mod tests {
 
         for original_entry in entries {
             let mut buffer = Vec::new();
-            WalEntry::serialize(&original_entry, &mut buffer).unwrap();
+            WalEntry::serialize(&original_entry, &mut buffer).expect("Serialization of WAL entry failed in test");
 
             let mut reader = Cursor::new(&buffer);
-            let deserialized_entry = WalEntry::deserialize(&mut reader).unwrap();
+            let deserialized_entry = WalEntry::deserialize(&mut reader).expect("Deserialization of WAL entry failed in test");
             assert_eq!(&original_entry, &deserialized_entry);
         }
     }
@@ -120,19 +124,19 @@ mod tests {
         let entry5 = WalEntry::TransactionRollback { lsn: 104, transaction_id: 12 };
 
         let mut buffer = Vec::new();
-        WalEntry::serialize(&entry1, &mut buffer).unwrap();
-        WalEntry::serialize(&entry2, &mut buffer).unwrap();
-        WalEntry::serialize(&entry3, &mut buffer).unwrap();
-        WalEntry::serialize(&entry4, &mut buffer).unwrap();
-        WalEntry::serialize(&entry5, &mut buffer).unwrap();
+        WalEntry::serialize(&entry1, &mut buffer).expect("Serialize entry1 failed");
+        WalEntry::serialize(&entry2, &mut buffer).expect("Serialize entry2 failed");
+        WalEntry::serialize(&entry3, &mut buffer).expect("Serialize entry3 failed");
+        WalEntry::serialize(&entry4, &mut buffer).expect("Serialize entry4 failed");
+        WalEntry::serialize(&entry5, &mut buffer).expect("Serialize entry5 failed");
 
         let mut cursor = Cursor::new(&buffer);
 
-        assert_eq!(WalEntry::deserialize(&mut cursor).unwrap(), entry1);
-        assert_eq!(WalEntry::deserialize(&mut cursor).unwrap(), entry2);
-        assert_eq!(WalEntry::deserialize(&mut cursor).unwrap(), entry3);
-        assert_eq!(WalEntry::deserialize(&mut cursor).unwrap(), entry4);
-        assert_eq!(WalEntry::deserialize(&mut cursor).unwrap(), entry5);
+        assert_eq!(WalEntry::deserialize(&mut cursor).expect("Deserialize entry1 failed"), entry1);
+        assert_eq!(WalEntry::deserialize(&mut cursor).expect("Deserialize entry2 failed"), entry2);
+        assert_eq!(WalEntry::deserialize(&mut cursor).expect("Deserialize entry3 failed"), entry3);
+        assert_eq!(WalEntry::deserialize(&mut cursor).expect("Deserialize entry4 failed"), entry4);
+        assert_eq!(WalEntry::deserialize(&mut cursor).expect("Deserialize entry5 failed"), entry5);
 
         // Try to deserialize again, expecting EOF
         match WalEntry::deserialize(&mut cursor) {
@@ -357,7 +361,8 @@ impl DataDeserializer<WalEntry> for WalEntry {
     }
 }
 
-// Helper function to map EOF errors for deserialization steps
+/// Helper function to map EOF errors encountered during WAL deserialization
+/// to a more context-specific error message.
 fn map_eof_error(e: std::io::Error, context: &str) -> OxidbError {
     // Changed
     if e.kind() == std::io::ErrorKind::UnexpectedEof {
@@ -371,6 +376,9 @@ fn map_eof_error(e: std::io::Error, context: &str) -> OxidbError {
     }
 }
 
+/// Helper function to specifically handle EOF errors that might occur during
+/// the deserialization of length-prefixed data (like keys or values) within a WAL entry.
+/// It distinguishes general I/O errors from those indicating a truncated entry part.
 fn map_deserialization_eof(e: OxidbError, context: &str) -> OxidbError {
     // Changed
     if let OxidbError::Io(io_err) = &e {

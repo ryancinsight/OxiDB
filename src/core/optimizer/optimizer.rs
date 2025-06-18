@@ -4,7 +4,7 @@
 use crate::core::optimizer::QueryPlanNode;
 use crate::core::optimizer::{Expression, SimplePredicate};
 // Use fully qualified paths for SQL AST items to avoid ambiguity
-use crate::core::common::serialization::serialize_data_type;
+// use crate::core::common::serialization::serialize_data_type; // Unused
 use crate::core::common::OxidbError; // Changed
 use crate::core::indexing::manager::IndexManager;
 use crate::core::optimizer::rules::apply_constant_folding_rule;
@@ -16,8 +16,13 @@ use crate::core::query::sql::ast::{
 use crate::core::types::DataType;
 use std::sync::Arc;
 
+/// The `Optimizer` is responsible for transforming an initial query plan
+/// (derived directly from the AST) into a more efficient execution plan.
+/// It applies a series of rules, such as predicate pushdown, index selection,
+/// and constant folding, to achieve this.
 #[derive(Debug)]
 pub struct Optimizer {
+    /// A shared reference to the `IndexManager` to access available indexes.
     index_manager: Arc<IndexManager>,
 }
 
@@ -107,7 +112,10 @@ impl Optimizer {
         }
     }
 
-    // Converts sql::ast::Condition to optimizer::Expression
+    /// Converts an SQL AST condition (`sql::ast::Condition`) into an optimizer
+    /// expression (`optimizer::Expression`). This involves parsing literal values
+    /// into their respective `DataType` and structuring the condition as a
+    /// comparison operation within the optimizer's expression model.
     fn ast_sql_condition_to_optimizer_expression(
         &self,
         ast_cond: &AstSqlCondition,
@@ -150,6 +158,11 @@ impl Optimizer {
         Ok(plan)
     }
 
+    /// Applies predicate pushdown optimization.
+    /// This rule attempts to move `Filter` operations as close to the data source
+    /// (e.g., `TableScan`) as possible to reduce the amount of data processed
+    /// in earlier stages of the query plan.
+    #[allow(clippy::only_used_in_recursion)]
     fn apply_predicate_pushdown(&self, plan_node: QueryPlanNode) -> QueryPlanNode {
         match plan_node {
             QueryPlanNode::Filter { input, predicate } => {
@@ -181,6 +194,12 @@ impl Optimizer {
         }
     }
 
+    /// Applies index selection optimization.
+    /// This rule inspects `Filter` nodes to determine if an available index
+    /// can satisfy the filter's predicate more efficiently than a table scan.
+    /// If a suitable index is found (e.g., for an equality predicate on an
+    /// indexed column), it transforms the relevant part of the plan from
+    /// `Filter -> TableScan` to an `IndexScan`.
     fn apply_index_selection(&self, plan_node: QueryPlanNode) -> Result<QueryPlanNode, OxidbError> {
         // Changed
         match plan_node {

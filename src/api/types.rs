@@ -1,6 +1,6 @@
 // src/api/types.rs
 //! Defines the data structures and enumerations used within the API layer.
-use crate::core::config::Config; // Required for Oxidb::new_with_config if it were here, but methods are in api_impl
+// Required for Oxidb::new_with_config if it were here, but methods are in api_impl
 use crate::core::query::executor::QueryExecutor;
 use crate::core::storage::engine::SimpleFileKvStore;
 // std::path::PathBuf is not directly used in the struct fields, but methods in api_impl might return it.

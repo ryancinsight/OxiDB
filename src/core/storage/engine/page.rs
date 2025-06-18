@@ -12,7 +12,7 @@ pub const PAGE_SIZE: usize = 4096;
 pub const PAGE_HEADER_SIZE: usize = 18;
 
 // Placeholder for different page types that might be used later.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub enum PageType {
     Meta = 0,
@@ -22,13 +22,8 @@ pub enum PageType {
     // BTreeInternal,
     // Overflow,
     // Metadata, // This is Meta now
+    #[default]
     Unknown = 255, // For invalid/uninitialized page types
-}
-
-impl Default for PageType {
-    fn default() -> Self {
-        PageType::Unknown
-    }
 }
 
 impl TryFrom<u8> for PageType {
@@ -125,7 +120,7 @@ impl Page {
 
         // Copy page data into the buffer after the header
         let data_start_offset = PAGE_HEADER_SIZE;
-        let data_end_offset = data_start_offset + self.data.len();
+        let data_end_offset = data_start_offset.saturating_add(self.data.len());
 
         if data_end_offset > PAGE_SIZE {
             // This case should ideally not happen if page.data is sized correctly upon creation/modification
@@ -193,9 +188,9 @@ mod tests {
             };
 
             let mut buffer = vec![0u8; PAGE_HEADER_SIZE];
-            header.serialize(&mut buffer).unwrap();
+            header.serialize(&mut buffer).expect("Serialization failed in test");
 
-            let deserialized_header = PageHeader::deserialize(&buffer).unwrap();
+            let deserialized_header = PageHeader::deserialize(&buffer).expect("Deserialization failed in test");
             assert_eq!(header, deserialized_header, "Mismatch for PageType::{:?}", page_type);
         }
     }
@@ -225,10 +220,10 @@ mod tests {
         let flags = 0b10101010;
 
         let mut cursor = Cursor::new(buffer.as_mut_slice());
-        cursor.write_u64::<LittleEndian>(page_id.0).unwrap();
-        cursor.write_u8(invalid_page_type_byte).unwrap();
-        cursor.write_u64::<LittleEndian>(lsn).unwrap(); // Lsn is u64
-        cursor.write_u8(flags).unwrap();
+        cursor.write_u64::<LittleEndian>(page_id.0).expect("Failed to write page_id to cursor");
+        cursor.write_u8(invalid_page_type_byte).expect("Failed to write invalid_page_type_byte to cursor");
+        cursor.write_u64::<LittleEndian>(lsn).expect("Failed to write lsn to cursor"); // Lsn is u64
+        cursor.write_u8(flags).expect("Failed to write flags to cursor");
 
         let result = PageHeader::deserialize(&buffer);
         assert!(matches!(result, Err(OxidbError::Deserialization(_))));
@@ -248,10 +243,10 @@ mod tests {
             let page_id_zeroed = PageId(456);
             let page_zeroed = Page::new(page_id_zeroed, page_type);
 
-            let serialized_page_zeroed = page_zeroed.serialize().unwrap();
+            let serialized_page_zeroed = page_zeroed.serialize().expect("Serialization of zeroed page failed");
             assert_eq!(serialized_page_zeroed.len(), PAGE_SIZE);
 
-            let deserialized_page_zeroed = Page::deserialize(&serialized_page_zeroed).unwrap();
+            let deserialized_page_zeroed = Page::deserialize(&serialized_page_zeroed).expect("Deserialization of zeroed page failed");
             assert_eq!(
                 page_zeroed.header, deserialized_page_zeroed.header,
                 "Header mismatch for zeroed PageType::{:?}",
@@ -274,11 +269,11 @@ mod tests {
             page_populated.header.lsn = 101112; // Lsn is u64
             page_populated.header.flags = 0xAA;
 
-            let serialized_page_populated = page_populated.serialize().unwrap();
+            let serialized_page_populated = page_populated.serialize().expect("Serialization of populated page failed");
             assert_eq!(serialized_page_populated.len(), PAGE_SIZE);
 
             let deserialized_page_populated =
-                Page::deserialize(&serialized_page_populated).unwrap();
+                Page::deserialize(&serialized_page_populated).expect("Deserialization of populated page failed");
             assert_eq!(
                 page_populated.header, deserialized_page_populated.header,
                 "Header mismatch for populated PageType::{:?}",

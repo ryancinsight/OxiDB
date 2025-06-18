@@ -39,4 +39,29 @@ You can create an Oxidb instance in several ways:
 
 ## Contribution Guidelines
 
-(To be defined)
+We welcome contributions to oxidb! Whether you're fixing a bug, adding a new feature, or improving documentation, your help is appreciated. To ensure a smooth process, please follow these guidelines:
+
+### Workflow
+
+1.  **Fork the Repository:** Start by forking the official `oxidb` repository to your own GitHub account.
+2.  **Create a Branch:** For each new feature or bugfix, create a new branch in your forked repository. Choose a descriptive branch name (e.g., `feature/new-index-type`, `bugfix/query-parser-error`).
+3.  **Make Your Changes:** Implement your changes, adhering to the project's coding standards.
+4.  **Submit a Pull Request (PR):** Once your changes are complete and tested, submit a pull request from your feature branch to the `main` branch of the official `oxidb` repository. Provide a clear description of your changes in the PR.
+
+### Code Style
+
+*   **Formatting:** Please ensure your code adheres to the standard Rust formatting guidelines by running `rustfmt` before committing your changes. Most IDEs can be configured to do this automatically.
+*   **Clippy:** Address any warnings reported by `clippy`. You can run `cargo clippy --all-targets --all-features -- -D warnings` to check your code.
+*   **Documentation:** Add or update documentation for any public-facing APIs, complex logic, or new features.
+
+### Testing
+
+*   **Run Tests:** Before submitting a pull request, make sure all existing tests pass by running `cargo test --all-targets --all-features`.
+*   **Add New Tests:** For new features or bugfixes, please add appropriate unit tests and/or integration tests to cover your changes.
+
+### Issues
+
+*   **Check Existing Issues:** Before starting work on a significant change, please check the issue tracker to see if an issue already exists for it.
+*   **Create an Issue:** For substantial new features or architectural changes, it's a good idea to create an issue first to discuss the proposed changes with the maintainers. This can help ensure your contribution aligns with the project's goals and avoid duplicate effort.
+
+Thank you for contributing to oxidb!

@@ -42,7 +42,7 @@ impl Oxidb {
     ///
     /// # Arguments
     /// * `db_path` - A path-like object (e.g., `&str`, `PathBuf`) specifying the location
-    ///  of the database file. This will override `database_file_path` in the default config.
+    ///   of the database file. This will override `database_file_path` in the default config.
     ///
     /// # Errors
     /// Returns `OxidbError` if the store cannot be initialized or the executor cannot be created.

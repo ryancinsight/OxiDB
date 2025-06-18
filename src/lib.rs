@@ -184,6 +184,7 @@ mod tests {
     #[test]
     fn test_oxidb_new_from_config_file_custom_paths() {
         // Config is used here
+        use crate::core::types::DataType;
         use tempfile::tempdir;
 
         let dir = tempdir().unwrap();
@@ -218,11 +219,10 @@ mod tests {
 
         db.execute_query_str("INSERT test 1").unwrap();
         let val = db.execute_query_str("GET test").unwrap();
-        // This test was missing DataType import if not for the global one.
         assert_eq!(
             val,
             crate::core::query::executor::ExecutionResult::Value(Some(
-                crate::core::types::DataType::Integer(1)
+                DataType::Integer(1)
             ))
         );
 

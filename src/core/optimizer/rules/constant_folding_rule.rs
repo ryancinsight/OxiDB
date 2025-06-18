@@ -1,7 +1,12 @@
 use crate::core::optimizer::{Expression, QueryPlanNode};
 use crate::core::types::DataType; // Correct DataType that holds values
 
-// Helper function to perform the actual constant folding on expressions
+/// Recursively traverses an expression tree, folding any constant subexpressions.
+/// For example, an expression `(2 + 3) * a` would be folded into `5 * a`.
+/// Handles arithmetic, logical, and comparison operations.
+/// Type mismatches or operations that would panic (like division by zero for integers)
+/// will result in the original subexpression being returned unfolded.
+#[allow(clippy::cast_precision_loss)] // Allowed for f64 conversions from i64 in constant folding
 fn fold_expression(expression: Expression) -> Expression {
     match expression {
         Expression::BinaryOp { left, op, right } => {
@@ -14,42 +19,42 @@ fn fold_expression(expression: Expression) -> Expression {
                     match op.as_str() {
                         // Arithmetic Operations
                         "+" => match (left_val, right_val) {
-                            (DataType::Integer(l), DataType::Integer(r)) => Expression::Literal(DataType::Integer(l + r)),
+                            (DataType::Integer(l), DataType::Integer(r)) => l.checked_add(*r).map_or_else(|| Expression::BinaryOp { left: folded_left.clone(), op: op.clone(), right: folded_right.clone() }, |res| Expression::Literal(DataType::Integer(res))),
                             (DataType::Float(l), DataType::Float(r)) => Expression::Literal(DataType::Float(l + r)),
-                            (DataType::Integer(l), DataType::Float(r)) => Expression::Literal(DataType::Float(*l as f64 + r)),
-                            (DataType::Float(l), DataType::Integer(r)) => Expression::Literal(DataType::Float(l + *r as f64)),
+                            (DataType::Integer(l), DataType::Float(r)) => Expression::Literal(DataType::Float(*l as f64 + r)), // Precision loss allowed by clippy::cast_precision_loss
+                            (DataType::Float(l), DataType::Integer(r)) => Expression::Literal(DataType::Float(l + *r as f64)), // Precision loss allowed by clippy::cast_precision_loss
                             _ => Expression::BinaryOp { left: folded_left, op, right: folded_right }, // Type mismatch
                         },
                         "-" => match (left_val, right_val) {
-                            (DataType::Integer(l), DataType::Integer(r)) => Expression::Literal(DataType::Integer(l - r)),
+                            (DataType::Integer(l), DataType::Integer(r)) => l.checked_sub(*r).map_or_else(|| Expression::BinaryOp { left: folded_left.clone(), op: op.clone(), right: folded_right.clone() }, |res| Expression::Literal(DataType::Integer(res))),
                             (DataType::Float(l), DataType::Float(r)) => Expression::Literal(DataType::Float(l - r)),
-                            (DataType::Integer(l), DataType::Float(r)) => Expression::Literal(DataType::Float(*l as f64 - r)),
-                            (DataType::Float(l), DataType::Integer(r)) => Expression::Literal(DataType::Float(l - *r as f64)),
+                            (DataType::Integer(l), DataType::Float(r)) => Expression::Literal(DataType::Float(*l as f64 - r)), // Precision loss allowed
+                            (DataType::Float(l), DataType::Integer(r)) => Expression::Literal(DataType::Float(l - *r as f64)), // Precision loss allowed
                             _ => Expression::BinaryOp { left: folded_left, op, right: folded_right },
                         },
                         "*" => match (left_val, right_val) {
-                            (DataType::Integer(l), DataType::Integer(r)) => Expression::Literal(DataType::Integer(l * r)),
+                            (DataType::Integer(l), DataType::Integer(r)) => l.checked_mul(*r).map_or_else(|| Expression::BinaryOp { left: folded_left.clone(), op: op.clone(), right: folded_right.clone() }, |res| Expression::Literal(DataType::Integer(res))),
                             (DataType::Float(l), DataType::Float(r)) => Expression::Literal(DataType::Float(l * r)),
-                            (DataType::Integer(l), DataType::Float(r)) => Expression::Literal(DataType::Float(*l as f64 * r)),
-                            (DataType::Float(l), DataType::Integer(r)) => Expression::Literal(DataType::Float(l * *r as f64)),
+                            (DataType::Integer(l), DataType::Float(r)) => Expression::Literal(DataType::Float(*l as f64 * r)), // Precision loss allowed
+                            (DataType::Float(l), DataType::Integer(r)) => Expression::Literal(DataType::Float(l * *r as f64)), // Precision loss allowed
                             _ => Expression::BinaryOp { left: folded_left, op, right: folded_right },
                         },
                         "/" => match (left_val, right_val) {
                             (DataType::Integer(l), DataType::Integer(r)) => {
                                 if *r == 0 { Expression::BinaryOp { left: folded_left, op, right: folded_right } } // Division by zero
-                                else { Expression::Literal(DataType::Integer(l / r)) }
+                                else { l.checked_div(*r).map_or_else(|| Expression::BinaryOp { left: folded_left.clone(), op: op.clone(), right: folded_right.clone() }, |res| Expression::Literal(DataType::Integer(res))) }
                             },
                             (DataType::Float(l), DataType::Float(r)) => {
-                                if *r == 0.0 { Expression::BinaryOp { left: folded_left, op, right: folded_right } } // Division by zero
+                                if *r == 0.0 { Expression::BinaryOp { left: folded_left, op, right: folded_right } } // Division by zero (NaN/Infinity is valid float)
                                 else { Expression::Literal(DataType::Float(l / r)) }
                             },
-                            (DataType::Integer(l), DataType::Float(r)) => {
+                            (DataType::Integer(l), DataType::Float(r)) => { // Precision loss allowed
                                 if *r == 0.0 { Expression::BinaryOp { left: folded_left, op, right: folded_right } }
                                 else { Expression::Literal(DataType::Float(*l as f64 / r)) }
                             },
-                            (DataType::Float(l), DataType::Integer(r)) => {
+                            (DataType::Float(l), DataType::Integer(r)) => { // Precision loss allowed
                                 if *r == 0 { Expression::BinaryOp { left: folded_left, op, right: folded_right } }
-                                else { Expression::Literal(DataType::Float(l / *r as f64)) }
+                                else { Expression::Literal(DataType::Float(l / (*r as f64))) }
                             },
                             _ => Expression::BinaryOp { left: folded_left, op, right: folded_right },
                         },
@@ -176,7 +181,7 @@ pub fn apply_constant_folding_rule(plan: QueryPlanNode) -> QueryPlanNode {
             QueryPlanNode::NestedLoopJoin { left: new_left, right: new_right, join_predicate }
         }
         QueryPlanNode::TableScan { .. } => plan, // No expressions to fold, no inputs to recurse
-        QueryPlanNode::IndexScan { ref scan_condition, .. } => {
+        QueryPlanNode::IndexScan { .. } => { // Removed `ref scan_condition` as it's unused
             // The scan_condition is Option<SimplePredicate>. SimplePredicate contains a DataType literal.
             // It's not an Expression, so fold_expression() doesn't directly apply.
             // If SimplePredicate.value could somehow be an expression (it can't by current def),

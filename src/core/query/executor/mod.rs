@@ -147,20 +147,21 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     active_tx_mut.add_undo_operation(
                         crate::core::transaction::transaction::UndoOperation::RevertUpdate {
                             key: key.clone(),
-                            old_value: old_value_bytes, // Pass Vec<u8> directly
+                            old_value: old_value_bytes.clone(), // Clone for RevertUpdate
                         },
                     );
-                    // TODO: Index undo for updates should be IndexRevertUpdate, which requires old and new indexed values.
-                    // For now, keeping the existing IndexRevertInsert, which is not fully correct for updates.
-                    // This simplification is to limit scope for this turn.
+                    // Log IndexRevertUpdate for the index.
+                    // `old_value_bytes` is the serialized form of the old DataType.
+                    // `value_bytes` (which will be computed shortly for the main store operation)
+                    // is the serialized form of the new DataType.
                     let new_value_for_index_bytes =
-                        crate::core::common::serialization::serialize_data_type(&value)?;
+                        crate::core::common::serialization::serialize_data_type(&value)?; // This is the new value
                     active_tx_mut.add_undo_operation(
-                        crate::core::transaction::transaction::UndoOperation::IndexRevertInsert {
-                            // Should be IndexRevertUpdate
+                        crate::core::transaction::transaction::UndoOperation::IndexRevertUpdate {
                             index_name: "default_value_index".to_string(),
                             key: key.clone(),
-                            value_for_index: new_value_for_index_bytes.clone(),
+                            old_value_for_index: old_value_bytes, // Pass the original old_value_bytes
+                            new_value_for_index: new_value_for_index_bytes, // This is the new value's serialized form
                         },
                     );
                 } else {

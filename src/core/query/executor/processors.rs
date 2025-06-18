@@ -31,14 +31,14 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
             Command::Update { source, assignments, condition } => {
                 executor.handle_update(source.clone(), assignments.clone(), condition.clone())
             }
-            Command::CreateTable { table_name, columns } => {
+            Command::CreateTable { table_name: _table_name, columns: _columns } => {
                 // Forwarding to a dedicated handler, assuming it exists or will be created
                 // For now, to match existing logic, this will be a call to a method on executor
                 // which might currently be a no-op or call a more specific handler.
                 // Based on command_handlers.rs, this is currently a direct Ok(ExecutionResult::Success)
                  Ok(ExecutionResult::Success) // Placeholder, matching original
             }
-            Command::SqlInsert { table_name, columns, values } => {
+            Command::SqlInsert { table_name: _table_name, columns: _columns, values: _values } => {
                 // Similar to CreateTable, forwarding or placeholder
                 // Based on command_handlers.rs, this is currently a direct Ok(ExecutionResult::Success)
                 Ok(ExecutionResult::Success) // Placeholder, matching original

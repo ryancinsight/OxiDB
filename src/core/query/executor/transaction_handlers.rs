@@ -79,6 +79,30 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                         indexed_values_map.insert(index_name.clone(), old_value_for_index.clone());
                         self.index_manager.on_insert_data(&indexed_values_map, key)?;
                     }
+                    UndoOperation::IndexRevertUpdate { index_name, key, old_value_for_index, new_value_for_index } => {
+                        // To revert an update in the index:
+                        // 1. Delete the new value that was inserted.
+                        let mut new_values_map = HashMap::new();
+                        new_values_map.insert(index_name.clone(), new_value_for_index.clone());
+                        self.index_manager.on_delete_data(&new_values_map, key)?;
+
+                        // 2. Re-insert the old value.
+                        let mut old_values_map = HashMap::new();
+                        old_values_map.insert(index_name.clone(), old_value_for_index.clone());
+                        self.index_manager.on_insert_data(&old_values_map, key)?;
+                    }
+                    UndoOperation::IndexRevertUpdate { index_name, key, old_value_for_index, new_value_for_index } => {
+                        // To revert an update in the index:
+                        // 1. Delete the new value that was inserted into the index.
+                        let mut new_values_map = HashMap::new();
+                        new_values_map.insert(index_name.clone(), new_value_for_index.clone());
+                        self.index_manager.on_delete_data(&new_values_map, key)?;
+
+                        // 2. Re-insert the old value that was originally in the index.
+                        let mut old_values_map = HashMap::new();
+                        old_values_map.insert(index_name.clone(), old_value_for_index.clone());
+                        self.index_manager.on_insert_data(&old_values_map, key)?;
+                    }
                 }
             }
             active_tx.undo_log.clear();

@@ -21,7 +21,7 @@ use crate::core::query::commands::Key as TraitPrimaryKey; // PrimaryKey type fro
 use crate::core::common::OxidbError as CommonError; // Common error type used by the Index trait
 // Internal BTree methods will use node::PrimaryKey and node::KeyType (Vec<u8>)
 
-// Helper function to map BTreeError to CommonError
+/// Helper function to map internal BTree errors to common `OxidbError` type for the `Index` trait.
 fn map_btree_error_to_common(btree_error: tree::OxidbError) -> CommonError {
     match btree_error {
         tree::OxidbError::Io(e) => CommonError::Io(e),
@@ -54,14 +54,13 @@ impl Index for BPlusTreeIndex {
         // node::PrimaryKey is Vec<u8>, TraitPrimaryKey is Vec<u8>. So conversion is just type alias matching.
         self.find_primary_keys(value) // value is already &Vec<u8>
             .map_err(map_btree_error_to_common)
-            .map(|opt_vec_node_pk| {
-                opt_vec_node_pk.map(|vec_node_pk| {
-                    // vec_node_pk is Vec<Vec<u8>> (Vec<node::PrimaryKey>)
-                    // We need Vec<Vec<u8>> (Vec<TraitPrimaryKey>)
-                    // This is a direct type match since both are Vec<u8>.
-                    vec_node_pk
-                })
-            })
+            // The inner map was an identity function, so it can be removed.
+            // opt_vec_node_pk is Option<Vec<node::PrimaryKey>>
+            // Since TraitPrimaryKey is an alias for node::PrimaryKey (Vec<u8>),
+            // no further conversion is needed.
+            // .map(|opt_vec_node_pk| {
+            //     opt_vec_node_pk.map(|vec_node_pk| vec_node_pk)
+            // })
     }
 
     fn save(&self) -> Result<(), CommonError> {
@@ -137,23 +136,25 @@ impl Index for BPlusTreeIndex {
 #[cfg(test)]
 mod tests {
     use super::*; // This brings BPlusTreeIndex, map_btree_error_to_common into scope
-    use crate::core::indexing::traits::Index; // Trait itself
+    // use crate::core::indexing::traits::Index; // Trait itself - Not directly used in these specific tests, but good for context
     use crate::core::query::commands::{Value as TestValue, Key as TestKey}; // Actual types for tests
 
-    use std::fs as std_fs;
-    use tempfile::tempdir;
+    // use std::fs as std_fs; // Not directly used in these specific tests, but good for context
+    // use tempfile::tempdir; // Not directly used in these specific tests
 
     // Helper functions for tests to create TraitValue and TraitPrimaryKey
     // These are simplified placeholders. Actual construction will depend on query::commands types.
     // Assuming query::commands::Value and Key are effectively Vec<u8> based on E0599 errors
+    #[allow(dead_code)] // Potentially unused if tests only use trait methods
     fn trait_val(s: &str) -> TestValue { s.as_bytes().to_vec() }
+    #[allow(dead_code)] // Potentially unused
     fn trait_pk(s: &str) -> TestKey { s.as_bytes().to_vec() }
 
     // These are for direct BTree calls if needed, or for expected values in find.
+    #[allow(dead_code)] // Potentially unused
     fn internal_val(s: &str) -> Vec<u8> { s.as_bytes().to_vec() }
+    #[allow(dead_code)] // Potentially unused
     fn internal_pk(s: &str) -> crate::core::indexing::btree::node::PrimaryKey { s.as_bytes().to_vec() }
 
-
-    const TEST_INDEX_ORDER: usize = 4;
 // This comment and the duplicated tests block below will be removed.
 }
