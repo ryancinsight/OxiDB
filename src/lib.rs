@@ -19,6 +19,7 @@
 //! This crate exposes the main `Oxidb` struct for database interaction and `DbError`
 //! for error handling.
 
+pub mod event_engine;
 pub mod api;
 pub mod core;
 

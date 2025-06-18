@@ -84,6 +84,27 @@ oxidb will follow a layered architecture consisting of the following primary com
 *   **Responsibilities:**
     *   Provide shared, reusable components and definitions.
 
+### 4.6. Event Engine (`src/event_engine`)
+
+*   **Purpose:** Provides a decoupled mechanism for handling asynchronous events and managing event-driven logic within the system. It allows different parts of the application to react to occurrences without being tightly coupled to the source of the event.
+*   **Sub-components:**
+    *   **Handler (`src/event_engine/handler`):** The core of the event engine, responsible for processing individual events.
+        *   `types.rs`: Defines event structures (`Event` enum) and result types (`EventResult`).
+        *   `core.rs`: Contains the central event dispatch logic (`process_event` function). This logic is designed to be "flat," delegating processing to specialized processors.
+        *   `processors.rs`: Defines the `Processor` trait and provides concrete implementations for each event type, encapsulating the specific handling logic.
+*   **Responsibilities:**
+    *   Define a clear set of system events.
+    *   Dispatch events to appropriate handlers/processors.
+    *   Execute event-specific logic in a modular and extensible way.
+*   **Key Interactions:**
+    *   Receives events from various components within the system (e.g., API layer after a user action, storage engine after a data change, etc. - specific integrations to be defined).
+    *   May interact with any other component as part of an event's processing logic (e.g., sending notifications, updating data, logging).
+*   **Architectural Principles Applied:**
+    *   **Law of Sacred Spaces:** The `event_engine` is a distinct top-level module.
+    *   **Hierarchical Decomposition:** The `handler` submodule further organizes event processing logic.
+    *   **Duality of Depth and Flatness:** The `process_event` function in `handler/core.rs` uses a flat dispatch mechanism (delegating to processors) to avoid deep conditional nesting.
+    *   **Law of Internal Composition:** The `handler` module's files (`types.rs`, `core.rs`, `processors.rs`) represent its Skeleton, Mind, and Soul, respectively.
+
 ## 5. Data Flow
 
 *   A typical read query: `API Layer -> Query Parser -> Query Executor -> Storage Engine -> Query Executor -> API Layer`

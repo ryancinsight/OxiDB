@@ -11,6 +11,7 @@ This ledger tracks the status of major features and components of the Oxidb cath
 | **Transaction Mgr.**| Partially Implemented | `core/transaction/manager.rs`      | ACID properties, concurrency.              |
 | **Storage Engine**  | Partially Implemented | `core/storage/engine/`, `core/storage/wal/`, `core/storage/indexing/` | Physical data storage and retrieval.       |
 | **Common Utilities**| Substantially Implemented | `core/common/error.rs`, `core/common/types.rs`, `core/common/serialization.rs` | Shared types, errors, utils.             |
+| **Event Engine**    | Initial Implementation | `event_engine/handler/`            | For asynchronous event processing.         |
 
 ## Detailed Component Status
 
@@ -107,3 +108,16 @@ This ledger tracks the status of major features and components of the Oxidb cath
     *   [x] `traits.rs` (Commonly used traits like `DataSerializer`/`DataDeserializer` defined)
 
 This ledger will be updated as work progresses on each component. "Required Components" are illustrative and will be refined in specific ADRs for each feature.
+
+### Event Engine (`src/event_engine`)
+*   Status: Initial Implementation
+*   Checklist:
+    *   [x] `mod.rs` (Module definition)
+    *   [x] `README.md` (Sectional Blueprint for Event Engine)
+    *   [x] `handler/mod.rs` (Handler submodule definition)
+    *   [x] `handler/README.md` (Sectional Blueprint for Handler)
+    *   [x] `handler/types.rs` (`Event` enum, `EventResult` type)
+    *   [x] `handler/core.rs` (`process_event` function with flat logic)
+    *   [x] `handler/processors.rs` (`Processor` trait and implementations)
+    *   [x] `handler/tests.rs` (Unit tests for event handling)
+    *   [ ] ADR for Event Engine design and `Processor` pattern (Recommended)
