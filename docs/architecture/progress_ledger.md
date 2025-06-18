@@ -95,8 +95,8 @@ This ledger tracks the status of major features and components of the Oxidb cath
             *   [x] `traits.rs` (Index trait defined)
             *   [x] `hash_index.rs` (HashIndex implementation present)
             *   [x] `manager.rs` (IndexManager for managing multiple indexes implemented)
-            *   [ ] `btree/` (Future B-Tree implementation)
-            *   [ ] ADR for indexing strategies
+            *   [x] `btree/` (B+-Tree implementation using fixed-size pages, supporting insert, find, delete with rebalancing)
+            *   [x] ADR for indexing strategies (See ADR-002 for B+-Tree)
 
 ### Common Utilities (`src/core/common`)
 *   Status: Substantially Implemented
@@ -121,3 +121,5 @@ This ledger will be updated as work progresses on each component. "Required Comp
     *   [x] `handler/processors.rs` (`Processor` trait and implementations)
     *   [x] `handler/tests.rs` (Unit tests for event handling)
     *   [ ] ADR for Event Engine design and `Processor` pattern (Recommended)
+
+[end of docs/architecture/progress_ledger.md]
