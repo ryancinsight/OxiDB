@@ -3,7 +3,7 @@ use crate::core::common::OxidbError;
 use crate::core::execution::{ExecutionOperator, Tuple};
 use crate::core::query::commands::Key;
 use crate::core::storage::engine::traits::KeyValueStore;
-use crate::core::types::{DataType, JsonSafeMap}; // Import JsonSafeMap
+use crate::core::types::DataType; // Import JsonSafeMap
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock}; // Added RwLock
 

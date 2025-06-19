@@ -7,17 +7,9 @@ pub mod operators; // Added operators module
 
 use crate::core::common::OxidbError; // Changed
 use crate::core::types::DataType;
-use std::collections::HashMap;
 
 // Define Tuple type alias or struct
 pub type Tuple = Vec<DataType>;
-
-// Define Row struct (optional, for now Tuple is simpler)
-#[allow(dead_code)] // TODO: Remove this when Row is used
-pub struct Row {
-    #[allow(dead_code)] // TODO: Remove this when columns is used
-    pub columns: HashMap<String, DataType>,
-}
 
 // Define ExecutionOperator trait
 pub trait ExecutionOperator {

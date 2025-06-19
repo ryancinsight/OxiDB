@@ -256,10 +256,7 @@ impl SqlParser {
         };
         // Semicolon handled by main parse()
 
-        // TODO: Use a proper ast::DeleteStatement once defined
-        // For now, returning a temporary structure or error perhaps.
-        // Let's use the existing SelectStatement as a placeholder shape for now,
-        // this will be replaced with ast::DeleteStatement.
+        // ast::DeleteStatement is now used.
         Ok(Statement::Delete(ast::DeleteStatement {
             table_name,
             condition,

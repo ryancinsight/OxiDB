@@ -3,7 +3,6 @@ use crate::core::common::OxidbError;
 use crate::core::query::commands::Command; // Added import for Command
 use crate::core::query::executor::ExecutionResult;
 use crate::core::types::{DataType, JsonSafeMap}; // Import JsonSafeMap
-use std::collections::HashMap; // Added import for HashMap
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
@@ -363,9 +362,7 @@ fn test_execute_query_str_update_ok() {
                 DataType::Boolean(b) => Ok(b.to_string()),
                 DataType::Float(f) => Ok(f.to_string()),
                 DataType::Null => Ok("NULL".to_string()),
-                DataType::Boolean(b) => Ok(b.to_string()),
-                DataType::Float(f) => Ok(f.to_string()),
-                DataType::Null => Ok("NULL".to_string()),
+                // The following Boolean, Float, and Null are unreachable and have been removed.
                 DataType::JsonBlob(json_val) => serde_json::to_string(json_val),
             };
 

@@ -120,7 +120,15 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     self.build_execution_tree(*input, snapshot_id, committed_ids.clone())?;
 
                 // TODO: Determine primary_key_column_index from schema information.
-                // For test_physical_wal_lsn_integration, table `test_lsn` has `id` as PK (first column).
+                //       Currently, `Schema` and `ColumnDef` (in `core/common/types/schema.rs`)
+                //       do not explicitly mark primary key columns.
+                //       Falling back to 0 (first column) as a convention.
+                //       A proper fix would involve:
+                //       1. Enhancing `ColumnDef` to include an `is_primary_key` flag.
+                //       2. Accessing the table's schema here (e.g., via a Catalog service).
+                //       3. Finding the column with `is_primary_key == true` and using its index.
+                // For test_physical_wal_lsn_integration, table `test_lsn` has `id` as PK (first column),
+                // so this fallback currently works for that specific test.
                 let primary_key_column_index = 0;
 
                 let delete_operator = crate::core::execution::operators::DeleteOperator::new(

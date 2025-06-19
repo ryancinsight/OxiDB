@@ -143,4 +143,12 @@ This ledger will be updated as work progresses on each component. "Required Comp
     *   Removed unnecessary `#[allow(dead_code)]` annotations for `Tuple` and `ExecutionOperator` in `src/core/execution/mod.rs` as these are actively used.
     *   Reviewed remaining `TODOs` (primarily in `src/core/optimizer/mod.rs`) and an unused `Row` struct; these were deemed acceptable to leave for future development.
 
-[end of docs/architecture/progress_ledger.md]
+## Recent Updates - 2025-06-20
+
+*   **Test Suite**: All `cargo test --all-features` continue to pass (410 tests).
+*   **Code Cleanup & TODOs**:
+    *   Resolved several compiler warnings related to unused imports and unreachable code.
+    *   Removed an unused local `struct Row` definition and its associated TODOs from `src/core/execution/mod.rs`.
+    *   Removed an obsolete TODO comment from `src/core/query/sql/parser/statement.rs` as the described functionality (`ast::DeleteStatement`) was already in use.
+    *   Updated a TODO comment in `src/core/query/executor/planner.rs` to clarify that dynamic primary key determination for DELETE operations is currently blocked by schema limitations (`ColumnDef` lacking an `is_primary_key` marker).
+    *   Previously noted TODOs in `src/core/optimizer/mod.rs` (related to `#[allow(dead_code)]`) and `src/core/storage/engine/heap/table_page.rs` (design considerations for record management and advanced updates) remain deferred for future work.
