@@ -1,0 +1,187 @@
+# SQL Support in Oxidb
+
+## Introduction
+
+This document provides an overview of the current SQL language features supported by Oxidb, along with known limitations and observed behaviors. It is based on code analysis (AST definitions, parser logic) and empirical testing via the provided examples (`todo_app`, `simple_blog`, `data_type_tests`).
+
+Oxidb's SQL engine is under active development, and this document reflects its capabilities at the current stage.
+
+## General Issues and Observations
+
+### 1. Data Visibility After Writes
+A significant issue observed across multiple tests is that data written using `INSERT` (and potentially `UPDATE`) is often **not immediately visible** in subsequent `SELECT` queries. This occurs even within the same `Oxidb` instance and before any `persist()` and reload cycle.
+*   `SELECT` queries frequently return "No rows returned" for data that was just "successfully" inserted.
+*   This makes it very difficult to verify the state of the database after write operations and impacts the reliability of interactive sessions or complex transactions that might read their own writes.
+*   Data *may* become visible after the database is persisted (via `db.persist()`) and the `Oxidb` instance is restarted (reloading the data from disk), but this is not a guaranteed or consistent behavior for immediate post-insert queries.
+*   Interestingly, a discrepancy was observed during final smoke tests: the `todo_app` example (which has a very simple schema: `id INTEGER PRIMARY KEY AUTOINCREMENT, description TEXT, done BOOLEAN`) *did* show newly added items correctly across separate program invocations. In contrast, the `simple_blog` and `data_type_tests` examples consistently failed to show newly inserted data in `SELECT` queries under similar conditions (both within the same session and across invocations). This suggests that `oxidb`'s data persistence or query processing logic might have inconsistencies or conditional bugs, possibly related to schema complexity (e.g., presence of `UNIQUE` constraints, even if not enforced), the number of columns, or specific data types used more extensively in the affected examples.
+
+### 2. Error Reporting
+*   Error messages from the SQL engine are generally informative enough to indicate the type of problem (e.g., `SqlParsing`, `Execution`).
+*   Parsing errors often provide details about the unexpected token and its position, which is helpful for debugging syntax.
+*   However, some execution errors related to constraints (if they were to be enforced) might be generic or require more specific error codes in the future.
+
+## Supported SQL Commands
+
+### `CREATE TABLE`
+*   **Syntax Overview:**
+    ```sql
+    CREATE TABLE table_name (
+        column_name1 DATATYPE [CONSTRAINT1, CONSTRAINT2, ...],
+        column_name2 DATATYPE [CONSTRAINT1, ...],
+        ...
+        [TABLE_CONSTRAINT1, ...]
+    );
+    ```
+*   **Supported Features:**
+    *   Basic table creation with column names and data types.
+    *   Data types are specified as strings (see "Data Types" section below).
+    *   Column constraints `PRIMARY KEY`, `UNIQUE`, `NOT NULL` are parsed.
+*   **Unsupported Features / Limitations:**
+    *   **Constraint Enforcement**: Crucially, while `PRIMARY KEY`, `UNIQUE`, and `NOT NULL` constraints are parsed, they are **NOT ENFORCED** by the database engine. `INSERT` statements violating these constraints typically succeed without error.
+    *   `FOREIGN KEY` constraints: Not reliably parsed (caused parsing errors in tests) and not enforced.
+    *   `DEFAULT` column values: Not supported.
+    *   `CHECK` constraints: Not supported.
+    *   `ALTER TABLE`, `DROP TABLE`: Not supported.
+    *   `CREATE TABLE IF NOT EXISTS`: The parser may not support this specific syntax, but `oxidb`'s `CREATE TABLE` execution appears to be idempotent (it does not error if the table already exists).
+*   **Notes/Observations:**
+    *   The parser expects data types as simple strings (e.g., `INTEGER`, `TEXT`). Types like `VARCHAR(N)` and `NUMERIC(P,S)` are parsed as text but their parameters are not currently utilized for storage constraints. `NUMERIC(P,S)` specifically caused parsing errors.
+
+### `INSERT INTO`
+*   **Syntax Overview:**
+    ```sql
+    INSERT INTO table_name (column1, column2, ...) VALUES (value1, value2, ...);
+    INSERT INTO table_name VALUES (value1, value2, ...); -- If values for all columns in order
+    ```
+*   **Supported Features:**
+    *   Inserting values for specified columns.
+    *   Inserting values for all columns (if column order is matched).
+    *   String literals must be enclosed in single quotes (e.g., `'text value'`). Escaping single quotes within strings is done by doubling them (e.g., `'O''Malley'`).
+    *   Boolean literals `true` and `false` are supported.
+    *   `NULL` literal is supported.
+*   **Unsupported Features / Limitations:**
+    *   **Last Inserted ID**: No mechanism to retrieve the ID generated by `AUTOINCREMENT` (e.g., no `LAST_INSERT_ID()` function or `RETURNING id` clause).
+    *   Multi-row `INSERT` (e.g., `INSERT INTO t VALUES (1), (2), (3);`) is not explicitly tested but likely relies on the parser's capability for value lists.
+    *   `INSERT INTO ... SELECT ...`: Not supported.
+*   **Notes/Observations:**
+    *   `INSERT` statements often return `Ok(Success)` even if constraints are violated (due to lack of enforcement) or data types are mismatched (due to type affinity, see Data Types section).
+    *   The data visibility issue means inserted data is often not immediately queryable.
+
+### `SELECT`
+*   **Syntax Overview:**
+    ```sql
+    SELECT column1, column2, ... FROM table_name [WHERE condition];
+    SELECT * FROM table_name [WHERE condition];
+    ```
+*   **Supported Features:**
+    *   `SELECT *` to retrieve all columns. This is the most reliably working projection method.
+    *   Simple `WHERE` clauses on a single column with basic operators like `=`, `!=`, `<`, `>`, `<=`, `>=`. (e.g., `WHERE id = 1`, `WHERE name = 'Alice'`).
+*   **Unsupported Features / Limitations:**
+    *   **Specific Column Projection**: While `SELECT col1, col2 FROM ...` might be parsed, it was found in `todo_app` testing to cause errors or not return data correctly. `SELECT *` is the recommended approach.
+    *   `JOIN` operations (INNER, LEFT, RIGHT, FULL): Not supported.
+    *   `ORDER BY`: Not supported.
+    *   `GROUP BY` and aggregate functions (`COUNT`, `SUM`, `AVG`, etc.): Not supported.
+    *   `LIMIT` / `OFFSET`: Not supported.
+    *   Complex `WHERE` conditions (multiple `AND`/`OR`, parentheses for grouping): Not fully supported or tested; likely limited.
+    *   Subqueries: Not supported.
+    *   `UNION`, `INTERSECT`, `EXCEPT`: Not supported.
+*   **Result Set Format:**
+    *   `SELECT` queries return `ExecutionResult::Values(Vec<DataType>)`.
+    *   This vector is structured as `[kv_key1, map_of_columns1, kv_key2, map_of_columns2, ...]`.
+    *   `kv_keyN` is the internal key used by the storage engine for the row. For tables with `INTEGER PRIMARY KEY`, this is often the integer ID. For tables with other primary keys, it might be a string representation.
+    *   `map_of_columnsN` is a `DataType::Map` where keys are column names (as `Vec<u8>`) and values are `DataType` instances representing the cell data.
+    *   Client-side parsing is required to extract meaningful data from this structure.
+
+### `UPDATE`
+*   **Syntax Overview:**
+    ```sql
+    UPDATE table_name SET column1 = value1, column2 = value2, ... [WHERE condition];
+    ```
+*   **Supported Features:**
+    *   Setting new values for specified columns.
+    *   Simple `WHERE` clauses (similar to `SELECT`).
+*   **Unsupported Features / Limitations:**
+    *   Updating based on complex conditions or joins.
+    *   Lack of feedback on the number of rows updated if `WHERE` clause doesn't match (returns `ExecutionResult::Updated { count: 0 }` which is correct, but constraint issues might mask other problems).
+*   **Notes/Observations:**
+    *   Subject to the same data visibility issues as `INSERT`.
+
+### `DELETE FROM`
+*   **Syntax Overview:**
+    ```sql
+    DELETE FROM table_name [WHERE condition];
+    ```
+*   **Supported Features:**
+    *   Deleting rows based on a simple `WHERE` clause.
+    *   Deleting all rows if `WHERE` clause is omitted (not explicitly tested but typical SQL behavior).
+*   **Unsupported Features / Limitations:**
+    *   Deleting based on complex conditions or joins.
+*   **Notes/Observations:**
+    *   Returns `ExecutionResult::Updated { count: N }` where N is the number of rows affected, which is more informative than the old `ExecutionResult::Deleted(bool)`.
+
+## Data Definition Language (DDL) Details
+
+### `CREATE TABLE`
+*   **Column Definitions:** Columns are defined with a name and a data type (string).
+*   **Supported Data Types (as parsed):**
+    *   `INTEGER`: Intended for integer values.
+    *   `TEXT`: Intended for string values.
+    *   `BOOLEAN`: Intended for true/false values.
+    *   `VARCHAR(N)`: Parsed as `TEXT`. The length `(N)` is ignored.
+    *   `REAL`: (Assumed, not explicitly tested in `data_type_tests` DDL but common) Likely for floating-point numbers.
+*   **Unsupported Data Types (parsing errors):**
+    *   `NUMERIC(P,S)`: Causes a parsing error (`Unsupported column type during CREATE TABLE translation`).
+    *   Other standard SQL types like `DATE`, `DATETIME`, `TIMESTAMP`, `BLOB`, `DECIMAL` are not explicitly tested but likely fall back to `TEXT` or cause parsing errors if they have parameters.
+*   **Constraints:**
+    *   `PRIMARY KEY`: Parsed. If on an `INTEGER` column, implies `AUTOINCREMENT`-like behavior is intended by SQL standard, but retrieval of this ID is not supported by Oxidb. Uniqueness is **not enforced**.
+    *   `UNIQUE`: Parsed. Uniqueness is **not enforced**. Allows multiple `NULL`s if the column is nullable (standard behavior), but this is moot without enforcement.
+    *   `NOT NULL`: Parsed. **Not enforced**. `NULL` values can be inserted.
+    *   `FOREIGN KEY`: Syntax caused parsing errors. **Not supported/enforced**.
+    *   `DEFAULT <value>`: Not supported.
+    *   `CHECK`: Not supported.
+*   **Type Affinity & Storage (Inferred due to SELECT issues):**
+    *   Due to `SELECT` queries not returning data, it's hard to confirm actual storage types.
+    *   Based on `INSERT` success for mismatched types (e.g., string '123' into `INTEGER`), Oxidb likely has SQLite-like type affinity but its exact rules are unclear without being able to inspect stored data.
+
+## Data Manipulation Language (DML) Details
+
+### `INSERT INTO`
+*   Supports `(column_list) VALUES (value_list)` and `VALUES (value_list_for_all_cols)`.
+*   **Limitation**: No way to get the last inserted ID for `AUTOINCREMENT` columns.
+
+### `SELECT`
+*   **Limitation**: `SELECT *` is the only reliably working projection. Requesting specific columns (e.g., `SELECT id, name FROM ...`) was found to be problematic in earlier tests.
+*   **Result Format**: Returns data as a flat list of `[key, map, key, map, ...]` which requires careful client-side parsing. The `key` is the internal row key, and `map` contains column names (as bytes) to `DataType` values.
+
+### `UPDATE` / `DELETE`
+*   Support simple `WHERE` clauses.
+*   The actual number of rows affected is returned in `ExecutionResult::Updated { count }`.
+
+## Specific Parser/Tokenizer Issues
+*   **Negative Integers**: `INSERT INTO ... VALUES (-456)` causes a `SqlParsing("SQL tokenizer error: Invalid character '-' ...")`. Negative numbers are not correctly tokenized/parsed.
+*   **`NUMERIC(P,S)` type**: Not supported by the parser in `CREATE TABLE`.
+
+## Missing Core SQL Features
+This is not an exhaustive list, but highlights major components generally expected in SQL databases that are currently absent or very limited in Oxidb:
+*   **Full Constraint Enforcement**: `PRIMARY KEY`, `UNIQUE`, `NOT NULL`, `FOREIGN KEY`, `CHECK`.
+*   **Advanced Querying**: `JOIN`s, `GROUP BY`, aggregates, `ORDER BY`, `LIMIT`, subqueries, `UNION`, etc.
+*   **Schema Manipulation**: `ALTER TABLE`, `DROP TABLE`, `CREATE INDEX`, `DROP INDEX`.
+*   **Transaction Control**: No explicit `BEGIN TRANSACTION`, `COMMIT`, `ROLLBACK` SQL commands observed or tested (though the engine has internal transaction concepts).
+*   **Views**: `CREATE VIEW`.
+*   **User-Defined Functions or Stored Procedures**.
+*   **Date/Time Functions and proper Date/Time Types**: Dates are stored as `TEXT`.
+*   **Window Functions**.
+*   **Common Table Expressions (CTEs)**.
+
+## Conclusion
+
+Oxidb currently supports a very basic subset of SQL, primarily focused on `CREATE TABLE` (with non-enforced constraints), `INSERT`, `SELECT *` with simple `WHERE`, and `UPDATE`/`DELETE` with simple `WHERE`.
+
+Key areas for future development from a SQL perspective would be:
+1.  **Reliable Data Visibility**: Ensuring data written is immediately queryable.
+2.  **Constraint Enforcement**: This is fundamental for data integrity.
+3.  **Robust `SELECT` Capabilities**: Including specific column projection, joins, ordering, and aggregation.
+4.  **Full Data Type Support**: Including proper handling of `NUMERIC`, dates, times, and enforcement of type characteristics.
+5.  **Parser Enhancements**: Fixing issues like negative number parsing and support for more DDL/DML clauses.
+6.  **Explicit Transaction Control**.
+
+The current state allows for basic table setup and data insertion/retrieval (with caveats), but lacks many features required for complex applications or robust data integrity management.

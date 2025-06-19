@@ -1,0 +1,10 @@
+[package]
+name = "oxidb_datatype_constraint_tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+oxidb = { path = "../../" }
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] } # For potential use with data structures if needed later
+clap = { version = "4.0", features = ["derive"] } # For potential CLI args if tests grow

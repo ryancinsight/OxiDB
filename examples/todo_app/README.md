@@ -77,7 +77,14 @@ The application supports the following commands:
     -   Example: `cargo run --manifest-path examples/todo_app/Cargo.toml -- list`
 -   `done <ID>`: Marks the todo item with the specified ID as done.
     -   Example: `cargo run --manifest-path examples/todo_app/Cargo.toml -- done 2`
+-   `delete <ID>`: Deletes the todo item with the specified ID.
+    -   Example: `cargo run --manifest-path examples/todo_app/Cargo.toml -- delete 1`
 
 The todo items are stored in a local file named `todo_app.db` in the current directory where you run the command.
 If `todo_app.db` does not exist, it will be created automatically.
 If the `todos` table does not exist within the database, it will also be created automatically.
+
+## Known Limitations
+
+-   **Last Inserted ID**: The application cannot display the ID of a newly added item. This is because `oxidb` does not currently support standard SQL mechanisms to retrieve the last inserted ID (such as `RETURNING id` or a `LAST_INSERT_ID()` function).
+-   **Column Projection in SELECT**: `oxidb` currently only reliably supports `SELECT *` for querying all columns. While the SQL parser might accept `SELECT column_name1, column_name2 FROM ...`, the execution layer may not handle it as expected or may require specific numeric indexing for projections. This means the application relies on fetching all data with `SELECT *` and then parsing the resulting key-value map structures, rather than directly receiving only the specified columns.
