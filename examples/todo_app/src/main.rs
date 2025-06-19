@@ -1,5 +1,6 @@
-use oxidb::Oxidb;
+use oxidb::Oxidb; // Assuming Oxidb::new is not async
 use serde::{Deserialize, Serialize};
+use std::env;
 use std::error::Error;
 use clap::Parser;
 
@@ -26,83 +27,112 @@ enum Commands {
     },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 struct TodoItem {
     id: u64,
     description: String,
     done: bool,
 }
 
-const TODO_TABLE: &str = "todos";
-const DB_PATH: &str = "todo_app.db";
+const ALL_TODOS_KEY: &[u8] = b"all_todos"; // Use a byte slice for keys
 
-async fn ensure_table_exists(db: &Oxidb) -> Result<(), Box<dyn Error>> {
-    if !db.table_exists(TODO_TABLE).await? {
-        db.create_table::<TodoItem>(TODO_TABLE, "id").await?;
-        println!("Created table '{}'", TODO_TABLE);
+// Helper to load all items from the DB
+fn load_all_items(db: &mut Oxidb) -> Result<Vec<TodoItem>, Box<dyn Error>> {
+    match db.get(ALL_TODOS_KEY.to_vec())? {
+        Some(json_data) => {
+            if json_data.is_empty() {
+                Ok(Vec::new())
+            } else {
+                let items: Vec<TodoItem> = serde_json::from_str(&json_data)?;
+                Ok(items)
+            }
+        }
+        None => Ok(Vec::new()), // No items yet, return empty list
     }
+}
+
+// Helper to save all items to the DB
+fn save_all_items(db: &mut Oxidb, items: &Vec<TodoItem>) -> Result<(), Box<dyn Error>> {
+    let json_data = serde_json::to_string(items)?;
+    db.insert(ALL_TODOS_KEY.to_vec(), json_data)?;
+    db.persist()?; // Persist changes immediately for simplicity in example
     Ok(())
 }
 
-async fn add_item(db: &Oxidb, description: String) -> Result<u64, Box<dyn Error>> {
-    ensure_table_exists(db).await?;
-    let items_table = db.table::<TodoItem>(TODO_TABLE).await?;
+// No longer async, returns Result directly
+fn add_item(db: &mut Oxidb, description: String) -> Result<u64, Box<dyn Error>> {
+    let mut items = load_all_items(db)?;
+
+    // Determine next ID
+    let next_id = items.iter().map(|item| item.id).max().unwrap_or(0) + 1;
+
     let new_item = TodoItem {
-        id: 0, // oxidb will generate an ID
+        id: next_id,
         description,
         done: false,
     };
-    let id = items_table.insert(new_item).await?;
-    println!("Added item with ID: {}", id);
-    Ok(id)
+    items.push(new_item);
+    save_all_items(db, &items)?;
+
+    println!("Added item with ID: {}", next_id);
+    Ok(next_id)
 }
 
-async fn list_items(db: &Oxidb) -> Result<(), Box<dyn Error>> {
-    ensure_table_exists(db).await?;
-    let items_table = db.table::<TodoItem>(TODO_TABLE).await?;
-    let all_items = items_table.get_all().await?;
-    if all_items.is_empty() {
+// No longer async
+fn list_items(db: &mut Oxidb) -> Result<(), Box<dyn Error>> {
+    let items = load_all_items(db)?;
+    if items.is_empty() {
         println!("No todo items yet!");
     } else {
         println!("Todo items:");
-        for item in all_items {
+        for item in items {
             println!("[{}] {} - {}", if item.done { "x" } else { " " }, item.id, item.description);
         }
     }
     Ok(())
 }
 
-async fn mark_done(db: &Oxidb, id: u64) -> Result<(), Box<dyn Error>> {
-    ensure_table_exists(db).await?;
-    let items_table = db.table::<TodoItem>(TODO_TABLE).await?;
-    if let Some(mut item) = items_table.get(id).await? {
-        item.done = true;
-        items_table.update(id, item).await?;
-        println!("Marked item {} as done.", id);
+// No longer async
+fn mark_done(db: &mut Oxidb, id_to_mark: u64) -> Result<(), Box<dyn Error>> {
+    let mut items = load_all_items(db)?;
+
+    let mut found = false;
+    for item in items.iter_mut() {
+        if item.id == id_to_mark {
+            item.done = true;
+            found = true;
+            break;
+        }
+    }
+
+    if found {
+        save_all_items(db, &items)?;
+        println!("Marked item {} as done.", id_to_mark);
     } else {
-        println!("Item with ID {} not found.", id);
+        println!("Item with ID {} not found.", id_to_mark);
     }
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+// Main function is no longer async, as Oxidb operations are sync
+fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
 
-    // Open the database. It will be created if it doesn't exist.
-    let db = Oxidb::new(DB_PATH).await?;
-    println!("Using database at: {}", DB_PATH);
+    let db_path = env::var("OXIDB_PATH").unwrap_or_else(|_| "todo_app.db".to_string());
 
+    // Oxidb::new is not async
+    let mut db = Oxidb::new(&db_path)?;
+    println!("Using database at: {}", db_path);
 
     match cli.command {
         Commands::Add { description } => {
-            add_item(&db, description).await?;
+            add_item(&mut db, description)?;
         }
         Commands::List {} => {
-            list_items(&db).await?;
+            list_items(&mut db)?;
         }
         Commands::Done { id } => {
-            mark_done(&db, id).await?;
+            mark_done(&mut db, id)?;
         }
     }
 

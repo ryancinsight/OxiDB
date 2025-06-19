@@ -5,5 +5,14 @@ edition = "2024"
 
 [dependencies]
 clap = { version = "4.5.4", features = ["derive"] }
-oxidb = { path = "../../../oxidb" } # Assuming oxidb is at the root of the repo
-tokio = { version = "1.37.0", features = ["full"] }
+oxidb = { path = "../.." } # Points to the root of the oxidb package
+tokio = { version = "1.37.0", features = ["full"] } # tokio is no longer strictly needed by main.rs but tests might use it, or other examples.
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0" # For serializing/deserializing TodoItem list
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+uuid = { version = "1.8.0", features = ["v4"] }
+tokio-test = "0.4.4" # For async test setup/teardown if needed, or just general utilities
+tempfile = "3.10.1"
