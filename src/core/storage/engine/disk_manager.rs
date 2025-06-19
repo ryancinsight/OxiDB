@@ -46,7 +46,7 @@ impl DiskManager {
             // If metadata.len() is 0, this implies 0 pages.
             // If metadata.len() is PAGE_SIZE, this implies 1 page (page 0), so next_page_id should be 1.
             // If metadata.len() is N * PAGE_SIZE, this implies N pages (0 to N-1), so next_page_id should be N.
-            PageId(metadata.len() / PAGE_SIZE)
+            PageId(metadata.len() / (PAGE_SIZE as u64))
         };
 
         Ok(Self {
@@ -68,7 +68,7 @@ impl DiskManager {
             )));
         }
 
-        let offset = page_id.0.saturating_mul(PAGE_SIZE);
+        let offset = page_id.0.saturating_mul(PAGE_SIZE as u64);
         self.db_file.seek(SeekFrom::Start(offset)).map_err(|e| {
             OxidbError::Io(IoError::other(format!(
                 "Failed to seek to page {} offset {}: {}",
@@ -112,7 +112,7 @@ impl DiskManager {
             )));
         }
 
-        let offset = page_id.0.saturating_mul(PAGE_SIZE);
+        let offset = page_id.0.saturating_mul(PAGE_SIZE as u64);
         self.db_file.seek(SeekFrom::Start(offset)).map_err(|e| {
             OxidbError::Io(IoError::other(format!(
                 "Failed to seek to page {} offset {}: {}",
@@ -183,7 +183,7 @@ mod tests {
         // Pre-populate the file to simulate existing pages
         {
             let file = OpenOptions::new().write(true).create(true).open(&db_path).expect("Failed to open for pre-population");
-            file.set_len(PAGE_SIZE * 3).expect("Failed to set file length"); // Simulate 3 pages
+            file.set_len((PAGE_SIZE * 3) as u64).expect("Failed to set file length"); // Simulate 3 pages
         } // drop file to release lock before DiskManager::open
 
         let dm = DiskManager::open(db_path.clone()).expect("Failed to open existing DiskManager");
@@ -235,7 +235,7 @@ mod tests {
 
         // Verify file size
         let metadata = dm.db_file.metadata().expect("Failed to get metadata");
-        assert_eq!(metadata.len(), PAGE_SIZE.saturating_mul(2));
+        assert_eq!(metadata.len(), (PAGE_SIZE.saturating_mul(2)) as u64);
 
         std::fs::remove_file(db_path).expect("Failed to clean up test_allocate_and_write_read_page file"); // Clean up
     }

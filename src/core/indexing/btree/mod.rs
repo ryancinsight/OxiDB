@@ -135,7 +135,7 @@ impl Index for BPlusTreeIndex {
 // Based on E0599, `query::commands::Value` and `query::commands::Key` are `Vec<u8>`.
 #[cfg(test)]
 mod tests {
-    use super::*; // This brings BPlusTreeIndex, map_btree_error_to_common into scope
+    // use super::*; // This brings BPlusTreeIndex, map_btree_error_to_common into scope
     // use crate::core::indexing::traits::Index; // Trait itself - Not directly used in these specific tests, but good for context
     use crate::core::query::commands::{Value as TestValue, Key as TestKey}; // Actual types for tests
 

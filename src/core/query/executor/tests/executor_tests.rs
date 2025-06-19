@@ -1911,11 +1911,15 @@ mod tests {
 
         // c. Delete key_updated (which is now associated with value_initial_for_index)
         let delete_reverted_cmd = Command::Delete { key: key_updated.clone() };
+        let result_from_delete_cmd = executor.execute_command(delete_reverted_cmd)?;
+        eprintln!("[Test::test_rollback_of_update_reverts_index_correctly] Actual result from delete_reverted_cmd: {:?}", result_from_delete_cmd);
         assert_eq!(
-            executor.execute_command(delete_reverted_cmd)?,
+            result_from_delete_cmd,
             ExecutionResult::Deleted(true),
-            "DELETE of key_updated after rollback failed"
+            "DELETE of key_updated after rollback failed" // Restored original message
         );
+
+        executor.persist()?; // Attempt to flush WAL and apply deletes to main store
 
         // d. Verify key_updated is gone from store
         assert_eq!(

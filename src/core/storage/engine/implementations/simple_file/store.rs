@@ -123,59 +123,60 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         snapshot_id: u64,
         committed_ids: &HashSet<u64>,
     ) -> Result<Option<Vec<u8>>, OxidbError> {
-        if snapshot_id == 0 {
-            // Non-transactional read: reflects the state after full recovery.
-            // The cache, after load_from_disk and replay_wal_into_cache, should
-            // contain the correct, visible versions. We just need the latest non-expired one.
+        eprintln!("[SFKvStore::get] Attempting to get key: '{}', snapshot_id: {}", String::from_utf8_lossy(key), snapshot_id);
+
+        let result = if snapshot_id == 0 {
+            // Non-transactional read (snapshot_id 0): Read latest committed and not expired.
             if let Some(versions) = self.cache.get(key) {
-                if key == b"tx_delete_rollback_key".as_slice() || key == b"idx_del_key_tx_rollback".as_slice() {
-                    println!("[store.get snapshot_id=0] Key: {:?}, Versions: {:?}", String::from_utf8_lossy(key), versions);
-                }
+                eprintln!("[SFKvStore::get] Key: '{}', snapshot_id: 0. Cache versions: {:?}", String::from_utf8_lossy(key), versions);
                 for version in versions.iter().rev() {
                     if version.expired_tx_id.is_none() {
-                        if key == b"tx_delete_rollback_key".as_slice() || key == b"idx_del_key_tx_rollback".as_slice() {
-                            println!("[store.get snapshot_id=0] Key: {:?}, Found visible version: {:?}", String::from_utf8_lossy(key), version);
-                        }
+                        eprintln!("[SFKvStore::get] Key: '{}', snapshot_id: 0. Chosen version (latest non-expired): {{ value_len: {}, created_tx: {}, expired_tx: {:?} }}", String::from_utf8_lossy(key), version.value.len(), version.created_tx_id, version.expired_tx_id);
                         return Ok(Some(version.value.clone()));
                     }
                 }
+                eprintln!("[SFKvStore::get] Key: '{}', snapshot_id: 0. No non-expired version found in cache.", String::from_utf8_lossy(key));
+                Ok(None::<Vec<u8>>)
+            } else {
+                eprintln!("[SFKvStore::get] Key: '{}', snapshot_id: 0. Key not found in cache.", String::from_utf8_lossy(key));
+                Ok(None::<Vec<u8>>)
             }
-            if key == b"tx_delete_rollback_key".as_slice() || key == b"idx_del_key_tx_rollback".as_slice() {
-                 println!("[store.get snapshot_id=0] Key: {:?}, No visible version found or key not in cache.", String::from_utf8_lossy(key));
-            }
-            return Ok(None);
         } else {
-            // Transactional read (snapshot_id != 0) - Restoring original detailed MVCC logic
+            // Transactional read (snapshot_id != 0)
             if let Some(versions) = self.cache.get(key) {
+                eprintln!("[SFKvStore::get] Key: '{}', snapshot_id: {}. Cache versions: {:?}", String::from_utf8_lossy(key), snapshot_id, versions);
                 for version in versions.iter().rev() {
-                    // Determine if the version's creator is visible in the current snapshot
                     let creator_is_visible =
-                        (version.created_tx_id == snapshot_id) || // Created by the current transaction (snapshot_id is non-zero here)
-                        committed_ids.contains(&version.created_tx_id) || // Created by a committed transaction visible in this snapshot
-                        (version.created_tx_id == 0); // Baseline data (tx_id 0), always a candidate for visibility for active transactions
+                        (version.created_tx_id == snapshot_id) ||
+                        committed_ids.contains(&version.created_tx_id) ||
+                        (version.created_tx_id == 0);
 
                     if creator_is_visible {
-                        // If the creator is visible, check if the version is expired in the current snapshot
                         if let Some(expired_tx_id_val) = version.expired_tx_id {
                             let expirer_is_visible =
-                                (expired_tx_id_val == snapshot_id) || // Expired by the current transaction
-                                committed_ids.contains(&expired_tx_id_val) || // Expired by a committed transaction visible in this snapshot
-                                (expired_tx_id_val == 0); // Baseline expiry (tx_id 0), makes it expired for all active transactions
+                                (expired_tx_id_val == snapshot_id) ||
+                                committed_ids.contains(&expired_tx_id_val) ||
+                                (expired_tx_id_val == 0);
 
                             if !expirer_is_visible {
-                                // Expiration is NOT visible, so this version IS visible
+                                eprintln!("[SFKvStore::get] Key: '{}', snapshot_id: {}. Chosen version (transactional): {{ value_len: {}, created_tx: {}, expired_tx: {:?} }}", String::from_utf8_lossy(key), snapshot_id, version.value.len(), version.created_tx_id, version.expired_tx_id);
                                 return Ok(Some(version.value.clone()));
                             }
-                            // If expiration IS visible, this version is not the one; continue to older version.
                         } else {
-                            // No expiration_tx_id means the version is visible
+                            eprintln!("[SFKvStore::get] Key: '{}', snapshot_id: {}. Chosen version (transactional, not expired): {{ value_len: {}, created_tx: {}, expired_tx: None }}", String::from_utf8_lossy(key), snapshot_id, version.value.len(), version.created_tx_id);
                             return Ok(Some(version.value.clone()));
                         }
                     }
                 }
+                eprintln!("[SFKvStore::get] Key: '{}', snapshot_id: {}. No visible version found for this transaction.", String::from_utf8_lossy(key), snapshot_id);
+                Ok(None::<Vec<u8>>)
+            } else {
+                eprintln!("[SFKvStore::get] Key: '{}', snapshot_id: {}. Key not found in cache.", String::from_utf8_lossy(key), snapshot_id);
+                Ok(None::<Vec<u8>>)
             }
-            Ok(None)
-        }
+        };
+        eprintln!("[SFKvStore::get] Key: '{}', snapshot_id: {}. Final Get Result: {:?}", String::from_utf8_lossy(key), snapshot_id, result.as_ref().map(|opt_v| opt_v.as_ref().map(|v| v.len())));
+        result
     }
 
     fn delete(
@@ -184,30 +185,37 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         transaction: &Transaction,
         lsn: Lsn,
     ) -> Result<bool, OxidbError> {
+        eprintln!("[SFKvStore::delete] Attempting to delete key: '{}', by transaction_id: {}", String::from_utf8_lossy(key), transaction.id.0);
+
         let wal_entry = crate::core::storage::engine::wal::WalEntry::Delete {
             lsn,
-            transaction_id: transaction.id.0, // Use .0 for u64 field
+            transaction_id: transaction.id.0,
             key: key.clone(),
         };
-        self.wal_writer.log_entry(&wal_entry)?; // Reverted to log_entry
+        self.wal_writer.log_entry(&wal_entry)?;
 
+        let mut deleted_a_version = false;
         if let Some(versions) = self.cache.get_mut(key) {
+            eprintln!("[SFKvStore::delete] Key: '{}', tx_id: {}. Cache versions BEFORE delete op: {:?}", String::from_utf8_lossy(key), transaction.id.0, versions);
             for version in versions.iter_mut().rev() {
-                if version.created_tx_id <= transaction.id.0 // Use .0 for comparison
-                    && (version.expired_tx_id.is_none()
-                        || version.expired_tx_id.unwrap() > transaction.id.0)
-                // Use .0 for comparison
-                {
-                    if version.expired_tx_id.is_none() {
-                        version.expired_tx_id = Some(transaction.id.0); // Use .0 for assignment
-                        return Ok(true);
-                    } else {
-                        return Ok(false); // Already expired
-                    }
+                if version.expired_tx_id.is_none() {
+                    eprintln!("[SFKvStore::delete] Key: '{}', tx_id: {}. Found live version to mark expired: {{ value_len: {}, created_tx: {}, current_expired_tx: None }}. Marking expired with tx_id: {}", String::from_utf8_lossy(key), transaction.id.0, version.value.len(), version.created_tx_id, transaction.id.0);
+                    version.expired_tx_id = Some(transaction.id.0);
+                    deleted_a_version = true;
+                    break; // Important: only mark the latest live version as expired by this delete op
                 }
             }
+            if deleted_a_version {
+                 eprintln!("[SFKvStore::delete] Key: '{}', tx_id: {}. Cache versions AFTER delete op: {:?}", String::from_utf8_lossy(key), transaction.id.0, versions);
+            } else {
+                 eprintln!("[SFKvStore::delete] Key: '{}', tx_id: {}. No live version found to mark expired. All versions already expired or key had no versions (should not happen if get_mut found it).", String::from_utf8_lossy(key), transaction.id.0);
+            }
+        } else {
+            eprintln!("[SFKvStore::delete] Key: '{}', tx_id: {}. Key not found in cache.", String::from_utf8_lossy(key), transaction.id.0);
         }
-        Ok(false)
+
+        eprintln!("[SFKvStore::delete] Key: '{}', tx_id: {}. Delete operation outcome (deleted_a_version): {}", String::from_utf8_lossy(key), transaction.id.0, deleted_a_version);
+        Ok(deleted_a_version)
     }
 
     fn contains_key(

@@ -229,7 +229,8 @@ mod tests {
     use super::*;
     // use crate::core::indexing::hash_index::HashIndex; // Keep for existing tests if any
     // use crate::core::indexing::traits::Index; // Already imported
-    use std::fs::{create_dir_all, File}; // `self` import removed, direct use of `create_dir_all`
+    use std::fs::{File};
+    // Removed create_dir_all as it's unused in this test module's scope
     use tempfile::tempdir;
 
     fn val(s: &str) -> Value {

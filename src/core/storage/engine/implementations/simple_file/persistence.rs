@@ -161,23 +161,28 @@ pub(super) fn save_data_to_disk(
         // This logic assumes we only persist the latest non-expired version created by tx_id 0 (auto-commit)
         // or a version from a committed transaction that isn't expired by another committed transaction.
         // For simplicity, the original save_to_disk selected versions with created_tx_id == 0 and no expired_tx_id.
-        // We'll replicate that simple logic for now. More complex logic would require passing committed_ids.
-        let value_to_write_opt = versions
-            .iter()
-            .filter(|v| v.created_tx_id == 0 && v.expired_tx_id.is_none()) // Persist base/committed, non-expired versions
-            .next_back() // Get the latest if multiple tx0 versions (should not happen with current logic)
-            .map(|v| v.value.clone());
-
-        if let Some(value_to_write) = value_to_write_opt {
-            <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut writer)
-                .map_err(|e| OxidbError::Storage(format!("Failed to serialize key: {}", e)))?; // Changed
-            <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(&value_to_write, &mut writer)
-                .map_err(|e| OxidbError::Storage(format!("Failed to serialize value: {}", e)))?;
-            // Changed
+        // Find the latest version that is not expired. This represents the current committed state
+        // that should be persisted to the main data file.
+        let mut value_to_persist: Option<&Vec<u8>> = None;
+        for version in versions.iter().rev() { // Iterate newest to oldest
+            if version.expired_tx_id.is_none() {
+                value_to_persist = Some(&version.value);
+                break; // Found the latest live version for this key
+            }
         }
+
+        if let Some(value_bytes) = value_to_persist {
+            // If a live version was found, serialize the key and that version's value.
+            <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut writer)
+                .map_err(|e| OxidbError::Storage(format!("Failed to serialize key: {}", e)))?;
+            <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(value_bytes, &mut writer)
+                .map_err(|e| OxidbError::Storage(format!("Failed to serialize value: {}", e)))?;
+        }
+        // If value_to_persist is None (all versions were expired, i.e., key was deleted),
+        // then nothing is written for this key, effectively removing it from the new data file.
     }
 
-    writer.flush().map_err(OxidbError::Io)?; // Changed
+    writer.flush().map_err(OxidbError::Io)?;
     writer.get_ref().sync_all().map_err(OxidbError::Io)?; // Changed
 
     rename(&temp_file_path, file_path).map_err(|e| {
