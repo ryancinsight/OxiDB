@@ -177,11 +177,12 @@ impl WalWriter {
     /// This involves serializing the entry and appending it to the file.
     /// The write is flushed and synced to disk to ensure durability.
     pub fn log_entry(&self, entry: &WalEntry) -> Result<(), OxidbError> {
+        eprintln!("[engine::wal::WalWriter::log_entry] Method entered. Attempting to log to: {:?}, entry: {:?}", &self.wal_file_path, entry); // ADDED THIS LINE
         // Changed
-        eprintln!(
-            "[engine::wal::WalWriter::log_entry] Attempting to log to: {:?}, entry: {:?}",
-            &self.wal_file_path, entry
-        );
+        // eprintln!( // This line is redundant due to the one above.
+        //     "[engine::wal::WalWriter::log_entry] Attempting to log to: {:?}, entry: {:?}",
+        //     &self.wal_file_path, entry
+        // );
         let file_result = OpenOptions::new().create(true).append(true).open(&self.wal_file_path);
 
         if let Err(e) = &file_result {
