@@ -13,7 +13,25 @@ pub fn serialize_data_type(data_type: &DataType) -> Result<Vec<u8>, OxidbError> 
 
 /// Deserializes a Vec<u8> (expected to be JSON) into a DataType.
 pub fn deserialize_data_type(bytes: &[u8]) -> Result<DataType, OxidbError> {
-    serde_json::from_slice(bytes).map_err(OxidbError::Json) // Changed
+    match serde_json::from_slice(bytes) {
+        Ok(dt) => Ok(dt),
+        Err(e) => {
+            let err_string = e.to_string();
+            // Print it regardless to see what errors occur
+            println!("[deserialize_data_type] Serde JSON error string: '{}'", err_string);
+            println!("[deserialize_data_type] Bytes as lossy UTF-8 for this error: '{}'", String::from_utf8_lossy(bytes));
+
+            if err_string.contains("key must be a string") {
+                 panic!(
+                    "[deserialize_data_type] PANICKING DUE TO 'key must be a string'. Full Error: '{}'. Bytes as lossy UTF-8: '{}'. Bytes as Debug: {:?}",
+                    err_string, // Use the captured error string
+                    String::from_utf8_lossy(bytes),
+                    bytes
+                );
+            }
+            Err(OxidbError::Json(e)) // Propagate original error kind
+        }
+    }
 }
 
 // Implementations for Vec<u8>

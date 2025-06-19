@@ -12,9 +12,11 @@ use std::sync::Mutex; // Import Mutex
 // Constants
 /// The size of a page in bytes.
 const PAGE_SIZE: u64 = 4096;
+/// Sentinel Page ID to signify the end of the free list or no page.
+const SENTINEL_PAGE_ID: PageId = u64::MAX;
 /// The size of the metadata stored at the beginning of the B+Tree file.
-/// order (u32) + root_page_id (u64) + next_available_page_id (u64)
-const METADATA_SIZE: u64 = 4 + 8 + 8;
+/// order (u32) + root_page_id (u64) + next_available_page_id (u64) + free_list_head_page_id (u64)
+const METADATA_SIZE: u64 = 4 + 8 + 8 + 8;
 
 #[derive(Debug)]
 pub enum OxidbError {
@@ -53,6 +55,7 @@ pub struct BPlusTreeIndex {
     pub order: usize,
     pub root_page_id: PageId,
     pub next_available_page_id: PageId,
+    pub free_list_head_page_id: PageId, // Changed to PageId, SENTINEL_PAGE_ID for None
     pub file_handle: Mutex<File>,
 }
 
@@ -80,12 +83,16 @@ impl BPlusTreeIndex {
             file_obj.read_exact(&mut u64_buf)?;
             let next_available_page_id = u64::from_be_bytes(u64_buf);
 
+            file_obj.read_exact(&mut u64_buf)?;
+            let free_list_head_page_id = u64::from_be_bytes(u64_buf);
+
             Ok(Self {
                 name,
                 path,
                 order: loaded_order,
                 root_page_id,
                 next_available_page_id,
+                free_list_head_page_id,
                 file_handle: Mutex::new(file_obj),
             })
 
@@ -93,8 +100,9 @@ impl BPlusTreeIndex {
             if order < 3 {
                 return Err(OxidbError::TreeLogicError(format!("Order {} is too small. Minimum order is 3.", order)));
             }
-            let root_page_id = 0;
-            let next_available_page_id = 1;
+            let root_page_id = 0; // Root always starts at page 0
+            let next_available_page_id = 1; // Page 0 is root, so next is 1
+            let free_list_head_page_id = SENTINEL_PAGE_ID; // No free pages initially
             let file_handle_mutex = Mutex::new(file_obj);
             let mut tree = Self {
                 name,
@@ -102,6 +110,7 @@ impl BPlusTreeIndex {
                 order,
                 root_page_id,
                 next_available_page_id,
+                free_list_head_page_id,
                 file_handle: file_handle_mutex,
             };
             let initial_root_node = BPlusTreeNode::Leaf {
@@ -123,15 +132,51 @@ impl BPlusTreeIndex {
         file.write_all(&(u32::try_from(self.order).map_err(|_| OxidbError::Serialization(SerializationError::InvalidFormat("Order too large for u32".to_string())))?).to_be_bytes())?;
         file.write_all(&self.root_page_id.to_be_bytes())?;
         file.write_all(&self.next_available_page_id.to_be_bytes())?;
+        file.write_all(&self.free_list_head_page_id.to_be_bytes())?;
         file.flush()?;
         Ok(())
     }
 
     pub fn allocate_new_page_id(&mut self) -> Result<PageId, OxidbError> {
-        let new_page_id = self.next_available_page_id;
-        self.next_available_page_id = self.next_available_page_id.saturating_add(1);
+        if self.free_list_head_page_id != SENTINEL_PAGE_ID {
+            let new_page_id = self.free_list_head_page_id;
+            // Read the first 8 bytes of this page to get the next free page ID
+            let mut file = self.file_handle.lock().map_err(|e| OxidbError::BorrowError(format!("Mutex lock error for allocate (read free list): {}", e)))?;
+            let offset = PAGE_SIZE.saturating_add(new_page_id.saturating_mul(PAGE_SIZE));
+            file.seek(SeekFrom::Start(offset))?;
+            let mut next_free_buf = [0u8; 8];
+            file.read_exact(&mut next_free_buf)?;
+            self.free_list_head_page_id = PageId::from_be_bytes(next_free_buf);
+            // No need to explicitly clear the rest of the page, it will be overwritten by new node data.
+            // Drop file lock before calling write_metadata
+            drop(file);
+            self.write_metadata()?;
+            Ok(new_page_id)
+        } else {
+            let new_page_id = self.next_available_page_id;
+            self.next_available_page_id = self.next_available_page_id.saturating_add(1);
+            self.write_metadata()?; // This locks and unlocks the file handle itself.
+            Ok(new_page_id)
+        }
+    }
+
+    fn deallocate_page_id(&mut self, page_id_to_free: PageId) -> Result<(), OxidbError> {
+        if page_id_to_free == SENTINEL_PAGE_ID {
+            return Err(OxidbError::TreeLogicError("Cannot deallocate sentinel page ID".to_string()));
+        }
+        // The page_id_to_free will now point to the current head of the free list.
+        // Its first 8 bytes should store the *next* free page, which is the current free_list_head_page_id.
+        let mut file = self.file_handle.lock().map_err(|e| OxidbError::BorrowError(format!("Mutex lock error for deallocate: {}", e)))?;
+        let offset = PAGE_SIZE.saturating_add(page_id_to_free.saturating_mul(PAGE_SIZE));
+        file.seek(SeekFrom::Start(offset))?;
+        file.write_all(&self.free_list_head_page_id.to_be_bytes())?; // Write old head as next pointer
+
+        // The new head of the free list is the page we just deallocated.
+        self.free_list_head_page_id = page_id_to_free;
+        // Drop file lock before calling write_metadata
+        drop(file);
         self.write_metadata()?;
-        Ok(new_page_id)
+        Ok(())
     }
 
     pub fn read_node(&self, page_id: PageId) -> Result<BPlusTreeNode, OxidbError> {
@@ -361,13 +406,19 @@ impl BPlusTreeIndex {
             // If the root itself is underflowing (e.g., an internal root with only one child after a merge)
             if let BPlusTreeNode::Internal { ref keys, ref children, .. } = current_node {
                 if keys.is_empty() && children.len() == 1 {
+                    let old_root_page_id = self.root_page_id;
                     self.root_page_id = children[0]; // The only child becomes the new root
                     let mut new_root_node = self.read_node_mut(self.root_page_id)?;
                     new_root_node.set_parent_page_id(None);
                     self.write_node(&new_root_node)?;
                     self.write_metadata()?; // Persist change to root_page_id
+                    self.deallocate_page_id(old_root_page_id)?; // Deallocate the old root page
+                } else if keys.is_empty() && children.is_empty() && !matches!(current_node, BPlusTreeNode::Leaf{..}) {
+                    // This case should ideally not happen if merge logic is correct (root becomes leaf).
+                    // But if it does, and root is internal and completely empty, it's a problem.
+                    // For now, we'll assume the above case (one child) or root becoming leaf is handled.
                 }
-            } // If root is a leaf, it can be empty. No action needed.
+            } // If root is a leaf, it can be empty. No action needed for deallocation unless it's merged away (not possible for root).
             return Ok(());
         }
 
@@ -416,18 +467,20 @@ impl BPlusTreeIndex {
             // If parent was root and became empty internal node
             if let BPlusTreeNode::Internal { ref children, .. } = parent_node {
                 if children.len() == 1 { // Root internal node has only one child left
+                    let old_root_pid = parent_pid; // parent_pid is the root_page_id here
                     self.root_page_id = children[0];
                     let mut new_root_node = self.read_node_mut(self.root_page_id)?;
                     new_root_node.set_parent_page_id(None);
                     self.write_node(&new_root_node)?;
                     self.write_metadata()?;
-                } else { // Root internal node still has enough children
+                    self.deallocate_page_id(old_root_pid)?;
+                } else { // Root internal node still has enough children or is not empty
                      self.write_node(&parent_node)?;
                 }
-            } else { // Parent is root leaf or non-empty internal root
-                 self.write_node(&parent_node)?;
+            } else { // Parent is root leaf or non-empty internal root (should have been written if modified)
+                 self.write_node(&parent_node)?; // Ensure it's written if modified
             }
-        } else { // Parent is not root and did not underflow, or is root leaf
+        } else { // Parent is not root and did not underflow, or is root leaf (and not empty)
             self.write_node(&parent_node)?;
         }
         Ok(())
@@ -553,9 +606,12 @@ impl BPlusTreeIndex {
             _ => return Err(OxidbError::TreeLogicError("Node types mismatch during merge, or parent is not Internal.".to_string())),
         }
         self.write_node(left_node)?; // Write modified left_node (which absorbed right_node)
-        self.write_node(parent_node)?; // Write modified parent_node
-        // The right_node is effectively deallocated from the tree structure by removing pointers from parent.
-        // Actual page deallocation (if any) would be handled elsewhere (e.g., by a free list manager).
+        // parent_node is written by the caller handle_underflow or its recursive calls
+        // self.write_node(parent_node)?; // Write modified parent_node - this is done by the caller
+
+        // Deallocate the page of the right_node which has been merged.
+        let right_node_pid = right_node.get_page_id();
+        self.deallocate_page_id(right_node_pid)?;
         Ok(())
     }
 }
@@ -585,15 +641,24 @@ mod tests {
         assert_eq!(tree.order, TEST_TREE_ORDER);
         assert_eq!(tree.root_page_id, 0);
         assert_eq!(tree.next_available_page_id, 1); // Initial root is page 0, next is 1
+        assert_eq!(tree.free_list_head_page_id, SENTINEL_PAGE_ID); // Initially no free pages
+
         let mut file = File::open(&path).expect("Failed to open DB file for metadata check");
         let mut u32_buf = [0u8; 4];
         let mut u64_buf = [0u8; 8];
+
         file.read_exact(&mut u32_buf).expect("Failed to read order from metadata");
         assert_eq!(u32::from_be_bytes(u32_buf) as usize, TEST_TREE_ORDER);
+
         file.read_exact(&mut u64_buf).expect("Failed to read root_page_id from metadata");
         assert_eq!(u64::from_be_bytes(u64_buf), 0); // Initial root_page_id
+
         file.read_exact(&mut u64_buf).expect("Failed to read next_available_page_id from metadata");
         assert_eq!(u64::from_be_bytes(u64_buf), 1); // Initial next_available_page_id
+
+        file.read_exact(&mut u64_buf).expect("Failed to read free_list_head_page_id from metadata");
+        assert_eq!(u64::from_be_bytes(u64_buf), SENTINEL_PAGE_ID); // Initial free_list_head_page_id
+
         let root_node = tree.read_node(tree.root_page_id).expect("Failed to read root node");
         if let BPlusTreeNode::Leaf { keys, values, .. } = root_node {
             assert!(keys.is_empty());
@@ -615,6 +680,7 @@ mod tests {
         assert_eq!(loaded_tree.order, TEST_TREE_ORDER);
         assert_eq!(loaded_tree.root_page_id, 0);
         assert_eq!(loaded_tree.next_available_page_id, 1);
+        assert_eq!(loaded_tree.free_list_head_page_id, SENTINEL_PAGE_ID);
         drop(dir);
     }
 
@@ -750,10 +816,219 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_leaf_borrow_from_right_sibling() {
-        // Original test logic was corrupted. This is a placeholder.
-        let (tree, _path, _dir) = setup_tree("test_new"); // Use "test_new" which is simple
-        let root_node = tree.read_node(tree.root_page_id).expect("Failed to read root node");
-        assert_eq!(root_node.get_page_id(), tree.root_page_id); // Simple assertion
+    fn test_delete_leaf_borrow_from_right_sibling() -> Result<(), OxidbError> {
+        const ORDER: usize = 4; // Min keys = (4-1)/2 = 1
+        let (mut tree, _path, _dir) = setup_tree("borrow_from_right_leaf");
+        assert_eq!(tree.order, ORDER, "Test setup assumes order 4 from setup_tree which uses TEST_TREE_ORDER");
+
+        // Setup:
+        // Root (P0) with key "banana"
+        //  |-- Left Leaf (P1) with key "apple" (min keys)
+        //  |-- Right Leaf (P2) with keys "cherry", "date" (can lend)
+
+        // Insert initial data to create structure: "apple", "banana", "cherry", "date"
+        // This will create:
+        // Root: [banana]
+        // L1: [apple] (next P2)
+        // L2: [banana, cherry, date] (next None) -- this is not what we want.
+        // Let's manually construct the state after splits to be precise.
+
+        // Target state before delete:
+        // Root (P_ROOT, e.g. P2 after splits) keys: ["banana"] children: [P_L1, P_L2]
+        // Leaf L1 (P_L1, e.g. P0) keys: ["apple"] values: [pk("v_apple")] parent: P_ROOT, next: P_L2
+        // Leaf L2 (P_L2, e.g. P1) keys: ["cherry", "date"] values: [pk("v_cherry"), pk("v_date")] parent: P_ROOT, next: None
+
+        // To achieve this with order 4:
+        // 1. Insert "apple", "banana", "cherry", "date"
+        //    - "apple" -> L(P0) [apple]
+        //    - "banana" -> L(P0) [apple, banana]
+        //    - "cherry" -> L(P0) [apple, banana, cherry] (full)
+        //    - "date" -> causes split.
+        //      - Promoted/Copied: "banana"
+        //      - New Root (P1): keys: ["banana"], children: [P0, P2]
+        //      - Left Leaf (P0): keys: ["apple"], parent: P1, next: P2
+        //      - Right Leaf (P2): keys: ["banana", "cherry", "date"], parent: P1, next: None
+
+        tree.insert(k("apple"), pk("v_apple"))?;
+        tree.insert(k("banana"), pk("v_banana"))?;
+        tree.insert(k("cherry"), pk("v_cherry"))?;
+        tree.insert(k("date"), pk("v_date"))?; // Split occurs here
+
+        // Verify initial structure (as per split logic)
+        let root_pid = tree.root_page_id;
+        let root_node_initial = tree.read_node(root_pid)?;
+        let (initial_l1_pid, initial_l2_pid) = match &root_node_initial {
+            BPlusTreeNode::Internal { keys, children, .. } => {
+                assert_eq!(keys, &vec![k("banana")]);
+                (children[0], children[1])
+            }
+            _ => panic!("Root should be internal after insertions leading to split"),
+        };
+
+        let initial_l1_node = tree.read_node(initial_l1_pid)?;
+        match &initial_l1_node {
+            BPlusTreeNode::Leaf { keys, parent_page_id, next_leaf, .. } => {
+                assert_eq!(keys, &vec![k("apple")]);
+                assert_eq!(*parent_page_id, Some(root_pid));
+                assert_eq!(*next_leaf, Some(initial_l2_pid));
+            }
+            _ => panic!("Child 0 should be leaf L1"),
+        }
+
+        let initial_l2_node = tree.read_node(initial_l2_pid)?;
+        match &initial_l2_node {
+            BPlusTreeNode::Leaf { keys, parent_page_id, next_leaf, .. } => {
+                assert_eq!(keys, &vec![k("banana"), k("cherry"), k("date")]);
+                assert_eq!(*parent_page_id, Some(root_pid));
+                assert_eq!(*next_leaf, None);
+            }
+            _ => panic!("Child 1 should be leaf L2"),
+        }
+        // Now, we need to modify L2 to have ["cherry", "date"] and L1 to have ["apple"]
+        // And parent to have ["banana"] separating them. This is already the case.
+        // L2 has 3 keys, it can lend. L1 has 1 key (min_keys for order 4).
+
+        // Delete "apple" from L1 (page initial_l1_pid). This causes L1 to underflow.
+        let deleted = tree.delete(&k("apple"), None)?;
+        assert!(deleted, "Deletion of 'apple' should succeed");
+
+        // --- Verification after borrow from right ---
+        // Expected structure:
+        // Root (P_ROOT) keys: ["cherry"] children: [P_L1, P_L2]
+        // Leaf L1 (P_L1) keys: ["banana"] values: [pk("v_banana")] parent: P_ROOT, next: P_L2
+        // Leaf L2 (P_L2) keys: ["date"] values: [pk("v_date")] parent: P_ROOT, next: None
+
+        let final_root_node = tree.read_node(root_pid)?; // Root PID should not change
+        let (final_l1_pid, final_l2_pid) = match &final_root_node {
+            BPlusTreeNode::Internal { keys, children, parent_page_id, .. } => {
+                assert!(parent_page_id.is_none(), "Root's parent should be None");
+                assert_eq!(keys, &vec![k("cherry")], "Root key should be 'cherry' after borrow");
+                assert_eq!(children.len(), 2, "Root should still have 2 children");
+                (children[0], children[1])
+            }
+            _ => panic!("Root should remain internal"),
+        };
+
+        assert_eq!(final_l1_pid, initial_l1_pid, "L1 page ID should not change");
+        assert_eq!(final_l2_pid, initial_l2_pid, "L2 page ID should not change");
+
+        let final_l1_node = tree.read_node(final_l1_pid)?;
+        match &final_l1_node {
+            BPlusTreeNode::Leaf { page_id, keys, values, parent_page_id, next_leaf } => {
+                assert_eq!(*page_id, final_l1_pid);
+                assert_eq!(keys, &vec![k("banana")], "L1 keys should be ['banana']");
+                assert_eq!(values.len(), 1);
+                assert_eq!(values[0], vec![pk("v_banana")]);
+                assert_eq!(*parent_page_id, Some(root_pid), "L1 parent should be root");
+                assert_eq!(*next_leaf, Some(final_l2_pid), "L1 next should point to L2");
+            }
+            _ => panic!("L1 should be a Leaf node"),
+        }
+
+        let final_l2_node = tree.read_node(final_l2_pid)?;
+        match &final_l2_node {
+            BPlusTreeNode::Leaf { page_id, keys, values, parent_page_id, next_leaf } => {
+                assert_eq!(*page_id, final_l2_pid);
+                assert_eq!(keys, &vec![k("cherry"), k("date")], "L2 keys should be ['cherry', 'date']");
+                assert_eq!(values.len(), 2);
+                assert_eq!(values[0], vec![pk("v_cherry")]);
+                assert_eq!(values[1], vec![pk("v_date")]);
+                assert_eq!(*parent_page_id, Some(root_pid), "L2 parent should be root");
+                assert_eq!(*next_leaf, None, "L2 next should be None");
+            }
+            _ => panic!("L2 should be a Leaf node"),
+        }
+
+        // Ensure original key "apple" is gone
+        assert!(tree.find_primary_keys(&k("apple"))?.is_none(), "'apple' should not be found");
+        // Ensure "banana" is found in L1
+        assert_eq!(tree.find_primary_keys(&k("banana"))?, Some(vec![pk("v_banana")]));
+        // Ensure "cherry" is found in L2 (after borrowing, it moved from L2 to parent, then new L2 smallest is "cherry" if logic was different)
+        // With current logic: "banana" moved from L2 to L1. "cherry" became parent. L2 still has "cherry", "date".
+        // No, wait. Parent became "cherry". L2's first key "banana" went to L1. L2 should be ["cherry", "date"].
+        // Parent key updated to l_keys.first() from L2. L2 had ["banana", "cherry", "date"].
+        // L1 gets "banana". L2 becomes ["cherry", "date"]. Parent becomes "cherry". This is correct.
+        assert_eq!(tree.find_primary_keys(&k("cherry"))?, Some(vec![pk("v_cherry")]));
+        // Ensure "date" is found in L2
+        assert_eq!(tree.find_primary_keys(&k("date"))?, Some(vec![pk("v_date")]));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_page_allocation_and_deallocation() {
+        let (mut tree, _path, _dir) = setup_tree("alloc_dealloc_test");
+
+        // 1. Initial state
+        assert_eq!(tree.next_available_page_id, 1); // Root is 0
+        assert_eq!(tree.free_list_head_page_id, SENTINEL_PAGE_ID);
+
+        // 2. Allocate some pages
+        let p1 = tree.allocate_new_page_id().unwrap(); // Should be 1
+        assert_eq!(p1, 1);
+        assert_eq!(tree.next_available_page_id, 2);
+        assert_eq!(tree.free_list_head_page_id, SENTINEL_PAGE_ID);
+
+        let p2 = tree.allocate_new_page_id().unwrap(); // Should be 2
+        assert_eq!(p2, 2);
+        assert_eq!(tree.next_available_page_id, 3);
+
+        let p3 = tree.allocate_new_page_id().unwrap(); // Should be 3
+        assert_eq!(p3, 3);
+        assert_eq!(tree.next_available_page_id, 4);
+
+        // 3. Deallocate p2
+        tree.deallocate_page_id(p2).unwrap();
+        assert_eq!(tree.free_list_head_page_id, p2); // p2 is now head of free list
+        // Check content of p2 (it should point to SENTINEL_PAGE_ID)
+        let mut file = tree.file_handle.lock().unwrap();
+        let offset = PAGE_SIZE + p2 * PAGE_SIZE;
+        file.seek(SeekFrom::Start(offset)).unwrap();
+        let mut next_free_buf = [0u8; 8];
+        file.read_exact(&mut next_free_buf).unwrap();
+        assert_eq!(PageId::from_be_bytes(next_free_buf), SENTINEL_PAGE_ID);
+        drop(file);
+
+        // 4. Deallocate p1
+        tree.deallocate_page_id(p1).unwrap();
+        assert_eq!(tree.free_list_head_page_id, p1); // p1 is now head
+        // Check content of p1 (it should point to p2)
+        let mut file = tree.file_handle.lock().unwrap();
+        let offset = PAGE_SIZE + p1 * PAGE_SIZE;
+        file.seek(SeekFrom::Start(offset)).unwrap();
+        let mut next_free_buf = [0u8; 8];
+        file.read_exact(&mut next_free_buf).unwrap();
+        assert_eq!(PageId::from_be_bytes(next_free_buf), p2); // p1 points to p2
+        drop(file);
+
+
+        // 5. Allocate again - should get p1
+        let p_reused1 = tree.allocate_new_page_id().unwrap();
+        assert_eq!(p_reused1, p1);
+        assert_eq!(tree.free_list_head_page_id, p2); // Free list head should now be p2
+        assert_eq!(tree.next_available_page_id, 4); // next_available_page_id should not have changed
+
+        // 6. Allocate again - should get p2
+        let p_reused2 = tree.allocate_new_page_id().unwrap();
+        assert_eq!(p_reused2, p2);
+        assert_eq!(tree.free_list_head_page_id, SENTINEL_PAGE_ID); // Free list should be empty
+        assert_eq!(tree.next_available_page_id, 4);
+
+        // 7. Allocate again - should get p3 (from free list, this test logic was slightly off before)
+        // No, p3 was never deallocated. So it should come from next_available_page_id if free list is empty
+        tree.deallocate_page_id(p3).unwrap(); // Deallocate p3
+        assert_eq!(tree.free_list_head_page_id, p3);
+
+        let p_reused3 = tree.allocate_new_page_id().unwrap();
+        assert_eq!(p_reused3, p3);
+        assert_eq!(tree.free_list_head_page_id, SENTINEL_PAGE_ID);
+        assert_eq!(tree.next_available_page_id, 4);
+
+
+        // 8. Allocate again - should get a new page (4)
+        let p4 = tree.allocate_new_page_id().unwrap();
+        assert_eq!(p4, 4);
+        assert_eq!(tree.next_available_page_id, 5);
+        assert_eq!(tree.free_list_head_page_id, SENTINEL_PAGE_ID);
     }
 }

@@ -3,6 +3,7 @@ use crate::core::common::serialization::{deserialize_data_type, serialize_data_t
 use crate::core::common::types::TransactionId; // Added TransactionId import
 use crate::core::common::OxidbError; // Changed
 use crate::core::query::commands::{Key, SqlAssignment, SqlCondition};
+use crate::core::types::JsonSafeMap; // Added import for JsonSafeMap
 use crate::core::query::sql::ast::{
     Condition as AstCondition, SelectColumn, Statement as AstStatement,
 };
@@ -89,11 +90,12 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         }
 
         if keys_to_update.is_empty() {
-            return Ok(ExecutionResult::Success);
+            // If no keys matched the condition, 0 rows were updated.
+            return Ok(ExecutionResult::Updated { count: 0 });
         }
 
-        // TODO: Consider returning the updated_count in ExecutionResult
-        let mut _updated_count = 0;
+        // TODO: Consider returning the updated_count in ExecutionResult (This TODO is now being addressed)
+        let mut updated_count = 0;
 
         for key in keys_to_update {
             let current_op_tx_id: TransactionId;
@@ -135,9 +137,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             if let Some(current_value_bytes) = current_value_bytes_opt {
                 let mut current_data_type = deserialize_data_type(&current_value_bytes)?;
 
-                if let DataType::Map(ref mut map_data) = current_data_type {
+                if let DataType::Map(JsonSafeMap(ref mut map_data)) = current_data_type { // Use JsonSafeMap
                     for assignment_cmd in &assignments_cmd {
-                        map_data.insert(
+                        map_data.insert( // map_data here IS the HashMap, so no .0 needed
                             assignment_cmd.column.as_bytes().to_vec(),
                             assignment_cmd.value.clone(),
                         );
@@ -228,7 +230,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     self.transaction_manager.add_committed_tx_id(current_op_tx_id);
                     // Pass TransactionId
                 }
-                _updated_count += 1;
+                updated_count += 1;
             }
 
             if is_auto_commit {
@@ -236,6 +238,6 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             }
         }
 
-        Ok(ExecutionResult::Success)
+        Ok(ExecutionResult::Updated { count: updated_count })
     }
 }

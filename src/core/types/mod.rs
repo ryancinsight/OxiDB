@@ -3,9 +3,19 @@
 use serde::{Deserialize, Serialize};
 use serde_json; // For JsonBlob
 use std::collections::HashMap; // Added for SimpleMap
+use serde_with::{serde_as, base64::Base64, base64::Standard, formats::Padded, Same}; // Refined imports
 
-// Define SimpleMap type alias
-pub type SimpleMap = HashMap<Vec<u8>, DataType>;
+// Define SimpleMap type alias - This will be replaced by JsonSafeMap structure
+// pub type SimpleMap = HashMap<Vec<u8>, DataType>;
+
+#[serde_as]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JsonSafeMap(
+    // Ensures keys (Vec<u8>) are serialized/deserialized as Base64 strings with standard padding.
+    // Values (DataType) use their existing Serialize/Deserialize impls via `Same`.
+    #[serde_as(as = "HashMap<Base64<Standard, Padded>, Same>")]
+    pub HashMap<Vec<u8>, DataType> // Made field pub for direct construction/access if needed
+);
 
 // Re-export ID types from their actual location in common::types::ids
 pub use crate::core::common::types::ids::{PageId, SlotId, TransactionId};
@@ -20,7 +30,7 @@ pub enum DataType {
     Boolean(bool),
     Float(f64),     // Added Float variant
     Null,           // Added Null variant
-    Map(SimpleMap), // Added Map variant
+    Map(JsonSafeMap), // Changed to use JsonSafeMap
     JsonBlob(serde_json::Value),
     // Potentially other types like Timestamp, etc. could be added later
 }

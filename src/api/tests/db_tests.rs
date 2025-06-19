@@ -1,7 +1,9 @@
 use crate::api::Oxidb;
 use crate::core::common::OxidbError;
+use crate::core::query::commands::Command; // Added import for Command
 use crate::core::query::executor::ExecutionResult;
-use crate::core::types::DataType;
+use crate::core::types::{DataType, JsonSafeMap}; // Import JsonSafeMap
+use std::collections::HashMap; // Added import for HashMap
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
@@ -321,5 +323,114 @@ fn test_execute_query_str_empty_query() {
     match result {
         Err(OxidbError::SqlParsing(msg)) => assert_eq!(msg, "Input query string cannot be empty."), // Changed
         _ => panic!("Expected OxidbError::SqlParsing for empty string, got {:?}", result),
+    }
+}
+
+#[test]
+fn test_execute_query_str_update_ok() {
+    let db_path = get_temp_db_path();
+    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb for update_ok test");
+
+    let key_alice = b"users_alice".to_vec();
+    let val_alice_map_initial = DataType::Map(JsonSafeMap(vec![ // Use JsonSafeMap
+        (b"name".to_vec(), DataType::String("Alice".to_string())),
+        (b"city".to_vec(), DataType::String("London".to_string())),
+        (b"country".to_vec(), DataType::String("UK".to_string())),
+    ].into_iter().collect()));
+    // Insert initial data directly using executor to ensure it's a map
+    db.executor.execute_command(Command::Insert { key: key_alice.clone(), value: val_alice_map_initial.clone() }).unwrap();
+
+    // Perform the update
+    let update_query = "UPDATE users SET city = 'New York' WHERE name = 'Alice'";
+    let update_result = db.execute_query_str(update_query);
+    match update_result {
+        Ok(ExecutionResult::Updated { count }) => assert_eq!(count, 1, "UPDATE: Expected 1 row updated"),
+        _ => panic!("UPDATE: Expected Updated {{ count: 1 }}, got {:?}", update_result),
+    }
+
+    // Get the updated data using execute_query_str to see the raw ExecutionResult
+    let get_alice_result_from_executor = db.execute_query_str("GET users_alice");
+
+    match get_alice_result_from_executor {
+        Ok(ExecutionResult::Value(Some(ref data_type_val))) => {
+            let mut file_debug_content = format!("Retrieved DataType: {:?}\n", data_type_val);
+
+            // Simulate the string conversion that Oxidb::get() would do on data_type_val
+            let simulated_api_string_result = match data_type_val {
+                DataType::Map(wrapped_map) => serde_json::to_string(wrapped_map), // wrapped_map is JsonSafeMap
+                DataType::String(s) => Ok(s.clone()),
+                DataType::Integer(i) => Ok(i.to_string()),
+                DataType::Boolean(b) => Ok(b.to_string()),
+                DataType::Float(f) => Ok(f.to_string()),
+                DataType::Null => Ok("NULL".to_string()),
+                DataType::Boolean(b) => Ok(b.to_string()),
+                DataType::Float(f) => Ok(f.to_string()),
+                DataType::Null => Ok("NULL".to_string()),
+                DataType::JsonBlob(json_val) => serde_json::to_string(json_val),
+            };
+
+            match simulated_api_string_result {
+                Ok(s) => {
+                    file_debug_content.push_str(&format!("Simulated API string: {}\n", s));
+                    eprintln!("RAW DATA STRING (SIMULATED FROM Oxidb::get): {}", s);
+                    // The test will panic here if s is not the expected JSON for a map,
+                    // when it tries to deserialize it into serde_json::Value or HashMap.
+                    // This happens if the `expect` below is uncommented and used.
+                    // For now, we primarily want to see the string s.
+                }
+                Err(e) => {
+                    file_debug_content.push_str(&format!("Error simulating API string: {}\n", e));
+                    eprintln!("ERROR DURING SIMULATED STRING CONVERSION: {:?}", e);
+                }
+            }
+
+            use std::io::Write;
+            let path = "/tmp/debug_output.txt";
+            match std::fs::File::create(path) {
+                Ok(mut file) => {
+                    if let Err(e) = file.write_all(file_debug_content.as_bytes()) {
+                        eprintln!("Failed to write debug data to file: {}", e);
+                    } else {
+                        eprintln!("Problematic data written to: {}", path);
+                    }
+                },
+                Err(e) => {
+                    eprintln!("Failed to create debug file: {}", e);
+                }
+            }
+
+            // Now, proceed with assertions based on the known data_type_val
+            if let DataType::Map(JsonSafeMap(map_val)) = data_type_val {
+                 println!("[Test] Retrieved DataType::Map for assertions: {:?}", map_val);
+                 assert_eq!(map_val.get(b"city".as_ref()), Some(&DataType::String("New York".to_string())));
+                 assert_eq!(map_val.get(b"country".as_ref()), Some(&DataType::String("UK".to_string())));
+            } else {
+                // This panic will now include the actual data_type_val if it's not a Map
+                panic!("[Test] Expected DataType::Map for key_alice, but got: {:?}", data_type_val);
+            }
+        }
+        Ok(ExecutionResult::Value(None)) => {
+             eprintln!("Problematic data written to: /tmp/debug_output.txt (GET for key_alice Value was None)");
+             std::fs::write("/tmp/debug_output.txt", "ExecutionResult::Value(None) for key_alice").expect("Failed to write None case");
+             panic!("[Test] Expected Value(Some(_)) for key_alice, got Value(None)");
+        }
+        Err(e) => { // Err from db.execute_query_str("GET users_alice")
+            eprintln!("Problematic data written to: /tmp/debug_output.txt (GET for key_alice failed)");
+            std::fs::write("/tmp/debug_output.txt", format!("GET for key_alice failed: {:?}", e)).expect("Failed to write error case");
+            panic!("[Test] GET query for key_alice failed: {:?}", e); // This is where the original panic happens
+        }
+        other_exec_res => { // Other Ok(ExecutionResult::Variant)
+            eprintln!("Problematic data written to: /tmp/debug_output.txt (Unexpected ExecutionResult for key_alice)");
+            std::fs::write("/tmp/debug_output.txt", format!("Unexpected ExecutionResult for key_alice: {:?}", other_exec_res)).expect("Failed to write other case");
+            panic!("[Test] Expected ExecutionResult::Value(Some(DataType::Map(...))) for key_alice, got: {:?}", other_exec_res);
+        }
+    }
+
+    // Test update that affects 0 rows
+    let update_query_no_match = "UPDATE users SET city = 'Berlin' WHERE name = 'Unknown'";
+    let result_no_match = db.execute_query_str(update_query_no_match);
+    match result_no_match {
+        Ok(ExecutionResult::Updated { count }) => assert_eq!(count, 0, "UPDATE no match: Expected 0 rows updated"),
+        _ => panic!("UPDATE no match: Expected Updated {{ count: 0 }}, got {:?}", result_no_match),
     }
 }

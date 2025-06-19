@@ -38,6 +38,7 @@ pub enum ExecutionResult {
     Success,
     Deleted(bool),
     Values(Vec<DataType>),
+    Updated { count: usize }, // Added for update operations
 }
 
 #[derive(Debug)]
@@ -237,11 +238,17 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
         match result_bytes_opt {
             Some(bytes) => {
+                println!("[QE::handle_get] Bytes before deserializing for key '{:?}': {:?}", String::from_utf8_lossy(&key), bytes);
+                println!("[QE::handle_get] Bytes as string for key '{:?}': '{}'", String::from_utf8_lossy(&key), String::from_utf8_lossy(&bytes));
                 // Deserialize using the project's standard deserialization
                 let value_dt = crate::core::common::serialization::deserialize_data_type(&bytes)?;
+                println!("[QE::handle_get] Deserialized DataType for key '{:?}': {:?}", String::from_utf8_lossy(&key), value_dt);
                 Ok(ExecutionResult::Value(Some(value_dt)))
             }
-            None => Ok(ExecutionResult::Value(None)),
+            None => {
+                println!("[QE::handle_get] Key '{:?}' not found in store.", String::from_utf8_lossy(&key)); // Debug print
+                Ok(ExecutionResult::Value(None))
+            }
         }
     }
 

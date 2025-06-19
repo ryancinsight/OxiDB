@@ -8,7 +8,7 @@ use crate::core::query::commands::{Command, Key};
 use crate::core::query::executor::{ExecutionResult, QueryExecutor}; // QueryExecutor is needed for Oxidb::new_with_config
 use crate::core::query::parser::parse_query_string;
 use crate::core::storage::engine::SimpleFileKvStore; // SimpleFileKvStore is needed for Oxidb::new_with_config
-use crate::core::types::DataType;
+use crate::core::types::{DataType, JsonSafeMap}; // Import JsonSafeMap
 use crate::core::wal::log_manager::LogManager;
 use crate::core::wal::writer::WalWriter;
 use serde_json; // For the get method
@@ -116,15 +116,25 @@ impl Oxidb {
         let command = Command::Get { key };
         match self.executor.execute_command(command) {
             Ok(ExecutionResult::Value(data_type_option)) => {
+                println!("[Oxidb::get] Value from executor: {:?}", data_type_option); // Debug print
                 Ok(data_type_option.map(|dt| match dt {
                     DataType::Integer(i) => i.to_string(),
                     DataType::String(s) => s,
                     DataType::Boolean(b) => b.to_string(),
                     DataType::Float(f) => f.to_string(),
                     DataType::Null => "NULL".to_string(),
-                    DataType::Map(map_val) => {
-                        serde_json::to_string(&map_val)
-                            .unwrap_or_else(|e| format!("Error serializing Map: {}", e))
+                    DataType::Map(json_safe_map) => { // Match on JsonSafeMap wrapper
+                        // Debug print the map content before serialization
+                        println!("[api_impl.rs get() -> Map serialization] Map content before serde_json::to_string:");
+                        // Iterate over the inner HashMap using .0
+                        for (k_bytes, v_datatype) in &json_safe_map.0 {
+                            println!("  Key: {:?} (UTF-8: '{}'), Value: {:?}", k_bytes, String::from_utf8_lossy(k_bytes), v_datatype);
+                        }
+                        // Serialize the JsonSafeMap wrapper itself, which has the #[serde_as] annotations
+                        let json_string = serde_json::to_string(&json_safe_map)
+                            .unwrap_or_else(|e| format!("Error serializing Map: {}", e));
+                        println!("[api_impl.rs get() -> Map serialization] Serialized JSON string: {}", json_string);
+                        json_string
                     }
                     DataType::JsonBlob(json_val) => serde_json::to_string(&json_val)
                         .unwrap_or_else(|e| format!("Error serializing JsonBlob: {}", e)),

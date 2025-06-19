@@ -3,7 +3,7 @@ use crate::core::common::OxidbError;
 use crate::core::execution::{ExecutionOperator, Tuple};
 use crate::core::query::commands::Key;
 use crate::core::storage::engine::traits::KeyValueStore;
-use crate::core::types::DataType;
+use crate::core::types::{DataType, JsonSafeMap}; // Import JsonSafeMap
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock}; // Added RwLock
 
@@ -56,8 +56,8 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for TableScanOp
             ) {
                 Ok(data_type) => {
                     let tuple = match data_type {
-                        DataType::Map(map_data) => {
-                            map_data.values().cloned().collect::<Vec<DataType>>()
+                        DataType::Map(JsonSafeMap(map_data)) => { // Use JsonSafeMap
+                            map_data.values().cloned().collect::<Vec<DataType>>() // Corrected: map_data is the HashMap
                         }
                         DataType::JsonBlob(json_value) => {
                             if json_value.is_object() {

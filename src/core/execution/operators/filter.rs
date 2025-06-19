@@ -69,9 +69,6 @@ impl FilterOperator {
                         (DataType::String(a), DataType::String(b)) => Ok(a <= b),
                         _ => Err(OxidbError::Type("Type mismatch for '<=' operator".into())),
                     },
-                    // TODO: Add other operators like "AND", "OR" etc.
-                    // For "AND", "OR", the structure of CompareOp might not be appropriate,
-                    // and a more general Expression::BinaryOp might be used.
                     _ => Err(OxidbError::NotImplemented {
                         feature: format!("Operator '{}' not implemented in CompareOp.", op),
                     }),
