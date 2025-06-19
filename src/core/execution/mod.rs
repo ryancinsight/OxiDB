@@ -10,7 +10,6 @@ use crate::core::types::DataType;
 use std::collections::HashMap;
 
 // Define Tuple type alias or struct
-#[allow(dead_code)] // TODO: Remove this when Tuple is used
 pub type Tuple = Vec<DataType>;
 
 // Define Row struct (optional, for now Tuple is simpler)
@@ -21,7 +20,6 @@ pub struct Row {
 }
 
 // Define ExecutionOperator trait
-#[allow(dead_code)] // TODO: Remove this when ExecutionOperator is used
 pub trait ExecutionOperator {
     fn execute(
         &mut self,

@@ -94,7 +94,6 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             return Ok(ExecutionResult::Updated { count: 0 });
         }
 
-        // TODO: Consider returning the updated_count in ExecutionResult (This TODO is now being addressed)
         let mut updated_count = 0;
 
         for key in keys_to_update {

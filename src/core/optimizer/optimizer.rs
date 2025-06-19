@@ -86,7 +86,8 @@ impl Optimizer {
                 }
                 plan_node = QueryPlanNode::Project {
                     input: Box::new(plan_node),
-                    columns: vec!["*".to_string()],
+                    // Project the key, which TableScanOperator now places at index 0.
+                    columns: vec!["0".to_string()],
                 };
                 Ok(plan_node)
             }

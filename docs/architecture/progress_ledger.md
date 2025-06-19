@@ -123,3 +123,13 @@ This ledger will be updated as work progresses on each component. "Required Comp
     *   [ ] ADR for Event Engine design and `Processor` pattern (Recommended)
 
 [end of docs/architecture/progress_ledger.md]
+
+
+## Recent Updates - 2025-06-19
+
+*   **Test Suite:** All `cargo test` pass.
+    *   Resolved an issue in `api::tests::db_tests::test_execute_query_str_update_ok`. The `FilterOperator` was enhanced to correctly resolve named columns (e.g., 'name') from `DataType::Map` during `WHERE` clause evaluation in `UPDATE` statements. This involved adjustments in `TableScanOperator` to emit key and row data separately, and in the `UPDATE` optimizer to ensure the key is projected through the internal selection plan.
+*   **Code Cleanup:**
+    *   Removed an outdated `TODO` comment from `src/core/query/executor/update_execution.rs` concerning `ExecutionResult::Updated` count, as this functionality was already implemented.
+    *   Removed unnecessary `#[allow(dead_code)]` annotations for `Tuple` and `ExecutionOperator` in `src/core/execution/mod.rs` as these are actively used.
+    *   Reviewed remaining `TODOs` (primarily in `src/core/optimizer/mod.rs`) and an unused `Row` struct; these were deemed acceptable to leave for future development.

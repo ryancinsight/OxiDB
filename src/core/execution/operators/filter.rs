@@ -106,7 +106,9 @@ impl FilterOperator {
     }
 
     /// Helper function to evaluate an expression to a concrete DataType.
-    /// Currently supports Literal and Column expressions.
+    /// Supports Literal and Column expressions.
+    /// For Column expressions, it attempts to resolve column names against a DataType::Map
+    /// assumed to be the first element of the tuple.
     fn evaluate_expression_to_datatype<'a>( // Lifetime 'a tied to tuple
         tuple: &'a Tuple,
         expr: &Expression,
@@ -114,25 +116,47 @@ impl FilterOperator {
         match expr {
             Expression::Literal(val) => Ok(Cow::Owned(val.clone())), // Literals are cloned
             Expression::Column(col_name) => {
-                let column_index = match col_name.parse::<usize>() {
-                    Ok(idx) => idx,
-                    Err(_) => {
-                        return Err(OxidbError::NotImplemented {
-                            feature: format!(
-                                "Column name resolution ('{}') not implemented. Use numeric index.",
-                                col_name
-                            ),
-                        });
+                // Attempt to parse as usize for direct index access first.
+                if let Ok(column_index) = col_name.parse::<usize>() {
+                    if column_index >= tuple.len() {
+                        return Err(OxidbError::Internal(format!(
+                            "Column index {} out of bounds for tuple with len {}.",
+                            column_index,
+                            tuple.len()
+                        )));
                     }
-                };
-                if column_index >= tuple.len() {
-                    return Err(OxidbError::Internal(format!(
-                        "Column index {} out of bounds for tuple with len {}.",
-                        column_index,
-                        tuple.len()
-                    )));
+                    Ok(Cow::Borrowed(&tuple[column_index]))
+                } else {
+                    // If not a usize, assume it's a named column for a map.
+                    // This is specific to how UPDATE works: the SELECT sub-query for UPDATE
+                    // should yield full DataType::Map rows if filtering by name is intended.
+                    // We assume the map is the first (and likely only) element in the tuple.
+                    // If not a usize, assume it's a named column for a map.
+                    // The TableScanOperator now produces: vec![key_data_type, row_data_type]
+                    // So, the actual row data (e.g., a map) is at tuple[1].
+                    if tuple.len() < 2 {
+                        return Err(OxidbError::Internal(format!(
+                            "Tuple too short ({}) for named column lookup ('{}'). Expected at least 2 elements (key, map).",
+                            tuple.len(), col_name
+                        )));
+                    }
+                    match &tuple[1] { // Check tuple[1] for the map
+                        DataType::Map(map_data) => {
+                            let key_bytes = col_name.as_bytes().to_vec();
+                            match map_data.0.get(&key_bytes) { // map_data is JsonSafeMap
+                                Some(data_type_value) => Ok(Cow::Borrowed(data_type_value)),
+                                None => Err(OxidbError::InvalidInput { message: format!(
+                                    "Column '{}' not found in map at tuple[1].",
+                                    col_name
+                                )}),
+                            }
+                        }
+                        _ => Err(OxidbError::Type(format!(
+                            "Expected DataType::Map at tuple[1] for named column lookup ('{}'), but found {:?}.",
+                            col_name, tuple[1]
+                        ))),
+                    }
                 }
-                Ok(Cow::Borrowed(&tuple[column_index])) // Borrow from tuple
             }
             _ => Err(OxidbError::NotImplemented {
                 feature: "Expression type not supported for direct DataType evaluation in predicate.".to_string(),

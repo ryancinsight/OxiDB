@@ -50,32 +50,20 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for TableScanOp
                                            // For now, this synchronous version should be okay.
 
         let iterator =
-            all_kvs.into_iter().filter_map(move |(_key, value_bytes)| match deserialize_data_type(
-                // deserialize_data_type now returns OxidbError
-                &value_bytes,
-            ) {
-                Ok(data_type) => {
-                    let tuple = match data_type {
-                        DataType::Map(JsonSafeMap(map_data)) => { // Use JsonSafeMap
-                            map_data.values().cloned().collect::<Vec<DataType>>() // Corrected: map_data is the HashMap
-                        }
-                        DataType::JsonBlob(json_value) => {
-                            if json_value.is_object() {
-                                json_value
-                                    .as_object()
-                                    .unwrap()
-                                    .values()
-                                    .map(|v| DataType::String(v.to_string()))
-                                    .collect::<Vec<DataType>>()
-                            } else {
-                                vec![DataType::JsonBlob(json_value)]
-                            }
-                        }
-                        single_val => vec![single_val],
-                    };
-                    Some(Ok(tuple))
+            all_kvs.into_iter().filter_map(move |(key_bytes, value_bytes)| {
+                match deserialize_data_type(&value_bytes) {
+                    Ok(row_data_type) => {
+                        // Convert the raw key_bytes to a DataType.
+                        // Assuming keys are strings for now, which is common.
+                        // This might need to be more flexible later (e.g. based on table schema).
+                        let key_data_type = DataType::String(String::from_utf8_lossy(&key_bytes).into_owned());
+
+                        // The tuple now contains the key as the first element, and the row data as the second.
+                        let tuple = vec![key_data_type, row_data_type];
+                        Some(Ok(tuple))
+                    }
+                    Err(e) => Some(Err(e)),
                 }
-                Err(e) => Some(Err(e)), // Changed to pass through OxidbError
             });
 
         Ok(Box::new(iterator))
