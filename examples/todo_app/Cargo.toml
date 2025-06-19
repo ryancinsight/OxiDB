@@ -1,0 +1,9 @@
+[package]
+name = "todo_app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.5.4", features = ["derive"] }
+oxidb = { path = "../../../oxidb" } # Assuming oxidb is at the root of the repo
+tokio = { version = "1.37.0", features = ["full"] }
