@@ -1,0 +1,154 @@
+Starting Oxidb DataType and Constraint Tests...
+Removed old database file: test_datatypes.db
+Database instance created/opened at: test_datatypes.db
+--- Testing PRIMARY KEY Constraint ---
+Executing: CREATE TABLE test_pk (id INTEGER PRIMARY KEY, name TEXT) (Create table with PK)
+  Success: Success
+
+Executing: INSERT INTO test_pk (id, name) VALUES (1, 'Alice') (Insert first record)
+  Success: Success
+
+Executing: INSERT INTO test_pk (id, name) VALUES (1, 'Alice V2') (Attempt duplicate PK insert)
+  Success: Success
+
+Executing: INSERT INTO test_pk (name) VALUES ('Bob') (Attempt insert without PK)
+  Success: Success
+
+Executing: INSERT INTO test_pk (id, name) VALUES (2, 'Charlie') (Insert second distinct PK)
+  Success: Success
+
+Executing SELECT: SELECT * FROM test_pk (Final data in test_pk)
+  Result: No rows returned.
+
+--- PRIMARY KEY Test Done ---
+
+--- Testing UNIQUE Constraint ---
+Executing: CREATE TABLE test_unique (id INTEGER, email TEXT UNIQUE NOT NULL) (Create table with UNIQUE NOT NULL email)
+  Success: Success
+
+Executing: INSERT INTO test_unique (id, email) VALUES (1, 'alice@example.com') (Insert first email)
+  Success: Success
+
+Executing: INSERT INTO test_unique (id, email) VALUES (2, 'alice@example.com') (Attempt duplicate email)
+  Success: Success
+
+Executing: INSERT INTO test_unique (id, email) VALUES (3, 'bob@example.com') (Insert second unique email)
+  Success: Success
+
+Executing SELECT: SELECT * FROM test_unique (Final data in test_unique)
+  Result: No rows returned.
+
+Executing: CREATE TABLE test_unique_nullable (id INTEGER, phone TEXT UNIQUE) (Create table with UNIQUE nullable phone)
+  Success: Success
+
+Executing: INSERT INTO test_unique_nullable (id, phone) VALUES (1, NULL) (Insert NULL phone 1)
+  Success: Success
+
+Executing: INSERT INTO test_unique_nullable (id, phone) VALUES (2, NULL) (Insert NULL phone 2)
+  Success: Success
+
+Executing: INSERT INTO test_unique_nullable (id, phone) VALUES (3, '123-4567') (Insert phone number)
+  Success: Success
+
+Executing: INSERT INTO test_unique_nullable (id, phone) VALUES (4, '123-4567') (Attempt duplicate phone number)
+  Success: Success
+
+Executing SELECT: SELECT * FROM test_unique_nullable (Final data in test_unique_nullable)
+  Result: No rows returned.
+
+--- UNIQUE Constraint Test Done ---
+
+--- Testing NOT NULL Constraint ---
+Executing: CREATE TABLE test_not_null (id INTEGER, description TEXT NOT NULL, notes TEXT) (Create table with NOT NULL description)
+  Success: Success
+
+Executing: INSERT INTO test_not_null (id, description, notes) VALUES (1, 'Desc 1', 'Note 1') (Insert valid record)
+  Success: Success
+
+Executing: INSERT INTO test_not_null (id, description, notes) VALUES (2, NULL, 'Note 2') (Attempt insert NULL for NOT NULL description)
+  Success: Success
+
+Executing: INSERT INTO test_not_null (id, notes) VALUES (3, 'Note 3') (Attempt insert record omitting NOT NULL description)
+  Success: Success
+
+Executing SELECT: SELECT * FROM test_not_null (Final data in test_not_null)
+  Result: No rows returned.
+
+--- NOT NULL Constraint Test Done ---
+
+--- Testing Various Data Types ---
+Executing: CREATE TABLE test_datatypes (c_integer INTEGER, c_text TEXT, c_boolean BOOLEAN, c_varchar_10 VARCHAR(10), c_numeric_5_2 NUMERIC(5,2)) (Create table with various data types)
+  Error: SqlParsing("Unsupported column type during CREATE TABLE translation: NUMERIC(5, 2)")
+
+Executing: INSERT INTO test_datatypes (c_integer) VALUES (123) (Insert INTEGER 123)
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_integer) VALUES (-456) (Insert INTEGER -456)
+  Error: SqlParsing("SQL tokenizer error: Invalid character '-' at position 47")
+
+Executing: INSERT INTO test_datatypes (c_integer) VALUES ('789') (Insert STRING '789' into INTEGER (type affinity test))
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_integer) VALUES ('abc') (Insert STRING 'abc' into INTEGER (should fail or store as 0/NULL if affinity is loose))
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_integer) VALUES (1.23) (Insert REAL 1.23 into INTEGER (type affinity test))
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_text) VALUES ('hello world') (Insert TEXT 'hello world')
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_text) VALUES (12345) (Insert INTEGER 12345 into TEXT (type affinity test))
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_text) VALUES (true) (Insert BOOLEAN true into TEXT (type affinity test))
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_boolean) VALUES (true) (Insert BOOLEAN true)
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_boolean) VALUES (false) (Insert BOOLEAN false)
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_boolean) VALUES (1) (Insert INTEGER 1 into BOOLEAN (type affinity test, should be true))
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_boolean) VALUES (0) (Insert INTEGER 0 into BOOLEAN (type affinity test, should be false))
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_boolean) VALUES ('true') (Insert STRING 'true' into BOOLEAN (type affinity test))
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_boolean) VALUES ('false') (Insert STRING 'false' into BOOLEAN (type affinity test))
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_boolean) VALUES ('yes') (Insert STRING 'yes' into BOOLEAN (should fail or be NULL/false))
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_boolean) VALUES (NULL) (Insert NULL into BOOLEAN)
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_varchar_10) VALUES ('short') (Insert 'short' into VARCHAR(10))
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_varchar_10) VALUES ('longervalue') (Insert 'longervalue' into VARCHAR(10) (11 chars))
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_numeric_5_2) VALUES ('123.45') (Insert STRING '123.45' into NUMERIC(5,2))
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_numeric_5_2) VALUES (123.45) (Insert REAL 123.45 into NUMERIC(5,2))
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_numeric_5_2) VALUES ('1234.56') (Insert '1234.56' into NUMERIC(5,2) (violates precision))
+  Success: Success
+
+Executing: INSERT INTO test_datatypes (c_numeric_5_2) VALUES ('abc') (Insert 'abc' into NUMERIC(5,2))
+  Success: Success
+
+Executing SELECT: SELECT * FROM test_datatypes (Final data in test_datatypes)
+  Result: No rows returned.
+
+--- Various Data Types Test Done ---
+
+All tests concluded. Database persisted.
