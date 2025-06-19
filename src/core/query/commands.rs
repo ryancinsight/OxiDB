@@ -70,6 +70,10 @@ pub enum Command {
         columns: Option<Vec<String>>, // None if columns are not specified
         values: Vec<Vec<DataType>>,   // Outer Vec for rows, inner Vec for values in a row
     },
+    SqlDelete {
+        table_name: String,
+        condition: Option<SqlCondition>,
+    },
     // Potentially others later, like:
     // Scan { prefix: Option<Key> },
 }

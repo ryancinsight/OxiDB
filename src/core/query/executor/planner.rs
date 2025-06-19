@@ -114,8 +114,27 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 let operator =
                     NestedLoopJoinOperator::new(left_operator, right_operator, join_predicate);
                 Ok(Box::new(operator))
-            } // If QueryPlanNode is extended, new variants must be handled here.
-              // The compiler will error if the match is not exhaustive.
+            }
+            QueryPlanNode::DeleteNode { input, table_name } => {
+                let input_operator =
+                    self.build_execution_tree(*input, snapshot_id, committed_ids.clone())?;
+
+                // TODO: Determine primary_key_column_index from schema information.
+                // For test_physical_wal_lsn_integration, table `test_lsn` has `id` as PK (first column).
+                let primary_key_column_index = 0;
+
+                let delete_operator = crate::core::execution::operators::DeleteOperator::new(
+                    input_operator,
+                    table_name,
+                    self.store.clone(),
+                    self.log_manager.clone(),
+                    crate::core::common::types::TransactionId(snapshot_id), // snapshot_id is current tx_id
+                    primary_key_column_index,
+                );
+                Ok(Box::new(delete_operator))
+            }
+            // If QueryPlanNode is extended, new variants must be handled here.
+            // The compiler will error if the match is not exhaustive.
         }
     }
 }

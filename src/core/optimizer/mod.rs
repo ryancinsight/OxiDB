@@ -34,6 +34,10 @@ pub enum QueryPlanNode {
         right: Box<QueryPlanNode>,
         join_predicate: Option<JoinPredicate>,
     },
+    DeleteNode { // Added DeleteNode
+        input: Box<QueryPlanNode>,
+        table_name: String,
+    },
 }
 
 #[allow(dead_code)] // TODO: Remove this when SimplePredicate is used

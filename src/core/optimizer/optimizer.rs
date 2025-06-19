@@ -110,6 +110,30 @@ impl Optimizer {
                     feature: "Query planning for INSERT statements".to_string(),
                 })
             }
+            AstStatement::Delete(delete_ast) => {
+                let mut plan_node = QueryPlanNode::TableScan {
+                    table_name: delete_ast.table_name.clone(),
+                    alias: None,
+                };
+
+                if let Some(ref condition_ast) = delete_ast.condition {
+                    let expression =
+                        self.ast_sql_condition_to_optimizer_expression(condition_ast)?;
+                    plan_node = QueryPlanNode::Filter {
+                        input: Box::new(plan_node),
+                        predicate: expression,
+                    };
+                }
+                // The input to DeleteNode should provide the primary keys of rows to be deleted.
+                // For now, TableScan followed by Filter will provide all columns of matching rows.
+                // The DeleteOperator will need to know which column is the PK.
+                // Or, Project can be used here if schema is known, to project only PK.
+                // Let's assume for now the PK can be identified by DeleteOperator from the full row.
+                Ok(QueryPlanNode::DeleteNode {
+                    input: Box::new(plan_node),
+                    table_name: delete_ast.table_name.clone(),
+                })
+            }
         }
     }
 
@@ -192,6 +216,10 @@ impl Optimizer {
                 }
             }
             QueryPlanNode::TableScan { .. } | QueryPlanNode::IndexScan { .. } => plan_node,
+            QueryPlanNode::DeleteNode { input, table_name } => QueryPlanNode::DeleteNode {
+                input: Box::new(self.apply_predicate_pushdown(*input)),
+                table_name,
+            },
         }
     }
 
@@ -262,6 +290,12 @@ impl Optimizer {
             }
             node @ QueryPlanNode::TableScan { .. } | node @ QueryPlanNode::IndexScan { .. } => {
                 Ok(node)
+            }
+            QueryPlanNode::DeleteNode { input, table_name } => {
+                Ok(QueryPlanNode::DeleteNode {
+                    input: Box::new(self.apply_index_selection(*input)?),
+                    table_name,
+                })
             }
         }
     }

@@ -17,6 +17,7 @@ pub enum Token {
     Values,
     True,
     False,
+    Delete, // Added Delete Token
 
     // Literals
     Identifier(String),
@@ -51,6 +52,7 @@ impl fmt::Debug for Token {
             Token::Values => write!(f, "Values"),
             Token::True => write!(f, "True"),
             Token::False => write!(f, "False"),
+            Token::Delete => write!(f, "Delete"), // Added for Delete Token
             Token::Identifier(s) => f.debug_tuple("Identifier").field(s).finish(),
             Token::StringLiteral(s) => f.debug_tuple("StringLiteral").field(s).finish(),
             Token::NumericLiteral(s) => f.debug_tuple("NumericLiteral").field(s).finish(),
@@ -121,6 +123,7 @@ impl<'a> Tokenizer<'a> {
             "VALUES" => Token::Values,
             "TRUE" => Token::BooleanLiteral(true),
             "FALSE" => Token::BooleanLiteral(false),
+            "DELETE" => Token::Delete, // Added for Delete Token
             _ => Token::Identifier(ident.to_string()),
         })
     }

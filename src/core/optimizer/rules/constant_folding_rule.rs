@@ -190,6 +190,10 @@ pub fn apply_constant_folding_rule(plan: QueryPlanNode) -> QueryPlanNode {
             // However, if it had an 'input' QueryPlanNode, we'd recurse. It does not.
             plan
         }
+        QueryPlanNode::DeleteNode { input, table_name } => {
+            let new_input = Box::new(apply_constant_folding_rule(*input));
+            QueryPlanNode::DeleteNode { input: new_input, table_name }
+        }
         // Add other QueryPlanNode variants here if they have expressions or inputs
     }
 }

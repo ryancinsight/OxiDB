@@ -70,10 +70,16 @@ pub struct InsertStatement {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct DeleteStatement {
+    pub table_name: String,
+    pub condition: Option<Condition>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     Select(SelectStatement),
     Update(UpdateStatement),
     CreateTable(CreateTableStatement),
     Insert(InsertStatement),
-    // Delete(DeleteStatement),
+    Delete(DeleteStatement),
 }

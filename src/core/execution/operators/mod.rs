@@ -23,9 +23,11 @@ pub mod index_scan;
 pub mod nested_loop_join;
 pub mod project;
 pub mod table_scan;
+pub mod delete; // Added delete module
 
 pub use filter::*;
 pub use index_scan::*;
 pub use nested_loop_join::*;
 pub use project::*;
 pub use table_scan::*;
+pub use delete::*; // Added delete export

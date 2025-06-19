@@ -89,6 +89,33 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
                 values: translated_values_list,
             })
         }
+        ast::Statement::Delete(delete_stmt) => {
+            let condition_cmd = match delete_stmt.condition {
+                Some(cond_ast) => Some(translate_condition_to_sql_condition(&cond_ast)?),
+                None => None,
+            };
+            Ok(Command::SqlDelete {
+                table_name: delete_stmt.table_name,
+                condition: condition_cmd,
+            })
+        }
+    }
+}
+
+// Helper function to convert DataType back to AstLiteralValue (subset)
+// This is needed for reconstructing AST parts in the executor for now.
+pub fn translate_datatype_to_ast_literal(
+    data_type: &DataType,
+) -> Result<ast::AstLiteralValue, OxidbError> {
+    match data_type {
+        DataType::String(s) => Ok(ast::AstLiteralValue::String(s.clone())),
+        DataType::Integer(i) => Ok(ast::AstLiteralValue::Number(i.to_string())),
+        DataType::Float(f) => Ok(ast::AstLiteralValue::Number(f.to_string())),
+        DataType::Boolean(b) => Ok(ast::AstLiteralValue::Boolean(*b)),
+        DataType::Null => Ok(ast::AstLiteralValue::Null),
+        DataType::Map(_) | DataType::JsonBlob(_) => Err(OxidbError::SqlParsing(
+            "Cannot translate complex DataType (Map/JsonBlob) to simple AST literal for conditions.".to_string(),
+        )),
     }
 }
 

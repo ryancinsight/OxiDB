@@ -16,6 +16,7 @@ impl SqlParser {
             Some(Token::Update) => self.parse_update_statement(),
             Some(Token::Create) => self.parse_create_table_statement(),
             Some(Token::Insert) => self.parse_insert_statement(),
+            Some(Token::Delete) => self.parse_delete_statement(), // Added
             Some(_other_token) => {
                 return Err(SqlParseError::UnknownStatementType(self.current_token_pos()))
             }
@@ -240,5 +241,28 @@ impl SqlParser {
         };
         // Semicolon handled by main parse()
         Ok(Statement::Update(UpdateStatement { source, assignments, condition }))
+    }
+
+    // Placeholder for DELETE statement parsing
+    fn parse_delete_statement(&mut self) -> Result<Statement, SqlParseError> {
+        self.consume(Token::Delete)?;
+        self.consume(Token::From)?;
+        let table_name = self.expect_identifier("Expected table name after DELETE FROM")?;
+        let condition = if self.match_token(Token::Where) {
+            self.consume(Token::Where)?;
+            Some(self.parse_condition()?)
+        } else {
+            None // Or error if WHERE clause is mandatory for DELETE
+        };
+        // Semicolon handled by main parse()
+
+        // TODO: Use a proper ast::DeleteStatement once defined
+        // For now, returning a temporary structure or error perhaps.
+        // Let's use the existing SelectStatement as a placeholder shape for now,
+        // this will be replaced with ast::DeleteStatement.
+        Ok(Statement::Delete(ast::DeleteStatement {
+            table_name,
+            condition,
+        }))
     }
 }

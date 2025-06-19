@@ -29,7 +29,7 @@ impl Binder {
             AstStatement::Update(_) => "Update",
             AstStatement::CreateTable(_) => "CreateTable",
             AstStatement::Insert(_) => "Insert",
-            // AstStatement::Delete is not yet defined in ast.rs, if it were, it would be here.
+            AstStatement::Delete(_) => "Delete", // Added Delete arm
             // The _ arm is unreachable if all AstStatement variants are covered.
             // If AstStatement is non_exhaustive or has other variants, _ might be needed.
             // Assuming for now all variants are covered or it's okay for this to be exhaustive.

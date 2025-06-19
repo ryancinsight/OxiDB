@@ -22,12 +22,13 @@ pub fn deserialize_data_type(bytes: &[u8]) -> Result<DataType, OxidbError> {
             println!("[deserialize_data_type] Bytes as lossy UTF-8 for this error: '{}'", String::from_utf8_lossy(bytes));
 
             if err_string.contains("key must be a string") {
-                 panic!(
-                    "[deserialize_data_type] PANICKING DUE TO 'key must be a string'. Full Error: '{}'. Bytes as lossy UTF-8: '{}'. Bytes as Debug: {:?}",
-                    err_string, // Use the captured error string
+                // Replaced panic with an error return
+                return Err(OxidbError::Deserialization(format!(
+                    "Key must be a string for JsonSafeMap. Full Error: '{}'. Bytes as lossy UTF-8: '{}'. Bytes as Debug: {:?}",
+                    err_string,
                     String::from_utf8_lossy(bytes),
                     bytes
-                );
+                )));
             }
             Err(OxidbError::Json(e)) // Propagate original error kind
         }

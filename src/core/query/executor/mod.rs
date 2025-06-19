@@ -327,6 +327,115 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         Ok(ExecutionResult::Deleted(deleted))
     }
 
+    #[allow(unused_variables)] // Remove when implemented
+    pub(crate) fn handle_sql_delete(
+        &mut self,
+        table_name: String,
+        condition: Option<crate::core::query::commands::SqlCondition>,
+    ) -> Result<ExecutionResult, OxidbError> {
+        let current_op_tx_id = self
+            .transaction_manager
+            .current_active_transaction_id()
+            .unwrap_or(TransactionId(0)); // Default to 0 for auto-commit
+
+        let is_auto_commit = current_op_tx_id == TransactionId(0);
+
+        if is_auto_commit {
+            // For auto-commit, we'd ideally start a transaction here if the operation was complex
+            // and needed to be atomic beyond a single key-value store operation.
+            // However, individual operations in DeleteOperator will use tx_id 0.
+            // The main concern for auto-commit is logging a final commit record to WAL.
+        }
+
+        // 1. Construct AST (already done by parser, effectively passed in as table_name & condition)
+        // We need to create an ast::DeleteStatement to build the initial plan.
+        // This is a bit of a workaround as the executor typically gets Commands, not raw parts to rebuild an AST.
+        // This suggests the planning/optimization pipeline might need to start earlier, from the Command itself.
+        // For now, reconstruct a minimal AST for the optimizer.
+
+        let ast_condition = if let Some(cond) = condition {
+            Some(crate::core::query::sql::ast::Condition {
+                column: cond.column,
+                operator: cond.operator,
+                value: crate::core::query::sql::translator::translate_datatype_to_ast_literal(&cond.value)?,
+            })
+        } else {
+            None
+        };
+
+        let ast_delete_stmt = crate::core::query::sql::ast::Statement::Delete(
+            crate::core::query::sql::ast::DeleteStatement {
+                table_name: table_name.clone(), // Optimizer expects String
+                condition: ast_condition,
+            },
+        );
+
+        // 2. Build Logical Plan
+        let logical_plan = self.optimizer.build_initial_plan(&ast_delete_stmt)?;
+
+        // 3. Build Physical Plan (Execution Tree)
+        // `snapshot_id` for build_execution_tree is the current transaction_id for visibility rules.
+        let committed_ids_snapshot = Arc::new(
+            self.transaction_manager
+                .get_committed_tx_ids_snapshot()
+                .into_iter()
+                .map(|tx_id| tx_id.0)
+                .collect(),
+        );
+        let mut physical_plan_root = self.build_execution_tree(
+            logical_plan,
+            current_op_tx_id.0,
+            committed_ids_snapshot,
+        )?;
+
+        // 4. Execute the plan
+        let mut deleted_count = 0;
+        // The DeleteOperator is designed to do all work in its first `next()` call
+        // and then return a summary.
+        // physical_plan_root is Box<dyn ExecutionOperator>, call execute() to get iterator
+        let mut result_iterator = physical_plan_root.execute()?;
+        if let Some(result_tuple_res) = result_iterator.next() {
+            let result_tuple = result_tuple_res?; // Handle potential error from iterator item
+            if let Some(DataType::Integer(count)) = result_tuple.get(0) { // count is &i64
+                deleted_count = *count as usize; // Dereference count
+            } else {
+                return Err(OxidbError::Execution(
+                    "DeleteOperator did not return a count.".to_string(),
+                ));
+            }
+        }
+
+        // 5. Handle Auto-Commit for physical WAL
+        if is_auto_commit {
+            // If this was an auto-commit operation (tx_id 0), we need to ensure
+            // that the underlying SimpleFileKvStore, if it buffers WAL entries internally
+            // before a commit marker, gets a commit signal.
+            // SimpleFileKvStore's delete() logs WalEntry::Delete with tx_id 0.
+            // It does not automatically log a TransactionCommit for tx_id 0.
+            // The TransactionManager handles logical Begin/Commit/Rollback for its own WAL.
+            // For physical WAL consistency with tx_id 0, a commit marker might be needed
+            // if the store batches. However, SimpleFileKvStore's WalWriter in default config
+            // flushes on each entry if no transaction is active or buffer limits are hit.
+            // Let's assume for now that individual WAL entries from DeleteOperator are flushed.
+            // A dedicated store.log_wal_entry(WalEntry::TransactionCommit{lsn, tx_id:0}) would be cleaner.
+            // This part is tricky without a direct store.commit(tx_id) or store.log_control_wal_entry().
+            // The test `test_physical_wal_lsn_integration` will verify if LSNs are okay.
+            // For now, we rely on the DeleteOperator's individual WAL writes.
+            // The logical TransactionManager is not involved for auto-commit tx_id 0 ops.
+
+            // Log a physical TransactionCommit for auto-commit scenario
+            let commit_lsn = self.log_manager.next_lsn();
+            self.store.write().unwrap().log_wal_entry(&crate::core::storage::engine::wal::WalEntry::TransactionCommit {
+                lsn: commit_lsn,
+                transaction_id: current_op_tx_id.0, // Should be 0 if is_auto_commit
+            })?;
+            // Note: TransactionManager is not involved for auto-commit's logical state,
+            // but we've logged a physical commit marker.
+        }
+
+        Ok(ExecutionResult::Updated { count: deleted_count })
+    }
+
     // handle_find_by_index, handle_vacuum - these are in ddl_handlers.rs and transaction_handlers.rs respectively.
     // handle_select, handle_update - these are in select_execution.rs and update_execution.rs respectively.
 }

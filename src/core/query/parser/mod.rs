@@ -57,7 +57,36 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, OxidbError> {
             // Legacy INSERT key value
             parse_legacy_command_string(query_str)
         }
-    } else if first_word == "SELECT" || first_word == "UPDATE" || first_word == "CREATE" {
+    } else if first_word == "DELETE" {
+        // Try SQL DELETE first
+        let mut tokenizer = Tokenizer::new(query_str);
+        match tokenizer.tokenize() {
+            Ok(tokens) => {
+                let mut parser = SqlParser::new(tokens.clone()); // Clone tokens for potential fallback
+                match parser.parse() {
+                    Ok(ast_statement @ sql::ast::Statement::Delete { .. }) => {
+                        // Successfully parsed as a SQL DELETE statement
+                        sql::translator::translate_ast_to_command(ast_statement)
+                    }
+                    Ok(_other_ast_type) => {
+                        // Parsed as valid SQL, but not a DELETE AST.
+                        // This might be a complex case or an error.
+                        // For now, assume if it's not a SQL Delete AST, try legacy.
+                        // This could happen if "DELETE" is a prefix of another valid SQL command not yet fully supported.
+                        parse_legacy_command_string(query_str)
+                    }
+                    Err(_sql_parse_error) => {
+                        // SQL parsing failed, assume it might be a legacy "DELETE key" command.
+                        parse_legacy_command_string(query_str)
+                    }
+                }
+            }
+            Err(_tokenizer_error) => {
+                // Tokenization failed, less likely to be a valid legacy command, but try anyway for robustness.
+                parse_legacy_command_string(query_str)
+            }
+        }
+    } else if first_word == "SELECT" || first_word == "UPDATE" || first_word == "CREATE" { // DELETE removed from this line
         // Other SQL commands
         let mut tokenizer = Tokenizer::new(query_str);
         match tokenizer.tokenize() {
@@ -80,10 +109,9 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, OxidbError> {
         || first_word == "COMMIT"
         || first_word == "ROLLBACK"
     {
-        // Legacy commands (excluding INSERT, which is handled above)
+        // Legacy commands (excluding INSERT and DELETE)
         parse_legacy_command_string(query_str)
-    } else {
-        // Default: try to parse as SQL (for unknown commands or future SQL commands)
+    } else { // Fallback for unknown commands, try SQL then error
         let mut tokenizer = Tokenizer::new(query_str);
         match tokenizer.tokenize() {
             Ok(tokens) => {
