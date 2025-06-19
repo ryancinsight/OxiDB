@@ -219,4 +219,43 @@ impl Oxidb {
     pub fn index_path(&self) -> PathBuf {
         self.executor.index_base_path()
     }
+
+    /// Finds primary keys by an indexed value.
+    ///
+    /// # Arguments
+    /// * `index_name` - The name of the index to search.
+    /// * `value_to_find` - The `DataType` representing the value to search for in the index.
+    ///
+    /// # Returns
+    /// * `Ok(Some(Vec<DataType>))` if values are found. Each `DataType` in the vector typically
+    ///   represents a primary key or a full record, depending on index implementation.
+    /// * `Ok(None)` if no values are found for the given indexed value.
+    /// * `Err(OxidbError)` if any error occurs.
+    pub fn find_by_index(&mut self, index_name: String, value_to_find: DataType) -> Result<Option<Vec<DataType>>, OxidbError> {
+        // Serialize the DataType to Vec<u8> for the command
+        let serialized_value = match crate::core::common::serialization::serialize_data_type(&value_to_find) {
+            Ok(val) => val,
+            Err(e) => return Err(OxidbError::Serialization(format!("Failed to serialize value for index lookup: {}", e))),
+        };
+
+        let command = Command::FindByIndex {
+            index_name,
+            value: serialized_value,
+        };
+
+        match self.executor.execute_command(command) {
+            Ok(ExecutionResult::Values(values_vec)) => {
+                if values_vec.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(values_vec))
+                }
+            }
+            Ok(unexpected_result) => Err(OxidbError::Internal(format!(
+                "FindByIndex: Expected Values, got {:?}",
+                unexpected_result
+            ))),
+            Err(e) => Err(e),
+        }
+    }
 }

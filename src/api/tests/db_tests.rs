@@ -157,6 +157,63 @@ fn test_execute_query_str_get_ok() {
 }
 
 #[test]
+fn test_oxidb_find_by_index() {
+    let db_path = get_temp_db_path();
+    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance for find_by_index test");
+
+    let key1 = b"idx_key1".to_vec();
+    let val1 = "indexed_value_common".to_string();
+    let key2 = b"idx_key2".to_vec();
+    let val2 = "indexed_value_common".to_string(); // Same value as key1
+    let key3 = b"idx_key3".to_vec();
+    let val3 = "another_value".to_string();
+
+    db.insert(key1.clone(), val1.clone()).expect("Insert 1 failed");
+    db.insert(key2.clone(), val2.clone()).expect("Insert 2 failed");
+    db.insert(key3.clone(), val3.clone()).expect("Insert 3 failed");
+
+    // Find by the common value
+    let find_result = db.find_by_index("default_value_index".to_string(), DataType::String(val1.clone()));
+    assert!(find_result.is_ok(), "find_by_index failed: {:?}", find_result.err());
+
+    match find_result.unwrap() {
+        Some(mut values_vec) => {
+            // The values returned are the full DataType::String values of the records found
+            assert_eq!(values_vec.len(), 2, "Expected two records for the common indexed value");
+            // Sort for consistent comparison as order is not guaranteed
+            values_vec.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
+            assert_eq!(values_vec[0], DataType::String(val1.clone()));
+            assert_eq!(values_vec[1], DataType::String(val2.clone())); // val1 and val2 are identical strings
+        }
+        None => panic!("Expected Some(Vec<DataType>), got None for common value"),
+    }
+
+    // Find by a unique value
+    let find_result_unique = db.find_by_index("default_value_index".to_string(), DataType::String(val3.clone()));
+    assert!(find_result_unique.is_ok(), "find_by_index for unique value failed: {:?}", find_result_unique.err());
+    match find_result_unique.unwrap() {
+        Some(values_vec) => {
+            assert_eq!(values_vec.len(), 1, "Expected one record for the unique indexed value");
+            assert_eq!(values_vec[0], DataType::String(val3.clone()));
+        }
+        None => panic!("Expected Some(Vec<DataType>), got None for unique value"),
+    }
+
+    // Find by a non-existent value
+    let find_result_none = db.find_by_index("default_value_index".to_string(), DataType::String("non_existent_value".to_string()));
+    assert!(find_result_none.is_ok(), "find_by_index for non-existent value failed: {:?}", find_result_none.err());
+    assert!(find_result_none.unwrap().is_none(), "Expected None for non-existent value");
+
+    // Find on non-existent index
+    let find_result_no_index = db.find_by_index("wrong_index_name".to_string(), DataType::String(val1.clone()));
+    assert!(find_result_no_index.is_err(), "Expected error for non-existent index");
+    match find_result_no_index.err().unwrap() {
+        OxidbError::Index(msg) => assert!(msg.contains("not found for find operation")),
+        other_err => panic!("Expected OxidbError::Index, got {:?}", other_err),
+    }
+}
+
+#[test]
 fn test_execute_query_str_get_not_found() {
     let db_path = get_temp_db_path();
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb for get_not_found test");

@@ -952,6 +952,70 @@ fn test_delete_atomicity_wal_failure() {
     let _ = std::fs::remove_dir_all(&wal_path);
 }
 
+#[test]
+fn test_scan_operation() {
+    let temp_file = NamedTempFile::new().unwrap();
+    let mut store = SimpleFileKvStore::new(temp_file.path()).unwrap();
+
+    let tx0 = Transaction::new(TransactionId(0)); // For initial auto-committed data
+    let tx1 = Transaction::new(TransactionId(1));
+    // let tx2 = Transaction::new(TransactionId(2)); // Not used in current test logic
+    // let tx3 = Transaction::new(TransactionId(3)); // Not used in current test logic
+
+    let key1 = b"key1_scan".to_vec();
+    let val1_v1 = b"val1_v1_scan".to_vec();
+    let val1_v2 = b"val1_v2_scan".to_vec();
+
+    let key2 = b"key2_scan".to_vec();
+    let val2_v1 = b"val2_v1_scan".to_vec();
+
+    let key3 = b"key3_scan".to_vec();
+    let val3_v1 = b"val3_v1_scan".to_vec();
+
+    let key4_uncommitted = b"key4_uncommitted_scan".to_vec();
+    let val4_uncommitted = b"val4_uncommitted_scan".to_vec();
+
+    // Initial inserts (auto-committed with tx0)
+    store.put(key1.clone(), val1_v1.clone(), &tx0, 0).unwrap();
+    store.put(key2.clone(), val2_v1.clone(), &tx0, 1).unwrap();
+    store.put(key3.clone(), val3_v1.clone(), &tx0, 2).unwrap();
+
+    // Update key1 (tx1 expires tx0's version of key1)
+    // For scan (non-MVCC, latest visible), this new version by tx0 (simulating it's committed) will be seen.
+    store.put(key1.clone(), val1_v2.clone(), &tx0, 3).unwrap();
+
+    // Delete key2 (tx2 expires tx0's version of key2)
+    // For scan, this means key2 should not appear.
+    store.delete(&key2, &tx0, 4).unwrap();
+
+    // Insert a key with a transaction that is not "committed" for the basic scan
+    // (scan uses snapshot_id=0 and empty committed_ids for basic version)
+    // but SimpleFileKvStore's scan doesn't use snapshot_id or committed_ids yet.
+    // It just takes the latest non-expired. So this should appear if not expired.
+    store.put(key4_uncommitted.clone(), val4_uncommitted.clone(), &tx1, 5).unwrap();
+
+
+    let mut scan_result = store.scan().unwrap();
+    // Sort results by key for stable comparison
+    scan_result.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut expected_results = vec![
+        (key1.clone(), val1_v2.clone()), // key1 updated to v2
+        (key3.clone(), val3_v1.clone()), // key3 remains
+        (key4_uncommitted.clone(), val4_uncommitted.clone()) // key4 visible
+    ];
+    expected_results.sort_by(|a, b| a.0.cmp(&b.0));
+
+    assert_eq!(scan_result.len(), 3);
+    assert_eq!(scan_result, expected_results);
+
+    // Test scan on an empty store
+    let temp_file_empty = NamedTempFile::new().unwrap();
+    let empty_store = SimpleFileKvStore::new(temp_file_empty.path()).unwrap();
+    let empty_scan_result = empty_store.scan().unwrap();
+    assert!(empty_scan_result.is_empty());
+}
+
 // TODO: Implement Scan operation for SimpleFileKvStore
 #[test]
 #[ignore]

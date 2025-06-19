@@ -180,25 +180,32 @@ impl SqlParser {
 
         self.consume(Token::Values)?;
 
-        // For now, parse one set of values. Multi-value INSERT can be added later.
         let mut values_list = Vec::new();
-        self.consume(Token::LParen)?;
-        let mut current_values_set = Vec::new();
-        if !self.match_token(Token::RParen) {
-            // Check if not empty list like "()"
-            loop {
-                current_values_set
-                    .push(self.parse_literal_value("Expected value in VALUES clause")?);
-                if self.match_token(Token::RParen) {
-                    break;
+        loop { // Loop to parse multiple VALUES sets
+            self.consume(Token::LParen)?;
+            let mut current_values_set = Vec::new();
+            if !self.match_token(Token::RParen) {
+                // Check if not empty list like "()"
+                loop {
+                    current_values_set
+                        .push(self.parse_literal_value("Expected value in VALUES clause")?);
+                    if self.match_token(Token::RParen) {
+                        break;
+                    }
+                    // Comma between values in a single set
+                    self.consume(Token::Comma)?;
                 }
-                self.consume(Token::Comma)?;
+            }
+            self.consume(Token::RParen)?;
+            values_list.push(current_values_set);
+
+            // Check for comma between VALUES sets
+            if self.match_token(Token::Comma) {
+                self.consume(Token::Comma)?; // Consume comma and continue loop
+            } else {
+                break; // No more VALUES sets, or end of statement
             }
         }
-        self.consume(Token::RParen)?;
-        values_list.push(current_values_set);
-
-        // TODO: Add loop here to parse multiple VALUES sets: , (val1, val2), ...
 
         // Semicolon handled by main parse()
 

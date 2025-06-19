@@ -1,6 +1,7 @@
 use crate::core::common::OxidbError;
 use crate::core::execution::{ExecutionOperator, Tuple};
 use crate::core::optimizer::Expression;
+use std::borrow::Cow;
 use crate::core::types::DataType;
 
 pub struct FilterOperator {
@@ -34,61 +35,12 @@ impl FilterOperator {
     ) -> Result<bool, OxidbError> {
         match predicate {
             Expression::CompareOp { left, op, right } => {
-                // Assumption: left is Column, right is Literal for now, to match old logic.
-                // A full expression evaluation system would be needed for arbitrary expressions.
-                let left_val = match &**left {
-                    Expression::Column(col_name) => {
-                        let column_index = match col_name.parse::<usize>() {
-                            Ok(idx) => idx,
-                            Err(_) => {
-                                return Err(OxidbError::NotImplemented {
-                                    feature: format!(
-                                        "Column name resolution ('{}') not implemented. Use numeric index.",
-                                        col_name
-                                    ),
-                                });
-                            }
-                        };
-                        if column_index >= tuple.len() {
-                            return Err(OxidbError::Internal(format!(
-                                "Predicate column index {} out of bounds.",
-                                column_index
-                            )));
-                        }
-                        &tuple[column_index]
-                    }
-                    Expression::Literal(val) => val, // Allow literal on left side
-                    _ => return Err(OxidbError::NotImplemented {
-                        feature: "Complex expressions in left side of CompareOp not supported yet".to_string(),
-                    }),
-                };
+                let left_val_cow = Self::evaluate_expression_to_datatype(tuple, left)?;
+                let right_val_cow = Self::evaluate_expression_to_datatype(tuple, right)?;
 
-                let right_val = match &**right {
-                    Expression::Literal(val) => val,
-                    Expression::Column(col_name) => { // Allow column on right side
-                        let column_index = match col_name.parse::<usize>() {
-                            Ok(idx) => idx,
-                            Err(_) => {
-                                return Err(OxidbError::NotImplemented {
-                                    feature: format!(
-                                        "Column name resolution ('{}') not implemented. Use numeric index.",
-                                        col_name
-                                    ),
-                                });
-                            }
-                        };
-                        if column_index >= tuple.len() {
-                            return Err(OxidbError::Internal(format!(
-                                "Predicate column index {} out of bounds.",
-                                column_index
-                            )));
-                        }
-                        &tuple[column_index]
-                    }
-                    _ => return Err(OxidbError::NotImplemented {
-                        feature: "Complex expressions in right side of CompareOp not supported yet".to_string(),
-                    }),
-                };
+                // Dereference Cow to get &DataType for comparison
+                let left_val = &*left_val_cow;
+                let right_val = &*right_val_cow;
 
                 match op.as_str() {
                     "=" => Ok(left_val == right_val),
@@ -105,18 +57,88 @@ impl FilterOperator {
                         (DataType::String(a), DataType::String(b)) => Ok(a < b),
                         _ => Err(OxidbError::Type("Type mismatch for '<' operator".into())),
                     },
-                    // TODO: Add other operators like ">=", "<=", "AND", "OR" etc.
+                    ">=" => match (left_val, right_val) {
+                        (DataType::Integer(a), DataType::Integer(b)) => Ok(a >= b),
+                        (DataType::Float(a), DataType::Float(b)) => Ok(a >= b),
+                        (DataType::String(a), DataType::String(b)) => Ok(a >= b),
+                        _ => Err(OxidbError::Type("Type mismatch for '>=' operator".into())),
+                    },
+                    "<=" => match (left_val, right_val) {
+                        (DataType::Integer(a), DataType::Integer(b)) => Ok(a <= b),
+                        (DataType::Float(a), DataType::Float(b)) => Ok(a <= b),
+                        (DataType::String(a), DataType::String(b)) => Ok(a <= b),
+                        _ => Err(OxidbError::Type("Type mismatch for '<=' operator".into())),
+                    },
+                    // TODO: Add other operators like "AND", "OR" etc.
                     // For "AND", "OR", the structure of CompareOp might not be appropriate,
                     // and a more general Expression::BinaryOp might be used.
                     _ => Err(OxidbError::NotImplemented {
-                        feature: format!("Operator '{}' not implemented.", op),
+                        feature: format!("Operator '{}' not implemented in CompareOp.", op),
                     }),
                 }
             }
             // If other Expression variants (Literal, Column, BinaryOp) can be predicates:
             Expression::Literal(DataType::Boolean(b)) => Ok(*b), // e.g. WHERE true
+            Expression::BinaryOp { left, op, right } => {
+                // Evaluate left and right sub-expressions recursively
+                let left_result = Self::static_evaluate_predicate(tuple, left)?;
+
+                // Short-circuit for AND and OR
+                match op.as_str() {
+                    "AND" => {
+                        if !left_result {
+                            return Ok(false); // Short-circuit if left is false
+                        }
+                        Self::static_evaluate_predicate(tuple, right)
+                    }
+                    "OR" => {
+                        if left_result {
+                            return Ok(true); // Short-circuit if left is true
+                        }
+                        Self::static_evaluate_predicate(tuple, right)
+                    }
+                    _ => Err(OxidbError::NotImplemented {
+                        feature: format!("Logical operator '{}' not implemented in BinaryOp.", op),
+                    }),
+                }
+            }
             _ => Err(OxidbError::NotImplemented {
-                feature: "This type of expression is not supported as a predicate yet".to_string(),
+                feature: "This type of expression is not supported as a predicate yet for direct evaluation in filter".to_string(),
+            }),
+        }
+    }
+
+    /// Helper function to evaluate an expression to a concrete DataType.
+    /// Currently supports Literal and Column expressions.
+    fn evaluate_expression_to_datatype<'a>( // Lifetime 'a tied to tuple
+        tuple: &'a Tuple,
+        expr: &Expression,
+    ) -> Result<Cow<'a, DataType>, OxidbError> {
+        match expr {
+            Expression::Literal(val) => Ok(Cow::Owned(val.clone())), // Literals are cloned
+            Expression::Column(col_name) => {
+                let column_index = match col_name.parse::<usize>() {
+                    Ok(idx) => idx,
+                    Err(_) => {
+                        return Err(OxidbError::NotImplemented {
+                            feature: format!(
+                                "Column name resolution ('{}') not implemented. Use numeric index.",
+                                col_name
+                            ),
+                        });
+                    }
+                };
+                if column_index >= tuple.len() {
+                    return Err(OxidbError::Internal(format!(
+                        "Column index {} out of bounds for tuple with len {}.",
+                        column_index,
+                        tuple.len()
+                    )));
+                }
+                Ok(Cow::Borrowed(&tuple[column_index])) // Borrow from tuple
+            }
+            _ => Err(OxidbError::NotImplemented {
+                feature: "Expression type not supported for direct DataType evaluation in predicate.".to_string(),
             }),
         }
     }
@@ -144,3 +166,6 @@ impl ExecutionOperator for FilterOperator {
         Ok(Box::new(iterator))
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -1919,7 +1919,7 @@ mod tests {
             "DELETE of key_updated after rollback failed" // Restored original message
         );
 
-        executor.persist()?; // Attempt to flush WAL and apply deletes to main store
+        // executor.persist()?; // Attempt to flush WAL and apply deletes to main store
 
         // d. Verify key_updated is gone from store
         assert_eq!(

@@ -692,6 +692,106 @@ fn test_identifier_as_substring_of_keyword() {
 }
 
 #[test]
+fn test_parse_insert_simple() {
+    let tokens = tokenize_str("INSERT INTO users (name, email) VALUES ('Alice', 'alice@example.com');");
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Insert(insert_stmt) => {
+            assert_eq!(insert_stmt.table_name, "users");
+            assert_eq!(insert_stmt.columns, Some(vec!["name".to_string(), "email".to_string()]));
+            assert_eq!(insert_stmt.values.len(), 1);
+            assert_eq!(insert_stmt.values[0].len(), 2);
+            assert_eq!(insert_stmt.values[0][0], AstLiteralValue::String("Alice".to_string()));
+            assert_eq!(insert_stmt.values[0][1], AstLiteralValue::String("alice@example.com".to_string()));
+        }
+        _ => panic!("Expected InsertStatement"),
+    }
+}
+
+#[test]
+fn test_parse_insert_multiple_values() {
+    // Test case 1: Multiple VALUES sets with explicit columns
+    let tokens1 = tokenize_str("INSERT INTO products (id, name, price) VALUES (1, 'Laptop', 1200.00), (2, 'Mouse', 25.00), (3, 'Keyboard', 75.50);");
+    let mut parser1 = SqlParser::new(tokens1);
+    let ast1 = parser1.parse().unwrap();
+    match ast1 {
+        Statement::Insert(insert_stmt) => {
+            assert_eq!(insert_stmt.table_name, "products");
+            assert_eq!(insert_stmt.columns, Some(vec!["id".to_string(), "name".to_string(), "price".to_string()]));
+            assert_eq!(insert_stmt.values.len(), 3, "Expected 3 sets of values for TC1");
+            // Check first set
+            assert_eq!(insert_stmt.values[0].len(), 3);
+            assert_eq!(insert_stmt.values[0][0], AstLiteralValue::Number("1".to_string()));
+            assert_eq!(insert_stmt.values[0][1], AstLiteralValue::String("Laptop".to_string()));
+            assert_eq!(insert_stmt.values[0][2], AstLiteralValue::Number("1200.00".to_string()));
+            // Check second set
+            assert_eq!(insert_stmt.values[1].len(), 3);
+            assert_eq!(insert_stmt.values[1][0], AstLiteralValue::Number("2".to_string()));
+            assert_eq!(insert_stmt.values[1][1], AstLiteralValue::String("Mouse".to_string()));
+            assert_eq!(insert_stmt.values[1][2], AstLiteralValue::Number("25.00".to_string()));
+            // Check third set
+            assert_eq!(insert_stmt.values[2].len(), 3);
+            assert_eq!(insert_stmt.values[2][0], AstLiteralValue::Number("3".to_string()));
+            assert_eq!(insert_stmt.values[2][1], AstLiteralValue::String("Keyboard".to_string()));
+            assert_eq!(insert_stmt.values[2][2], AstLiteralValue::Number("75.50".to_string()));
+        }
+        _ => panic!("Expected InsertStatement for TC1"),
+    }
+
+    // Test case 2: Multiple VALUES sets without explicit columns
+    let tokens2 = tokenize_str("INSERT INTO locations VALUES ('USA', 'New York'), ('CAN', 'Toronto');");
+    let mut parser2 = SqlParser::new(tokens2);
+    let ast2 = parser2.parse().unwrap();
+    match ast2 {
+        Statement::Insert(insert_stmt) => {
+            assert_eq!(insert_stmt.table_name, "locations");
+            assert!(insert_stmt.columns.is_none());
+            assert_eq!(insert_stmt.values.len(), 2, "Expected 2 sets of values for TC2");
+            assert_eq!(insert_stmt.values[0].len(), 2);
+            assert_eq!(insert_stmt.values[0][0], AstLiteralValue::String("USA".to_string()));
+            assert_eq!(insert_stmt.values[0][1], AstLiteralValue::String("New York".to_string()));
+            assert_eq!(insert_stmt.values[1].len(), 2);
+            assert_eq!(insert_stmt.values[1][0], AstLiteralValue::String("CAN".to_string()));
+            assert_eq!(insert_stmt.values[1][1], AstLiteralValue::String("Toronto".to_string()));
+        }
+        _ => panic!("Expected InsertStatement for TC2"),
+    }
+
+    // Test case 3: Single VALUES set (ensure loop handles this correctly)
+    let tokens3 = tokenize_str("INSERT INTO tasks (description) VALUES ('Finish report');");
+    let mut parser3 = SqlParser::new(tokens3);
+    let ast3 = parser3.parse().unwrap();
+    match ast3 {
+        Statement::Insert(insert_stmt) => {
+            assert_eq!(insert_stmt.table_name, "tasks");
+            assert_eq!(insert_stmt.columns, Some(vec!["description".to_string()]));
+            assert_eq!(insert_stmt.values.len(), 1, "Expected 1 set of values for TC3");
+            assert_eq!(insert_stmt.values[0].len(), 1);
+            assert_eq!(insert_stmt.values[0][0], AstLiteralValue::String("Finish report".to_string()));
+        }
+        _ => panic!("Expected InsertStatement for TC3"),
+    }
+
+    // Test case 4: Error - Trailing comma after last VALUES set
+    let tokens4 = tokenize_str("INSERT INTO test VALUES (1, 'a'),;");
+    let mut parser4 = SqlParser::new(tokens4);
+    let result4 = parser4.parse();
+    assert!(matches!(result4, Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)), "Result was: {:?}", result4);
+     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result4 {
+        assert!(expected.to_lowercase().contains("lparen") || expected.to_lowercase().contains("(")); // Expects start of new value set
+        assert!(found.to_lowercase().contains("semicolon"));
+    } else if let Err(SqlParseError::UnexpectedEOF) = result4 {
+        // This might also be valid if the parser expects another ( but finds EOF after comma
+         panic!("UnexpectedEOF, expected UnexpectedToken for trailing comma in VALUES");
+    }
+    else {
+        panic!("Wrong error type for trailing comma in VALUES: {:?}", result4);
+    }
+}
+
+
+#[test]
 fn test_mixed_case_keywords() {
     let tokens = tokenize_str("SeLeCt * FrOm my_table WhErE value = TrUe;");
     let mut parser = SqlParser::new(tokens);

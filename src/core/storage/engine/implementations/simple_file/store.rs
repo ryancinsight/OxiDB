@@ -247,12 +247,23 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
     }
 
     fn scan(&self) -> Result<Vec<(Vec<u8>, Vec<u8>)>, OxidbError>
-    // Changed
     where
-        Vec<u8>: Clone,
-        Vec<u8>: Clone,
+        Vec<u8>: Clone, // K: Clone
+        Vec<u8>: Clone, // V: Clone
     {
-        unimplemented!("Scan operation is not yet implemented for SimpleFileKvStore");
+        let mut results = Vec::new();
+        for (key, versions) in self.cache.iter() {
+            // Find the latest, non-expired version for this key.
+            // This mimics the logic in `get` for snapshot_id = 0 (non-transactional read).
+            for version in versions.iter().rev() {
+                if version.expired_tx_id.is_none() {
+                    // This is the latest live version of the key.
+                    results.push((key.clone(), version.value.clone()));
+                    break; // Move to the next key
+                }
+            }
+        }
+        Ok(results)
     }
 }
 
