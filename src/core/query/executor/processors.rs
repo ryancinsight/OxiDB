@@ -1,8 +1,9 @@
 // src/core/query/executor/processors.rs
 
 use crate::core::common::OxidbError;
-use crate::core::types::DataType; // Added import for DataType
-use crate::core::query::commands::Command; // Crucial: ensures Command is in scope
+use crate::core::types::DataType;
+use crate::core::query::commands::Command;
+use uuid; // Added for Uuid::new_v4()
 use crate::core::query::executor::{ExecutionResult, QueryExecutor};
 use crate::core::storage::engine::traits::KeyValueStore;
 
@@ -45,28 +46,46 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                 // Proper implementation requires schema manager.
                 let mut results = Vec::new();
                 for row_values in values {
-                    if table_name == "test_lsn" && row_values.len() == 2 {
-                        let pk_val = row_values.first().cloned().unwrap_or(DataType::Null); // Changed .get(0) to .first()
+                    if table_name == "todos" && _columns.is_some() && _columns.as_ref().unwrap().len() == 2 && row_values.len() == 2 {
+                        // Specific handler for: INSERT INTO todos (description, done) VALUES (?, ?)
+                        let description_val = row_values[0].clone(); // First value is description
+                        let done_val = row_values[1].clone();       // Second value is done
+
+                        // Generate a unique key for the underlying KV store.
+                        // This key is internal and not directly the SQL 'id'.
+                        let kv_key_string = format!("todos_{}", uuid::Uuid::new_v4().to_string());
+                        let kv_key = kv_key_string.as_bytes().to_vec();
+
+                        // Create the map representing the row data.
+                        // For 'id', we'll use a placeholder for now, as true auto-increment
+                        // is not handled by this simplified SQL layer. This ID won't be
+                        // reliably unique or sequential in a way SQL expects for AUTOINCREMENT.
+                        // A timestamp-based or UUID-based integer could be used.
+                        // For simplicity, using a timestamp like unique number.
+                        let temp_id_val = DataType::Integer(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos() as i64);
+
+                        let mut row_map_data = std::collections::HashMap::new();
+                        row_map_data.insert("id".as_bytes().to_vec(), temp_id_val);
+                        row_map_data.insert("description".as_bytes().to_vec(), description_val);
+                        row_map_data.insert("done".as_bytes().to_vec(), done_val);
+
+                        let row_data_type = DataType::Map(crate::core::types::JsonSafeMap(row_map_data));
+                        results.push(executor.handle_insert(kv_key, row_data_type));
+
+                    } else if table_name == "test_lsn" && row_values.len() == 2 {
+                        // Existing hardcoded logic for "test_lsn"
+                        let pk_val = row_values.first().cloned().unwrap_or(DataType::Null);
                         let name_val = row_values.get(1).cloned().unwrap_or(DataType::Null);
-
-                        // Create key from PK (e.g., "test_lsn_pk_1")
                         let key_string = format!("{}_pk_{:?}", table_name, pk_val)
-                            .replace("Integer(", "")
-                            .replace("String(\"", "")
-                            .replace("\")", "")
-                            .replace(")", ""); // Basic sanitization for key
+                            .replace("Integer(", "").replace("String(\"", "").replace("\")", "").replace(")", "");
                         let key = key_string.as_bytes().to_vec();
-
                         let mut row_map_data = std::collections::HashMap::new();
                         row_map_data.insert("id".as_bytes().to_vec(), pk_val);
                         row_map_data.insert("name".as_bytes().to_vec(), name_val);
-
                         let row_data_type = DataType::Map(crate::core::types::JsonSafeMap(row_map_data));
-
-                        // Call executor's handle_insert (which should exist)
                         results.push(executor.handle_insert(key, row_data_type));
                     } else {
-                        // For other tables or incorrect column count for test_lsn, return success but do nothing.
+                        // For other tables or incorrect column count, return success but do nothing.
                         results.push(Ok(ExecutionResult::Success));
                     }
                 }

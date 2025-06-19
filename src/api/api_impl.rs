@@ -31,7 +31,25 @@ impl Oxidb {
     pub fn new_with_config(config: Config) -> Result<Self, OxidbError> {
         let store = SimpleFileKvStore::new(config.database_path())?;
         let wal_config = crate::core::wal::writer::WalWriterConfig::default(); // Use default config
-        let wal_writer = WalWriter::new(config.wal_path(), wal_config);
+
+        // Derive WAL path from the database file path to match SimpleFileKvStore's likely internal WAL path.
+        let db_file_path_as_path = config.database_path(); // This is already a PathBuf from Config
+        let mut derived_wal_path = db_file_path_as_path.clone();
+
+        // Reconstruct filename with .wal appended, e.g., "filename.ext.wal" or "filename.wal"
+        let original_filename_stem = derived_wal_path.file_stem().unwrap_or_default().to_str().unwrap_or_default();
+        let original_extension = derived_wal_path.extension().unwrap_or_default().to_str().unwrap_or_default();
+
+        let new_wal_filename = if original_extension.is_empty() {
+            format!("{}.wal", original_filename_stem)
+        } else {
+            format!("{}.{}.wal", original_filename_stem, original_extension)
+        };
+        derived_wal_path.set_file_name(new_wal_filename);
+
+        let wal_writer = WalWriter::new(derived_wal_path.clone(), wal_config);
+        eprintln!("[Oxidb::new_with_config] Using WAL path for QueryExecutor: {:?}", derived_wal_path);
+
         let log_manager = Arc::new(LogManager::new());
         let executor = QueryExecutor::new(store, config.index_path(), wal_writer, log_manager)?;
         Ok(Self { executor })

@@ -38,8 +38,9 @@ impl SimpleFileKvStore {
         // WalWriter::new itself isn't fallible in the original code.
         // If it needs to create files or directories that can fail, it should return Result.
         // For now, assuming it works as originally designed.
-        // Pass the main db path_buf to WalWriter, let WalWriter derive its path.
-        let wal_writer = WalWriter::new(&path_buf);
+        // wal_file_path is derived above and used for recovery and loading.
+        // The SimpleFileKvStore's own WalWriter will also derive an identical path from path_buf.
+        let wal_writer = WalWriter::new(&path_buf); // This WalWriter is from core::storage::engine::wal
         let mut cache = HashMap::new();
 
         // load_data_from_disk and replay_wal_into_cache still need the explicitly derived wal_file_path
@@ -83,6 +84,7 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         transaction: &Transaction,
         lsn: Lsn, // Added lsn parameter
     ) -> Result<(), OxidbError> {
+        eprintln!("[SimpleFileKvStore::put] Method entered for key: {:?}", String::from_utf8_lossy(&key)); // ADDED THIS LINE
         if key == b"tx_delete_rollback_key".as_slice() || key == b"idx_del_key_tx_rollback".as_slice() {
             println!("[store.put] Called for key: {:?}, value_bytes_len: {}, tx_id: {}", String::from_utf8_lossy(&key), value.len(), transaction.id.0);
             println!("[store.put] Cache BEFORE for key {:?}: {:?}", String::from_utf8_lossy(&key), self.cache.get(&key));
