@@ -1,0 +1,31 @@
+# Sample Configuration for Oxidb
+#
+# This file allows you to customize the behavior of your Oxidb instance.
+# If this file is not present, or if specific settings are omitted,
+# Oxidb will use default values.
+
+# Path to the main database file.
+# Default: "oxidb.db"
+# database_file_path = "my_database.db"
+
+# Base directory for storing index files.
+# Default: "oxidb_indexes/"
+# index_base_path = "my_custom_indexes/"
+
+# --- Future Configuration Options (examples with defaults) ---
+
+# Enable or disable the Write-Ahead Log (WAL).
+# Currently, WAL is always used if the feature is compiled. This is a placeholder.
+# Default: true
+# wal_enabled = true
+
+# Approximate maximum size of the in-memory cache in megabytes (MB).
+# This is a placeholder for future cache management enhancements.
+# Default: 64
+# cache_size_mb = 128
+
+# Default transaction isolation level.
+# This is a placeholder for future support of different isolation levels.
+# Current behavior is typically Serializable or close to it.
+# Default: "Serializable"
+# default_isolation_level = "ReadCommitted"
