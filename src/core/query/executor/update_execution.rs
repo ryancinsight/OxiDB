@@ -7,7 +7,7 @@ use crate::core::query::sql::ast::{
     Condition as AstCondition, SelectColumn, Statement as AstStatement,
 };
 use crate::core::storage::engine::traits::KeyValueStore;
-use crate::core::transaction::transaction::{Transaction, TransactionState, UndoOperation};
+use crate::core::transaction::{Transaction, TransactionState, UndoOperation}; // Adjusted path
 use crate::core::types::DataType;
 use crate::core::types::JsonSafeMap; // Added import for JsonSafeMap
 use std::collections::{HashMap, HashSet}; // Removed AstLiteralValue
@@ -16,6 +16,20 @@ use super::utils::datatype_to_ast_literal;
 use std::sync::Arc; // Import the helper
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S> {
+    /// Handles an UPDATE command.
+    /// This involves:
+    /// 1. Planning and executing a SELECT-like sub-query to find rows matching the condition.
+    /// 2. For each matching row:
+    ///    a. Acquiring an exclusive lock on the row's key.
+    ///    b. Fetching the current row data.
+    ///    c. Applying the specified assignments to a temporary copy.
+    ///    d. Performing constraint checks (NOT NULL, UNIQUE) on the modified data.
+    ///    e. Updating relevant column-specific indexes.
+    ///    f. Updating the main "default_value_index" if the entire row data changed.
+    ///    g. Writing the updated row data to the store with a new LSN.
+    ///    h. Recording undo operations for both data and index changes.
+    /// 3. Returning the count of updated rows.
+    #[allow(clippy::arithmetic_side_effects)] // For updated_count += 1;
     pub(crate) fn handle_update(
         &mut self,
         source_table_name: String,
@@ -210,12 +224,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                                 .unwrap_or(DataType::Null);
 
                             // Determine if indexing is needed based on NULL status and PK status
-                            let old_value_needs_indexing = !(old_value_for_column
-                                == DataType::Null
-                                && !col_def.is_primary_key);
-                            let new_value_needs_indexing = !(new_value_for_column
-                                == DataType::Null
-                                && !col_def.is_primary_key);
+                            let old_value_needs_indexing =
+                                old_value_for_column != DataType::Null || col_def.is_primary_key;
+                            let new_value_needs_indexing =
+                                new_value_for_column != DataType::Null || col_def.is_primary_key;
 
                             if old_value_for_column != new_value_for_column
                                 || old_value_needs_indexing != new_value_needs_indexing
@@ -227,12 +239,15 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                                 if old_value_needs_indexing {
                                     let old_serialized_column_value =
                                         serialize_data_type(&old_value_for_column)?;
-                                    self.index_manager.write().unwrap().delete_from_index(
-                                        &index_name,
-                                        &old_serialized_column_value,
-                                        Some(&key),
-                                    )?; // Acquire write lock
-                                        // Add undo log for this index deletion
+                                    self.index_manager
+                                        .write()
+                                        .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on index manager for update (delete part): {}", e)))?
+                                        .delete_from_index(
+                                            &index_name,
+                                            &old_serialized_column_value,
+                                            Some(&key),
+                                        )?;
+                                    // Add undo log for this index deletion
                                     if !is_auto_commit {
                                         if let Some(active_tx_mut) =
                                             self.transaction_manager.get_active_transaction_mut()
@@ -253,12 +268,15 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                                 if new_value_needs_indexing {
                                     let new_serialized_column_value =
                                         serialize_data_type(&new_value_for_column)?;
-                                    self.index_manager.write().unwrap().insert_into_index(
-                                        &index_name,
-                                        &new_serialized_column_value,
-                                        &key,
-                                    )?; // Acquire write lock
-                                        // Add undo log for this index insertion
+                                    self.index_manager
+                                        .write()
+                                        .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on index manager for update (insert part): {}", e)))?
+                                        .insert_into_index(
+                                            &index_name,
+                                            &new_serialized_column_value,
+                                            &key,
+                                        )?;
+                                    // Add undo log for this index insertion
                                     if !is_auto_commit {
                                         if let Some(active_tx_mut) =
                                             self.transaction_manager.get_active_transaction_mut()
@@ -349,7 +367,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     let mut new_map_for_index = HashMap::new();
                     new_map_for_index
                         .insert("default_value_index".to_string(), updated_value_bytes.clone());
-                    self.index_manager.write().unwrap().on_update_data(
+                    self.index_manager
+                        .write()
+                        .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on index manager for default_value_index update: {}", e)))?
+                        .on_update_data(
                         // Acquire write lock
                         &old_map_for_index,
                         &new_map_for_index,
@@ -379,12 +400,20 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     }
                 }
 
-                self.store.write().unwrap().put(
-                    key.clone(),
-                    updated_value_bytes.clone(),
-                    &tx_for_store,
-                    new_lsn, // Pass the new LSN
-                )?;
+                self.store
+                    .write()
+                    .map_err(|e| {
+                        OxidbError::Lock(format!(
+                            "Failed to acquire write lock on store for update (put): {}",
+                            e
+                        ))
+                    })?
+                    .put(
+                        key.clone(),
+                        updated_value_bytes.clone(),
+                        &tx_for_store,
+                        new_lsn, // Pass the new LSN
+                    )?;
                 updated_count += 1;
             }
             // Auto-commit logic is now handled by QueryExecutor::execute_command

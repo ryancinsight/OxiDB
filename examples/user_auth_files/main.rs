@@ -51,7 +51,8 @@ enum Commands {
     /// Lists files for the logged-in user.
     ListFiles {}, // User ID will be from session
     /// Gets a specific file for the logged-in user.
-    GetFile { // User ID will be from session
+    GetFile {
+        // User ID will be from session
         #[clap(long)]
         file_id: u64,
     },
@@ -83,9 +84,11 @@ fn ensure_tables_exist(db: &mut Oxidb) -> Result<(), OxidbError> {
     match db.execute_query_str(&create_users_table_query) {
         Ok(_) => {}
         Err(e) => {
-            if !e.to_string().to_lowercase().contains("already exists") && !e.to_string().to_lowercase().contains("duplicate table name") {
-                 eprintln!("Error creating/ensuring table '{}': {:?}", USERS_TABLE, e);
-                 return Err(e.into());
+            if !e.to_string().to_lowercase().contains("already exists")
+                && !e.to_string().to_lowercase().contains("duplicate table name")
+            {
+                eprintln!("Error creating/ensuring table '{}': {:?}", USERS_TABLE, e);
+                return Err(e.into());
             }
         }
     }
@@ -98,7 +101,9 @@ fn ensure_tables_exist(db: &mut Oxidb) -> Result<(), OxidbError> {
     match db.execute_query_str(&create_user_files_table_query) {
         Ok(_) => {}
         Err(e) => {
-             if !e.to_string().to_lowercase().contains("already exists") && !e.to_string().to_lowercase().contains("duplicate table name") {
+            if !e.to_string().to_lowercase().contains("already exists")
+                && !e.to_string().to_lowercase().contains("duplicate table name")
+            {
                 eprintln!("Error creating/ensuring table '{}': {:?}", USER_FILES_TABLE, e);
                 return Err(e.into());
             }
@@ -108,10 +113,7 @@ fn ensure_tables_exist(db: &mut Oxidb) -> Result<(), OxidbError> {
 }
 
 // --- Helper functions for parsing query results ---
-fn get_string_from_map(
-    item_map: &HashMap<Vec<u8>, DataType>,
-    key: &str,
-) -> Result<String> {
+fn get_string_from_map(item_map: &HashMap<Vec<u8>, DataType>, key: &str) -> Result<String> {
     item_map
         .get(key.as_bytes())
         .and_then(|data_type| match data_type {
@@ -121,10 +123,7 @@ fn get_string_from_map(
         .ok_or_else(|| anyhow::anyhow!("Map missing string key '{}' or not a String", key))
 }
 
-fn get_u64_from_map(
-    item_map: &HashMap<Vec<u8>, DataType>,
-    key: &str,
-) -> Result<u64> {
+fn get_u64_from_map(item_map: &HashMap<Vec<u8>, DataType>, key: &str) -> Result<u64> {
     item_map
         .get(key.as_bytes())
         .and_then(|data_type| match data_type {
@@ -136,10 +135,7 @@ fn get_u64_from_map(
 }
 
 // Updated to expect DataType::RawBytes
-fn get_raw_bytes_from_map(
-    item_map: &HashMap<Vec<u8>, DataType>,
-    key: &str,
-) -> Result<Vec<u8>> {
+fn get_raw_bytes_from_map(item_map: &HashMap<Vec<u8>, DataType>, key: &str) -> Result<Vec<u8>> {
     item_map
         .get(key.as_bytes())
         .and_then(|data_type| match data_type {
@@ -155,7 +151,9 @@ fn parse_user_files_from_result(values: Vec<DataType>) -> Result<Vec<UserFile>> 
         return Ok(files);
     }
     if values.len() % 2 != 0 {
-        return Err(anyhow::anyhow!("Invalid data structure for UserFiles: odd number of values. Expected key-value pairs."));
+        return Err(anyhow::anyhow!(
+            "Invalid data structure for UserFiles: odd number of values. Expected key-value pairs."
+        ));
     }
 
     for chunk in values.chunks_exact(2) {
@@ -168,12 +166,14 @@ fn parse_user_files_from_result(values: Vec<DataType>) -> Result<Vec<UserFile>> 
                 content: get_raw_bytes_from_map(item_map, "file_content")?, // Updated call
             });
         } else {
-             return Err(anyhow::anyhow!("Expected item data to be a Map for user_files. Found: {:?}", chunk[1]));
+            return Err(anyhow::anyhow!(
+                "Expected item data to be a Map for user_files. Found: {:?}",
+                chunk[1]
+            ));
         }
     }
     Ok(files)
 }
-
 
 // --- Password Hashing ---
 fn hash_password(password: &str) -> String {
@@ -219,7 +219,10 @@ fn login_user(db: &mut Oxidb, username: &str, password: &str) -> Result<Option<U
                 return Ok(None);
             }
             if values.len() != 2 {
-                return Err(anyhow::anyhow!("Login error: Unexpected data structure for user '{}'.", username));
+                return Err(anyhow::anyhow!(
+                    "Login error: Unexpected data structure for user '{}'.",
+                    username
+                ));
             }
             if let DataType::Map(map_data) = &values[1] {
                 let item_map = &map_data.0;
@@ -234,7 +237,10 @@ fn login_user(db: &mut Oxidb, username: &str, password: &str) -> Result<Option<U
                     Ok(None)
                 }
             } else {
-                Err(anyhow::anyhow!("Login error: Expected user data to be a Map for user '{}'.", username))
+                Err(anyhow::anyhow!(
+                    "Login error: Expected user data to be a Map for user '{}'.",
+                    username
+                ))
             }
         }
         ExecutionResult::Success => {
@@ -298,9 +304,11 @@ fn list_files(db: &mut Oxidb, user_id: u64) -> Result<()> {
             }
         }
         ExecutionResult::Success => {
-             println!("No files found for user ID {} (ExecutionResult::Success).", user_id);
+            println!("No files found for user ID {} (ExecutionResult::Success).", user_id);
         }
-        other => eprintln!("Unexpected result when listing files for user ID {}: {:?}", user_id, other),
+        other => {
+            eprintln!("Unexpected result when listing files for user ID {}: {:?}", user_id, other)
+        }
     }
     Ok(())
 }
@@ -319,8 +327,10 @@ fn get_file(db: &mut Oxidb, user_id: u64, file_id: u64) -> Result<Option<UserFil
             }
             match parse_user_files_from_result(values) {
                 Ok(mut files) if !files.is_empty() => Ok(files.pop()), // Should be only one
-                Ok(_) => Ok(None), // Parsed but somehow empty
-                Err(e) => Err(anyhow::anyhow!("Error parsing file data for file ID {}: {}", file_id, e)),
+                Ok(_) => Ok(None),                                     // Parsed but somehow empty
+                Err(e) => {
+                    Err(anyhow::anyhow!("Error parsing file data for file ID {}: {}", file_id, e))
+                }
             }
         }
         ExecutionResult::Success => Ok(None), // No file found
@@ -357,7 +367,8 @@ fn main() -> Result<()> {
                     println!("Logged in: User ID: {}, Username: {}", user.id, user.username);
                     current_user_id = Some(user.id);
                     if let Some(id) = current_user_id {
-                        println!("Session context now set for user ID: {}.", id); // Artificially "read"
+                        println!("Session context now set for user ID: {}.", id);
+                        // Artificially "read"
                     }
                     // Here you might save user.id to a temporary session file if you want persistence across commands
                     // For now, it's only for the lifetime of this single command execution.
@@ -377,22 +388,24 @@ fn main() -> Result<()> {
             // Simulate loading session for non-login commands if we had persistence
             // if current_user_id.is_none() { current_user_id = load_session_id_from_disk_etc(); }
 
-
-            if let Some(user_id) = current_user_id { // Correctly use the variable from the main scope
+            if let Some(user_id) = current_user_id {
+                // Correctly use the variable from the main scope
                 add_file(&mut db, user_id, &file_name, &content)?;
             } else {
                 println!("Error: You must be logged in to add a file. Please use the 'login' command first in this session.");
             }
         }
         Commands::ListFiles {} => {
-            if let Some(user_id) = current_user_id { // Correctly use the variable
+            if let Some(user_id) = current_user_id {
+                // Correctly use the variable
                 list_files(&mut db, user_id)?;
             } else {
                 println!("Error: You must be logged in to list files. Please use the 'login' command first in this session.");
             }
         }
         Commands::GetFile { file_id } => {
-            if let Some(user_id) = current_user_id { // Correctly use the variable
+            if let Some(user_id) = current_user_id {
+                // Correctly use the variable
                 match get_file(&mut db, user_id, file_id)? {
                     Some(file) => {
                         let content_string = String::from_utf8_lossy(&file.content);
@@ -403,7 +416,10 @@ fn main() -> Result<()> {
                         println!("--- End of Content ---");
                     }
                     None => {
-                        println!("File ID '{}' not found or you do not have permission to view it.", file_id);
+                        println!(
+                            "File ID '{}' not found or you do not have permission to view it.",
+                            file_id
+                        );
                     }
                 }
             } else {

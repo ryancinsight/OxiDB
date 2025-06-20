@@ -14,19 +14,28 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     // handle_insert, handle_delete, and handle_get were removed.
     // Only handle_find_by_index and other DDL-specific handlers should remain.
 
+    /// Handles finding rows by an index lookup.
+    /// It retrieves primary keys from the specified index for the given value,
+    /// then fetches the actual row data from the store for those primary keys,
+    /// considering transaction visibility.
     pub(crate) fn handle_find_by_index(
         &mut self,
         index_name: String,
         value: Vec<u8>, // This is the serialized form of the value being searched
     ) -> Result<ExecutionResult, OxidbError> {
         // Changed
-        let candidate_keys =
-            match self.index_manager.read().unwrap().find_by_index(&index_name, &value) {
-                // Acquire read lock
-                Ok(Some(keys)) => keys,
-                Ok(None) => Vec::new(),
-                Err(e) => return Err(e),
-            };
+        let option_keys = self
+            .index_manager
+            .read()
+            .map_err(|e| {
+                OxidbError::Lock(format!(
+                    "Failed to acquire read lock on index manager for find: {}",
+                    e
+                ))
+            })?
+            .find_by_index(&index_name, &value)?; // Propagate error from find_by_index
+
+        let candidate_keys: std::vec::Vec<std::vec::Vec<u8>> = option_keys.unwrap_or_default();
 
         if candidate_keys.is_empty() {
             return Ok(ExecutionResult::Values(Vec::new()));
@@ -62,11 +71,18 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 
         let mut results_vec = Vec::new();
         for primary_key in candidate_keys {
-            match self.store.read().unwrap().get(
-                &primary_key,
-                snapshot_id.0,
-                &committed_ids_for_store,
-            ) {
+            match self
+                .store
+                .read()
+                .map_err(|e| {
+                    OxidbError::Lock(format!(
+                        "Failed to acquire read lock on store for find by index: {}",
+                        e
+                    ))
+                })?
+                .get(&primary_key, snapshot_id.0, &committed_ids_for_store)
+            {
+                // Corrected: removed extra parenthesis, this is the match block opening
                 // Use snapshot_id.0 (u64)
                 Ok(Some(serialized_data_from_store)) => {
                     // The `value` parameter to this function is the serialized indexed field's value.
@@ -103,6 +119,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     }
     // Removed handle_get from here
 
+    /// Handles the creation of a new table.
+    /// This involves storing the table's schema and creating any necessary indexes
+    /// for primary or unique keys defined in the schema.
     pub(crate) fn handle_create_table(
         &mut self,
         table_name: String,
@@ -129,7 +148,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 
         // Use a system transaction (ID 0) for DDL operations like schema storage.
         // LSN generation for DDL is also important.
-        let system_tx = Transaction::new(TransactionId(0));
+        let _system_tx = Transaction::new(TransactionId(0));
         let lsn = self.log_manager.next_lsn();
 
         // The schema itself is stored as a Vec<u8> value.
@@ -146,12 +165,20 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             active_tx_mut.prev_lsn = lsn;
         }
 
-        self.store.write().unwrap().put(
-            schema_key,
-            serialized_schema,
-            &current_tx, // Use current_tx (which would be Tx0 in auto-commit)
-            lsn,
-        )?;
+        self.store
+            .write()
+            .map_err(|e| {
+                OxidbError::Lock(format!(
+                    "Failed to acquire write lock on store for create table: {}",
+                    e
+                ))
+            })?
+            .put(
+                schema_key,
+                serialized_schema,
+                &current_tx, // Use current_tx (which would be Tx0 in auto-commit)
+                lsn,
+            )?;
 
         // Iterate through columns to create indexes for primary key or unique columns
         for col_def in schema_to_store.columns.iter() {
@@ -160,7 +187,17 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                 // Using "hash" as the index type for simplicity, good for exact lookups.
                 // The actual index implementation (e.g., BTree, Hash) would be determined by
                 // the string passed here and handled by the IndexManager.
-                match self.index_manager.write().unwrap().create_index(index_name.clone(), "hash") {
+                match self
+                    .index_manager
+                    .write()
+                    .map_err(|e| {
+                        OxidbError::Lock(format!(
+                            "Failed to acquire write lock on index manager for create index: {}",
+                            e
+                        ))
+                    })?
+                    .create_index(index_name.clone(), "hash")
+                {
                     // Acquire write lock
                     Ok(_) => {
                         eprintln!("[Executor::handle_create_table] Successfully created index '{}' for table '{}', column '{}'.", index_name, table_name, col_def.name);

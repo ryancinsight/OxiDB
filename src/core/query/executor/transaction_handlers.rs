@@ -1,15 +1,19 @@
 use super::{ExecutionResult, QueryExecutor};
 use crate::core::common::OxidbError; // Changed
 use crate::core::storage::engine::traits::KeyValueStore;
-use crate::core::transaction::transaction::{Transaction, UndoOperation}; // Removed TransactionState
+use crate::core::transaction::{Transaction, UndoOperation}; // Removed TransactionState, adjusted path
 use std::collections::{HashMap, HashSet}; // Use super to refer to parent mod
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
+    /// Handles the BEGIN TRANSACTION command.
+    /// Starts a new transaction using the transaction manager.
     pub(crate) fn handle_begin_transaction(&mut self) -> Result<ExecutionResult, OxidbError> {
         self.transaction_manager.begin_transaction()?; // Use ? to handle the Result
         Ok(ExecutionResult::Success)
     }
 
+    /// Handles the COMMIT TRANSACTION command.
+    /// Commits the currently active transaction, releasing its locks and making its changes permanent.
     pub(crate) fn handle_commit_transaction(&mut self) -> Result<ExecutionResult, OxidbError> {
         // Changed
         if let Some(active_tx) = self.transaction_manager.get_active_transaction_mut() {
@@ -35,6 +39,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         }
     }
 
+    /// Handles the ROLLBACK TRANSACTION command.
+    /// Aborts the currently active transaction, reverting any changes made by it
+    /// using the undo log and releasing its locks.
     pub(crate) fn handle_rollback_transaction(&mut self) -> Result<ExecutionResult, OxidbError> {
         // Changed
         let tx_id_to_release = if let Some(tx) = self.transaction_manager.get_active_transaction() {
@@ -67,12 +74,15 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                 match undo_op {
                     UndoOperation::RevertInsert { key } => {
                         let lsn = self.log_manager.next_lsn();
-                        self.store.write().unwrap().delete(
-                            key,
-                            &temp_transaction_for_undo,
-                            lsn,
-                            &committed_ids_for_undo,
-                        )?;
+                        self.store
+                            .write()
+                            .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on store for rollback (revert insert): {}",e)))?
+                            .delete(
+                                key,
+                                &temp_transaction_for_undo,
+                                lsn,
+                                &committed_ids_for_undo,
+                            )?;
                     }
                     UndoOperation::RevertUpdate { key, old_value: _ } => {
                         // old_value is used for index, not directly here for store
@@ -82,19 +92,25 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                         // This correctly invalidates the version created by the transaction being rolled back.
                         // The previously existing version (which was expired by this transaction) will become visible again
                         // because its expirer_tx_id points to a non-committed transaction.
-                        self.store.write().unwrap().delete(
-                            key,
-                            &temp_transaction_for_undo, // The transaction being rolled back
-                            lsn,
-                            &committed_ids_for_undo,
-                        )?;
+                        self.store
+                            .write()
+                            .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on store for rollback (revert update): {}",e)))?
+                            .delete(
+                                key,
+                                &temp_transaction_for_undo, // The transaction being rolled back
+                                lsn,
+                                &committed_ids_for_undo,
+                            )?;
                     }
                     UndoOperation::RevertDelete { key, old_value } => {
                         let lsn = self.log_manager.next_lsn();
-                        self.store.write().unwrap().put(
-                            key.clone(),
-                            old_value.clone(),
-                            &temp_transaction_for_undo,
+                        self.store
+                            .write()
+                            .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on store for rollback (revert delete): {}",e)))?
+                            .put(
+                                key.clone(),
+                                old_value.clone(),
+                                &temp_transaction_for_undo,
                             lsn,
                         )?;
                     }
@@ -103,16 +119,16 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                         indexed_values_map.insert(index_name.clone(), value_for_index.clone());
                         self.index_manager
                             .write()
-                            .unwrap()
-                            .on_delete_data(&indexed_values_map, key)?; // Acquire write lock
+                            .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on index manager for rollback (revert index insert): {}",e)))?
+                            .on_delete_data(&indexed_values_map, key)?;
                     }
                     UndoOperation::IndexRevertDelete { index_name, key, old_value_for_index } => {
                         let mut indexed_values_map = HashMap::new();
                         indexed_values_map.insert(index_name.clone(), old_value_for_index.clone());
                         self.index_manager
                             .write()
-                            .unwrap()
-                            .on_insert_data(&indexed_values_map, key)?; // Acquire write lock
+                            .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on index manager for rollback (revert index delete): {}",e)))?
+                            .on_insert_data(&indexed_values_map, key)?;
                     }
                     UndoOperation::IndexRevertUpdate {
                         index_name,
@@ -124,13 +140,18 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                         // 1. Delete the new value that was inserted.
                         let mut new_values_map = HashMap::new();
                         new_values_map.insert(index_name.clone(), new_value_for_index.clone());
-                        self.index_manager.write().unwrap().on_delete_data(&new_values_map, key)?; // Acquire write lock
+                        self.index_manager
+                            .write()
+                            .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on index manager for rollback (revert index update - delete part): {}",e)))?
+                            .on_delete_data(&new_values_map, key)?;
 
                         // 2. Re-insert the old value.
                         let mut old_values_map = HashMap::new();
                         old_values_map.insert(index_name.clone(), old_value_for_index.clone());
-                        self.index_manager.write().unwrap().on_insert_data(&old_values_map, key)?;
-                        // Acquire write lock
+                        self.index_manager
+                            .write()
+                            .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on index manager for rollback (revert index update - insert part): {}",e)))?
+                            .on_insert_data(&old_values_map, key)?;
                     }
                 }
             }
@@ -155,6 +176,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         }
     }
 
+    /// Handles the VACUUM command.
+    /// Performs garbage collection on the key-value store, removing versions of data
+    /// that are no longer visible to any active or future transactions, based on
+    /// the low water mark determined by the transaction manager.
     pub(crate) fn handle_vacuum(&mut self) -> Result<ExecutionResult, OxidbError> {
         // Changed
         let low_water_mark = self
@@ -170,7 +195,12 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             .map(|id| id.0) // Convert TransactionId to u64
             .collect();
 
-        self.store.write().unwrap().gc(low_water_mark.0, &committed_ids)?; // Use low_water_mark.0
+        self.store
+            .write()
+            .map_err(|e| {
+                OxidbError::Lock(format!("Failed to acquire write lock on store for vacuum: {}", e))
+            })?
+            .gc(low_water_mark.0, &committed_ids)?; // Use low_water_mark.0
         Ok(ExecutionResult::Success)
     }
 }

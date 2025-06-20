@@ -142,7 +142,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                                 "{}_pk_{}_{:?}",
                                 table_name,
                                 pk_c_name,
-                                pk_value_opt.as_ref().unwrap()
+                                pk_value_opt.as_ref().ok_or_else(|| OxidbError::Internal(
+                                    "PK value expected but not found for key generation"
+                                        .to_string()
+                                ))?
                             )
                             .replace("Integer(", "")
                             .replace("String(\"", "")
@@ -162,7 +165,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                             .into_bytes()
                     } else {
                         // Fallback to UUID if no PK or complex PK (not yet supported for keying)
-                        format!("{}_{}", table_name, uuid::Uuid::new_v4().to_string()).into_bytes()
+                        format!("{}_{}", table_name, uuid::Uuid::new_v4()).into_bytes()
                     };
 
                     let row_data_type =
@@ -188,11 +191,15 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                                 )?;
 
                             // Insert into the specific column index
-                            executor.index_manager.write().unwrap().insert_into_index(
-                                &index_name,
-                                &serialized_column_value,
-                                &kv_key,
-                            )?; // Acquire write lock
+                            executor
+                                .index_manager
+                                .write()
+                                .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on index manager for insert: {}",e)))?
+                                .insert_into_index(
+                                    &index_name,
+                                    &serialized_column_value,
+                                    &kv_key,
+                                )?;
 
                             // Add undo log for this index insertion
                             if current_op_tx_id.0 != 0 {
@@ -201,7 +208,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                                     executor.transaction_manager.get_active_transaction_mut()
                                 {
                                     active_tx_mut.add_undo_operation(
-                                        crate::core::transaction::transaction::UndoOperation::IndexRevertInsert {
+                                        crate::core::transaction::UndoOperation::IndexRevertInsert { // Adjusted path
                                             index_name, // Moves index_name
                                             key: kv_key.clone(), // Primary key of the row
                                             value_for_index: serialized_column_value, // Serialized value of the indexed column

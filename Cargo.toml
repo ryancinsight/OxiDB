@@ -21,7 +21,7 @@ hex = "0.4"
 
 [dev-dependencies]
 tempfile = "3.8" # Or a more recent compatible version
-cargo-nextest = { version = "0.9", optional = true }
+cargo-nextest = { version = "0.9" }
 
 [workspace]
 members = [

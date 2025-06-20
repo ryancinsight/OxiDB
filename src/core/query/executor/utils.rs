@@ -29,6 +29,7 @@ pub fn compare_data_types(
                     _ => unreachable!(),
                 },
                 (DataType::Integer(i1), DataType::Float(f2)) => {
+                    #[allow(clippy::cast_precision_loss)]
                     let f1 = *i1 as f64;
                     match operator {
                         "<" => Ok(f1 < *f2),
@@ -39,6 +40,7 @@ pub fn compare_data_types(
                     }
                 }
                 (DataType::Float(f1), DataType::Integer(i2)) => {
+                    #[allow(clippy::cast_precision_loss)]
                     let f2 = *i2 as f64;
                     match operator {
                         "<" => Ok(*f1 < f2),

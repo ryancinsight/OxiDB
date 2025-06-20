@@ -4,7 +4,7 @@ use crate::core::execution::{ExecutionOperator, Tuple};
 use crate::core::indexing::manager::IndexManager;
 use crate::core::query::commands::Key;
 use crate::core::storage::engine::traits::KeyValueStore;
-use crate::core::types::{DataType, JsonSafeMap}; // Import JsonSafeMap
+use crate::core::types::DataType; // Import JsonSafeMap
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock}; // Added RwLock
 
@@ -59,13 +59,14 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for IndexScanOp
         }
         self.executed = true;
 
-        let primary_keys: std::vec::Vec<std::vec::Vec<u8>> =
-            (self
-                .index_manager
-                .read()
-                .unwrap()
-                .find_by_index(&self.index_name, &self.scan_value)?) // Acquire read lock
-            .unwrap_or_default();
+        let primary_keys: std::vec::Vec<std::vec::Vec<u8>> = (self
+            .index_manager
+            .read()
+            .map_err(|e| {
+                OxidbError::Lock(format!("Failed to acquire read lock on index manager: {}", e))
+            })?
+            .find_by_index(&self.index_name, &self.scan_value)?) // Acquire read lock
+        .unwrap_or_default();
 
         if primary_keys.is_empty() {
             return Ok(Box::new(std::iter::empty()));
@@ -79,8 +80,15 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for IndexScanOp
 
         let iterator = primary_keys.into_iter().filter_map(move |pk| {
             // Acquire read lock for each get operation
-            #[allow(clippy::unwrap_used)] // Panicking on poisoned lock is acceptable here
-            let store_guard = store_arc_clone.read().unwrap();
+            let store_guard = match store_arc_clone.read() {
+                Ok(guard) => guard,
+                Err(e) => {
+                    return Some(Err(OxidbError::Lock(format!(
+                        "Failed to acquire read lock on store for PK {:?}: {}",
+                        pk, e
+                    ))))
+                }
+            };
             match store_guard.get(&pk, snapshot_id, &committed_ids_clone) {
                 Ok(Some(value_bytes)) => match deserialize_data_type(&value_bytes) {
                     Ok(row_data_type) => {

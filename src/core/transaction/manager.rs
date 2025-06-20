@@ -1,5 +1,5 @@
 use crate::core::common::types::TransactionId as CommonTransactionId;
-use crate::core::transaction::transaction::{Transaction, TransactionState}; // Removed INVALID_LSN
+use crate::core::transaction::{Transaction, TransactionState}; // Removed INVALID_LSN, adjusted path
 use crate::core::wal::log_manager::LogManager;
 use crate::core::wal::log_record::LogRecord;
 use crate::core::wal::writer::WalWriter;

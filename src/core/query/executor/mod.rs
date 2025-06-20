@@ -43,13 +43,21 @@ pub enum ExecutionResult {
 
 #[derive(Debug)]
 pub struct QueryExecutor<S: KeyValueStore<Vec<u8>, Vec<u8>>> {
+    /// The underlying key-value store, wrapped for thread-safe access.
     pub(crate) store: Arc<RwLock<S>>,
+    /// Manages transactions, including their state and undo/redo logs.
     pub(crate) transaction_manager: TransactionManager,
+    /// Manages locks on data to ensure transaction isolation.
     pub(crate) lock_manager: LockManager,
-    pub(crate) index_manager: Arc<RwLock<IndexManager>>, // Changed to Arc<RwLock<IndexManager>>
-    pub(crate) optimizer: Optimizer,                     // Added optimizer field
-    pub(crate) log_manager: Arc<LogManager>,             // Added log_manager field
+    /// Manages indexes for efficient data retrieval.
+    pub(crate) index_manager: Arc<RwLock<IndexManager>>,
+    /// Optimizes query plans for more efficient execution.
+    pub(crate) optimizer: Optimizer,
+    /// Manages the write-ahead log for durability.
+    pub(crate) log_manager: Arc<LogManager>,
 }
+
+// UniquenessCheckContext struct definition is removed as part of the revert.
 
 // The `new` method remains here as it's tied to the struct definition visibility
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
@@ -86,12 +94,36 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 // Methods specific to QueryExecutor when the store is SimpleFileKvStore
 impl QueryExecutor<SimpleFileKvStore> {
     pub fn persist(&mut self) -> Result<(), OxidbError> {
-        self.store.read().unwrap().persist()?;
-        self.index_manager.read().unwrap().save_all_indexes() // Acquire read lock
+        self.store
+            .read()
+            .map_err(|e| {
+                OxidbError::Lock(format!("Failed to acquire read lock on store for persist: {}", e))
+            })?
+            .persist()?;
+        self.index_manager
+            .read()
+            .map_err(|e| {
+                OxidbError::Lock(format!(
+                    "Failed to acquire read lock on index manager for persist: {}",
+                    e
+                ))
+            })?
+            .save_all_indexes()
     }
 
     pub fn index_base_path(&self) -> PathBuf {
-        self.index_manager.read().unwrap().base_path() // Acquire read lock
+        // Using expect here as base_path is not expected to fail often and is not directly part of core query execution flow.
+        // A more robust solution might propagate the error.
+        self.index_manager
+            .read()
+            .map_err(|e| {
+                OxidbError::Lock(format!(
+                    "Failed to acquire read lock on index manager for base_path: {}",
+                    e
+                ))
+            })
+            .expect("Failed to get lock for index_base_path; this should not happen in normal operation as it's a read lock.")
+            .base_path()
     }
 }
 
@@ -121,25 +153,33 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
         // Use snapshot_id 0 for reading schema, as DDL operations are typically immediately committed
         // and visible, or we want the latest committed version of the schema.
-        // If the current transaction made schema changes, those might not be visible here yet
-        // depending on MVCC rules for DDL, which are not fully fledged yet.
-        // For now, reading latest committed (snapshot_id 0) is a reasonable default for schema.
-        match self.store.read().unwrap().get_schema(&schema_key, 0, &committed_ids)? {
+        match self
+            .store
+            .read()
+            .map_err(|e| {
+                OxidbError::Lock(format!(
+                    "Failed to acquire read lock on store for get_table_schema: {}",
+                    e
+                ))
+            })?
+            .get_schema(&schema_key, 0, &committed_ids)?
+        {
             Some(schema) => Ok(Some(Arc::new(schema))),
             None => Ok(None),
         }
     }
 
     /// Checks if a value is unique for a given column, optionally excluding a specific primary key (for UPDATEs).
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn check_uniqueness(
         &self,
         table_name: &str,
-        _schema: &crate::core::types::schema::Schema, // Not used directly in this version, but kept for API consistency
+        _schema: &crate::core::types::schema::Schema, // Reverted: Not used directly, kept for potential API stability
         column_to_check: &crate::core::types::schema::ColumnDef,
         value_to_check: &DataType,
-        current_row_pk_bytes: Option<&[u8]>, // Bytes of the primary key of the row being updated
-        _snapshot_id: u64, // Not directly used by index_manager.find_by_index, but relevant for MVCC context
-        _committed_ids: &HashSet<u64>, // Same as snapshot_id
+        current_row_pk_bytes: Option<&[u8]>,
+        _snapshot_id: u64, // Reverted: Not directly used by find_by_index
+        _committed_ids: &HashSet<u64>, // Reverted
     ) -> Result<(), OxidbError> {
         // 1. Construct the index name
         let index_name = format!("idx_{}_{}", table_name, column_to_check.name);
@@ -149,20 +189,25 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             crate::core::common::serialization::serialize_data_type(value_to_check)?;
 
         // 3. Call self.index_manager.find_by_index
-        match self.index_manager.read().unwrap().find_by_index(&index_name, &serialized_value) {
-            // Acquire read lock
+        match self
+            .index_manager
+            .read()
+            .map_err(|e| {
+                OxidbError::Lock(format!(
+                    "Failed to acquire read lock on index manager for check_uniqueness: {}",
+                    e
+                ))
+            })?
+            .find_by_index(&index_name, &serialized_value)
+        {
             Ok(Some(pks)) => {
-                // Value found in index, pks is a Vec<Vec<u8>> of primary keys
                 if pks.is_empty() {
-                    // This case should ideally not happen if the index is maintained correctly.
-                    // If a value is in the index, it should have associated PKs.
-                    // Treating as unique for now, but might indicate an issue.
                     eprintln!("[Executor::check_uniqueness] Warning: Value {:?} found in index '{}' but with no associated primary keys.", value_to_check, index_name);
                     Ok(())
                 } else {
                     match current_row_pk_bytes {
                         None => {
-                            // This is an INSERT operation. If pks is not empty, it's a violation.
+                            // INSERT
                             if !pks.is_empty() {
                                 Err(OxidbError::ConstraintViolation {
                                     message: format!(
@@ -171,14 +216,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                                     ),
                                 })
                             } else {
-                                // Should be covered by the outer pks.is_empty(), but for clarity.
                                 Ok(())
                             }
                         }
                         Some(current_pk) => {
-                            // This is an UPDATE operation.
-                            // Check if any PK in `pks` is different from `current_pk`.
-                            // If all PKs in `pks` are `current_pk`, it's not a violation (value belongs to the same row).
+                            // UPDATE
                             let current_pk_vec = current_pk.to_vec();
                             if pks.iter().any(|pk_from_index| *pk_from_index != current_pk_vec) {
                                 Err(OxidbError::ConstraintViolation {
@@ -188,22 +230,14 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                                     ),
                                 })
                             } else {
-                                // All PKs found match the current row's PK, or pks was empty (already handled).
                                 Ok(())
                             }
                         }
                     }
                 }
             }
-            Ok(None) => {
-                // Value not found in index, so it's unique.
-                Ok(())
-            }
+            Ok(None) => Ok(()), // Value not found in index, so it's unique.
             Err(OxidbError::Index(msg)) if msg.contains("not found") => {
-                // Index not found. This is problematic if the column is supposed to be unique.
-                // As per requirements, this should be an internal error.
-                // This might also occur if a non-unique column is mistakenly checked,
-                // but `check_uniqueness` should only be called for columns with unique constraints.
                 eprintln!(
                     "[Executor::check_uniqueness] Error: Index '{}' not found for unique check on table '{}', column '{}'. This might indicate an internal issue or a missing index for a unique column.",
                     index_name, table_name, column_to_check.name
@@ -213,10 +247,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     index_name, column_to_check.name, table_name
                 )))
             }
-            Err(e) => {
-                // Propagate other errors (e.g., IO errors from index read)
-                Err(e)
-            }
+            Err(e) => Err(e),
         }
     }
 

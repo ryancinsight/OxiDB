@@ -20,21 +20,23 @@ pub struct DeleteOperator<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'st
     pub primary_key_column_index: usize,
     pub committed_ids: Arc<HashSet<u64>>, // Added committed_ids
     // deleted_count will be stored in the iterator after execute
-    // processed_input tracks if perform_deletes has run
+    /// Tracks if perform_deletes has already been called.
     processed_input: bool,
+    /// The schema of the table being deleted from.
     schema: Arc<Schema>, // Added schema field
 }
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<S> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        input: Box<dyn ExecutionOperator + Send + Sync>, // Changed to ExecutionOperator
+        input: Box<dyn ExecutionOperator + Send + Sync>,
         table_name: String,
         store: Arc<RwLock<S>>,
         log_manager: Arc<LogManager>,
         transaction_id: TransactionId,
         primary_key_column_index: usize,
-        committed_ids: Arc<HashSet<u64>>, // Added committed_ids
-        schema: Arc<Schema>,              // Added schema parameter
+        committed_ids: Arc<HashSet<u64>>,
+        schema: Arc<Schema>,
     ) -> Self {
         Self {
             input,
@@ -43,19 +45,25 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<
             log_manager,
             transaction_id,
             primary_key_column_index,
-            committed_ids, // Store committed_ids
+            committed_ids,
             processed_input: false,
-            schema, // Store schema
+            schema,
         }
     }
 
-    // Helper method to perform the actual delete logic, called by execute
-    // Now returns Vec<(Key, Vec<u8>)>: list of (primary_key, serialized_row_data)
+    /// Performs the actual deletion of rows from the store based on the input tuples.
+    ///
+    /// This method iterates through tuples provided by the input operator, extracts
+    /// the primary key, and deletes the corresponding row from the key-value store.
+    /// It also logs the delete operation via the LogManager.
+    ///
+    /// Returns a list of (primary_key, serialized_row_data) for each successfully
+    /// deleted row, which can be used for updating indexes or other post-deletion tasks.
     fn perform_deletes(&mut self) -> Result<Vec<(Key, Vec<u8>)>, OxidbError> {
         let mut deleted_rows_info = Vec::new();
-        let mut input_iterator = self.input.execute()?;
+        let input_iterator = self.input.execute()?;
 
-        while let Some(tuple_result) = input_iterator.next() {
+        for tuple_result in input_iterator {
             let tuple = tuple_result?;
 
             let pk_data_type = tuple.get(self.primary_key_column_index).ok_or_else(|| {
@@ -93,12 +101,13 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<
             let lsn = self.log_manager.next_lsn();
             let tx_for_store = crate::core::transaction::Transaction::new(self.transaction_id);
 
-            let was_deleted = self.store.write().unwrap().delete(
-                &primary_key,
-                &tx_for_store,
-                lsn,
-                &self.committed_ids,
-            )?;
+            let was_deleted = self
+                .store
+                .write()
+                .map_err(|e| {
+                    OxidbError::Lock(format!("Failed to acquire write lock on store: {}", e))
+                })?
+                .delete(&primary_key, &tx_for_store, lsn, &self.committed_ids)?;
             if was_deleted {
                 // count += 1; // No longer returning count directly
                 deleted_rows_info.push((primary_key, serialized_row_data));
@@ -161,15 +170,20 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> ExecutionOperat
     }
 }
 
-// Iterator to return the result of the DeleteOperation: (Key, SerializedRowData)
+/// An iterator that yields the results of a `DeleteOperator` execution.
+/// Each item is a `Tuple` representing a deleted row, containing the primary key
+/// and the serialized row data as `DataType::RawBytes`.
 struct DeleteResultIterator {
-    deleted_rows: Vec<(Key, Vec<u8>)>, // Stores (primary_key, serialized_row_data)
+    /// A vector of (primary_key, serialized_row_data) for the deleted rows.
+    deleted_rows: Vec<(Key, Vec<u8>)>,
+    /// The current index into the `deleted_rows` vector.
     current_index: usize,
 }
 
 impl Iterator for DeleteResultIterator {
     type Item = Result<Tuple, OxidbError>; // Tuple will contain [DataType::Bytes(pk), DataType::Bytes(serialized_row)]
 
+    #[allow(clippy::arithmetic_side_effects)] // Index increment is standard for iterators
     fn next(&mut self) -> Option<Self::Item> {
         if self.current_index >= self.deleted_rows.len() {
             None
@@ -185,6 +199,7 @@ impl Iterator for DeleteResultIterator {
 
 // A helper method to get the count, if still needed by some parts of the system.
 impl DeleteResultIterator {
+    /// Returns the total number of rows that were deleted.
     #[allow(dead_code)]
     pub fn count(&self) -> usize {
         self.deleted_rows.len()

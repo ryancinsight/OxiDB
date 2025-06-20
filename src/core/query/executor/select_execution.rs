@@ -12,6 +12,14 @@ use std::sync::Arc; // Import the helper
 
 // Make sure KeyValueStore is Send + Sync + 'static for build_execution_tree
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S> {
+    /// Handles a SELECT query.
+    /// This involves:
+    /// 1. Determining the transaction context (snapshot ID, committed IDs).
+    /// 2. Converting the SELECT command into an AST statement.
+    /// 3. Building an initial query plan using the optimizer.
+    /// 4. Optimizing the query plan.
+    /// 5. Building an execution tree from the optimized plan.
+    /// 6. Executing the tree and collecting the results.
     pub(crate) fn handle_select(
         &mut self,
         select_columns_spec: SelectColumnSpec,

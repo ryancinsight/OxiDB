@@ -8,13 +8,18 @@ use std::collections::HashSet;
 use std::sync::{Arc, RwLock}; // Added RwLock
 
 pub struct TableScanOperator<S: KeyValueStore<Key, Vec<u8>>> {
-    store: Arc<RwLock<S>>, // Changed to Arc<RwLock<S>>
+    /// The underlying key-value store instance, wrapped for thread-safe access.
+    store: Arc<RwLock<S>>,
+    /// The name of the table to scan. Currently unused in execute but kept for context.
     #[allow(dead_code)]
     table_name: String,
+    /// The snapshot ID for MVCC visibility. Currently unused in execute but kept for context.
     #[allow(dead_code)]
     snapshot_id: u64,
+    /// The set of committed transaction IDs for MVCC visibility. Currently unused in execute but kept for context.
     #[allow(dead_code)]
     committed_ids: Arc<HashSet<u64>>,
+    /// Flag to ensure the operator is executed only once.
     executed: bool,
 }
 
@@ -43,7 +48,9 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for TableScanOp
         self.executed = true;
 
         // Now self.store is Arc<RwLock<S>>, so we need to lock it for reading.
-        let store_guard = self.store.read().unwrap();
+        let store_guard = self.store.read().map_err(|e| {
+            OxidbError::Lock(format!("Failed to acquire read lock on store: {}", e))
+        })?;
         let all_kvs = store_guard.scan()?; // This can return OxidbError
                                            // Drop the guard explicitly after scan is done if possible, though iterator might hold it implicitly.
                                            // For filter_map, the guard might be held longer. This needs careful thought in real async scenarios.

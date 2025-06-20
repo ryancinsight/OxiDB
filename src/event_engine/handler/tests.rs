@@ -3,11 +3,10 @@
 // This file serves as the "Immune System" for the event handler,
 // ensuring its components function correctly and maintain integrity.
 
-#[cfg(test)]
-mod tests {
-    use super::super::core::process_event;
-    use super::super::processors::{
-        DataUpdatedProcessor,
+// Removed outer #[cfg(test)] and mod tests { ... } wrapper
+use super::super::core::process_event;
+use super::super::processors::{
+    DataUpdatedProcessor,
         NotificationSentProcessor,
         OrderPlacedProcessor,
         Processor, // The trait
@@ -142,4 +141,4 @@ mod tests {
         let result = process_event(&event);
         assert!(result.is_ok(), "process_event failed for DataUpdated: {:?}", result.err());
     }
-}
+// Removed outer }

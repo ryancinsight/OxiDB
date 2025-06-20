@@ -176,6 +176,9 @@ impl BPlusTreeIndex {
         }
     }
 
+    /// Adds a page ID to the front of the free list.
+    /// The page's data area (first 8 bytes) will be overwritten to point to the previous free list head.
+    /// Updates tree metadata to point to this page as the new head.
     fn deallocate_page_id(&mut self, page_id_to_free: PageId) -> Result<(), OxidbError> {
         if page_id_to_free == SENTINEL_PAGE_ID {
             return Err(OxidbError::TreeLogicError(

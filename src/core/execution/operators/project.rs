@@ -2,7 +2,10 @@ use crate::core::common::OxidbError;
 use crate::core::execution::{ExecutionOperator, Tuple};
 
 pub struct ProjectOperator {
+    /// The input operator that provides tuples to project.
     input: Box<dyn ExecutionOperator + Send + Sync>,
+    /// A list of column indices to select from the input tuples.
+    /// If empty, all columns from the input are projected.
     column_indices: Vec<usize>,
 }
 

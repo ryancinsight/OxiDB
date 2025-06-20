@@ -117,32 +117,6 @@ impl BPlusTreeNode {
         }
     }
 
-    /// Inserts a key and a child page ID into an internal node.
-    /// Assumes the node is not full and the key should be inserted at the given index.
-    // fn checked_insert_internal(&mut self, key: KeyType, child_page_id: PageId, index: usize) -> Result<(), &'static str>{
-    //      match self {
-    //         BPlusTreeNode::Internal { keys, children, .. } => {
-    //             keys.insert(index, key);
-    //             children.insert(index.saturating_add(1), child_page_id);
-    //             Ok(())
-    //         }
-    //         BPlusTreeNode::Leaf { .. } => Err("Cannot insert child PageId into a Leaf node."),
-    //     }
-    // }
-
-    // /// Inserts a key-value pair into a leaf node.
-    // /// Assumes the node is not full and the key should be inserted at the given index.
-    // fn checked_insert_leaf(&mut self, key: KeyType, value: Vec<PrimaryKey>, index: usize) -> Result<(), &'static str> {
-    //     match self {
-    //         BPlusTreeNode::Leaf { keys, values, .. } => {
-    //             keys.insert(index, key);
-    //             values.insert(index, value);
-    //             Ok(())
-    //         }
-    //         BPlusTreeNode::Internal { .. } => Err("Cannot insert PK value into an Internal node."),
-    //     }
-    // }
-
     /// Inserts a key and corresponding value (PageId for Internal, Vec<PrimaryKey> for Leaf)
     /// into the node, maintaining sorted order of keys. This is a simplified version
     /// that does not handle splits. It's intended for use when it's known that the
