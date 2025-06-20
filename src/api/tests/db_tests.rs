@@ -216,7 +216,7 @@ fn test_constraint_not_null_violation_update() {
 }
 
 #[test]
-#[ignore] // Uniqueness check is currently a NO-OP
+// #[ignore] // Uniqueness check is now implemented
 fn test_constraint_primary_key_violation_insert() {
     let db_path = get_temp_db_path();
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance");
@@ -235,7 +235,7 @@ fn test_constraint_primary_key_violation_insert() {
 }
 
 #[test]
-#[ignore] // Uniqueness check is currently a NO-OP
+// #[ignore] // Uniqueness check is now implemented
 fn test_constraint_unique_violation_insert() {
     let db_path = get_temp_db_path();
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance");
@@ -254,7 +254,7 @@ fn test_constraint_unique_violation_insert() {
 }
 
 #[test]
-#[ignore] // Uniqueness check is currently a NO-OP, and NULL handling in UNIQUE needs it
+// #[ignore] // Uniqueness check and NULL handling are now implemented
 fn test_constraint_unique_allows_multiple_nulls() {
     let db_path = get_temp_db_path();
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance");
@@ -280,7 +280,7 @@ fn test_constraint_unique_allows_multiple_nulls() {
 
 
 #[test]
-#[ignore] // Uniqueness check is currently a NO-OP
+// #[ignore] // Uniqueness check is now implemented
 fn test_constraint_update_violating_unique() {
     let db_path = get_temp_db_path();
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance");
@@ -300,7 +300,7 @@ fn test_constraint_update_violating_unique() {
 }
 
 #[test]
-#[ignore] // Uniqueness check is currently a NO-OP
+// #[ignore] // Uniqueness check is now implemented
 fn test_constraint_update_pk_violating_unique() {
     let db_path = get_temp_db_path();
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance");
@@ -798,5 +798,50 @@ fn test_get_visibility_read_committed_then_deleted_by_committed_should_not_see()
     match result {
         Ok(ExecutionResult::Value(None)) => {} // Expected
         _ => panic!("Expected Value(None) after committed delete, got {:?}", result),
+    }
+}
+
+#[test]
+fn test_constraint_primary_key_not_null_violation_insert() {
+    let db_path = get_temp_db_path();
+    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance");
+
+    // Primary Key columns are implicitly NOT NULL.
+    // This should be enforced by setting col_def.is_nullable = false during CREATE TABLE translation for PKs.
+    db.execute_query_str("CREATE TABLE products_pk_nn (pid INTEGER PRIMARY KEY, name TEXT);").unwrap();
+
+    // Attempt to insert NULL into the primary key column pid
+    let result = db.execute_query_str("INSERT INTO products_pk_nn (pid, name) VALUES (NULL, 'Tablet');");
+    match result {
+        Err(OxidbError::ConstraintViolation { message }) => {
+            // Expecting NOT NULL constraint failure here, as PKs are implicitly not nullable.
+            assert!(
+                message.contains("NOT NULL constraint failed for column 'pid'"),
+                "Unexpected constraint violation message: {}", message
+            );
+        }
+        _ => panic!("Expected ConstraintViolation for NULL PK insert, got {:?}", result),
+    }
+
+    // Attempt to insert by omitting the PK column (implicitly NULL)
+    let result_missing_pk = db.execute_query_str("INSERT INTO products_pk_nn (name) VALUES ('Monitor');");
+     match result_missing_pk {
+        Err(OxidbError::ConstraintViolation { message }) => {
+             assert!(
+                message.contains("NOT NULL constraint failed for column 'pid'"),
+                "Unexpected constraint violation message for missing PK: {}", message
+            );
+        }
+        // This could also be an ExecutionError if the column count doesn't match and
+        // the system doesn't default to NULL for omitted columns in this scenario.
+        // The primary check is the explicit NULL insert.
+        other_error => {
+            // Allow specific execution errors related to column count or missing values if not a constraint violation.
+            // This part of the test is secondary to the explicit NULL test.
+            if !matches!(other_error, Err(OxidbError::Execution(_))) {
+                 panic!("Expected ConstraintViolation or specific ExecutionError for missing PK, got {:?}", other_error);
+            }
+             eprintln!("Note: Implicit NULL for PK (omitted column) resulted in: {:?}", other_error);
+        }
     }
 }

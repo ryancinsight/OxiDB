@@ -128,63 +128,91 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     }
 
     /// Checks if a value is unique for a given column, optionally excluding a specific primary key (for UPDATEs).
-    /// Note: This is a simplified, inefficient scan-based implementation.
     pub(crate) fn check_uniqueness(
         &self,
-        table_name: &str, // For error messages and potentially future schema-aware scans
-        _schema: &crate::core::types::schema::Schema, // Pass schema to know how to deserialize
+        table_name: &str,
+        _schema: &crate::core::types::schema::Schema, // Not used directly in this version, but kept for API consistency
         column_to_check: &crate::core::types::schema::ColumnDef,
         value_to_check: &DataType,
-        _current_row_pk_bytes: Option<&[u8]>, // Bytes of the primary key of the row being updated/inserted
-        _snapshot_id: u64, // For MVCC visibility of existing rows
-        _committed_ids: &HashSet<u64>
+        current_row_pk_bytes: Option<&[u8]>, // Bytes of the primary key of the row being updated
+        _snapshot_id: u64, // Not directly used by index_manager.find_by_index, but relevant for MVCC context
+        _committed_ids: &HashSet<u64> // Same as snapshot_id
     ) -> Result<(), OxidbError> {
-        // TODO: This scan is very inefficient. Replace with index lookup when available.
-        // For now, it iterates all data in the store that might belong to the table.
-        // This assumes rows are stored as serialized DataType::Map.
-        // It also assumes a way to distinguish rows of this table, which current scan() does not provide.
-        // This is a major simplification placeholder.
-        // A real implementation would need to scan only the relevant table's data.
+        // 1. Construct the index name
+        let index_name = format!("idx_{}_{}", table_name, column_to_check.name);
 
-        // The current `self.store.scan()` returns all K/V pairs in the entire store.
-        // We need a way to identify rows for the specific `table_name` and deserialize them.
-        // For now, this check will be very limited or might need to be integrated
-        // more deeply with how rows are stored and identified (e.g. key prefixes for tables).
+        // 2. Serialize value_to_check
+        let serialized_value = crate::core::common::serialization::serialize_data_type(value_to_check)?;
 
-        // Placeholder: If we had a scan_table(table_name_bytes) method:
-        /*
-        let table_data_key_prefix = format!("{}_row_", table_name).into_bytes(); // Example prefix
-        let all_rows_in_table = self.store.read().unwrap().scan_with_prefix(&table_data_key_prefix)?;
-
-        for (row_pk_bytes, serialized_row_map) in all_rows_in_table {
-            if let Some(pk_to_exclude) = current_row_pk_bytes {
-                if pk_to_exclude == row_pk_bytes.as_slice() {
-                    continue; // Skip the row currently being updated
-                }
-            }
-
-            let row_map_datatype = crate::core::common::serialization::deserialize_data_type(&serialized_row_map)?;
-            if let DataType::Map(map_data) = row_map_datatype {
-                if let Some(column_value_in_row) = map_data.0.get(column_to_check.name.as_bytes()) {
-                    if column_value_in_row == value_to_check {
-                        return Err(OxidbError::ConstraintViolation {
-                            message: format!(
-                                "UNIQUE constraint failed for column '{}' in table '{}'. Value {:?} already exists.",
-                                column_to_check.name, table_name, value_to_check
-                            ),
-                        });
+        // 3. Call self.index_manager.find_by_index
+        match self.index_manager.find_by_index(&index_name, &serialized_value) {
+            Ok(Some(pks)) => {
+                // Value found in index, pks is a Vec<Vec<u8>> of primary keys
+                if pks.is_empty() {
+                    // This case should ideally not happen if the index is maintained correctly.
+                    // If a value is in the index, it should have associated PKs.
+                    // Treating as unique for now, but might indicate an issue.
+                    eprintln!("[Executor::check_uniqueness] Warning: Value {:?} found in index '{}' but with no associated primary keys.", value_to_check, index_name);
+                    Ok(())
+                } else {
+                    match current_row_pk_bytes {
+                        None => {
+                            // This is an INSERT operation. If pks is not empty, it's a violation.
+                            if !pks.is_empty() {
+                                Err(OxidbError::ConstraintViolation {
+                                    message: format!(
+                                        "UNIQUE constraint failed for column '{}' in table '{}'. Value {:?} already exists.",
+                                        column_to_check.name, table_name, value_to_check
+                                    ),
+                                })
+                            } else {
+                                // Should be covered by the outer pks.is_empty(), but for clarity.
+                                Ok(())
+                            }
+                        }
+                        Some(current_pk) => {
+                            // This is an UPDATE operation.
+                            // Check if any PK in `pks` is different from `current_pk`.
+                            // If all PKs in `pks` are `current_pk`, it's not a violation (value belongs to the same row).
+                            let current_pk_vec = current_pk.to_vec();
+                            if pks.iter().any(|pk_from_index| *pk_from_index != current_pk_vec) {
+                                Err(OxidbError::ConstraintViolation {
+                                    message: format!(
+                                        "UNIQUE constraint failed for column '{}' in table '{}'. Value {:?} already exists in another row.",
+                                        column_to_check.name, table_name, value_to_check
+                                    ),
+                                })
+                            } else {
+                                // All PKs found match the current row's PK, or pks was empty (already handled).
+                                Ok(())
+                            }
+                        }
                     }
                 }
             }
+            Ok(None) => {
+                // Value not found in index, so it's unique.
+                Ok(())
+            }
+            Err(OxidbError::Index(msg)) if msg.contains("not found") => {
+                // Index not found. This is problematic if the column is supposed to be unique.
+                // As per requirements, this should be an internal error.
+                // This might also occur if a non-unique column is mistakenly checked,
+                // but `check_uniqueness` should only be called for columns with unique constraints.
+                eprintln!(
+                    "[Executor::check_uniqueness] Error: Index '{}' not found for unique check on table '{}', column '{}'. This might indicate an internal issue or a missing index for a unique column.",
+                    index_name, table_name, column_to_check.name
+                );
+                Err(OxidbError::Internal(format!(
+                    "Index '{}' not found during uniqueness check for column '{}' in table '{}'. Unique columns must have an index.",
+                    index_name, column_to_check.name, table_name
+                )))
+            }
+            Err(e) => {
+                // Propagate other errors (e.g., IO errors from index read)
+                Err(e)
+            }
         }
-        */
-        // Since a full table scan and per-row deserialization is too complex without
-        // better storage abstractions for tables, this will be a NO-OP for now,
-        // allowing the rest of the constraint logic (like NOT NULL) to be tested.
-        // True uniqueness will be tested once index lookups are integrated.
-        eprintln!("[Executor::check_uniqueness] Uniqueness check for table '{}', column '{}', value {:?} is currently a NO-OP (scan not implemented).", table_name, column_to_check.name, value_to_check);
-
-        Ok(())
     }
 
     // New home for handle_insert, handle_get, handle_delete:
@@ -479,20 +507,120 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         )?;
 
         // 4. Execute the plan
-        let mut deleted_count = 0;
-        // The DeleteOperator is designed to do all work in its first `next()` call
-        // and then return a summary.
-        // physical_plan_root is Box<dyn ExecutionOperator>, call execute() to get iterator
+        // The DeleteOperator's iterator now yields (Key, SerializedRowData) tuples.
+        let mut deleted_items_info = Vec::new();
         let mut result_iterator = physical_plan_root.execute()?;
-        if let Some(result_tuple_res) = result_iterator.next() {
-            let result_tuple = result_tuple_res?; // Handle potential error from iterator item
-            if let Some(DataType::Integer(count)) = result_tuple.get(0) { // count is &i64
-                deleted_count = *count as usize; // Dereference count
-            } else {
-                return Err(OxidbError::Execution(
-                    "DeleteOperator did not return a count.".to_string(),
+        while let Some(result_tuple_res) = result_iterator.next() {
+            let tuple = result_tuple_res?; // This tuple is Vec<DataType>
+            if tuple.len() == 2 {
+                let key_bytes_opt = match &tuple[0] {
+                    DataType::Bytes(b) => Some(b.clone()),
+                    _ => None,
+                };
+                let row_bytes_opt = match &tuple[1] {
+                    DataType::Bytes(b) => Some(b.clone()),
+                    _ => None,
+                };
+                if let (Some(key), Some(row_data)) = (key_bytes_opt, row_bytes_opt) {
+                    deleted_items_info.push((key, row_data));
+                } else {
+                     return Err(OxidbError::Execution(
+                        "DeleteOperator returned unexpected tuple format (expected Bytes, Bytes).".to_string(),
+                    ));
+                }
+            } else if tuple.len() == 1 && matches!(tuple[0], DataType::Integer(_)) {
+                // This case handles the old DeleteOperator that returned a single count.
+                // This path should ideally not be taken if DeleteOperator is correctly updated.
+                // For now, we'll assume the new format. If this is hit, it means DeleteOperator wasn't updated as expected.
+                 return Err(OxidbError::Execution(
+                    "DeleteOperator returned a count, but expected (Key, SerializedRowData). Operator not updated?".to_string(),
+                ));
+            } else if !tuple.is_empty() { // If it's not empty but not the format we want
+                 return Err(OxidbError::Execution(
+                    format!("DeleteOperator returned unexpected tuple format with length {}.", tuple.len())
                 ));
             }
+            // If tuple is empty, iterator is exhausted.
+        }
+
+        let deleted_count = deleted_items_info.len();
+        let schema_arc = self.get_table_schema(&table_name)?
+            .ok_or_else(|| OxidbError::Execution(format!("Table '{}' not found for DELETE.", table_name)))?;
+        let schema = schema_arc.as_ref();
+
+        for (key_to_delete, serialized_row_to_delete) in deleted_items_info {
+            // Deserialize the row data
+            let deleted_row_datatype = crate::core::common::serialization::deserialize_data_type(&serialized_row_to_delete)?;
+            let deleted_row_map_data = match deleted_row_datatype {
+                DataType::Map(map_data) => map_data.0, // JsonSafeMap's inner HashMap
+                _ => return Err(OxidbError::Execution("Deleted row data is not a map.".to_string())),
+            };
+
+            // Per-column index deletions
+            for col_def in &schema.columns {
+                if col_def.is_primary_key || col_def.is_unique {
+                    let value_for_column = deleted_row_map_data.get(col_def.name.as_bytes())
+                        .cloned()
+                        .unwrap_or(DataType::Null);
+
+                    if value_for_column == DataType::Null && !col_def.is_primary_key {
+                        continue; // Skip de-indexing NULLs for non-PK unique columns
+                    }
+
+                    let index_name = format!("idx_{}_{}", table_name, col_def.name);
+                    let serialized_column_value = crate::core::common::serialization::serialize_data_type(&value_for_column)?;
+
+                    self.index_manager.delete_from_index(&index_name, &serialized_column_value, Some(&key_to_delete))?;
+
+                    // Add undo log for this index deletion
+                    if !is_auto_commit {
+                        if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
+                            active_tx_mut.add_undo_operation(
+                                crate::core::transaction::transaction::UndoOperation::IndexRevertInsert { // To revert delete, we insert
+                                    index_name,
+                                    key: key_to_delete.clone(),
+                                    value_for_index: serialized_column_value,
+                                },
+                            );
+                        }
+                    }
+                }
+            }
+
+            // Add undo log for the main row data deletion (RevertDelete)
+            // This should be done for each actual deleted row.
+            // The low-level `self.store.delete` inside DeleteOperator already logged a WAL entry for the physical delete.
+            // This undo log is for the logical transaction.
+            if !is_auto_commit {
+                if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
+                    active_tx_mut.add_undo_operation(
+                        crate::core::transaction::transaction::UndoOperation::RevertDelete {
+                            key: key_to_delete.clone(),
+                            old_value: serialized_row_to_delete.clone(), // The full serialized row
+                        },
+                    );
+                }
+            }
+
+            // The "default_value_index" is more complex.
+            // The original `handle_delete` (low-level) handles `default_value_index` and its undo ops.
+            // If `DeleteOperator` calls that `handle_delete`, that part is covered.
+            // However, `DeleteOperator` currently calls `store.delete` directly.
+            // For consistency, `default_value_index` for the entire row should also be handled here.
+            if !is_auto_commit { // Only if in an active transaction
+                if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
+                     active_tx_mut.add_undo_operation(
+                        crate::core::transaction::transaction::UndoOperation::IndexRevertInsert {
+                            index_name: "default_value_index".to_string(),
+                            key: key_to_delete.clone(),
+                            value_for_index: serialized_row_to_delete.clone(),
+                        });
+                }
+            }
+             // Also update the default_value_index itself
+            let mut default_index_map = std::collections::HashMap::new();
+            default_index_map.insert("default_value_index".to_string(), serialized_row_to_delete);
+            self.index_manager.on_delete_data(&default_index_map, &key_to_delete)?;
         }
 
         // 5. Handle Auto-Commit for physical WAL

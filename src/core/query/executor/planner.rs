@@ -131,14 +131,19 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 // so this fallback currently works for that specific test.
                 let primary_key_column_index = 0;
 
+                // Fetch schema for the table to pass to DeleteOperator
+                let schema_arc = self.get_table_schema(&table_name)?
+                    .ok_or_else(|| OxidbError::Execution(format!("Table '{}' not found when building DeleteNode.", table_name)))?;
+
                 let delete_operator = crate::core::execution::operators::DeleteOperator::new(
                     input_operator,
-                    table_name,
+                    table_name, // String, moved
                     self.store.clone(),
                     self.log_manager.clone(),
-                    crate::core::common::types::TransactionId(snapshot_id), // snapshot_id is current tx_id
+                    crate::core::common::types::TransactionId(snapshot_id),
                     primary_key_column_index,
-                    committed_ids.clone(), // Pass the Arc<HashSet<u64>>
+                    committed_ids.clone(),
+                    schema_arc, // Pass the schema Arc
                 );
                 Ok(Box::new(delete_operator))
             }

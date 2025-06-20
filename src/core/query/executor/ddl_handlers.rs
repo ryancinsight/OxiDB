@@ -136,8 +136,39 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             lsn,
         )?;
 
-        // TODO: Persist schema changes immediately or rely on normal WAL/persist cycle?
+        // Iterate through columns to create indexes for primary key or unique columns
+        for col_def in schema_to_store.columns.iter() {
+            if col_def.is_primary_key || col_def.is_unique {
+                let index_name = format!("idx_{}_{}", table_name, col_def.name);
+                // Using "hash" as the index type for simplicity, good for exact lookups.
+                // The actual index implementation (e.g., BTree, Hash) would be determined by
+                // the string passed here and handled by the IndexManager.
+                match self.index_manager.create_index(index_name.clone(), "hash") {
+                    Ok(_) => {
+                        eprintln!("[Executor::handle_create_table] Successfully created index '{}' for table '{}', column '{}'.", index_name, table_name, col_def.name);
+                    }
+                    Err(OxidbError::Index(msg)) if msg.contains("already exists") => {
+                        // This case might occur if an index with the same name somehow exists.
+                        // For CREATE TABLE, this should ideally not happen if table names are unique
+                        // and index naming convention is followed.
+                        // We can choose to ignore this error or propagate it.
+                        // For now, let's print a warning and continue, as the goal is to have the index.
+                        eprintln!("[Executor::handle_create_table] Warning: Index '{}' already exists. Assuming it's usable.", index_name);
+                    }
+                    Err(e) => {
+                        // For other errors during index creation, propagate them.
+                        return Err(OxidbError::Index(format!(
+                            "Failed to create index '{}' for table '{}', column '{}': {}",
+                            index_name, table_name, col_def.name, e
+                        )));
+                    }
+                }
+            }
+        }
+
+        // TODO: Persist schema changes and new index metadata immediately or rely on normal WAL/persist cycle?
         // For simplicity now, rely on normal cycle. Critical DDL might force persist.
+        // IndexManager::create_index typically handles its own persistence for index metadata.
 
         Ok(ExecutionResult::Success)
     }

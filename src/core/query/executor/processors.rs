@@ -126,8 +126,48 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                         format!("{}_{}", table_name, uuid::Uuid::new_v4().to_string()).into_bytes()
                     };
 
-                    let row_data_type = DataType::Map(crate::core::types::JsonSafeMap(row_map_data));
-                    executor.handle_insert(kv_key, row_data_type)?; // Call low-level KV insert
+                    let row_data_type = DataType::Map(crate::core::types::JsonSafeMap(row_map_data.clone())); // Clone row_map_data for handle_insert
+
+                    // --- Start: Per-column index updates ---
+                    for col_def in &schema.columns {
+                        if col_def.is_primary_key || col_def.is_unique {
+                            let value_for_column = row_map_data.get(col_def.name.as_bytes())
+                                .cloned()
+                                .unwrap_or(DataType::Null);
+
+                            if value_for_column == DataType::Null && !col_def.is_primary_key {
+                                // Skip indexing NULLs for non-primary key unique columns
+                                continue;
+                            }
+
+                            let index_name = format!("idx_{}_{}", table_name, col_def.name);
+                            let serialized_column_value = crate::core::common::serialization::serialize_data_type(&value_for_column)?;
+
+                            // Insert into the specific column index
+                            executor.index_manager.insert_into_index(&index_name, &serialized_column_value, &kv_key)?;
+
+                            // Add undo log for this index insertion
+                            if current_op_tx_id.0 != 0 { // Only if in an active transaction
+                                if let Some(active_tx_mut) = executor.transaction_manager.get_active_transaction_mut() {
+                                    active_tx_mut.add_undo_operation(
+                                        crate::core::transaction::transaction::UndoOperation::IndexRevertInsert {
+                                            index_name, // Moves index_name
+                                            key: kv_key.clone(), // Primary key of the row
+                                            value_for_index: serialized_column_value, // Serialized value of the indexed column
+                                        },
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    // --- End: Per-column index updates ---
+
+                    // Call low-level KV insert (which might handle its own generic indexing e.g. "default_value_index")
+                    // The `handle_insert` method itself also adds undo logs for the main data and its "default_value_index".
+                    // We need to ensure that the undo log entries from `handle_insert` (especially for `IndexRevertInsert`
+                    // on `default_value_index`) are correctly managed alongside the per-column index undo logs added above.
+                    // The current structure should be fine as they are separate entries in the undo log.
+                    executor.handle_insert(kv_key.clone(), row_data_type)?;
                 }
                 Ok(ExecutionResult::Success) // TODO: Return rows affected (values.len())
             }
