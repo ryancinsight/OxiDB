@@ -155,7 +155,9 @@ fn test_delete() {
     let value1 = b"value1".to_vec();
     let dummy_lsn = 0;
     store.put(key1.clone(), value1.clone(), &dummy_transaction, dummy_lsn).unwrap();
-    assert!(store.delete(&key1, &dummy_transaction, dummy_lsn).unwrap());
+    let mut delete_committed_ids = HashSet::new();
+    delete_committed_ids.insert(0); // tx0 is deleting and is committed
+    assert!(store.delete(&key1, &dummy_transaction, dummy_lsn, &delete_committed_ids).unwrap());
     assert_eq!(store.get(&key1, snapshot_id, &committed_ids).unwrap(), None);
     assert!(!store.contains_key(&key1, snapshot_id, &committed_ids).unwrap());
 }
@@ -166,7 +168,9 @@ fn test_delete_non_existent() {
     let mut store = SimpleFileKvStore::new(temp_file.path()).unwrap();
     let dummy_transaction = Transaction::new(TransactionId(0));
     let dummy_lsn = 0;
-    assert!(!store.delete(&b"non_existent_key".to_vec(), &dummy_transaction, dummy_lsn).unwrap());
+    let mut delete_committed_ids = HashSet::new();
+    delete_committed_ids.insert(0); // tx0 is deleting and is committed
+    assert!(!store.delete(&b"non_existent_key".to_vec(), &dummy_transaction, dummy_lsn, &delete_committed_ids).unwrap());
 }
 
 #[test]
@@ -444,7 +448,10 @@ fn test_delete_writes_to_wal_and_cache() {
     let value = b"wal_del_value".to_vec();
 
     store.put(key.clone(), value.clone(), &tx_put, dummy_lsn_put).unwrap();
-    store.delete(&key, &tx_delete, dummy_lsn_delete).unwrap();
+    let mut delete_committed_ids = HashSet::new();
+    delete_committed_ids.insert(tx_put.id.0); // tx_put (0) is committed
+    delete_committed_ids.insert(tx_delete.id.0); // tx_delete (1) is the one deleting and considered committed for this op
+    store.delete(&key, &tx_delete, dummy_lsn_delete, &delete_committed_ids).unwrap();
 
     let versions = store.get_cache_entry_for_test(&key).unwrap();
     assert_eq!(versions.len(), 1);
@@ -939,7 +946,9 @@ fn test_delete_atomicity_wal_failure() {
     let mut store = SimpleFileKvStore::new(&db_path).unwrap();
     assert!(store.get_cache_entry_for_test(&key).is_some());
 
-    let result = store.delete(&key, &dummy_transaction, dummy_lsn);
+    let mut delete_committed_ids = HashSet::new();
+    delete_committed_ids.insert(dummy_transaction.id.0); // tx0 is deleting
+    let result = store.delete(&key, &dummy_transaction, dummy_lsn, &delete_committed_ids);
     assert!(result.is_err());
     match result.unwrap_err() {
         OxidbError::Io(_) => {}
@@ -1000,7 +1009,10 @@ fn test_scan_operation() -> Result<(), OxidbError> {
     store.put(key1.clone(), val1_v2.clone(), &tx0, lsn_base + 3)?;
 
     // Delete key3 with tx0
-    store.delete(&key3, &tx0, lsn_base + 4)?;
+    let mut delete_committed_ids_scan = HashSet::new();
+    delete_committed_ids_scan.insert(tx0.id.0); // tx0 is deleting and is committed
+    // Add other tx_ids that were part of setup if any, tx0 covers puts for key1, key2, key3.
+    store.delete(&key3, &tx0, lsn_base + 4, &delete_committed_ids_scan)?;
 
     // Insert key4 with a different transaction ID (tx_other)
     // The current simple_file_store.scan() takes latest non-expired, regardless of tx_id,
@@ -1264,11 +1276,22 @@ fn test_physical_wal_lsn_integration() {
     // COMMIT (explicit) - No *physical* WalEntry::TransactionCommit from SimpleFileKvStore's perspective for this.
     // The logical commit is handled by TransactionManager's WAL.
     // UPDATE (auto-commit), DELETE (auto-commit), explicit COMMIT for Charlie's TX.
+    // Schema is also a Put.
+    // Schema (Put, LSN 0)
+    // Insert Alice (Put, LSN 1)
+    // Insert Bob (Put, LSN 2)
+    // Update Alicia (Put, LSN 3)
+    // Auto-commit for Update (Commit, LSN 4)
+    // Delete Bob (Delete, LSN 5)
+    // Auto-commit for Delete (Commit, LSN 6)
+    // BEGIN TX1 (Logical LSN 7, not in this WAL)
+    // Insert Charlie TX1 (Put, LSN 8)
+    // Commit TX1 (Physical Commit, LSN 9)
 
-    assert_eq!(physical_data_ops, 5, "Expected 5 data operations (Put/Delete) in physical WAL");
+    assert_eq!(physical_data_ops, 6, "Expected 6 data operations (Schema Put + 5 DML Put/Delete) in physical WAL");
     assert_eq!(
-        physical_commit_ops, 3, // Updated expected count
-        "Expected 3 commit operations in physical WAL (2 auto, 1 explicit TXN)"
+        physical_commit_ops, 3,
+        "Expected 3 commit operations in physical WAL (2 auto-commits for tx0 DML, 1 for tx1 DML)"
     );
     assert_eq!(
         wal_entries.len(),

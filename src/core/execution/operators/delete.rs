@@ -6,6 +6,7 @@ use crate::core::storage::engine::traits::KeyValueStore;
 use crate::core::wal::log_manager::LogManager;
 use crate::core::query::commands::Key; // For primary key type
 use crate::core::common::types::TransactionId; // Changed path for TransactionId
+use std::collections::HashSet; // Added HashSet
 use std::sync::{Arc, RwLock};
 
 // Removed #[derive(Debug)] because Box<dyn ExecutionOperator> is not Debug
@@ -17,6 +18,7 @@ pub struct DeleteOperator<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'st
     pub log_manager: Arc<LogManager>,
     pub transaction_id: TransactionId,
     pub primary_key_column_index: usize,
+    pub committed_ids: Arc<HashSet<u64>>, // Added committed_ids
     // deleted_count will be stored in the iterator after execute
     // processed_input tracks if perform_deletes has run
     processed_input: bool,
@@ -30,6 +32,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<
         log_manager: Arc<LogManager>,
         transaction_id: TransactionId,
         primary_key_column_index: usize,
+        committed_ids: Arc<HashSet<u64>>, // Added committed_ids
     ) -> Self {
         Self {
             input,
@@ -38,6 +41,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<
             log_manager,
             transaction_id,
             primary_key_column_index,
+            committed_ids, // Store committed_ids
             processed_input: false,
         }
     }
@@ -64,7 +68,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<
             let lsn = self.log_manager.next_lsn();
             let tx_for_store = crate::core::transaction::Transaction::new(self.transaction_id);
 
-            let was_deleted = self.store.write().unwrap().delete(&primary_key, &tx_for_store, lsn)?;
+            let was_deleted = self.store.write().unwrap().delete(&primary_key, &tx_for_store, lsn, &self.committed_ids)?;
             if was_deleted {
                 count += 1;
             }

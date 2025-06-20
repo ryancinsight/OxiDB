@@ -96,6 +96,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
         let mut updated_count = 0;
 
+        // Fetch schema once
+        let schema_arc = self.get_table_schema(&source_table_name)?
+            .ok_or_else(|| OxidbError::Execution(format!("Table '{}' not found for UPDATE.", source_table_name)))?;
+        let schema = schema_arc.as_ref();
+
         for key in keys_to_update {
             let current_op_tx_id: TransactionId;
             let committed_ids_for_get_u64_set: HashSet<u64>;
@@ -137,19 +142,58 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 let mut current_data_type = deserialize_data_type(&current_value_bytes)?;
 
                 if let DataType::Map(JsonSafeMap(ref mut map_data)) = current_data_type { // Use JsonSafeMap
+                    // Apply assignments to a temporary map to check constraints first
+                    let mut temp_updated_map_data = map_data.clone();
                     for assignment_cmd in &assignments_cmd {
-                        map_data.insert( // map_data here IS the HashMap, so no .0 needed
+                        temp_updated_map_data.insert(
                             assignment_cmd.column.as_bytes().to_vec(),
                             assignment_cmd.value.clone(),
                         );
                     }
-                } else if !assignments_cmd.is_empty() {
+
+                    // Constraint Checks using temp_updated_map_data
+                    for col_def in &schema.columns {
+                        // Check only if this column is part of the current assignments
+                        let assigned_value_opt = assignments_cmd.iter().find(|a| a.column == col_def.name);
+
+                        if let Some(assignment_cmd) = assigned_value_opt {
+                            let new_value_for_column = &assignment_cmd.value;
+
+                            // NOT NULL Check
+                            if !col_def.is_nullable && *new_value_for_column == DataType::Null {
+                                return Err(OxidbError::ConstraintViolation {
+                                    message: format!("NOT NULL constraint failed for column '{}' in table '{}'", col_def.name, source_table_name),
+                                });
+                            }
+
+                            // UNIQUE / PRIMARY KEY Uniqueness Check
+                            if col_def.is_unique { // is_primary_key implies is_unique
+                                if *new_value_for_column == DataType::Null && !col_def.is_primary_key {
+                                    // Skip uniqueness for NULL in UNIQUE column (not PK)
+                                } else {
+                                    self.check_uniqueness(
+                                        &source_table_name,
+                                        schema,
+                                        col_def,
+                                        new_value_for_column,
+                                        Some(&key), // Exclude current row by its PK (`key`)
+                                        current_op_tx_id.0,
+                                        &committed_ids_for_get_u64_set
+                                    )?;
+                                }
+                            }
+                        }
+                    }
+                    // If all checks passed, apply to actual map_data
+                    *map_data = temp_updated_map_data;
+
+                } else if !assignments_cmd.is_empty() { // Should not happen if rows are DataType::Map
                     if is_auto_commit {
                         self.lock_manager.release_locks(current_op_tx_id.0); // Use .0 for u64
                     }
-                    return Err(OxidbError::NotImplemented {
-                        feature: "Cannot apply field assignments to non-Map DataType".to_string(),
-                    });
+                    return Err(OxidbError::Execution( // Changed from NotImplemented
+                        "UPDATE target row is not a valid Map structure.".to_string(),
+                    ));
                 }
 
                 let updated_value_bytes = serialize_data_type(&current_data_type)?;

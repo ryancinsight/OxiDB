@@ -67,6 +67,9 @@ pub enum OxidbError {
 
     #[error("Buffer Pool Error: {0}")]
     BufferPool(String),
+
+    #[error("ConstraintViolation: {message}")]
+    ConstraintViolation { message: String },
 }
 
 impl From<crate::core::indexing::btree::tree::OxidbError> for OxidbError {

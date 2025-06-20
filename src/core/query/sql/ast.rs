@@ -50,10 +50,18 @@ pub struct UpdateStatement {
 // Future statements: InsertStatement, DeleteStatement, CreateTableStatement etc.
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum AstColumnConstraint {
+    NotNull,
+    Unique,
+    PrimaryKey,
+    // Potentially others like Check(String), Default(AstLiteralValue) in the future
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct ColumnDef {
     pub name: String,
     pub data_type: String, // Using String for type for now, can be an enum later
-                           // Add constraints like PRIMARY KEY, NOT NULL later if needed
+    pub constraints: Vec<AstColumnConstraint>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

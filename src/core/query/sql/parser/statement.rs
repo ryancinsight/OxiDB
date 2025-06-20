@@ -1,11 +1,39 @@
 use super::core::SqlParser;
 use crate::core::query::sql::ast::{
-    self, ColumnDef, CreateTableStatement, SelectStatement, Statement, UpdateStatement,
+    self, CreateTableStatement, SelectStatement, Statement, UpdateStatement, // Removed ColumnDef
 };
 use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::tokenizer::Token; // For matching specific tokens like Token::Where
 
 impl SqlParser {
+    // Helper to expect a specific identifier, case-insensitive
+    fn expect_specific_identifier(&mut self, expected: &str, _error_msg_if_not_specific: &str) -> Result<String, SqlParseError> {
+        let token_pos = self.current_token_pos();
+        match self.consume_any() {
+            Some(Token::Identifier(ident)) => {
+                if ident.eq_ignore_ascii_case(expected) {
+                    Ok(ident)
+                } else {
+                    Err(SqlParseError::UnexpectedToken {
+                        expected: expected.to_string(),
+                        found: format!("Identifier({})", ident),
+                        position: token_pos,
+                    })
+                }
+            }
+            Some(other_token) => Err(SqlParseError::UnexpectedToken {
+                expected: expected.to_string(),
+                found: format!("{:?}", other_token),
+                position: token_pos,
+            }),
+            None => Err(SqlParseError::UnexpectedToken { // Changed from CustomError
+                expected: expected.to_string(),
+                found: "EOF".to_string(),
+                position: token_pos, // Position where the token was expected
+            }),
+        }
+    }
+
     pub fn parse(&mut self) -> Result<Statement, SqlParseError> {
         if self.is_at_end() || (self.peek() == Some(&Token::EOF) && self.tokens.len() == 1) {
             return Err(SqlParseError::UnexpectedEOF);
@@ -105,28 +133,27 @@ impl SqlParser {
                 data_type_string.push(')');
             }
 
-            // Consume other constraints like PRIMARY KEY after type and its params
-            while !self.match_token(Token::Comma)
-                && !self.match_token(Token::RParen)
-                && !self.is_at_end()
-            {
-                match self.peek() {
-                    // Keywords like PRIMARY, KEY, NOT, NULL are often tokenized as Identifier
-                    // if they are not specific keywords in the Token enum for this context.
-                    Some(Token::Identifier(_)) => {
-                        // For now, append to data_type_string to see what's captured.
-                        // A proper system would parse these into AST constraint nodes.
-                        if let Some(Token::Identifier(constraint_part)) = self.consume_any() {
-                            data_type_string.push(' ');
-                            data_type_string.push_str(&constraint_part);
-                        }
-                    }
-                    // If specific keywords for constraints exist (e.g., Token::Primary, Token::Key), handle them here.
-                    _ => break, // Stop if it's not an identifier-like constraint
+            let mut constraints = Vec::new();
+            loop {
+                // Peek and match for constraint keywords
+                // Using eq_ignore_ascii_case for case-insensitivity of keywords
+                if self.peek_is_identifier_str("NOT") {
+                    self.consume_any(); // Consume NOT
+                    self.expect_specific_identifier("NULL", "Expected NULL after NOT")?;
+                    constraints.push(ast::AstColumnConstraint::NotNull);
+                } else if self.peek_is_identifier_str("PRIMARY") {
+                    self.consume_any(); // Consume PRIMARY
+                    self.expect_specific_identifier("KEY", "Expected KEY after PRIMARY")?;
+                    constraints.push(ast::AstColumnConstraint::PrimaryKey);
+                } else if self.peek_is_identifier_str("UNIQUE") {
+                    self.consume_any(); // Consume UNIQUE
+                    constraints.push(ast::AstColumnConstraint::Unique);
+                } else {
+                    break; // No more constraint keywords for this column
                 }
             }
 
-            columns.push(ColumnDef { name: column_name, data_type: data_type_string });
+            columns.push(ast::ColumnDef { name: column_name, data_type: data_type_string, constraints });
 
             if self.match_token(Token::RParen) {
                 // This RParen should be the one for the column list

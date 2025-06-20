@@ -337,6 +337,11 @@ impl DataDeserializer<WalEntry> for WalEntry {
                 data_to_checksum.extend_from_slice(&tx_id_bytes);
                 WalEntry::TransactionRollback { lsn, transaction_id }
             }
+            0x00 => { // Specifically check for 0x00
+                return Err(OxidbError::Deserialization(
+                    "Read a zero byte where WAL operation type was expected. Possible file corruption or premature EOF.".to_string()
+                ));
+            }
             _ => {
                 return Err(OxidbError::Deserialization(format!(
                     "Unknown WAL operation type: {}",

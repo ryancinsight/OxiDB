@@ -29,29 +29,24 @@ impl Oxidb {
     /// # Errors
     /// Returns `OxidbError` if the store cannot be initialized or the executor cannot be created.
     pub fn new_with_config(config: Config) -> Result<Self, OxidbError> {
-        let store = SimpleFileKvStore::new(config.database_path())?;
-        let wal_config = crate::core::wal::writer::WalWriterConfig::default(); // Use default config
+        let store_path = config.database_path(); // Path for SFKS data file
+        let store = SimpleFileKvStore::new(store_path.clone())?; // SFKS derives its physical WAL from store_path
 
-        // Derive WAL path from the database file path to match SimpleFileKvStore's likely internal WAL path.
-        let db_file_path_as_path = config.database_path(); // This is already a PathBuf from Config
-        let mut derived_wal_path = db_file_path_as_path.clone();
+        let wal_writer_config = crate::core::wal::writer::WalWriterConfig::default();
 
-        // Reconstruct filename with .wal appended, e.g., "filename.ext.wal" or "filename.wal"
-        let original_filename_stem = derived_wal_path.file_stem().unwrap_or_default().to_str().unwrap_or_default();
-        let original_extension = derived_wal_path.extension().unwrap_or_default().to_str().unwrap_or_default();
+        // Use the wal_file_path from the config for the TransactionManager's WalWriter.
+        // This path is distinct from the one SimpleFileKvStore derives for its physical data WAL.
+        let tm_wal_path = config.wal_path(); // This is typically "<cwd>/oxidb.wal" or user-defined.
+                                             // SimpleFileKvStore derives its WAL as "<store_path>.wal" or "<store_path>.<ext>.wal"
 
-        let new_wal_filename = if original_extension.is_empty() {
-            format!("{}.wal", original_filename_stem)
-        } else {
-            format!("{}.{}.wal", original_filename_stem, original_extension)
-        };
-        derived_wal_path.set_file_name(new_wal_filename);
+        eprintln!("[Oxidb::new_with_config] SFKS main DB path: {:?}", store_path);
+        // Actual SFKS WAL path is derived internally by SFKS, e.g. store_path.with_extension(...)
+        eprintln!("[Oxidb::new_with_config] Using TM WAL path for QueryExecutor: {:?}", tm_wal_path);
 
-        let wal_writer = WalWriter::new(derived_wal_path.clone(), wal_config);
-        eprintln!("[Oxidb::new_with_config] Using WAL path for QueryExecutor: {:?}", derived_wal_path);
+        let tm_wal_writer = WalWriter::new(tm_wal_path, wal_writer_config);
 
         let log_manager = Arc::new(LogManager::new());
-        let executor = QueryExecutor::new(store, config.index_path(), wal_writer, log_manager)?;
+        let executor = QueryExecutor::new(store, config.index_path(), tm_wal_writer, log_manager)?;
         Ok(Self { executor })
     }
 

@@ -1,5 +1,6 @@
 use super::{ExecutionResult, QueryExecutor};
 use crate::core::common::OxidbError;
+use crate::core::transaction::Transaction; // Added this import
 // use crate::core::common::serialization::{deserialize_data_type}; // No longer needed here
 use crate::core::common::types::TransactionId;
 // Key removed
@@ -99,4 +100,45 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         Ok(ExecutionResult::Values(results_vec))
     }
     // Removed handle_get from here
+
+    pub(crate) fn handle_create_table(
+        &mut self,
+        table_name: String,
+        columns: Vec<crate::core::types::schema::ColumnDef>,
+    ) -> Result<ExecutionResult, OxidbError> {
+        let schema_key = Self::schema_key(&table_name); // Use helper from QueryExecutor in mod.rs
+
+        // Check if schema already exists (optional, depends on IF NOT EXISTS behavior)
+        // For now, assume CREATE TABLE should fail if table (schema) already exists.
+        // The get_schema method uses snapshot_id 0 and default committed_ids.
+        if self.get_table_schema(&table_name)?.is_some() {
+            return Err(OxidbError::AlreadyExists { name: format!("Table '{}'", table_name) });
+        }
+
+        let schema_to_store = crate::core::types::schema::Schema::new(columns);
+
+        // Serialize the Schema object. Assuming JSON serialization for now.
+        let serialized_schema = serde_json::to_vec(&schema_to_store).map_err(|e|
+            OxidbError::Serialization(format!("Failed to serialize schema for table '{}': {}", table_name, e))
+        )?;
+
+        // Use a system transaction (ID 0) for DDL operations like schema storage.
+        // LSN generation for DDL is also important.
+        let system_tx = Transaction::new(TransactionId(0));
+        let lsn = self.log_manager.next_lsn();
+
+        // The schema itself is stored as a Vec<u8> value.
+        // The `handle_insert` is for DataType values, so use store.put directly.
+        self.store.write().unwrap().put(
+            schema_key,
+            serialized_schema,
+            &system_tx,
+            lsn,
+        )?;
+
+        // TODO: Persist schema changes immediately or rely on normal WAL/persist cycle?
+        // For simplicity now, rely on normal cycle. Critical DDL might force persist.
+
+        Ok(ExecutionResult::Success)
+    }
 }

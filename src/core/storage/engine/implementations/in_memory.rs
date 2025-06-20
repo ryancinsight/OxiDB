@@ -95,33 +95,41 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
         &mut self,
         key: &Vec<u8>,
         transaction: &Transaction,
-        _lsn: Lsn,
+        _lsn: Lsn, // _lsn is unused in InMemoryKvStore but required by trait
+        committed_ids: &HashSet<u64>, // Added committed_ids
     ) -> Result<bool, OxidbError> {
-        // Added _lsn
         if let Some(versions) = self.data.get_mut(key) {
             for version in versions.iter_mut().rev() {
-                // Compare TransactionId directly if Transaction.id is TransactionId struct
-                // If Transaction.id is u64, then this is fine.
-                // Assuming Transaction.id is u64 based on VersionedValue fields.
-                // If Transaction.id became TransactionId, then version.created_tx_id should be compared with transaction.id.0
-                // For now, assuming transaction.id is u64 for comparison with VersionedValue fields.
-                // This part might need adjustment if Transaction.id type changed to TransactionId struct.
-                // Based on Transaction struct, id is TransactionId. So comparison should be with transaction.id.0.
-                if version.created_tx_id <= transaction.id.0 // Use .0 if transaction.id is TransactionId struct
-                    && (version.expired_tx_id.is_none()
-                        || version.expired_tx_id.unwrap() > transaction.id.0)
-                // Use .0
-                {
-                    if version.expired_tx_id.is_none() {
-                        version.expired_tx_id = Some(transaction.id.0); // Use .0
-                        return Ok(true);
+                // Determine if this version is currently visible (similar to snapshot_id=0 GET logic)
+                // For InMemoryKvStore, snapshot_id for delete operation is effectively 0 (read committed)
+                let creator_is_committed = committed_ids.contains(&version.created_tx_id) || version.created_tx_id == 0;
+                let mut is_visible = false;
+                if creator_is_committed {
+                    if let Some(expired_tx_id_val) = version.expired_tx_id {
+                        let expirer_is_committed = committed_ids.contains(&expired_tx_id_val) || expired_tx_id_val == 0;
+                        if !expirer_is_committed {
+                            is_visible = true; // Creator committed, expirer not committed
+                        }
                     } else {
-                        return Ok(false);
+                        is_visible = true; // Creator committed, not expired
+                    }
+                }
+
+                // If the version is visible, this is the one to mark as expired by the current transaction.
+                // Also, handle the case where the current transaction itself created the version (e.g. rollback of an insert).
+                let is_own_uncommitted_write = version.created_tx_id == transaction.id.0 && !committed_ids.contains(&transaction.id.0);
+
+                if is_visible || (is_own_uncommitted_write && version.expired_tx_id.is_none()) {
+                    // If it's visible and not yet expired by this transaction or another committed one, mark it.
+                    // Or if it's an uncommitted write by the same transaction that is now being deleted (e.g. rollback).
+                    if version.expired_tx_id.is_none() || !committed_ids.contains(&version.expired_tx_id.unwrap_or(0)) || version.expired_tx_id.unwrap_or(0) == transaction.id.0 {
+                        version.expired_tx_id = Some(transaction.id.0);
+                        return Ok(true); // Successfully marked a version as deleted
                     }
                 }
             }
         }
-        Ok(false)
+        Ok(false) // Key not found or no visible version to delete
     }
 
     fn contains_key(
@@ -181,5 +189,22 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
             }
         }
         Ok(results)
+    }
+
+    fn get_schema(&self, schema_key: &Vec<u8>, snapshot_id: u64, committed_ids: &HashSet<u64>) -> Result<Option<crate::core::types::schema::Schema>, OxidbError> {
+        match self.get(schema_key, snapshot_id, committed_ids)? {
+            Some(bytes) => {
+                // Schema is assumed to be serialized directly (e.g., using serde_json)
+                // not wrapped in DataType::Schema variant.
+                match serde_json::from_slice(&bytes) {
+                    Ok(schema) => Ok(Some(schema)),
+                    Err(e) => Err(OxidbError::Deserialization(format!(
+                        "Failed to deserialize Schema for key {:?}: {}",
+                        String::from_utf8_lossy(schema_key), e
+                    ))),
+                }
+            }
+            None => Ok(None),
+        }
     }
 }

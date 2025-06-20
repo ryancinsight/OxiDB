@@ -138,6 +138,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     self.log_manager.clone(),
                     crate::core::common::types::TransactionId(snapshot_id), // snapshot_id is current tx_id
                     primary_key_column_index,
+                    committed_ids.clone(), // Pass the Arc<HashSet<u64>>
                 );
                 Ok(Box::new(delete_operator))
             }

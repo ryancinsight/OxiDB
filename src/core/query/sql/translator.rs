@@ -64,12 +64,37 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
                         ast_col_def.data_type
                     )));
                 };
+                let mut is_primary_key = false;
+                let mut is_unique = false;
+                let mut is_nullable = true; // Default to nullable
+
+                for constraint in ast_col_def.constraints {
+                    match constraint {
+                        ast::AstColumnConstraint::PrimaryKey => {
+                            is_primary_key = true;
+                            is_unique = true; // Primary key implies unique
+                            is_nullable = false; // Primary key implies not nullable
+                        }
+                        ast::AstColumnConstraint::Unique => {
+                            is_unique = true;
+                        }
+                        ast::AstColumnConstraint::NotNull => {
+                            is_nullable = false;
+                        }
+                    }
+                }
+
+                // If PrimaryKey was set, it already set is_nullable to false and is_unique to true.
+                // If NotNull was set explicitly, is_nullable is false.
+                // If Unique was set explicitly, is_unique is true.
+                // This order of processing within the loop and then using the flags should be fine.
+
                 command_columns.push(crate::core::types::schema::ColumnDef {
-                    // Path was already correct here, re-affirming
                     name: ast_col_def.name,
                     data_type,
-                    // Constraints like primary_key, nullable, etc., would be handled here
-                    // For now, they are not part of ast::ColumnDef or schema::ColumnDef
+                    is_primary_key,
+                    is_unique,
+                    is_nullable,
                 });
             }
             Ok(Command::CreateTable { table_name: create_ast.table_name, columns: command_columns })

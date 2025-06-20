@@ -20,6 +20,14 @@ impl SqlParser {
         self.tokens.get(self.current)
     }
 
+    // Helper to check if the current token is an Identifier with a specific string value (case-insensitive)
+    pub(super) fn peek_is_identifier_str(&self, expected_str: &str) -> bool {
+        match self.peek() {
+            Some(Token::Identifier(ident)) => ident.eq_ignore_ascii_case(expected_str),
+            _ => false,
+        }
+    }
+
     pub(super) fn previous(&self) -> Option<&Token> {
         if self.current == 0 {
             None

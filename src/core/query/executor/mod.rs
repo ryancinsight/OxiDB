@@ -98,6 +98,95 @@ impl QueryExecutor<SimpleFileKvStore> {
 // Moved DML handlers to the generic QueryExecutor impl block for visibility by command_handlers.rs
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S> {
     // Note: persist() and index_base_path() are specific to SimpleFileKvStore, so they remain in that impl block.
+
+    /// Helper function to construct the key used for storing a table's schema.
+    fn schema_key(table_name: &str) -> Vec<u8> {
+        format!("_schema_{}", table_name).into_bytes()
+    }
+
+    /// Retrieves the schema for a given table name.
+    /// This involves constructing the schema key and using the store's get_schema method.
+    /// It uses snapshot_id = 0 (read committed state) as schemas are DDL and should be stable.
+    pub(crate) fn get_table_schema(&self, table_name: &str) -> Result<Option<Arc<crate::core::types::schema::Schema>>, OxidbError> {
+        let schema_key = Self::schema_key(table_name);
+        let committed_ids: HashSet<u64> = self
+            .transaction_manager
+            .get_committed_tx_ids_snapshot()
+            .into_iter()
+            .map(|id| id.0)
+            .collect();
+
+        // Use snapshot_id 0 for reading schema, as DDL operations are typically immediately committed
+        // and visible, or we want the latest committed version of the schema.
+        // If the current transaction made schema changes, those might not be visible here yet
+        // depending on MVCC rules for DDL, which are not fully fledged yet.
+        // For now, reading latest committed (snapshot_id 0) is a reasonable default for schema.
+        match self.store.read().unwrap().get_schema(&schema_key, 0, &committed_ids)? {
+            Some(schema) => Ok(Some(Arc::new(schema))),
+            None => Ok(None),
+        }
+    }
+
+    /// Checks if a value is unique for a given column, optionally excluding a specific primary key (for UPDATEs).
+    /// Note: This is a simplified, inefficient scan-based implementation.
+    pub(crate) fn check_uniqueness(
+        &self,
+        table_name: &str, // For error messages and potentially future schema-aware scans
+        _schema: &crate::core::types::schema::Schema, // Pass schema to know how to deserialize
+        column_to_check: &crate::core::types::schema::ColumnDef,
+        value_to_check: &DataType,
+        _current_row_pk_bytes: Option<&[u8]>, // Bytes of the primary key of the row being updated/inserted
+        _snapshot_id: u64, // For MVCC visibility of existing rows
+        _committed_ids: &HashSet<u64>
+    ) -> Result<(), OxidbError> {
+        // TODO: This scan is very inefficient. Replace with index lookup when available.
+        // For now, it iterates all data in the store that might belong to the table.
+        // This assumes rows are stored as serialized DataType::Map.
+        // It also assumes a way to distinguish rows of this table, which current scan() does not provide.
+        // This is a major simplification placeholder.
+        // A real implementation would need to scan only the relevant table's data.
+
+        // The current `self.store.scan()` returns all K/V pairs in the entire store.
+        // We need a way to identify rows for the specific `table_name` and deserialize them.
+        // For now, this check will be very limited or might need to be integrated
+        // more deeply with how rows are stored and identified (e.g. key prefixes for tables).
+
+        // Placeholder: If we had a scan_table(table_name_bytes) method:
+        /*
+        let table_data_key_prefix = format!("{}_row_", table_name).into_bytes(); // Example prefix
+        let all_rows_in_table = self.store.read().unwrap().scan_with_prefix(&table_data_key_prefix)?;
+
+        for (row_pk_bytes, serialized_row_map) in all_rows_in_table {
+            if let Some(pk_to_exclude) = current_row_pk_bytes {
+                if pk_to_exclude == row_pk_bytes.as_slice() {
+                    continue; // Skip the row currently being updated
+                }
+            }
+
+            let row_map_datatype = crate::core::common::serialization::deserialize_data_type(&serialized_row_map)?;
+            if let DataType::Map(map_data) = row_map_datatype {
+                if let Some(column_value_in_row) = map_data.0.get(column_to_check.name.as_bytes()) {
+                    if column_value_in_row == value_to_check {
+                        return Err(OxidbError::ConstraintViolation {
+                            message: format!(
+                                "UNIQUE constraint failed for column '{}' in table '{}'. Value {:?} already exists.",
+                                column_to_check.name, table_name, value_to_check
+                            ),
+                        });
+                    }
+                }
+            }
+        }
+        */
+        // Since a full table scan and per-row deserialization is too complex without
+        // better storage abstractions for tables, this will be a NO-OP for now,
+        // allowing the rest of the constraint logic (like NOT NULL) to be tested.
+        // True uniqueness will be tested once index lookups are integrated.
+        eprintln!("[Executor::check_uniqueness] Uniqueness check for table '{}', column '{}', value {:?} is currently a NO-OP (scan not implemented).", table_name, column_to_check.name, value_to_check);
+
+        Ok(())
+    }
+
     // New home for handle_insert, handle_get, handle_delete:
 
     pub(crate) fn handle_insert(
@@ -287,7 +376,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             self.store.read().unwrap().get(&key, current_op_tx_id.0, &committed_ids_set)?;
         eprintln!("[QE::handle_delete] Key: '{}', OpTxID: {}. value_to_delete_opt.is_some(): {}", String::from_utf8_lossy(&key), current_op_tx_id.0, value_to_delete_opt.is_some());
 
-        let deleted = self.store.write().unwrap().delete(&key, &tx_for_store, new_lsn)?; // Pass new_lsn
+        // Pass committed_ids_set to the delete operation
+        let deleted = self.store.write().unwrap().delete(&key, &tx_for_store, new_lsn, &committed_ids_set)?;
         eprintln!("[QE::handle_delete] Key: '{}', OpTxID: {}. Boolean from store.delete(): {}", String::from_utf8_lossy(&key), current_op_tx_id.0, deleted);
 
         if deleted {

@@ -1,5 +1,6 @@
 // Imports needed for the tests
 use crate::core::query::sql::ast::{
+    AstColumnConstraint, // Added this import
     AstLiteralValue,
     SelectColumn,
     // AST nodes for assertions
@@ -260,6 +261,138 @@ fn test_parse_select_simple() {
             assert!(select_stmt.condition.is_none());
         }
         _ => panic!("Expected SelectStatement"),
+    }
+}
+
+// --- Tests for CREATE TABLE with constraints ---
+
+#[test]
+fn test_parse_create_table_with_constraints() {
+    let sql = "CREATE TABLE users (
+        id INTEGER PRIMARY KEY,
+        email VARCHAR(255) NOT NULL UNIQUE,
+        age INT NOT NULL,
+        username TEXT UNIQUE,
+        bio TEXT
+    );";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+
+    match ast {
+        Statement::CreateTable(create_stmt) => {
+            assert_eq!(create_stmt.table_name, "users");
+            assert_eq!(create_stmt.columns.len(), 5);
+
+            // id INTEGER PRIMARY KEY
+            let id_col = &create_stmt.columns[0];
+            assert_eq!(id_col.name, "id");
+            assert_eq!(id_col.data_type, "INTEGER");
+            assert_eq!(id_col.constraints.len(), 1);
+            assert!(id_col.constraints.contains(&AstColumnConstraint::PrimaryKey));
+
+            // email VARCHAR(255) NOT NULL UNIQUE
+            let email_col = &create_stmt.columns[1];
+            assert_eq!(email_col.name, "email");
+            assert_eq!(email_col.data_type, "VARCHAR(255)");
+            assert_eq!(email_col.constraints.len(), 2);
+            assert!(email_col.constraints.contains(&AstColumnConstraint::NotNull));
+            assert!(email_col.constraints.contains(&AstColumnConstraint::Unique));
+            // Check order if parser preserves it (optional, current parser likely does)
+            assert_eq!(email_col.constraints[0], AstColumnConstraint::NotNull);
+            assert_eq!(email_col.constraints[1], AstColumnConstraint::Unique);
+
+
+            // age INT NOT NULL
+            let age_col = &create_stmt.columns[2];
+            assert_eq!(age_col.name, "age");
+            assert_eq!(age_col.data_type, "INT");
+            assert_eq!(age_col.constraints.len(), 1);
+            assert!(age_col.constraints.contains(&AstColumnConstraint::NotNull));
+
+            // username TEXT UNIQUE
+            let username_col = &create_stmt.columns[3];
+            assert_eq!(username_col.name, "username");
+            assert_eq!(username_col.data_type, "TEXT");
+            assert_eq!(username_col.constraints.len(), 1);
+            assert!(username_col.constraints.contains(&AstColumnConstraint::Unique));
+
+            // bio TEXT (no constraints)
+            let bio_col = &create_stmt.columns[4];
+            assert_eq!(bio_col.name, "bio");
+            assert_eq!(bio_col.data_type, "TEXT");
+            assert!(bio_col.constraints.is_empty());
+
+        }
+        _ => panic!("Expected CreateTableStatement"),
+    }
+}
+
+#[test]
+fn test_parse_create_table_primary_key_not_null_variants() {
+    // PRIMARY KEY implies NOT NULL, but users might specify it.
+    // The parser should capture what's specified. Validation/normalization is a later step.
+    let test_cases = vec![
+        ("id INTEGER PRIMARY KEY NOT NULL", vec![AstColumnConstraint::PrimaryKey, AstColumnConstraint::NotNull]),
+        ("id INTEGER NOT NULL PRIMARY KEY", vec![AstColumnConstraint::NotNull, AstColumnConstraint::PrimaryKey]),
+    ];
+
+    for (col_sql, expected_constraints) in test_cases {
+        let sql = format!("CREATE TABLE test_pk ( {} );", col_sql);
+        let tokens = tokenize_str(&sql);
+        let mut parser = SqlParser::new(tokens);
+        let ast = parser.parse().unwrap_or_else(|e| panic!("Failed to parse '{}': {:?}", sql, e));
+
+        match ast {
+            Statement::CreateTable(create_stmt) => {
+                assert_eq!(create_stmt.columns.len(), 1);
+                let col_def = &create_stmt.columns[0];
+                assert_eq!(col_def.constraints, expected_constraints, "Constraints mismatch for: {}", col_sql);
+            }
+            _ => panic!("Expected CreateTableStatement for: {}", sql),
+        }
+    }
+}
+
+#[test]
+fn test_parse_create_table_no_constraints() {
+    let sql = "CREATE TABLE simple (id INT, name VARCHAR);"; // VARCHAR without length
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::CreateTable(create_stmt) => {
+            assert_eq!(create_stmt.table_name, "simple");
+            assert_eq!(create_stmt.columns.len(), 2);
+            assert_eq!(create_stmt.columns[0].name, "id");
+            assert_eq!(create_stmt.columns[0].data_type, "INT");
+            assert!(create_stmt.columns[0].constraints.is_empty());
+            assert_eq!(create_stmt.columns[1].name, "name");
+            assert_eq!(create_stmt.columns[1].data_type, "VARCHAR");
+            assert!(create_stmt.columns[1].constraints.is_empty());
+        }
+        _ => panic!("Expected CreateTableStatement"),
+    }
+}
+
+#[test]
+fn test_parse_create_table_invalid_constraint_sequence() {
+    // Example: "id INTEGER NOT PRIMARY KEY" - "NOT" should be followed by "NULL"
+    let sql = "CREATE TABLE bad_constraint (id INTEGER NOT PRIMARY);";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })), "Result was: {:?}", result);
+    if let Err(SqlParseError::UnexpectedToken{expected, found, position: _}) = result {
+         assert_eq!(expected.to_lowercase(), "null"); // Expecting NULL after NOT
+         let lower_found = found.to_lowercase();
+         // Debug format for Identifier("PRIMARY") results in something like "Identifier(PRIMARY)"
+         // .to_lowercase() makes it "identifier(primary)"
+         assert!(lower_found.starts_with("identifier("), "Expected found to start with 'identifier(', got: {}", lower_found);
+         assert!(lower_found.contains("primary") && !lower_found.contains("\"primary\""),
+                 "Expected found to contain 'primary' (no quotes), got: {}", lower_found);
+    } else {
+        panic!("Expected UnexpectedToken for invalid 'NOT PRIMARY', got {:?}", result);
     }
 }
 
