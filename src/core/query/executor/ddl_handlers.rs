@@ -129,10 +129,20 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 
         // The schema itself is stored as a Vec<u8> value.
         // The `handle_insert` is for DataType values, so use store.put directly.
+        // Use the current transaction context (which will be Tx0 if auto-committing)
+        let current_tx = self.transaction_manager.get_active_transaction()
+            .map(|tx| tx.clone_for_store()) // Clone for store usage if active
+            .unwrap_or_else(|| Transaction::new(TransactionId(0))); // Fallback to new Tx0 if somehow none (should be set by execute_command)
+
+        // Ensure prev_lsn is updated for the active transaction (likely Tx0)
+        if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
+            active_tx_mut.prev_lsn = lsn;
+        }
+
         self.store.write().unwrap().put(
             schema_key,
             serialized_schema,
-            &system_tx,
+            &current_tx, // Use current_tx (which would be Tx0 in auto-commit)
             lsn,
         )?;
 
@@ -170,15 +180,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         // For simplicity now, rely on normal cycle. Critical DDL might force persist.
         // IndexManager::create_index typically handles its own persistence for index metadata.
 
-        if self.transaction_manager.current_active_transaction_id().is_none() {
-            // Auto-commit for DDL if no explicit transaction
-            let lsn = self.log_manager.next_lsn();
-            self.store.write().unwrap().log_wal_entry(&crate::core::storage::engine::wal::WalEntry::TransactionCommit {
-                lsn,
-                transaction_id: 0, // System transaction for auto-commit
-            })?;
-            self.transaction_manager.add_committed_tx_id(TransactionId(0)); // Mark Tx0 as committed
-        }
+        // Auto-commit logic is now handled by QueryExecutor::execute_command wrapper.
+        // No need for explicit commit logging to store's WAL here.
+        // The wrapper will call handle_commit_transaction, which calls transaction_manager.commit_transaction(),
+        // which logs LogRecord::CommitTransaction to TM's WAL.
 
         Ok(ExecutionResult::Success)
     }

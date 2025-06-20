@@ -462,19 +462,16 @@ mod tests {
         let wal_path = derive_wal_path_for_test(&executor.store);
         let wal_entries = read_all_wal_entries_for_test(&wal_path).unwrap();
 
-        assert_eq!(wal_entries.len(), 2, "Should be 1 Put and 1 Commit WAL entry");
+        // Store's physical WAL should now only contain the Put entry.
+        // The TransactionCommit is logged to the TransactionManager's WAL.
+        assert_eq!(wal_entries.len(), 1, "Should be 1 Put WAL entry in store's WAL");
         match &wal_entries[0] {
             WalEntry::Put { lsn: _, transaction_id: put_tx_id, key: _, value: _ } => {
                 assert_eq!(*put_tx_id, tx_id.0);
             }
-            _ => panic!("Expected Put entry first"),
+            _ => panic!("Expected Put entry first. Got: {:?}", wal_entries),
         }
-        match &wal_entries[1] {
-            WalEntry::TransactionCommit { lsn: _, transaction_id: commit_tx_id } => {
-                assert_eq!(*commit_tx_id, tx_id.0);
-            }
-            _ => panic!("Expected TransactionCommit entry second"),
-        }
+        // Removed check for TransactionCommit in store's WAL.
     }
 
     #[test]
@@ -559,18 +556,31 @@ mod tests {
         // 5. Tx Insert key_del: Put(key_del, tx1)
         // 6. Tx Delete key_del: Delete(key_del, tx1)
         // --- ROLLBACK TX1 ---
-        // 7. Undo Insert key_rb: Delete(key_rb, tx1)
-        // 8. Undo Update key_orig: Put(key_orig, old_val, tx1)
-        // 9. Undo Delete key_del: Put(key_del, old_val, tx1)
-        // 10. TransactionRollback marker for tx1
-        assert_eq!(wal_entries.len(), 10, "WAL entries count mismatch");
+        // Physical Store WAL should contain:
+        // 1. Initial Auto-commit Insert key_orig: Put(key_orig, tx0)
+        // --- TX1 BEGIN (TM WAL) ---
+        // 2. Tx1 Insert key_rb: Put(key_rb, tx1)
+        // 3. Tx1 Update key_orig: Put(key_orig_updated, tx1)
+        // 4. Tx1 Insert key_del: Put(key_del, tx1)
+        // 5. Tx1 Delete key_del: Delete(key_del, tx1)
+        // --- ROLLBACK TX1 (Undo ops also log to physical store WAL) ---
+        // 6. Undo Delete key_del: Put(key_del_reverted, tx1)
+        // 7. Undo Insert key_del: Delete(key_del, tx1)
+        // 8. Undo Update key_orig: Put(key_orig_reverted, tx1)
+        // 9. Undo Insert key_rb: Delete(key_rb, tx1)
+        // Total = 9 entries.
+        // The TransactionRollback entry is now only in TM's WAL.
+        assert_eq!(wal_entries.len(), 9, "WAL entries count mismatch in store's WAL");
 
+        // The last entry in the store's WAL should be the last undo operation.
+        // For this test's undo log, it's Delete(key_rb).
         match wal_entries.last().unwrap() {
-            WalEntry::TransactionRollback { lsn: _, transaction_id: rollback_tx_id } => {
-                assert_eq!(*rollback_tx_id, tx_id.0);
+            WalEntry::Delete { lsn: _, transaction_id: last_op_tx_id, key: last_op_key } => {
+                assert_eq!(*last_op_tx_id, tx_id.0); // tx_id of the rolled-back transaction
+                assert_eq!(last_op_key, &key_rb.to_vec());
             }
             _ => panic!(
-                "Expected TransactionRollback entry last. Got: {:?}",
+                "Expected last physical WAL entry to be Delete for key_rb. Got: {:?}",
                 wal_entries.last().unwrap()
             ),
         }

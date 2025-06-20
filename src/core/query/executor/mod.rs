@@ -458,12 +458,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
         let is_auto_commit = current_op_tx_id == TransactionId(0);
 
-        if is_auto_commit {
-            // For auto-commit, we'd ideally start a transaction here if the operation was complex
-            // and needed to be atomic beyond a single key-value store operation.
-            // However, individual operations in DeleteOperator will use tx_id 0.
-            // The main concern for auto-commit is logging a final commit record to WAL.
-        }
+        // The execute_command wrapper handles starting Tx0 if is_auto_commit is true
+        // (based on current_active_transaction_id being None initially).
+        // So, current_op_tx_id will be 0 here if execute_command started it.
+        // No need to call begin_transaction_with_id(0) again here.
 
         // 1. Construct AST (already done by parser, effectively passed in as table_name & condition)
         // We need to create an ast::DeleteStatement to build the initial plan.
@@ -639,32 +637,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         }
 
         // 5. Handle Auto-Commit for physical WAL
-        if is_auto_commit {
-            // If this was an auto-commit operation (tx_id 0), we need to ensure
-            // that the underlying SimpleFileKvStore, if it buffers WAL entries internally
-            // before a commit marker, gets a commit signal.
-            // SimpleFileKvStore's delete() logs WalEntry::Delete with tx_id 0.
-            // It does not automatically log a TransactionCommit for tx_id 0.
-            // The TransactionManager handles logical Begin/Commit/Rollback for its own WAL.
-            // For physical WAL consistency with tx_id 0, a commit marker might be needed
-            // if the store batches. However, SimpleFileKvStore's WalWriter in default config
-            // flushes on each entry if no transaction is active or buffer limits are hit.
-            // Let's assume for now that individual WAL entries from DeleteOperator are flushed.
-            // A dedicated store.log_wal_entry(WalEntry::TransactionCommit{lsn, tx_id:0}) would be cleaner.
-            // This part is tricky without a direct store.commit(tx_id) or store.log_control_wal_entry().
-            // The test `test_physical_wal_lsn_integration` will verify if LSNs are okay.
-            // For now, we rely on the DeleteOperator's individual WAL writes.
-            // The logical TransactionManager is not involved for auto-commit tx_id 0 ops.
-
-            // Log a physical TransactionCommit for auto-commit scenario
-            let commit_lsn = self.log_manager.next_lsn();
-            self.store.write().unwrap().log_wal_entry(&crate::core::storage::engine::wal::WalEntry::TransactionCommit {
-                lsn: commit_lsn,
-                transaction_id: current_op_tx_id.0, // Should be 0 if is_auto_commit
-            })?;
-            // Note: TransactionManager is not involved for auto-commit's logical state,
-            // but we've logged a physical commit marker.
-        }
+        // The execute_command wrapper handles committing Tx0 if is_auto_commit was true for it.
+        // No need to call commit_transaction() again here.
 
         Ok(ExecutionResult::Updated { count: deleted_count })
     }

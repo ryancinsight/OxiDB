@@ -17,15 +17,15 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             active_tx.redo_log.clear();
             active_tx.undo_log.clear();
 
-            let lsn = self.log_manager.next_lsn();
-            active_tx.prev_lsn = lsn; // Update active transaction's prev_lsn
+            // let lsn = self.log_manager.next_lsn(); // This LSN was for the store's WAL entry, now removed.
+            // active_tx.prev_lsn = lsn; // DO NOT UPDATE prev_lsn here with this.
+                                        // TM::commit_transaction will use the existing active_tx.prev_lsn
+                                        // (set by the last data op) and then update it to the commit record's LSN.
 
-            // Physical WAL entry for commit (uses u64 for transaction_id)
-            let commit_entry = crate::core::storage::engine::wal::WalEntry::TransactionCommit {
-                lsn,
-                transaction_id: tx_id_to_release.0, // tx_id_to_release is TransactionId, .0 gives u64
-            };
-            self.store.write().unwrap().log_wal_entry(&commit_entry)?;
+            // Physical WAL entry for commit is removed.
+            // The TransactionManager's commit_transaction will log a LogRecord::CommitTransaction
+            // to the Transaction Manager's WAL. The store's physical WAL should only contain
+            // physical data changes (Put/Delete WalEntry items).
 
             self.lock_manager.release_locks(tx_id_to_release.0); // Pass u64 for release_locks
             self.transaction_manager.commit_transaction().map_err(OxidbError::Io)?;
@@ -115,16 +115,15 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             active_tx.undo_log.clear();
             active_tx.redo_log.clear();
 
-            let lsn = self.log_manager.next_lsn();
+            // let lsn = self.log_manager.next_lsn(); // This LSN was for the store's WAL entry, now removed.
             // Update prev_lsn of the transaction being rolled back.
-            active_tx.prev_lsn = lsn; // Update actual transaction's prev_lsn
+            // active_tx.prev_lsn = lsn; // DO NOT UPDATE prev_lsn here.
+                                        // TM::abort_transaction will use the existing active_tx.prev_lsn
+                                        // (set by the last data op) and then update it to the abort record's LSN.
 
-            // Physical WAL entry for rollback
-            let rollback_entry = crate::core::storage::engine::wal::WalEntry::TransactionRollback {
-                lsn,
-                transaction_id: tx_id_to_release.0, // tx_id_to_release is TransactionId, .0 gives u64
-            };
-            self.store.write().unwrap().log_wal_entry(&rollback_entry)?;
+            // Physical WAL entry for rollback is removed.
+            // The TransactionManager's abort_transaction will log a LogRecord::AbortTransaction
+            // to the Transaction Manager's WAL.
 
             self.lock_manager.release_locks(tx_id_to_release.0); // Pass u64 for release_locks
             self.transaction_manager.abort_transaction().map_err(OxidbError::Io)?;

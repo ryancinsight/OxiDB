@@ -1203,49 +1203,34 @@ fn test_physical_wal_lsn_integration() {
     println!("Read WAL entries: {:?}", wal_entries);
     assert!(!wal_entries.is_empty(), "Should have WAL entries");
 
-    let mut expected_lsn = 0;
+    // Expected LSNs for the physical WAL entries based on current understanding and logs
+    // Schema Put (0), Alice Put (2), Bob Put (4), Alicia Update Put (6), Bob Delete (8)
+    // Charlie Put (Tx1) (11), AliceNewName Update Put (Tx1) (12)
+    // These LSNs are from the physical store's WAL.
+    // LSNs consumed by TM WAL: SchemaCommit (1), AliceCommit (3), BobCommit (5), AliciaCommit (7), BobDeleteCommit (9), BeginTx1 (10), CharlieCommit (13)
+    let expected_physical_lsns = [0, 2, 4, 6, 8, 11, 12];
+
+    assert_eq!(wal_entries.len(), expected_physical_lsns.len(), "Mismatch in number of physical WAL entries. Actual: {:?}, Expected: {:?}", wal_entries, expected_physical_lsns);
+
     let mut physical_data_ops = 0;
-    let mut physical_commit_ops = 0;
-    let mut begin_op_passed = false; // To track if we've passed the LSN of the logical BEGIN
 
-    for entry in &wal_entries {
-        if !begin_op_passed {
-             match entry {
-                WalEntry::Put { transaction_id, .. } | WalEntry::Delete { transaction_id, .. } => {
-                    if *transaction_id == 1 && expected_lsn_offset_for_logical_wal > 0 { // tx_id 1 is TX1
-                        expected_lsn += expected_lsn_offset_for_logical_wal;
-                        expected_lsn_offset_for_logical_wal = 0;
-                        begin_op_passed = true;
-                    }
-                }
-                WalEntry::TransactionCommit { transaction_id, ..} => {
-                     if *transaction_id == 1 && expected_lsn_offset_for_logical_wal > 0 {
-                        expected_lsn += expected_lsn_offset_for_logical_wal;
-                        expected_lsn_offset_for_logical_wal = 0;
-                        begin_op_passed = true;
-                    }
-                }
-                _ => {}
-            }
-        }
-
+    for (idx, entry) in wal_entries.iter().enumerate() {
         match entry {
             WalEntry::Put { lsn, transaction_id, .. } => {
-                assert_eq!(*lsn, expected_lsn, "LSN mismatch for Put entry with tx_id {}", transaction_id);
-                expected_lsn += 1;
+                assert_eq!(*lsn, expected_physical_lsns[idx], "LSN mismatch for Put entry idx {} with tx_id {}", idx, transaction_id);
                 physical_data_ops += 1;
             }
             WalEntry::Delete { lsn, transaction_id, .. } => {
-                assert_eq!(*lsn, expected_lsn, "LSN mismatch for Delete entry with tx_id {}", transaction_id);
-                expected_lsn += 1;
+                assert_eq!(*lsn, expected_physical_lsns[idx], "LSN mismatch for Delete entry idx {} with tx_id {}", idx, transaction_id);
                 physical_data_ops += 1;
             }
+            // TransactionCommit/Rollback should not be in the physical store WAL with the new design
             WalEntry::TransactionCommit { lsn, transaction_id, .. } => {
-                assert_eq!(*lsn, expected_lsn, "LSN mismatch for TransactionCommit entry with tx_id {}", transaction_id);
-                expected_lsn += 1;
-                physical_commit_ops += 1;
+                panic!("Unexpected TransactionCommit (lsn:{}, tx:{}) in physical store WAL at index {}", lsn, transaction_id, idx);
             }
-            WalEntry::TransactionRollback { .. } => { /* Not expected in this test */ }
+            WalEntry::TransactionRollback { lsn, transaction_id, .. } => {
+                 panic!("Unexpected TransactionRollback (lsn:{}, tx:{}) in physical store WAL at index {}", lsn, transaction_id, idx);
+            }
         }
     }
 
@@ -1258,21 +1243,7 @@ fn test_physical_wal_lsn_integration() {
     // 6. Put (3, "Charlie") - Tx1
     // 7. Put (1, "AliceNewName") for UPDATE in TX1 - Tx1
     assert_eq!(physical_data_ops, 7, "Expected 7 data operations in physical WAL");
-
-    // Expected physical commit operations:
-    // 1. Auto-commit for Schema Put - Tx0
-    // 2. Auto-commit for Insert Alice - Tx0
-    // 3. Auto-commit for Insert Bob - Tx0
-    // 4. Auto-commit for Update Alicia - Tx0
-    // 5. Auto-commit for Delete id=2 - Tx0
-    // 6. Explicit Commit for TX1 (Charlie + Update AliceNewName) - Tx1
-    assert_eq!(physical_commit_ops, 6, "Expected 6 commit operations in physical WAL");
-
-    assert_eq!(
-        wal_entries.len(),
-        physical_data_ops + physical_commit_ops, // Should be 7 + 6 = 13
-        "Total WAL entries mismatch"
-    );
+    assert_eq!(wal_entries.len(), 7, "Total physical WAL entries should be 7");
 
     temp_dir.close().expect("Failed to remove temp dir");
 }
