@@ -49,33 +49,33 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for TableScanOp
                                            // For filter_map, the guard might be held longer. This needs careful thought in real async scenarios.
                                            // For now, this synchronous version should be okay.
 
-        let iterator =
-            all_kvs.into_iter().filter_map(move |(key_bytes, value_bytes)| {
-                // Filter out schema keys (and potentially other internal metadata)
-                if key_bytes.starts_with(b"_schema_") {
-                    return None; // Skip schema entries
-                }
+        let iterator = all_kvs.into_iter().filter_map(move |(key_bytes, value_bytes)| {
+            // Filter out schema keys (and potentially other internal metadata)
+            if key_bytes.starts_with(b"_schema_") {
+                return None; // Skip schema entries
+            }
 
-                match deserialize_data_type(&value_bytes) {
-                    Ok(row_data_type) => {
-                        // Convert the raw key_bytes to a DataType.
-                        // This assumes the actual row key (which might be a PK value or a generated UUID)
-                        // is stored as a string or can be meaningfully represented as one here.
-                        // For the purpose of UPDATE, the first element of this tuple is crucial
-                        // as it's used to fetch the row again.
-                        let key_data_type = DataType::RawBytes(key_bytes.clone()); // Use RawBytes for keys
+            match deserialize_data_type(&value_bytes) {
+                Ok(row_data_type) => {
+                    // Convert the raw key_bytes to a DataType.
+                    // This assumes the actual row key (which might be a PK value or a generated UUID)
+                    // is stored as a string or can be meaningfully represented as one here.
+                    // For the purpose of UPDATE, the first element of this tuple is crucial
+                    // as it's used to fetch the row again.
+                    let key_data_type = DataType::RawBytes(key_bytes.clone()); // Use RawBytes for keys
 
-                        // The tuple now contains the KV store's key as the first element,
-                        // and the deserialized row data (expected to be a DataType::Map) as the second.
-                        let tuple = vec![key_data_type, row_data_type];
-                        Some(Ok(tuple))
-                    }
-                    Err(e) => Some(Err(OxidbError::Deserialization(format!(
-                        "Failed to deserialize row data for key {:?}: {}",
-                        String::from_utf8_lossy(&key_bytes), e
-                    )))),
+                    // The tuple now contains the KV store's key as the first element,
+                    // and the deserialized row data (expected to be a DataType::Map) as the second.
+                    let tuple = vec![key_data_type, row_data_type];
+                    Some(Ok(tuple))
                 }
-            });
+                Err(e) => Some(Err(OxidbError::Deserialization(format!(
+                    "Failed to deserialize row data for key {:?}: {}",
+                    String::from_utf8_lossy(&key_bytes),
+                    e
+                )))),
+            }
+        });
 
         Ok(Box::new(iterator))
     }

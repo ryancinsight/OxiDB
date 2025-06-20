@@ -119,10 +119,7 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
                 Some(cond_ast) => Some(translate_condition_to_sql_condition(&cond_ast)?),
                 None => None,
             };
-            Ok(Command::SqlDelete {
-                table_name: delete_stmt.table_name,
-                condition: condition_cmd,
-            })
+            Ok(Command::SqlDelete { table_name: delete_stmt.table_name, condition: condition_cmd })
         }
     }
 }

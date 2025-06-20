@@ -97,10 +97,12 @@ mod tests {
 
         for original_entry in entries {
             let mut buffer = Vec::new();
-            WalEntry::serialize(&original_entry, &mut buffer).expect("Serialization of WAL entry failed in test");
+            WalEntry::serialize(&original_entry, &mut buffer)
+                .expect("Serialization of WAL entry failed in test");
 
             let mut reader = Cursor::new(&buffer);
-            let deserialized_entry = WalEntry::deserialize(&mut reader).expect("Deserialization of WAL entry failed in test");
+            let deserialized_entry = WalEntry::deserialize(&mut reader)
+                .expect("Deserialization of WAL entry failed in test");
             assert_eq!(&original_entry, &deserialized_entry);
         }
     }
@@ -178,11 +180,11 @@ impl WalWriter {
     /// The write is flushed and synced to disk to ensure durability.
     pub fn log_entry(&self, entry: &WalEntry) -> Result<(), OxidbError> {
         eprintln!("[engine::wal::WalWriter::log_entry] Method entered. Attempting to log to: {:?}, entry: {:?}", &self.wal_file_path, entry); // ADDED THIS LINE
-        // Changed
-        // eprintln!( // This line is redundant due to the one above.
-        //     "[engine::wal::WalWriter::log_entry] Attempting to log to: {:?}, entry: {:?}",
-        //     &self.wal_file_path, entry
-        // );
+                                                                                                                                              // Changed
+                                                                                                                                              // eprintln!( // This line is redundant due to the one above.
+                                                                                                                                              //     "[engine::wal::WalWriter::log_entry] Attempting to log to: {:?}, entry: {:?}",
+                                                                                                                                              //     &self.wal_file_path, entry
+                                                                                                                                              // );
         let file_result = OpenOptions::new().create(true).append(true).open(&self.wal_file_path);
 
         if let Err(e) = &file_result {
@@ -337,7 +339,8 @@ impl DataDeserializer<WalEntry> for WalEntry {
                 data_to_checksum.extend_from_slice(&tx_id_bytes);
                 WalEntry::TransactionRollback { lsn, transaction_id }
             }
-            0x00 => { // Specifically check for 0x00
+            0x00 => {
+                // Specifically check for 0x00
                 return Err(OxidbError::Deserialization(
                     "Read a zero byte where WAL operation type was expected. Possible file corruption or premature EOF.".to_string()
                 ));

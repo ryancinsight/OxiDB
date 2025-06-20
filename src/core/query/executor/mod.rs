@@ -47,8 +47,8 @@ pub struct QueryExecutor<S: KeyValueStore<Vec<u8>, Vec<u8>>> {
     pub(crate) transaction_manager: TransactionManager,
     pub(crate) lock_manager: LockManager,
     pub(crate) index_manager: Arc<RwLock<IndexManager>>, // Changed to Arc<RwLock<IndexManager>>
-    pub(crate) optimizer: Optimizer,         // Added optimizer field
-    pub(crate) log_manager: Arc<LogManager>, // Added log_manager field
+    pub(crate) optimizer: Optimizer,                     // Added optimizer field
+    pub(crate) log_manager: Arc<LogManager>,             // Added log_manager field
 }
 
 // The `new` method remains here as it's tied to the struct definition visibility
@@ -107,7 +107,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     /// Retrieves the schema for a given table name.
     /// This involves constructing the schema key and using the store's get_schema method.
     /// It uses snapshot_id = 0 (read committed state) as schemas are DDL and should be stable.
-    pub(crate) fn get_table_schema(&self, table_name: &str) -> Result<Option<Arc<crate::core::types::schema::Schema>>, OxidbError> {
+    pub(crate) fn get_table_schema(
+        &self,
+        table_name: &str,
+    ) -> Result<Option<Arc<crate::core::types::schema::Schema>>, OxidbError> {
         let schema_key = Self::schema_key(table_name);
         let committed_ids: HashSet<u64> = self
             .transaction_manager
@@ -136,16 +139,18 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         value_to_check: &DataType,
         current_row_pk_bytes: Option<&[u8]>, // Bytes of the primary key of the row being updated
         _snapshot_id: u64, // Not directly used by index_manager.find_by_index, but relevant for MVCC context
-        _committed_ids: &HashSet<u64> // Same as snapshot_id
+        _committed_ids: &HashSet<u64>, // Same as snapshot_id
     ) -> Result<(), OxidbError> {
         // 1. Construct the index name
         let index_name = format!("idx_{}_{}", table_name, column_to_check.name);
 
         // 2. Serialize value_to_check
-        let serialized_value = crate::core::common::serialization::serialize_data_type(value_to_check)?;
+        let serialized_value =
+            crate::core::common::serialization::serialize_data_type(value_to_check)?;
 
         // 3. Call self.index_manager.find_by_index
-        match self.index_manager.read().unwrap().find_by_index(&index_name, &serialized_value) { // Acquire read lock
+        match self.index_manager.read().unwrap().find_by_index(&index_name, &serialized_value) {
+            // Acquire read lock
             Ok(Some(pks)) => {
                 // Value found in index, pks is a Vec<Vec<u8>> of primary keys
                 if pks.is_empty() {
@@ -355,15 +360,30 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
         match result_bytes_opt {
             Some(bytes) => {
-                println!("[QE::handle_get] Bytes before deserializing for key '{:?}': {:?}", String::from_utf8_lossy(&key), bytes);
-                println!("[QE::handle_get] Bytes as string for key '{:?}': '{}'", String::from_utf8_lossy(&key), String::from_utf8_lossy(&bytes));
+                println!(
+                    "[QE::handle_get] Bytes before deserializing for key '{:?}': {:?}",
+                    String::from_utf8_lossy(&key),
+                    bytes
+                );
+                println!(
+                    "[QE::handle_get] Bytes as string for key '{:?}': '{}'",
+                    String::from_utf8_lossy(&key),
+                    String::from_utf8_lossy(&bytes)
+                );
                 // Deserialize using the project's standard deserialization
                 let value_dt = crate::core::common::serialization::deserialize_data_type(&bytes)?;
-                println!("[QE::handle_get] Deserialized DataType for key '{:?}': {:?}", String::from_utf8_lossy(&key), value_dt);
+                println!(
+                    "[QE::handle_get] Deserialized DataType for key '{:?}': {:?}",
+                    String::from_utf8_lossy(&key),
+                    value_dt
+                );
                 Ok(ExecutionResult::Value(Some(value_dt)))
             }
             None => {
-                println!("[QE::handle_get] Key '{:?}' not found in store.", String::from_utf8_lossy(&key)); // Debug print
+                println!(
+                    "[QE::handle_get] Key '{:?}' not found in store.",
+                    String::from_utf8_lossy(&key)
+                ); // Debug print
                 Ok(ExecutionResult::Value(None))
             }
         }
@@ -402,16 +422,27 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         // KeyValueStore::get expects snapshot_id as u64
         let value_to_delete_opt =
             self.store.read().unwrap().get(&key, current_op_tx_id.0, &committed_ids_set)?;
-        eprintln!("[QE::handle_delete] Key: '{}', OpTxID: {}. value_to_delete_opt.is_some(): {}", String::from_utf8_lossy(&key), current_op_tx_id.0, value_to_delete_opt.is_some());
+        eprintln!(
+            "[QE::handle_delete] Key: '{}', OpTxID: {}. value_to_delete_opt.is_some(): {}",
+            String::from_utf8_lossy(&key),
+            current_op_tx_id.0,
+            value_to_delete_opt.is_some()
+        );
 
         // Pass committed_ids_set to the delete operation
-        let deleted = self.store.write().unwrap().delete(&key, &tx_for_store, new_lsn, &committed_ids_set)?;
-        eprintln!("[QE::handle_delete] Key: '{}', OpTxID: {}. Boolean from store.delete(): {}", String::from_utf8_lossy(&key), current_op_tx_id.0, deleted);
+        let deleted =
+            self.store.write().unwrap().delete(&key, &tx_for_store, new_lsn, &committed_ids_set)?;
+        eprintln!(
+            "[QE::handle_delete] Key: '{}', OpTxID: {}. Boolean from store.delete(): {}",
+            String::from_utf8_lossy(&key),
+            current_op_tx_id.0,
+            deleted
+        );
 
         if deleted {
             eprintln!("[QE::handle_delete] Key: '{}', OpTxID: {}. 'if deleted' block entered (store reported true).", String::from_utf8_lossy(&key), current_op_tx_id.0);
             if let Some(value_bytes) = value_to_delete_opt {
-                 eprintln!("[QE::handle_delete] Key: '{}', OpTxID: {}. 'if let Some(value_bytes)' block entered for index/undo.", String::from_utf8_lossy(&key), current_op_tx_id.0);
+                eprintln!("[QE::handle_delete] Key: '{}', OpTxID: {}. 'if let Some(value_bytes)' block entered for index/undo.", String::from_utf8_lossy(&key), current_op_tx_id.0);
                 // Indexing: Use on_delete_data
                 let mut indexed_values_map = std::collections::HashMap::new();
                 // Assuming the "default_value_index" indexed the serialized version of the DataType
@@ -424,10 +455,12 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                         self.transaction_manager.get_active_transaction_mut()
                     {
                         // Add UndoOperation for the data itself
-                        active_tx_mut.add_undo_operation(crate::core::transaction::transaction::UndoOperation::RevertDelete {
-                            key: key.clone(),
-                            old_value: value_bytes.clone(), // value_bytes is Vec<u8>
-                        });
+                        active_tx_mut.add_undo_operation(
+                            crate::core::transaction::transaction::UndoOperation::RevertDelete {
+                                key: key.clone(),
+                                old_value: value_bytes.clone(), // value_bytes is Vec<u8>
+                            },
+                        );
                         // Add UndoOperation for the index
                         active_tx_mut.add_undo_operation(crate::core::transaction::transaction::UndoOperation::IndexRevertDelete {
                             index_name: "default_value_index".to_string(),
@@ -441,7 +474,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             eprintln!("[QE::handle_delete] Key: '{}', OpTxID: {}. 'if deleted' block NOT entered (store reported false).", String::from_utf8_lossy(&key), current_op_tx_id.0);
         }
         // key variable might have been moved, so not logging it here.
-        eprintln!("[QE::handle_delete] OpTxID: {}. About to return ExecutionResult::Deleted({})", current_op_tx_id.0, deleted);
+        eprintln!(
+            "[QE::handle_delete] OpTxID: {}. About to return ExecutionResult::Deleted({})",
+            current_op_tx_id.0, deleted
+        );
         Ok(ExecutionResult::Deleted(deleted))
     }
 
@@ -451,10 +487,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         table_name: String,
         condition: Option<crate::core::query::commands::SqlCondition>,
     ) -> Result<ExecutionResult, OxidbError> {
-        let current_op_tx_id = self
-            .transaction_manager
-            .current_active_transaction_id()
-            .unwrap_or(TransactionId(0)); // Default to 0 for auto-commit
+        let current_op_tx_id =
+            self.transaction_manager.current_active_transaction_id().unwrap_or(TransactionId(0)); // Default to 0 for auto-commit
 
         let is_auto_commit = current_op_tx_id == TransactionId(0);
 
@@ -473,7 +507,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             Some(crate::core::query::sql::ast::Condition {
                 column: cond.column,
                 operator: cond.operator,
-                value: crate::core::query::sql::translator::translate_datatype_to_ast_literal(&cond.value)?,
+                value: crate::core::query::sql::translator::translate_datatype_to_ast_literal(
+                    &cond.value,
+                )?,
             })
         } else {
             None
@@ -498,11 +534,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 .map(|tx_id| tx_id.0)
                 .collect(),
         );
-        let mut physical_plan_root = self.build_execution_tree(
-            logical_plan,
-            current_op_tx_id.0,
-            committed_ids_snapshot,
-        )?;
+        let mut physical_plan_root =
+            self.build_execution_tree(logical_plan, current_op_tx_id.0, committed_ids_snapshot)?;
 
         // 4. Execute the plan
         // The DeleteOperator's iterator now yields (Key, SerializedRowData) tuples.
@@ -522,7 +555,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 if let (Some(key), Some(row_data)) = (key_bytes_opt, row_bytes_opt) {
                     deleted_items_info.push((key, row_data));
                 } else {
-                     return Err(OxidbError::Execution(
+                    return Err(OxidbError::Execution(
                         "DeleteOperator returned unexpected tuple format (expected RawBytes, RawBytes).".to_string(),
                     ));
                 }
@@ -530,25 +563,30 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 // This case handles the old DeleteOperator that returned a single count.
                 // This path should ideally not be taken if DeleteOperator is correctly updated.
                 // For now, we'll assume the new format. If this is hit, it means DeleteOperator wasn't updated as expected.
-                 return Err(OxidbError::Execution(
+                return Err(OxidbError::Execution(
                     "DeleteOperator returned a count, but expected (Key, SerializedRowData). Operator not updated?".to_string(),
                 ));
-            } else if !tuple.is_empty() { // If it's not empty but not the format we want
-                 return Err(OxidbError::Execution(
-                    format!("DeleteOperator returned unexpected tuple format with length {}.", tuple.len())
-                ));
+            } else if !tuple.is_empty() {
+                // If it's not empty but not the format we want
+                return Err(OxidbError::Execution(format!(
+                    "DeleteOperator returned unexpected tuple format with length {}.",
+                    tuple.len()
+                )));
             }
             // If tuple is empty, iterator is exhausted.
         }
 
         let deleted_count = deleted_items_info.len();
-        let schema_arc = self.get_table_schema(&table_name)?
-            .ok_or_else(|| OxidbError::Execution(format!("Table '{}' not found for DELETE.", table_name)))?;
+        let schema_arc = self.get_table_schema(&table_name)?.ok_or_else(|| {
+            OxidbError::Execution(format!("Table '{}' not found for DELETE.", table_name))
+        })?;
         let schema = schema_arc.as_ref();
 
         for (key_to_delete, serialized_row_to_delete_vec) in deleted_items_info {
             // Deserialize the row data
-            let deleted_row_datatype = crate::core::common::serialization::deserialize_data_type(&serialized_row_to_delete_vec)?;
+            let deleted_row_datatype = crate::core::common::serialization::deserialize_data_type(
+                &serialized_row_to_delete_vec,
+            )?;
             let deleted_row_map_data = match deleted_row_datatype {
                 DataType::Map(map_data) => map_data.0, // JsonSafeMap's inner HashMap
                 // If it's not a map, it might be the placeholder serialization from DeleteOperator
@@ -566,13 +604,19 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     // For now, let's use an empty map to avoid crashing, but this is not correct.
                     std::collections::HashMap::new()
                 }
-                _ => return Err(OxidbError::Execution(format!("Deleted row data is not a map or expected placeholder. Type: {:?}", deleted_row_datatype))),
+                _ => {
+                    return Err(OxidbError::Execution(format!(
+                        "Deleted row data is not a map or expected placeholder. Type: {:?}",
+                        deleted_row_datatype
+                    )))
+                }
             };
 
             // Per-column index deletions
             for col_def in &schema.columns {
                 if col_def.is_primary_key || col_def.is_unique {
-                    let value_for_column = deleted_row_map_data.get(col_def.name.as_bytes())
+                    let value_for_column = deleted_row_map_data
+                        .get(col_def.name.as_bytes())
                         .cloned()
                         .unwrap_or(DataType::Null);
 
@@ -581,13 +625,20 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     }
 
                     let index_name = format!("idx_{}_{}", table_name, col_def.name);
-                    let serialized_column_value = crate::core::common::serialization::serialize_data_type(&value_for_column)?;
+                    let serialized_column_value =
+                        crate::core::common::serialization::serialize_data_type(&value_for_column)?;
 
-                    self.index_manager.write().unwrap().delete_from_index(&index_name, &serialized_column_value, Some(&key_to_delete))?; // Acquire write lock
+                    self.index_manager.write().unwrap().delete_from_index(
+                        &index_name,
+                        &serialized_column_value,
+                        Some(&key_to_delete),
+                    )?; // Acquire write lock
 
                     // Add undo log for this index deletion
                     if !is_auto_commit {
-                        if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
+                        if let Some(active_tx_mut) =
+                            self.transaction_manager.get_active_transaction_mut()
+                        {
                             active_tx_mut.add_undo_operation(
                                 crate::core::transaction::transaction::UndoOperation::IndexRevertInsert { // To revert delete, we insert
                                     index_name,
@@ -620,20 +671,27 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             // If `DeleteOperator` calls that `handle_delete`, that part is covered.
             // However, `DeleteOperator` currently calls `store.delete` directly.
             // For consistency, `default_value_index` for the entire row should also be handled here.
-            if !is_auto_commit { // Only if in an active transaction
+            if !is_auto_commit {
+                // Only if in an active transaction
                 if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
-                     active_tx_mut.add_undo_operation(
+                    active_tx_mut.add_undo_operation(
                         crate::core::transaction::transaction::UndoOperation::IndexRevertInsert {
                             index_name: "default_value_index".to_string(),
                             key: key_to_delete.clone(),
                             value_for_index: serialized_row_to_delete_vec.clone(),
-                        });
+                        },
+                    );
                 }
             }
-             // Also update the default_value_index itself
-            let mut default_index_map: std::collections::HashMap<String, Vec<u8>> = std::collections::HashMap::new();
-            default_index_map.insert("default_value_index".to_string(), serialized_row_to_delete_vec);
-            self.index_manager.write().unwrap().on_delete_data(&default_index_map, &key_to_delete)?; // Acquire write lock
+            // Also update the default_value_index itself
+            let mut default_index_map: std::collections::HashMap<String, Vec<u8>> =
+                std::collections::HashMap::new();
+            default_index_map
+                .insert("default_value_index".to_string(), serialized_row_to_delete_vec);
+            self.index_manager
+                .write()
+                .unwrap()
+                .on_delete_data(&default_index_map, &key_to_delete)?; // Acquire write lock
         }
 
         // 5. Handle Auto-Commit for physical WAL

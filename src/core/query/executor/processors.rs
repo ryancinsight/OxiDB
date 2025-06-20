@@ -1,11 +1,11 @@
 // src/core/query/executor/processors.rs
 
 use crate::core::common::OxidbError;
-use crate::core::types::DataType;
 use crate::core::query::commands::Command;
-use uuid; // Added for Uuid::new_v4()
 use crate::core::query::executor::{ExecutionResult, QueryExecutor};
 use crate::core::storage::engine::traits::KeyValueStore;
+use crate::core::types::DataType;
+use uuid; // Added for Uuid::new_v4()
 
 /// The `CommandProcessor` trait defines the interface for processing a specific command.
 pub trait CommandProcessor<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> {
@@ -38,11 +38,15 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                 executor.handle_create_table(table_name.clone(), columns.clone())
             }
             Command::SqlInsert { table_name, columns: insert_columns_opt, values } => {
-                let schema_arc = executor.get_table_schema(table_name)?
-                    .ok_or_else(|| OxidbError::Execution(format!("Table '{}' not found.", table_name)))?;
+                let schema_arc = executor.get_table_schema(table_name)?.ok_or_else(|| {
+                    OxidbError::Execution(format!("Table '{}' not found.", table_name))
+                })?;
                 let schema = schema_arc.as_ref();
 
-                let current_op_tx_id = executor.transaction_manager.current_active_transaction_id().unwrap_or(crate::core::common::types::TransactionId(0));
+                let current_op_tx_id = executor
+                    .transaction_manager
+                    .current_active_transaction_id()
+                    .unwrap_or(crate::core::common::types::TransactionId(0));
                 let committed_ids_for_read: std::collections::HashSet<u64> = executor
                     .transaction_manager
                     .get_committed_tx_ids_snapshot()
@@ -59,11 +63,14 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                     if let Some(insert_column_names) = insert_columns_opt {
                         if insert_column_names.len() != row_values_to_insert.len() {
                             return Err(OxidbError::Execution(
-                                "Column count does not match value count for INSERT.".to_string()
+                                "Column count does not match value count for INSERT.".to_string(),
                             ));
                         }
                         for (i, col_name) in insert_column_names.iter().enumerate() {
-                            row_map_data.insert(col_name.as_bytes().to_vec(), row_values_to_insert[i].clone());
+                            row_map_data.insert(
+                                col_name.as_bytes().to_vec(),
+                                row_values_to_insert[i].clone(),
+                            );
                         }
                     } else {
                         if schema.columns.len() != row_values_to_insert.len() {
@@ -72,25 +79,33 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                             ));
                         }
                         for (i, col_def) in schema.columns.iter().enumerate() {
-                            row_map_data.insert(col_def.name.as_bytes().to_vec(), row_values_to_insert[i].clone());
+                            row_map_data.insert(
+                                col_def.name.as_bytes().to_vec(),
+                                row_values_to_insert[i].clone(),
+                            );
                         }
                     }
 
                     // Constraint Checks
                     for col_def in &schema.columns {
-                        let value_for_column = row_map_data.get(col_def.name.as_bytes())
+                        let value_for_column = row_map_data
+                            .get(col_def.name.as_bytes())
                             .cloned()
                             .unwrap_or(DataType::Null); // Treat missing columns in map as Null for constraint checks
 
                         // NOT NULL Check
                         if !col_def.is_nullable && value_for_column == DataType::Null {
                             return Err(OxidbError::ConstraintViolation {
-                                message: format!("NOT NULL constraint failed for column '{}' in table '{}'", col_def.name, table_name),
+                                message: format!(
+                                    "NOT NULL constraint failed for column '{}' in table '{}'",
+                                    col_def.name, table_name
+                                ),
                             });
                         }
 
                         // UNIQUE / PRIMARY KEY Uniqueness Check
-                        if col_def.is_unique { // is_primary_key implies is_unique (set during translation)
+                        if col_def.is_unique {
+                            // is_primary_key implies is_unique (set during translation)
                             if value_for_column == DataType::Null && !col_def.is_primary_key {
                                 // Standard SQL: Multiple NULLs allowed in UNIQUE column, but not for PK.
                                 // PK nullability is already handled by is_nullable = false for PKs.
@@ -103,7 +118,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                                     &value_for_column,
                                     None, // No existing row's PK to exclude for INSERT
                                     current_op_tx_id.0,
-                                    &committed_ids_for_read
+                                    &committed_ids_for_read,
                                 )?;
                             }
                         }
@@ -115,32 +130,49 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
 
                     // Determine KV store key
                     // TODO: Handle composite PKs. For now, assume single PK or use UUID.
-                    let kv_key = if let (Some(DataType::String(pk_str_val)), Some(ref pk_c_name)) = (&pk_value_opt, &pk_col_name_opt) {
+                    let kv_key = if let (Some(DataType::String(pk_str_val)), Some(ref pk_c_name)) =
+                        (&pk_value_opt, &pk_col_name_opt)
+                    {
                         if pk_c_name == "_kv_key" {
                             // Special convention: if PK column is named _kv_key and is String, use its value directly.
                             pk_str_val.as_bytes().to_vec()
                         } else {
                             // Standard PK-based key generation
-                            format!("{}_pk_{}_{:?}", table_name, pk_c_name, pk_value_opt.as_ref().unwrap())
-                                .replace("Integer(", "").replace("String(\"", "").replace("\")", "").replace(")", "")
-                                .into_bytes()
+                            format!(
+                                "{}_pk_{}_{:?}",
+                                table_name,
+                                pk_c_name,
+                                pk_value_opt.as_ref().unwrap()
+                            )
+                            .replace("Integer(", "")
+                            .replace("String(\"", "")
+                            .replace("\")", "")
+                            .replace(")", "")
+                            .into_bytes()
                         }
-                    } else if let (Some(pk_val), Some(pk_c_name)) = (&pk_value_opt, &pk_col_name_opt) {
+                    } else if let (Some(pk_val), Some(pk_c_name)) =
+                        (&pk_value_opt, &pk_col_name_opt)
+                    {
                         // Standard PK-based key generation for non-string PKs or different PK col name
                         format!("{}_pk_{}_{:?}", table_name, pk_c_name, pk_val)
-                            .replace("Integer(", "").replace("String(\"", "").replace("\")", "").replace(")", "")
+                            .replace("Integer(", "")
+                            .replace("String(\"", "")
+                            .replace("\")", "")
+                            .replace(")", "")
                             .into_bytes()
                     } else {
                         // Fallback to UUID if no PK or complex PK (not yet supported for keying)
                         format!("{}_{}", table_name, uuid::Uuid::new_v4().to_string()).into_bytes()
                     };
 
-                    let row_data_type = DataType::Map(crate::core::types::JsonSafeMap(row_map_data.clone())); // Clone row_map_data for handle_insert
+                    let row_data_type =
+                        DataType::Map(crate::core::types::JsonSafeMap(row_map_data.clone())); // Clone row_map_data for handle_insert
 
                     // --- Start: Per-column index updates ---
                     for col_def in &schema.columns {
                         if col_def.is_primary_key || col_def.is_unique {
-                            let value_for_column = row_map_data.get(col_def.name.as_bytes())
+                            let value_for_column = row_map_data
+                                .get(col_def.name.as_bytes())
                                 .cloned()
                                 .unwrap_or(DataType::Null);
 
@@ -150,14 +182,24 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                             }
 
                             let index_name = format!("idx_{}_{}", table_name, col_def.name);
-                            let serialized_column_value = crate::core::common::serialization::serialize_data_type(&value_for_column)?;
+                            let serialized_column_value =
+                                crate::core::common::serialization::serialize_data_type(
+                                    &value_for_column,
+                                )?;
 
                             // Insert into the specific column index
-                            executor.index_manager.write().unwrap().insert_into_index(&index_name, &serialized_column_value, &kv_key)?; // Acquire write lock
+                            executor.index_manager.write().unwrap().insert_into_index(
+                                &index_name,
+                                &serialized_column_value,
+                                &kv_key,
+                            )?; // Acquire write lock
 
                             // Add undo log for this index insertion
-                            if current_op_tx_id.0 != 0 { // Only if in an active transaction
-                                if let Some(active_tx_mut) = executor.transaction_manager.get_active_transaction_mut() {
+                            if current_op_tx_id.0 != 0 {
+                                // Only if in an active transaction
+                                if let Some(active_tx_mut) =
+                                    executor.transaction_manager.get_active_transaction_mut()
+                                {
                                     active_tx_mut.add_undo_operation(
                                         crate::core::transaction::transaction::UndoOperation::IndexRevertInsert {
                                             index_name, // Moves index_name

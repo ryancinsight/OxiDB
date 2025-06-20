@@ -86,7 +86,8 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, OxidbError> {
                 parse_legacy_command_string(query_str)
             }
         }
-    } else if first_word == "SELECT" || first_word == "UPDATE" || first_word == "CREATE" { // DELETE removed from this line
+    } else if first_word == "SELECT" || first_word == "UPDATE" || first_word == "CREATE" {
+        // DELETE removed from this line
         // Other SQL commands
         let mut tokenizer = Tokenizer::new(query_str);
         match tokenizer.tokenize() {
@@ -111,7 +112,8 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, OxidbError> {
     {
         // Legacy commands (excluding INSERT and DELETE)
         parse_legacy_command_string(query_str)
-    } else { // Fallback for unknown commands, try SQL then error
+    } else {
+        // Fallback for unknown commands, try SQL then error
         let mut tokenizer = Tokenizer::new(query_str);
         match tokenizer.tokenize() {
             Ok(tokens) => {

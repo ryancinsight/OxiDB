@@ -27,7 +27,7 @@ pub struct IndexScanOperator<S: KeyValueStore<Key, Vec<u8>>> {
 
 impl<S: KeyValueStore<Key, Vec<u8>>> IndexScanOperator<S> {
     pub fn new(
-        store: Arc<RwLock<S>>, // Changed to Arc<RwLock<S>>
+        store: Arc<RwLock<S>>,                    // Changed to Arc<RwLock<S>>
         index_manager: Arc<RwLock<IndexManager>>, // Changed to Arc<RwLock<IndexManager>>
         index_name: String,
         scan_value: Vec<u8>,
@@ -60,8 +60,12 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for IndexScanOp
         self.executed = true;
 
         let primary_keys: std::vec::Vec<std::vec::Vec<u8>> =
-            (self.index_manager.read().unwrap().find_by_index(&self.index_name, &self.scan_value)?) // Acquire read lock
-                .unwrap_or_default();
+            (self
+                .index_manager
+                .read()
+                .unwrap()
+                .find_by_index(&self.index_name, &self.scan_value)?) // Acquire read lock
+            .unwrap_or_default();
 
         if primary_keys.is_empty() {
             return Ok(Box::new(std::iter::empty()));
@@ -79,7 +83,8 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for IndexScanOp
             let store_guard = store_arc_clone.read().unwrap();
             match store_guard.get(&pk, snapshot_id, &committed_ids_clone) {
                 Ok(Some(value_bytes)) => match deserialize_data_type(&value_bytes) {
-                    Ok(row_data_type) => { // row_data_type is likely a DataType::Map
+                    Ok(row_data_type) => {
+                        // row_data_type is likely a DataType::Map
                         // Prepend the actual KV store key (pk) to the tuple
                         let key_data_type = DataType::RawBytes(pk.clone()); // Use RawBytes for keys
 
@@ -97,7 +102,8 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for IndexScanOp
                     }
                     Err(e) => Some(Err(OxidbError::Deserialization(format!(
                         "Failed to deserialize row data for key {:?}: {}",
-                        String::from_utf8_lossy(&pk), e
+                        String::from_utf8_lossy(&pk),
+                        e
                     )))),
                 },
                 Ok(None) => None, // Row pointed to by index key not found or not visible

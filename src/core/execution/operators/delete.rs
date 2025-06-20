@@ -1,11 +1,11 @@
 // src/core/execution/operators/delete.rs
 
+use crate::core::common::types::TransactionId; // Changed path for TransactionId
 use crate::core::common::OxidbError;
 use crate::core::execution::{ExecutionOperator, Tuple}; // Changed to ExecutionOperator
+use crate::core::query::commands::Key; // For primary key type
 use crate::core::storage::engine::traits::KeyValueStore;
 use crate::core::wal::log_manager::LogManager;
-use crate::core::query::commands::Key; // For primary key type
-use crate::core::common::types::TransactionId; // Changed path for TransactionId
 use std::collections::HashSet; // Added HashSet
 use std::sync::{Arc, RwLock};
 
@@ -34,7 +34,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<
         transaction_id: TransactionId,
         primary_key_column_index: usize,
         committed_ids: Arc<HashSet<u64>>, // Added committed_ids
-        schema: Arc<Schema>, // Added schema parameter
+        schema: Arc<Schema>,              // Added schema parameter
     ) -> Self {
         Self {
             input,
@@ -59,32 +59,46 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<
             let tuple = tuple_result?;
 
             let pk_data_type = tuple.get(self.primary_key_column_index).ok_or_else(|| {
-                OxidbError::Execution("Primary key column missing in input tuple for DELETE.".to_string())
+                OxidbError::Execution(
+                    "Primary key column missing in input tuple for DELETE.".to_string(),
+                )
             })?;
 
             let primary_key: Key = match pk_data_type {
                 DataType::String(s) => s.as_bytes().to_vec(),
                 DataType::Integer(i) => i.to_be_bytes().to_vec(),
                 DataType::RawBytes(b) => b.clone(), // Handle RawBytes
-                _ => return Err(OxidbError::Execution(format!("Unsupported primary key type {:?} for DELETE.", pk_data_type))),
+                _ => {
+                    return Err(OxidbError::Execution(format!(
+                        "Unsupported primary key type {:?} for DELETE.",
+                        pk_data_type
+                    )))
+                }
             };
 
             // Construct row map from tuple and schema for serialization
             let mut row_map_data = std::collections::HashMap::new();
             if tuple.len() != self.schema.columns.len() {
                 return Err(OxidbError::Execution(
-                    "Tuple length does not match schema column count in DeleteOperator.".to_string()
+                    "Tuple length does not match schema column count in DeleteOperator."
+                        .to_string(),
                 ));
             }
             for (idx, col_def) in self.schema.columns.iter().enumerate() {
                 row_map_data.insert(col_def.name.as_bytes().to_vec(), tuple[idx].clone());
             }
-            let serialized_row_data = serialize_data_type(&DataType::Map(JsonSafeMap(row_map_data)))?;
+            let serialized_row_data =
+                serialize_data_type(&DataType::Map(JsonSafeMap(row_map_data)))?;
 
             let lsn = self.log_manager.next_lsn();
             let tx_for_store = crate::core::transaction::Transaction::new(self.transaction_id);
 
-            let was_deleted = self.store.write().unwrap().delete(&primary_key, &tx_for_store, lsn, &self.committed_ids)?;
+            let was_deleted = self.store.write().unwrap().delete(
+                &primary_key,
+                &tx_for_store,
+                lsn,
+                &self.committed_ids,
+            )?;
             if was_deleted {
                 // count += 1; // No longer returning count directly
                 deleted_rows_info.push((primary_key, serialized_row_data));
@@ -95,12 +109,14 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<
     }
 }
 
-use crate::core::types::{DataType, JsonSafeMap}; // Added for constructing row map
 use crate::core::common::serialization::serialize_data_type; // For serializing row map
-use crate::core::types::schema::Schema; // Required to interpret the tuple correctly
+use crate::core::types::schema::Schema;
+use crate::core::types::{DataType, JsonSafeMap}; // Added for constructing row map // Required to interpret the tuple correctly
 
 // Implement the ExecutionOperator trait
-impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> ExecutionOperator for DeleteOperator<S> {
+impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> ExecutionOperator
+    for DeleteOperator<S>
+{
     fn execute(
         &mut self,
     ) -> Result<Box<dyn Iterator<Item = Result<Tuple, OxidbError>> + Send + Sync>, OxidbError> {
@@ -161,10 +177,7 @@ impl Iterator for DeleteResultIterator {
             let (pk_bytes, row_bytes) = self.deleted_rows[self.current_index].clone(); // Clone to avoid lifetime issues with self
             self.current_index += 1;
             // Represent PK and row_bytes as DataType::RawBytes within a Tuple
-            let tuple = vec![
-                DataType::RawBytes(pk_bytes),
-                DataType::RawBytes(row_bytes)
-            ];
+            let tuple = vec![DataType::RawBytes(pk_bytes), DataType::RawBytes(row_bytes)];
             Some(Ok(tuple))
         }
     }

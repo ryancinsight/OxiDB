@@ -4,14 +4,14 @@
 // It contains the central decision-making logic for processing events.
 // This version is refactored to use the Processor trait for "Flat Logic".
 
-use super::types::{Event, EventResult};
 use super::processors::{
+    DataUpdatedProcessor,
+    NotificationSentProcessor,
+    OrderPlacedProcessor,
     Processor, // The trait
     UserCreatedProcessor,
-    OrderPlacedProcessor,
-    NotificationSentProcessor,
-    DataUpdatedProcessor,
-}; // Concrete processor types
+};
+use super::types::{Event, EventResult}; // Concrete processor types
 
 /// Selects and returns the appropriate event processor for a given event.
 ///

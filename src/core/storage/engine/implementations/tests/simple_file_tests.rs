@@ -1,9 +1,9 @@
 // Original imports from simple_file.rs that might be needed by test helpers or types:
 use std::collections::{HashMap, HashSet};
-use tempfile::tempdir; // Added import for tempdir
 use std::fs::{read, remove_file, write, File, File as StdFile, OpenOptions}; // Removed rename for now as it's not used after test changes
 use std::io::{BufReader, BufWriter, ErrorKind, Write};
 use std::path::{Path, PathBuf};
+use tempfile::tempdir; // Added import for tempdir
 
 // Specific imports for types used in tests, from their canonical paths
 use crate::core::common::traits::{DataDeserializer, DataSerializer};
@@ -170,7 +170,9 @@ fn test_delete_non_existent() {
     let dummy_lsn = 0;
     let mut delete_committed_ids = HashSet::new();
     delete_committed_ids.insert(0); // tx0 is deleting and is committed
-    assert!(!store.delete(&b"non_existent_key".to_vec(), &dummy_transaction, dummy_lsn, &delete_committed_ids).unwrap());
+    assert!(!store
+        .delete(&b"non_existent_key".to_vec(), &dummy_transaction, dummy_lsn, &delete_committed_ids)
+        .unwrap());
 }
 
 #[test]
@@ -1011,14 +1013,18 @@ fn test_scan_operation() -> Result<(), OxidbError> {
     // Delete key3 with tx0
     let mut delete_committed_ids_scan = HashSet::new();
     delete_committed_ids_scan.insert(tx0.id.0); // tx0 is deleting and is committed
-    // Add other tx_ids that were part of setup if any, tx0 covers puts for key1, key2, key3.
+                                                // Add other tx_ids that were part of setup if any, tx0 covers puts for key1, key2, key3.
     store.delete(&key3, &tx0, lsn_base + 4, &delete_committed_ids_scan)?;
 
     // Insert key4 with a different transaction ID (tx_other)
     // The current simple_file_store.scan() takes latest non-expired, regardless of tx_id,
     // as it mimics a snapshot_id=0 non-transactional read.
-    store.put(key4_uncommitted_or_specific_tx.clone(), val4_uncommitted_or_specific_tx.clone(), &tx_other, lsn_base + 5)?;
-
+    store.put(
+        key4_uncommitted_or_specific_tx.clone(),
+        val4_uncommitted_or_specific_tx.clone(),
+        &tx_other,
+        lsn_base + 5,
+    )?;
 
     // Test 3: Scan after updates and deletes
     let mut results2 = store.scan()?;
@@ -1027,12 +1033,15 @@ fn test_scan_operation() -> Result<(), OxidbError> {
     let mut expected_results2 = vec![
         (key1.clone(), val1_v2.clone()), // key1 updated to v2
         (key2.clone(), val2.clone()),    // key2 should remain
-        (key4_uncommitted_or_specific_tx.clone(), val4_uncommitted_or_specific_tx.clone()) // key4 from tx_other visible
+        (key4_uncommitted_or_specific_tx.clone(), val4_uncommitted_or_specific_tx.clone()), // key4 from tx_other visible
     ];
-    expected_results2.sort_by(|a,b| a.0.cmp(&b.0));
+    expected_results2.sort_by(|a, b| a.0.cmp(&b.0));
 
     assert_eq!(results2.len(), 3, "Scan results: {:?}", results2);
-    assert_eq!(results2, expected_results2, "Scan results did not match expected results after modifications.");
+    assert_eq!(
+        results2, expected_results2,
+        "Scan results did not match expected results after modifications."
+    );
 
     // Ensure key3 is not present
     assert!(!results2.iter().any(|(k, _)| k == &key3), "key3 should be deleted");
@@ -1055,9 +1064,9 @@ fn test_scan_operation() -> Result<(), OxidbError> {
     let mut expected_reloaded_results = vec![
         (key1.clone(), val1_v2.clone()),
         (key2.clone(), val2.clone()),
-        (key4_uncommitted_or_specific_tx.clone(), val4_uncommitted_or_specific_tx.clone())
+        (key4_uncommitted_or_specific_tx.clone(), val4_uncommitted_or_specific_tx.clone()),
     ];
-    expected_reloaded_results.sort_by(|a,b| a.0.cmp(&b.0));
+    expected_reloaded_results.sort_by(|a, b| a.0.cmp(&b.0));
 
     assert_eq!(results_reloaded.len(), 3, "Reloaded store scan results: {:?}", results_reloaded);
     assert_eq!(results_reloaded, expected_reloaded_results, "Reloaded scan results mismatch.");
@@ -1068,10 +1077,9 @@ fn test_scan_operation() -> Result<(), OxidbError> {
     let mut store_single = SimpleFileKvStore::new(&db_path_single)?;
     store_single.put(key1.clone(), val1_v1.clone(), &tx0, lsn_base + 6)?;
     let mut results_single = store_single.scan()?;
-    results_single.sort_by(|a,b| a.0.cmp(&b.0));
+    results_single.sort_by(|a, b| a.0.cmp(&b.0));
     assert_eq!(results_single.len(), 1);
     assert_eq!(results_single[0], (key1.clone(), val1_v1.clone()));
-
 
     Ok(())
 }
@@ -1086,108 +1094,103 @@ fn test_physical_wal_lsn_integration() {
     let exec = &mut oxidb.executor; // For direct access to TransactionManager if needed for LSN assertions
 
     // 2. Execute Operations
-    exec
-        .execute_command(crate::core::query::commands::Command::CreateTable {
-            table_name: "test_lsn".to_string(),
-            columns: vec![
-                crate::core::types::schema::ColumnDef {
-                    name: "id".to_string(),
-                    data_type: crate::core::types::DataType::Integer(0),
-                    is_primary_key: true,
-                    is_unique: true,
-                    is_nullable: false,
-                },
-                crate::core::types::schema::ColumnDef {
-                    name: "name".to_string(),
-                    data_type: crate::core::types::DataType::String("".to_string()),
-                    is_primary_key: false,
-                    is_unique: false,
-                    is_nullable: true,
-                },
-            ],
-        })
-        .expect("CREATE TABLE failed");
+    exec.execute_command(crate::core::query::commands::Command::CreateTable {
+        table_name: "test_lsn".to_string(),
+        columns: vec![
+            crate::core::types::schema::ColumnDef {
+                name: "id".to_string(),
+                data_type: crate::core::types::DataType::Integer(0),
+                is_primary_key: true,
+                is_unique: true,
+                is_nullable: false,
+            },
+            crate::core::types::schema::ColumnDef {
+                name: "name".to_string(),
+                data_type: crate::core::types::DataType::String("".to_string()),
+                is_primary_key: false,
+                is_unique: false,
+                is_nullable: true,
+            },
+        ],
+    })
+    .expect("CREATE TABLE failed");
 
-    exec
-        .execute_command(crate::core::query::commands::Command::SqlInsert {
-            table_name: "test_lsn".to_string(),
-            columns: Some(vec!["id".to_string(), "name".to_string()]),
-            values: vec![vec![
-                crate::core::types::DataType::Integer(1),
-                crate::core::types::DataType::String("Alice".to_string()),
-            ]],
-        })
-        .expect("INSERT 1 failed");
+    exec.execute_command(crate::core::query::commands::Command::SqlInsert {
+        table_name: "test_lsn".to_string(),
+        columns: Some(vec!["id".to_string(), "name".to_string()]),
+        values: vec![vec![
+            crate::core::types::DataType::Integer(1),
+            crate::core::types::DataType::String("Alice".to_string()),
+        ]],
+    })
+    .expect("INSERT 1 failed");
 
-    exec
-        .execute_command(crate::core::query::commands::Command::SqlInsert {
-            table_name: "test_lsn".to_string(),
-            columns: Some(vec!["id".to_string(), "name".to_string()]),
-            values: vec![vec![
-                crate::core::types::DataType::Integer(2),
-                crate::core::types::DataType::String("Bob".to_string()),
-            ]],
-        })
-        .expect("INSERT 2 failed");
+    exec.execute_command(crate::core::query::commands::Command::SqlInsert {
+        table_name: "test_lsn".to_string(),
+        columns: Some(vec!["id".to_string(), "name".to_string()]),
+        values: vec![vec![
+            crate::core::types::DataType::Integer(2),
+            crate::core::types::DataType::String("Bob".to_string()),
+        ]],
+    })
+    .expect("INSERT 2 failed");
 
-    exec
-        .execute_command(crate::core::query::commands::Command::Update {
-            source: "test_lsn".to_string(),
-            assignments: vec![crate::core::query::commands::SqlAssignment {
-                column: "name".to_string(),
-                value: crate::core::types::DataType::String("Alicia".to_string()),
-            }],
-            condition: Some(crate::core::query::commands::SqlCondition {
-                column: "id".to_string(),
-                operator: "=".to_string(),
-                value: crate::core::types::DataType::Integer(1),
-            }),
-        })
-        .expect("UPDATE failed");
+    exec.execute_command(crate::core::query::commands::Command::Update {
+        source: "test_lsn".to_string(),
+        assignments: vec![crate::core::query::commands::SqlAssignment {
+            column: "name".to_string(),
+            value: crate::core::types::DataType::String("Alicia".to_string()),
+        }],
+        condition: Some(crate::core::query::commands::SqlCondition {
+            column: "id".to_string(),
+            operator: "=".to_string(),
+            value: crate::core::types::DataType::Integer(1),
+        }),
+    })
+    .expect("UPDATE failed");
 
-    exec
-        .execute_command(crate::core::query::commands::Command::SqlDelete {
-            table_name: "test_lsn".to_string(),
-            condition: Some(crate::core::query::commands::SqlCondition {
-                column: "id".to_string(),
-                operator: "=".to_string(),
-                value: crate::core::types::DataType::Integer(2),
-            }),
-        })
-        .expect("DELETE failed");
+    exec.execute_command(crate::core::query::commands::Command::SqlDelete {
+        table_name: "test_lsn".to_string(),
+        condition: Some(crate::core::query::commands::SqlCondition {
+            column: "id".to_string(),
+            operator: "=".to_string(),
+            value: crate::core::types::DataType::Integer(2),
+        }),
+    })
+    .expect("DELETE failed");
 
-    exec.execute_command(crate::core::query::commands::Command::BeginTransaction).expect("BEGIN failed");
+    exec.execute_command(crate::core::query::commands::Command::BeginTransaction)
+        .expect("BEGIN failed");
 
     let mut expected_lsn_offset_for_logical_wal = 1; // For logical BEGIN
 
-    exec
-        .execute_command(crate::core::query::commands::Command::SqlInsert {
-            table_name: "test_lsn".to_string(),
-            columns: Some(vec!["id".to_string(), "name".to_string()]),
-            values: vec![vec![
-                crate::core::types::DataType::Integer(3),
-                crate::core::types::DataType::String("Charlie".to_string()),
-            ]],
-        })
-        .expect("TX1: INSERT Charlie failed");
+    exec.execute_command(crate::core::query::commands::Command::SqlInsert {
+        table_name: "test_lsn".to_string(),
+        columns: Some(vec!["id".to_string(), "name".to_string()]),
+        values: vec![vec![
+            crate::core::types::DataType::Integer(3),
+            crate::core::types::DataType::String("Charlie".to_string()),
+        ]],
+    })
+    .expect("TX1: INSERT Charlie failed");
 
     // This was the missing operation
-    exec
-        .execute_command(crate::core::query::commands::Command::Update {
-            source: "test_lsn".to_string(),
-            assignments: vec![crate::core::query::commands::SqlAssignment {
-                column: "name".to_string(),
-                value: crate::core::types::DataType::String("AliceNewName".to_string()),
-            }],
-            condition: Some(crate::core::query::commands::SqlCondition {
-                column: "id".to_string(),
-                operator: "=".to_string(),
-                value: crate::core::types::DataType::Integer(1),
-            }),
-        })
-        .expect("TX1: UPDATE Alice failed");
+    exec.execute_command(crate::core::query::commands::Command::Update {
+        source: "test_lsn".to_string(),
+        assignments: vec![crate::core::query::commands::SqlAssignment {
+            column: "name".to_string(),
+            value: crate::core::types::DataType::String("AliceNewName".to_string()),
+        }],
+        condition: Some(crate::core::query::commands::SqlCondition {
+            column: "id".to_string(),
+            operator: "=".to_string(),
+            value: crate::core::types::DataType::Integer(1),
+        }),
+    })
+    .expect("TX1: UPDATE Alice failed");
 
-    exec.execute_command(crate::core::query::commands::Command::CommitTransaction).expect("TX1: COMMIT failed");
+    exec.execute_command(crate::core::query::commands::Command::CommitTransaction)
+        .expect("TX1: COMMIT failed");
     // The logical COMMIT will also consume an LSN from the shared LogManager.
 
     let physical_wal_path = derive_wal_path(&db_path);
@@ -1210,18 +1213,32 @@ fn test_physical_wal_lsn_integration() {
     // LSNs consumed by TM WAL: SchemaCommit (1), AliceCommit (3), BobCommit (5), AliciaCommit (7), BobDeleteCommit (9), BeginTx1 (10), CharlieCommit (13)
     let expected_physical_lsns = [0, 2, 4, 6, 8, 11, 12];
 
-    assert_eq!(wal_entries.len(), expected_physical_lsns.len(), "Mismatch in number of physical WAL entries. Actual: {:?}, Expected: {:?}", wal_entries, expected_physical_lsns);
+    assert_eq!(
+        wal_entries.len(),
+        expected_physical_lsns.len(),
+        "Mismatch in number of physical WAL entries. Actual: {:?}, Expected: {:?}",
+        wal_entries,
+        expected_physical_lsns
+    );
 
     let mut physical_data_ops = 0;
 
     for (idx, entry) in wal_entries.iter().enumerate() {
         match entry {
             WalEntry::Put { lsn, transaction_id, .. } => {
-                assert_eq!(*lsn, expected_physical_lsns[idx], "LSN mismatch for Put entry idx {} with tx_id {}", idx, transaction_id);
+                assert_eq!(
+                    *lsn, expected_physical_lsns[idx],
+                    "LSN mismatch for Put entry idx {} with tx_id {}",
+                    idx, transaction_id
+                );
                 physical_data_ops += 1;
             }
             WalEntry::Delete { lsn, transaction_id, .. } => {
-                assert_eq!(*lsn, expected_physical_lsns[idx], "LSN mismatch for Delete entry idx {} with tx_id {}", idx, transaction_id);
+                assert_eq!(
+                    *lsn, expected_physical_lsns[idx],
+                    "LSN mismatch for Delete entry idx {} with tx_id {}",
+                    idx, transaction_id
+                );
                 physical_data_ops += 1;
             }
             // TransactionCommit/Rollback should not be in the physical store WAL with the new design
@@ -1229,7 +1246,7 @@ fn test_physical_wal_lsn_integration() {
                 panic!("Unexpected TransactionCommit (lsn:{}, tx:{}) in physical store WAL at index {}", lsn, transaction_id, idx);
             }
             WalEntry::TransactionRollback { lsn, transaction_id, .. } => {
-                 panic!("Unexpected TransactionRollback (lsn:{}, tx:{}) in physical store WAL at index {}", lsn, transaction_id, idx);
+                panic!("Unexpected TransactionRollback (lsn:{}, tx:{}) in physical store WAL at index {}", lsn, transaction_id, idx);
             }
         }
     }

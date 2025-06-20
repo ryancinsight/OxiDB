@@ -15,7 +15,8 @@ fn get_temp_db_path() -> PathBuf {
 #[test]
 fn test_oxidb_insert_and_get() {
     let db_path = get_temp_db_path();
-    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance for insert_and_get test");
+    let mut db =
+        Oxidb::new(&db_path).expect("Failed to create Oxidb instance for insert_and_get test");
 
     let key = b"api_key_1".to_vec();
     let value_str = "api_value_1".to_string();
@@ -33,7 +34,8 @@ fn test_oxidb_insert_and_get() {
 #[test]
 fn test_oxidb_get_non_existent() {
     let db_path = get_temp_db_path();
-    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance for get_non_existent test");
+    let mut db =
+        Oxidb::new(&db_path).expect("Failed to create Oxidb instance for get_non_existent test");
     let key = b"api_non_existent".to_vec();
     let get_result = db.get(key);
     assert!(get_result.is_ok(), "get_non_existent operation failed");
@@ -64,7 +66,8 @@ fn test_oxidb_delete() {
 #[test]
 fn test_oxidb_delete_non_existent() {
     let db_path = get_temp_db_path();
-    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance for delete_non_existent test");
+    let mut db =
+        Oxidb::new(&db_path).expect("Failed to create Oxidb instance for delete_non_existent test");
     let key = b"api_delete_non_existent".to_vec();
 
     let delete_result = db.delete(key.clone());
@@ -85,7 +88,8 @@ fn test_oxidb_update() {
     assert!(get_v1_result.is_ok(), "Get v1 failed in update test");
     assert_eq!(get_v1_result.expect("get_v1_result was Err"), Some(value1_str));
 
-    db.insert(key.clone(), value2_str.clone()).expect("Second insert (update) failed in update test"); // This is an update
+    db.insert(key.clone(), value2_str.clone())
+        .expect("Second insert (update) failed in update test"); // This is an update
     let get_v2_result = db.get(key.clone());
     assert!(get_v2_result.is_ok(), "Get v2 failed in update test");
     assert_eq!(get_v2_result.expect("get_v2_result was Err"), Some(value2_str));
@@ -114,13 +118,14 @@ fn test_oxidb_persist_method() {
     let value_str = "persist_value".to_string(); // Changed to String
 
     {
-        let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance for persist test (first instance)");
+        let mut db = Oxidb::new(&db_path)
+            .expect("Failed to create Oxidb instance for persist test (first instance)");
         db.insert(key.clone(), value_str.clone()).expect("Insert failed in persist test"); // Use String value
-                                                            // Data is in WAL and cache. Main file might be empty or have old data.
-                                                            // WAL file should exist if inserts happened.
-                                                            // (This check depends on SimpleFileKvStore's WAL behavior after insert)
-                                                            // For this test, we assume WAL is written to on put.
-                                                            // Replace direct store access with API usage:
+                                                                                           // Data is in WAL and cache. Main file might be empty or have old data.
+                                                                                           // WAL file should exist if inserts happened.
+                                                                                           // (This check depends on SimpleFileKvStore's WAL behavior after insert)
+                                                                                           // For this test, we assume WAL is written to on put.
+                                                                                           // Replace direct store access with API usage:
         if db.get(key.clone()).expect("Get failed during WAL check in persist test").is_some() {
             assert!(wal_path.exists(), "WAL file should exist after insert before persist.");
         }
@@ -133,10 +138,12 @@ fn test_oxidb_persist_method() {
     }
 
     // Re-load the database
-    let mut reloaded_db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance for persist test (reloaded)");
+    let mut reloaded_db =
+        Oxidb::new(&db_path).expect("Failed to create Oxidb instance for persist test (reloaded)");
     let get_result = reloaded_db.get(key.clone());
     assert!(get_result.is_ok(), "Get after reload failed in persist test");
-    assert_eq!(get_result.expect("get_result after reload was Err"), Some(value_str)); // Assert against String value
+    assert_eq!(get_result.expect("get_result after reload was Err"), Some(value_str));
+    // Assert against String value
 }
 
 // Tests for execute_query_str
@@ -164,10 +171,14 @@ fn test_constraint_not_null_violation_insert() {
     let db_path = get_temp_db_path();
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance");
 
-    db.execute_query_str("CREATE TABLE users_nn (id INTEGER PRIMARY KEY, email TEXT NOT NULL, name TEXT);").unwrap();
+    db.execute_query_str(
+        "CREATE TABLE users_nn (id INTEGER PRIMARY KEY, email TEXT NOT NULL, name TEXT);",
+    )
+    .unwrap();
 
     // Attempt to insert NULL into email (NOT NULL column)
-    let result1 = db.execute_query_str("INSERT INTO users_nn (id, email, name) VALUES (1, NULL, 'Test User');");
+    let result1 = db
+        .execute_query_str("INSERT INTO users_nn (id, email, name) VALUES (1, NULL, 'Test User');");
     match result1 {
         Err(OxidbError::ConstraintViolation { message }) => {
             assert!(message.contains("NOT NULL constraint failed for column 'email'"));
@@ -176,8 +187,9 @@ fn test_constraint_not_null_violation_insert() {
     }
 
     // Attempt to insert without providing email (implicitly NULL)
-    let result2 = db.execute_query_str("INSERT INTO users_nn (id, name) VALUES (2, 'Another User');");
-     match result2 {
+    let result2 =
+        db.execute_query_str("INSERT INTO users_nn (id, name) VALUES (2, 'Another User');");
+    match result2 {
         Err(OxidbError::ConstraintViolation { message }) => {
             assert!(message.contains("NOT NULL constraint failed for column 'email'"));
         }
@@ -185,7 +197,9 @@ fn test_constraint_not_null_violation_insert() {
     }
 
     // Valid insert
-    let result3 = db.execute_query_str("INSERT INTO users_nn (id, email, name) VALUES (3, 'user3@example.com', 'User Three');");
+    let result3 = db.execute_query_str(
+        "INSERT INTO users_nn (id, email, name) VALUES (3, 'user3@example.com', 'User Three');",
+    );
     assert!(result3.is_ok(), "Valid insert failed: {:?}", result3);
 }
 
@@ -194,8 +208,14 @@ fn test_constraint_not_null_violation_update() {
     let db_path = get_temp_db_path();
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance");
 
-    db.execute_query_str("CREATE TABLE items_nn (id INTEGER PRIMARY KEY, description TEXT NOT NULL, price REAL);").unwrap();
-    db.execute_query_str("INSERT INTO items_nn (id, description, price) VALUES (1, 'Initial Item', 9.99);").unwrap();
+    db.execute_query_str(
+        "CREATE TABLE items_nn (id INTEGER PRIMARY KEY, description TEXT NOT NULL, price REAL);",
+    )
+    .unwrap();
+    db.execute_query_str(
+        "INSERT INTO items_nn (id, description, price) VALUES (1, 'Initial Item', 9.99);",
+    )
+    .unwrap();
 
     // Attempt to update description to NULL
     let result = db.execute_query_str("UPDATE items_nn SET description = NULL WHERE id = 1;");
@@ -209,9 +229,9 @@ fn test_constraint_not_null_violation_update() {
     // Valid update
     let result_valid = db.execute_query_str("UPDATE items_nn SET price = 10.99 WHERE id = 1;");
     assert!(result_valid.is_ok(), "Valid update failed: {:?}", result_valid);
-     match result_valid.unwrap() {
-        ExecutionResult::Updated{count} => assert_eq!(count, 1),
-        _ => panic!("Expected Updated result for valid update")
+    match result_valid.unwrap() {
+        ExecutionResult::Updated { count } => assert_eq!(count, 1),
+        _ => panic!("Expected Updated result for valid update"),
     }
 }
 
@@ -228,7 +248,8 @@ fn test_constraint_primary_key_violation_insert() {
     let result = db.execute_query_str("INSERT INTO products_pk (pid, name) VALUES (100, 'Mouse');");
     match result {
         Err(OxidbError::ConstraintViolation { message }) => {
-            assert!(message.contains("UNIQUE constraint failed for column 'pid'")); // PK implies UNIQUE
+            assert!(message.contains("UNIQUE constraint failed for column 'pid'"));
+            // PK implies UNIQUE
         }
         _ => panic!("Expected ConstraintViolation for PK duplicate, got {:?}", result),
     }
@@ -240,12 +261,16 @@ fn test_constraint_unique_violation_insert() {
     let db_path = get_temp_db_path();
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance");
 
-    db.execute_query_str("CREATE TABLE employees_uq (id INTEGER PRIMARY KEY, emp_code TEXT UNIQUE NOT NULL);").unwrap();
+    db.execute_query_str(
+        "CREATE TABLE employees_uq (id INTEGER PRIMARY KEY, emp_code TEXT UNIQUE NOT NULL);",
+    )
+    .unwrap();
     db.execute_query_str("INSERT INTO employees_uq (id, emp_code) VALUES (1, 'E101');").unwrap();
 
     // Attempt to insert another employee with the same emp_code
-    let result = db.execute_query_str("INSERT INTO employees_uq (id, emp_code) VALUES (2, 'E101');");
-     match result {
+    let result =
+        db.execute_query_str("INSERT INTO employees_uq (id, emp_code) VALUES (2, 'E101');");
+    match result {
         Err(OxidbError::ConstraintViolation { message }) => {
             assert!(message.contains("UNIQUE constraint failed for column 'emp_code'"));
         }
@@ -259,25 +284,37 @@ fn test_constraint_unique_allows_multiple_nulls() {
     let db_path = get_temp_db_path();
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance");
 
-    db.execute_query_str("CREATE TABLE gadgets_uq_null (id INTEGER PRIMARY KEY, serial_no TEXT UNIQUE);").unwrap();
+    db.execute_query_str(
+        "CREATE TABLE gadgets_uq_null (id INTEGER PRIMARY KEY, serial_no TEXT UNIQUE);",
+    )
+    .unwrap();
 
     // Insert multiple rows with NULL in the UNIQUE column serial_no
-    assert!(db.execute_query_str("INSERT INTO gadgets_uq_null (id, serial_no) VALUES (1, NULL);").is_ok());
-    assert!(db.execute_query_str("INSERT INTO gadgets_uq_null (id, serial_no) VALUES (2, NULL);").is_ok());
+    assert!(db
+        .execute_query_str("INSERT INTO gadgets_uq_null (id, serial_no) VALUES (1, NULL);")
+        .is_ok());
+    assert!(db
+        .execute_query_str("INSERT INTO gadgets_uq_null (id, serial_no) VALUES (2, NULL);")
+        .is_ok());
 
     // Insert a non-NULL value
-    assert!(db.execute_query_str("INSERT INTO gadgets_uq_null (id, serial_no) VALUES (3, 'XYZ123');").is_ok());
+    assert!(db
+        .execute_query_str("INSERT INTO gadgets_uq_null (id, serial_no) VALUES (3, 'XYZ123');")
+        .is_ok());
 
     // Attempt to insert duplicate non-NULL value (should fail)
-    let result_dup_non_null = db.execute_query_str("INSERT INTO gadgets_uq_null (id, serial_no) VALUES (4, 'XYZ123');");
+    let result_dup_non_null =
+        db.execute_query_str("INSERT INTO gadgets_uq_null (id, serial_no) VALUES (4, 'XYZ123');");
     match result_dup_non_null {
         Err(OxidbError::ConstraintViolation { message }) => {
             assert!(message.contains("UNIQUE constraint failed for column 'serial_no'"));
         }
-        _ => panic!("Expected ConstraintViolation for duplicate non-NULL UNIQUE value, got {:?}", result_dup_non_null),
+        _ => panic!(
+            "Expected ConstraintViolation for duplicate non-NULL UNIQUE value, got {:?}",
+            result_dup_non_null
+        ),
     }
 }
-
 
 #[test]
 // #[ignore] // Uniqueness check is now implemented
@@ -285,12 +322,18 @@ fn test_constraint_update_violating_unique() {
     let db_path = get_temp_db_path();
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance");
 
-    db.execute_query_str("CREATE TABLE services_uq (id INTEGER PRIMARY KEY, service_name TEXT UNIQUE NOT NULL);").unwrap();
-    db.execute_query_str("INSERT INTO services_uq (id, service_name) VALUES (1, 'Basic');").unwrap();
-    db.execute_query_str("INSERT INTO services_uq (id, service_name) VALUES (2, 'Premium');").unwrap();
+    db.execute_query_str(
+        "CREATE TABLE services_uq (id INTEGER PRIMARY KEY, service_name TEXT UNIQUE NOT NULL);",
+    )
+    .unwrap();
+    db.execute_query_str("INSERT INTO services_uq (id, service_name) VALUES (1, 'Basic');")
+        .unwrap();
+    db.execute_query_str("INSERT INTO services_uq (id, service_name) VALUES (2, 'Premium');")
+        .unwrap();
 
     // Attempt to update 'Basic' to 'Premium', which already exists
-    let result = db.execute_query_str("UPDATE services_uq SET service_name = 'Premium' WHERE id = 1;");
+    let result =
+        db.execute_query_str("UPDATE services_uq SET service_name = 'Premium' WHERE id = 1;");
     match result {
         Err(OxidbError::ConstraintViolation { message }) => {
             assert!(message.contains("UNIQUE constraint failed for column 'service_name'"));
@@ -304,24 +347,38 @@ fn test_constraint_update_violating_unique() {
 fn test_constraint_update_pk_violating_unique() {
     let db_path = get_temp_db_path();
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance");
-    db.execute_query_str("CREATE TABLE devices_pk_uq (device_id INTEGER PRIMARY KEY, mac_address TEXT UNIQUE);").unwrap();
-    db.execute_query_str("INSERT INTO devices_pk_uq (device_id, mac_address) VALUES (1, '00:1A:2B:3C:4D:5E');").unwrap();
-    db.execute_query_str("INSERT INTO devices_pk_uq (device_id, mac_address) VALUES (2, '00:1A:2B:3C:4D:5F');").unwrap();
+    db.execute_query_str(
+        "CREATE TABLE devices_pk_uq (device_id INTEGER PRIMARY KEY, mac_address TEXT UNIQUE);",
+    )
+    .unwrap();
+    db.execute_query_str(
+        "INSERT INTO devices_pk_uq (device_id, mac_address) VALUES (1, '00:1A:2B:3C:4D:5E');",
+    )
+    .unwrap();
+    db.execute_query_str(
+        "INSERT INTO devices_pk_uq (device_id, mac_address) VALUES (2, '00:1A:2B:3C:4D:5F');",
+    )
+    .unwrap();
 
     // Attempt to update device_id 2 to 1 (PK violation)
-    let result_pk = db.execute_query_str("UPDATE devices_pk_uq SET device_id = 1 WHERE device_id = 2;");
-     match result_pk {
+    let result_pk =
+        db.execute_query_str("UPDATE devices_pk_uq SET device_id = 1 WHERE device_id = 2;");
+    match result_pk {
         Err(OxidbError::ConstraintViolation { message }) => {
             assert!(message.contains("UNIQUE constraint failed for column 'device_id'"));
         }
-        _ => panic!("Expected ConstraintViolation for UPDATE violating PK uniqueness, got {:?}", result_pk),
+        _ => panic!(
+            "Expected ConstraintViolation for UPDATE violating PK uniqueness, got {:?}",
+            result_pk
+        ),
     }
 }
 
 #[test]
 fn test_oxidb_find_by_index() {
     let db_path = get_temp_db_path();
-    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance for find_by_index test");
+    let mut db =
+        Oxidb::new(&db_path).expect("Failed to create Oxidb instance for find_by_index test");
 
     let key1 = b"idx_key1".to_vec();
     let val1 = "indexed_value_common".to_string();
@@ -335,7 +392,8 @@ fn test_oxidb_find_by_index() {
     db.insert(key3.clone(), val3.clone()).expect("Insert 3 failed");
 
     // Find by the common value
-    let find_result = db.find_by_index("default_value_index".to_string(), DataType::String(val1.clone()));
+    let find_result =
+        db.find_by_index("default_value_index".to_string(), DataType::String(val1.clone()));
     assert!(find_result.is_ok(), "find_by_index failed: {:?}", find_result.err());
 
     match find_result.unwrap() {
@@ -351,8 +409,13 @@ fn test_oxidb_find_by_index() {
     }
 
     // Find by a unique value
-    let find_result_unique = db.find_by_index("default_value_index".to_string(), DataType::String(val3.clone()));
-    assert!(find_result_unique.is_ok(), "find_by_index for unique value failed: {:?}", find_result_unique.err());
+    let find_result_unique =
+        db.find_by_index("default_value_index".to_string(), DataType::String(val3.clone()));
+    assert!(
+        find_result_unique.is_ok(),
+        "find_by_index for unique value failed: {:?}",
+        find_result_unique.err()
+    );
     match find_result_unique.unwrap() {
         Some(values_vec) => {
             assert_eq!(values_vec.len(), 1, "Expected one record for the unique indexed value");
@@ -362,12 +425,20 @@ fn test_oxidb_find_by_index() {
     }
 
     // Find by a non-existent value
-    let find_result_none = db.find_by_index("default_value_index".to_string(), DataType::String("non_existent_value".to_string()));
-    assert!(find_result_none.is_ok(), "find_by_index for non-existent value failed: {:?}", find_result_none.err());
+    let find_result_none = db.find_by_index(
+        "default_value_index".to_string(),
+        DataType::String("non_existent_value".to_string()),
+    );
+    assert!(
+        find_result_none.is_ok(),
+        "find_by_index for non-existent value failed: {:?}",
+        find_result_none.err()
+    );
     assert!(find_result_none.unwrap().is_none(), "Expected None for non-existent value");
 
     // Find on non-existent index
-    let find_result_no_index = db.find_by_index("wrong_index_name".to_string(), DataType::String(val1.clone()));
+    let find_result_no_index =
+        db.find_by_index("wrong_index_name".to_string(), DataType::String(val1.clone()));
     assert!(find_result_no_index.is_err(), "Expected error for non-existent index");
     match find_result_no_index.err().unwrap() {
         OxidbError::Index(msg) => assert!(msg.contains("not found for find operation")),
@@ -397,7 +468,10 @@ fn test_execute_query_str_insert_ok() {
         _ => panic!("Expected Success, got {:?}", result),
     }
     // db.get now returns Option<String>
-    assert_eq!(db.get(b"newkey".to_vec()).expect("Get failed after insert_ok"), Some("newvalue".to_string()));
+    assert_eq!(
+        db.get(b"newkey".to_vec()).expect("Get failed after insert_ok"),
+        Some("newvalue".to_string())
+    );
 }
 
 #[test]
@@ -410,7 +484,10 @@ fn test_execute_query_str_insert_with_quotes_ok() {
         Ok(ExecutionResult::Success) => {} // Expected
         _ => panic!("Expected Success, got {:?}", result),
     }
-    assert_eq!(db.get(b"qkey".to_vec()).expect("Get failed after insert_with_quotes"), Some("quoted value".to_string()));
+    assert_eq!(
+        db.get(b"qkey".to_vec()).expect("Get failed after insert_with_quotes"),
+        Some("quoted value".to_string())
+    );
 }
 
 #[test]
@@ -424,7 +501,10 @@ fn test_execute_query_str_insert_integer_via_parser() {
         _ => panic!("Expected Success, got {:?}", result),
     }
     // db.get now returns Option<String>
-    assert_eq!(db.get(b"intkey".to_vec()).expect("Get failed after insert_integer"), Some("123".to_string()));
+    assert_eq!(
+        db.get(b"intkey".to_vec()).expect("Get failed after insert_integer"),
+        Some("123".to_string())
+    );
 }
 
 #[test]
@@ -437,7 +517,10 @@ fn test_execute_query_str_insert_boolean_via_parser() {
         Ok(ExecutionResult::Success) => {} // Expected
         _ => panic!("Expected Success, got {:?}", result),
     }
-    assert_eq!(db.get(b"boolkey".to_vec()).expect("Get failed after insert_boolean"), Some("true".to_string()));
+    assert_eq!(
+        db.get(b"boolkey".to_vec()).expect("Get failed after insert_boolean"),
+        Some("true".to_string())
+    );
 }
 
 #[test]
@@ -492,8 +575,10 @@ fn test_execute_query_str_update_ok() {
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb for update_ok test");
 
     // 1. Create table schema
-    db.execute_query_str("CREATE TABLE users (_kv_key TEXT PRIMARY KEY, name TEXT, city TEXT, country TEXT);")
-        .expect("CREATE TABLE users failed");
+    db.execute_query_str(
+        "CREATE TABLE users (_kv_key TEXT PRIMARY KEY, name TEXT, city TEXT, country TEXT);",
+    )
+    .expect("CREATE TABLE users failed");
 
     // 2. Insert initial data using SQL INSERT
     // The _kv_key here is the actual key that will be used in the KV store.
@@ -519,7 +604,9 @@ fn test_execute_query_str_update_ok() {
     let update_query = "UPDATE users SET city = 'New York' WHERE name = 'Alice'";
     let update_result = db.execute_query_str(update_query);
     match update_result {
-        Ok(ExecutionResult::Updated { count }) => assert_eq!(count, 1, "UPDATE: Expected 1 row updated"),
+        Ok(ExecutionResult::Updated { count }) => {
+            assert_eq!(count, 1, "UPDATE: Expected 1 row updated")
+        }
         _ => panic!("UPDATE: Expected Updated {{ count: 1 }}, got {:?}", update_result),
     }
 
@@ -569,7 +656,7 @@ fn test_execute_query_str_update_ok() {
                     } else {
                         eprintln!("Problematic data written to: {}", path);
                     }
-                },
+                }
                 Err(e) => {
                     eprintln!("Failed to create debug file: {}", e);
                 }
@@ -577,27 +664,43 @@ fn test_execute_query_str_update_ok() {
 
             // Now, proceed with assertions based on the known data_type_val
             if let DataType::Map(JsonSafeMap(map_val)) = data_type_val {
-                 println!("[Test] Retrieved DataType::Map for assertions: {:?}", map_val);
-                 assert_eq!(map_val.get(b"city".as_ref()), Some(&DataType::String("New York".to_string())));
-                 assert_eq!(map_val.get(b"country".as_ref()), Some(&DataType::String("UK".to_string())));
+                println!("[Test] Retrieved DataType::Map for assertions: {:?}", map_val);
+                assert_eq!(
+                    map_val.get(b"city".as_ref()),
+                    Some(&DataType::String("New York".to_string()))
+                );
+                assert_eq!(
+                    map_val.get(b"country".as_ref()),
+                    Some(&DataType::String("UK".to_string()))
+                );
             } else {
                 // This panic will now include the actual data_type_val if it's not a Map
                 panic!("[Test] Expected DataType::Map for key_alice, but got: {:?}", data_type_val);
             }
         }
         Ok(ExecutionResult::Value(None)) => {
-             eprintln!("Problematic data written to: /tmp/debug_output.txt (GET for key_alice Value was None)");
-             std::fs::write("/tmp/debug_output.txt", "ExecutionResult::Value(None) for key_alice").expect("Failed to write None case");
-             panic!("[Test] Expected Value(Some(_)) for key_alice, got Value(None)");
+            eprintln!("Problematic data written to: /tmp/debug_output.txt (GET for key_alice Value was None)");
+            std::fs::write("/tmp/debug_output.txt", "ExecutionResult::Value(None) for key_alice")
+                .expect("Failed to write None case");
+            panic!("[Test] Expected Value(Some(_)) for key_alice, got Value(None)");
         }
-        Err(e) => { // Err from db.execute_query_str("GET users_alice")
-            eprintln!("Problematic data written to: /tmp/debug_output.txt (GET for key_alice failed)");
-            std::fs::write("/tmp/debug_output.txt", format!("GET for key_alice failed: {:?}", e)).expect("Failed to write error case");
+        Err(e) => {
+            // Err from db.execute_query_str("GET users_alice")
+            eprintln!(
+                "Problematic data written to: /tmp/debug_output.txt (GET for key_alice failed)"
+            );
+            std::fs::write("/tmp/debug_output.txt", format!("GET for key_alice failed: {:?}", e))
+                .expect("Failed to write error case");
             panic!("[Test] GET query for key_alice failed: {:?}", e); // This is where the original panic happens
         }
-        other_exec_res => { // Other Ok(ExecutionResult::Variant)
+        other_exec_res => {
+            // Other Ok(ExecutionResult::Variant)
             eprintln!("Problematic data written to: /tmp/debug_output.txt (Unexpected ExecutionResult for key_alice)");
-            std::fs::write("/tmp/debug_output.txt", format!("Unexpected ExecutionResult for key_alice: {:?}", other_exec_res)).expect("Failed to write other case");
+            std::fs::write(
+                "/tmp/debug_output.txt",
+                format!("Unexpected ExecutionResult for key_alice: {:?}", other_exec_res),
+            )
+            .expect("Failed to write other case");
             panic!("[Test] Expected ExecutionResult::Value(Some(DataType::Map(...))) for key_alice, got: {:?}", other_exec_res);
         }
     }
@@ -606,7 +709,9 @@ fn test_execute_query_str_update_ok() {
     let update_query_no_match = "UPDATE users SET city = 'Berlin' WHERE name = 'Unknown'";
     let result_no_match = db.execute_query_str(update_query_no_match);
     match result_no_match {
-        Ok(ExecutionResult::Updated { count }) => assert_eq!(count, 0, "UPDATE no match: Expected 0 rows updated"),
+        Ok(ExecutionResult::Updated { count }) => {
+            assert_eq!(count, 0, "UPDATE no match: Expected 0 rows updated")
+        }
         _ => panic!("UPDATE no match: Expected Updated {{ count: 0 }}, got {:?}", result_no_match),
     }
 }
@@ -690,7 +795,6 @@ fn test_get_visibility_read_own_write_within_transaction_should_see() {
     // This simplifies Test Case 3 to "read after write in auto-commit", not "read own uncommitted write".
 }
 
-
 #[test]
 fn test_get_visibility_read_committed_then_overwritten_by_uncommitted_should_see_old_committed() {
     let db_path = get_temp_db_path();
@@ -717,7 +821,10 @@ fn test_get_visibility_read_committed_then_overwritten_by_uncommitted_should_see
         Ok(ExecutionResult::Value(Some(DataType::String(val)))) => {
             assert_eq!(val, "value_initial_commit");
         }
-        _ => panic!("Expected Value(Some(\"value_initial_commit\")) after initial commit, got {:?}", result),
+        _ => panic!(
+            "Expected Value(Some(\"value_initial_commit\")) after initial commit, got {:?}",
+            result
+        ),
     }
     // To properly test this, one would need:
     // db.begin_transaction();
@@ -736,7 +843,8 @@ fn test_get_visibility_read_committed_then_overwritten_by_committed_should_see_n
     db.execute_query_str("INSERT key5 value_first_commit").expect("First insert failed");
 
     // TX2: put("key5", "value_second_commit"), TX2: commit()
-    db.execute_query_str("INSERT key5 value_second_commit").expect("Second insert (overwrite) failed");
+    db.execute_query_str("INSERT key5 value_second_commit")
+        .expect("Second insert (overwrite) failed");
 
     // Main thread (auto-commit, snapshot_id = 0): get("key5")
     let result = db.execute_query_str("GET key5");
@@ -809,28 +917,33 @@ fn test_constraint_primary_key_not_null_violation_insert() {
 
     // Primary Key columns are implicitly NOT NULL.
     // This should be enforced by setting col_def.is_nullable = false during CREATE TABLE translation for PKs.
-    db.execute_query_str("CREATE TABLE products_pk_nn (pid INTEGER PRIMARY KEY, name TEXT);").unwrap();
+    db.execute_query_str("CREATE TABLE products_pk_nn (pid INTEGER PRIMARY KEY, name TEXT);")
+        .unwrap();
 
     // Attempt to insert NULL into the primary key column pid
-    let result = db.execute_query_str("INSERT INTO products_pk_nn (pid, name) VALUES (NULL, 'Tablet');");
+    let result =
+        db.execute_query_str("INSERT INTO products_pk_nn (pid, name) VALUES (NULL, 'Tablet');");
     match result {
         Err(OxidbError::ConstraintViolation { message }) => {
             // Expecting NOT NULL constraint failure here, as PKs are implicitly not nullable.
             assert!(
                 message.contains("NOT NULL constraint failed for column 'pid'"),
-                "Unexpected constraint violation message: {}", message
+                "Unexpected constraint violation message: {}",
+                message
             );
         }
         _ => panic!("Expected ConstraintViolation for NULL PK insert, got {:?}", result),
     }
 
     // Attempt to insert by omitting the PK column (implicitly NULL)
-    let result_missing_pk = db.execute_query_str("INSERT INTO products_pk_nn (name) VALUES ('Monitor');");
-     match result_missing_pk {
+    let result_missing_pk =
+        db.execute_query_str("INSERT INTO products_pk_nn (name) VALUES ('Monitor');");
+    match result_missing_pk {
         Err(OxidbError::ConstraintViolation { message }) => {
-             assert!(
+            assert!(
                 message.contains("NOT NULL constraint failed for column 'pid'"),
-                "Unexpected constraint violation message for missing PK: {}", message
+                "Unexpected constraint violation message for missing PK: {}",
+                message
             );
         }
         // This could also be an ExecutionError if the column count doesn't match and
@@ -840,9 +953,9 @@ fn test_constraint_primary_key_not_null_violation_insert() {
             // Allow specific execution errors related to column count or missing values if not a constraint violation.
             // This part of the test is secondary to the explicit NULL test.
             if !matches!(other_error, Err(OxidbError::Execution(_))) {
-                 panic!("Expected ConstraintViolation or specific ExecutionError for missing PK, got {:?}", other_error);
+                panic!("Expected ConstraintViolation or specific ExecutionError for missing PK, got {:?}", other_error);
             }
-             eprintln!("Note: Implicit NULL for PK (omitted column) resulted in: {:?}", other_error);
+            eprintln!("Note: Implicit NULL for PK (omitted column) resulted in: {:?}", other_error);
         }
     }
 }

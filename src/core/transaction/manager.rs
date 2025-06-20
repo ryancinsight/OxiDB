@@ -74,20 +74,26 @@ impl TransactionManager {
     }
 
     // Method to begin a transaction with a specific ID, e.g., for Tx0 auto-commit
-    pub fn begin_transaction_with_id(&mut self, tx_id: CommonTransactionId) -> Result<Transaction, IoError> {
-        if self.active_transactions.contains_key(&tx_id) || self.current_active_transaction_id.is_some() {
+    pub fn begin_transaction_with_id(
+        &mut self,
+        tx_id: CommonTransactionId,
+    ) -> Result<Transaction, IoError> {
+        if self.active_transactions.contains_key(&tx_id)
+            || self.current_active_transaction_id.is_some()
+        {
             // Or handle more gracefully depending on desired behavior for nested/overlapping auto-commits
-            return Err(IoError::new(std::io::ErrorKind::Other, "Cannot begin specific transaction; another is active or ID exists."));
+            return Err(IoError::new(
+                std::io::ErrorKind::Other,
+                "Cannot begin specific transaction; another is active or ID exists.",
+            ));
         }
 
         let mut transaction = Transaction::new(tx_id);
 
-        if tx_id != CommonTransactionId(0) { // Only log BeginTransaction for non-Tx0
+        if tx_id != CommonTransactionId(0) {
+            // Only log BeginTransaction for non-Tx0
             let lsn = self.log_manager.next_lsn();
-            let begin_log_record = LogRecord::BeginTransaction {
-                lsn,
-                tx_id: transaction.id,
-            };
+            let begin_log_record = LogRecord::BeginTransaction { lsn, tx_id: transaction.id };
             transaction.prev_lsn = lsn;
             self.wal_writer.add_record(begin_log_record)?;
         } else {
@@ -422,7 +428,7 @@ mod tests {
         fs::create_dir_all(&test_specific_dir).expect("Should create dir to cause WAL write fail");
 
         let wal_config = crate::core::wal::writer::WalWriterConfig {
-            max_buffer_size: 1, // Small buffer to force flush
+            max_buffer_size: 1,      // Small buffer to force flush
             flush_interval_ms: None, // Disable periodic to isolate failure
         };
         let wal_writer = WalWriter::new(test_specific_dir.clone(), wal_config); // WalWriter will try to open this directory as a file

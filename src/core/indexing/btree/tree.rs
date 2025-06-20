@@ -1,7 +1,7 @@
 use std::fs::{File, OpenOptions};
-use std::io::{self, Read, Write, Seek, SeekFrom};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf; // Path is not directly used, PathBuf is sufficient
-// use std::collections::HashMap; // Not using a cache for now
+                        // use std::collections::HashMap; // Not using a cache for now
 
 use crate::core::indexing::btree::node::{
     BPlusTreeNode, KeyType, PageId, PrimaryKey, SerializationError,
@@ -34,7 +34,6 @@ impl From<std::cell::BorrowMutError> for OxidbError {
         OxidbError::BorrowError(err.to_string())
     }
 }
-
 
 impl From<io::Error> for OxidbError {
     fn from(err: io::Error) -> Self {
@@ -95,10 +94,12 @@ impl BPlusTreeIndex {
                 free_list_head_page_id,
                 file_handle: Mutex::new(file_obj),
             })
-
         } else {
             if order < 3 {
-                return Err(OxidbError::TreeLogicError(format!("Order {} is too small. Minimum order is 3.", order)));
+                return Err(OxidbError::TreeLogicError(format!(
+                    "Order {} is too small. Minimum order is 3.",
+                    order
+                )));
             }
             let root_page_id = 0; // Root always starts at page 0
             let next_available_page_id = 1; // Page 0 is root, so next is 1
@@ -127,9 +128,19 @@ impl BPlusTreeIndex {
     }
 
     pub fn write_metadata(&mut self) -> Result<(), OxidbError> {
-        let mut file = self.file_handle.lock().map_err(|e| OxidbError::BorrowError(format!("Mutex lock error: {}", e)))?;
+        let mut file = self
+            .file_handle
+            .lock()
+            .map_err(|e| OxidbError::BorrowError(format!("Mutex lock error: {}", e)))?;
         file.seek(SeekFrom::Start(0))?;
-        file.write_all(&(u32::try_from(self.order).map_err(|_| OxidbError::Serialization(SerializationError::InvalidFormat("Order too large for u32".to_string())))?).to_be_bytes())?;
+        file.write_all(
+            &(u32::try_from(self.order).map_err(|_| {
+                OxidbError::Serialization(SerializationError::InvalidFormat(
+                    "Order too large for u32".to_string(),
+                ))
+            })?)
+            .to_be_bytes(),
+        )?;
         file.write_all(&self.root_page_id.to_be_bytes())?;
         file.write_all(&self.next_available_page_id.to_be_bytes())?;
         file.write_all(&self.free_list_head_page_id.to_be_bytes())?;
@@ -141,7 +152,12 @@ impl BPlusTreeIndex {
         if self.free_list_head_page_id != SENTINEL_PAGE_ID {
             let new_page_id = self.free_list_head_page_id;
             // Read the first 8 bytes of this page to get the next free page ID
-            let mut file = self.file_handle.lock().map_err(|e| OxidbError::BorrowError(format!("Mutex lock error for allocate (read free list): {}", e)))?;
+            let mut file = self.file_handle.lock().map_err(|e| {
+                OxidbError::BorrowError(format!(
+                    "Mutex lock error for allocate (read free list): {}",
+                    e
+                ))
+            })?;
             let offset = PAGE_SIZE.saturating_add(new_page_id.saturating_mul(PAGE_SIZE));
             file.seek(SeekFrom::Start(offset))?;
             let mut next_free_buf = [0u8; 8];
@@ -162,11 +178,15 @@ impl BPlusTreeIndex {
 
     fn deallocate_page_id(&mut self, page_id_to_free: PageId) -> Result<(), OxidbError> {
         if page_id_to_free == SENTINEL_PAGE_ID {
-            return Err(OxidbError::TreeLogicError("Cannot deallocate sentinel page ID".to_string()));
+            return Err(OxidbError::TreeLogicError(
+                "Cannot deallocate sentinel page ID".to_string(),
+            ));
         }
         // The page_id_to_free will now point to the current head of the free list.
         // Its first 8 bytes should store the *next* free page, which is the current free_list_head_page_id.
-        let mut file = self.file_handle.lock().map_err(|e| OxidbError::BorrowError(format!("Mutex lock error for deallocate: {}", e)))?;
+        let mut file = self.file_handle.lock().map_err(|e| {
+            OxidbError::BorrowError(format!("Mutex lock error for deallocate: {}", e))
+        })?;
         let offset = PAGE_SIZE.saturating_add(page_id_to_free.saturating_mul(PAGE_SIZE));
         file.seek(SeekFrom::Start(offset))?;
         file.write_all(&self.free_list_head_page_id.to_be_bytes())?; // Write old head as next pointer
@@ -180,15 +200,22 @@ impl BPlusTreeIndex {
     }
 
     pub fn read_node(&self, page_id: PageId) -> Result<BPlusTreeNode, OxidbError> {
-        let mut file = self.file_handle.lock().map_err(|e| OxidbError::BorrowError(format!("Mutex lock error: {}", e)))?;
+        let mut file = self
+            .file_handle
+            .lock()
+            .map_err(|e| OxidbError::BorrowError(format!("Mutex lock error: {}", e)))?;
         let offset = PAGE_SIZE.saturating_add(page_id.saturating_mul(PAGE_SIZE));
         file.seek(SeekFrom::Start(offset))?;
-        let page_size_usize = usize::try_from(PAGE_SIZE).map_err(|_| OxidbError::Serialization(SerializationError::InvalidFormat("PAGE_SIZE too large for usize".to_string())))?;
+        let page_size_usize = usize::try_from(PAGE_SIZE).map_err(|_| {
+            OxidbError::Serialization(SerializationError::InvalidFormat(
+                "PAGE_SIZE too large for usize".to_string(),
+            ))
+        })?;
         let mut page_buffer = vec![0u8; page_size_usize];
         match file.read_exact(&mut page_buffer) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                 return Err(OxidbError::NodeNotFound(page_id));
+                return Err(OxidbError::NodeNotFound(page_id));
             }
             Err(e) => return Err(OxidbError::Io(e)),
         }
@@ -196,11 +223,18 @@ impl BPlusTreeIndex {
     }
 
     pub fn write_node(&mut self, node: &BPlusTreeNode) -> Result<(), OxidbError> {
-        let mut file = self.file_handle.lock().map_err(|e| OxidbError::BorrowError(format!("Mutex lock error: {}", e)))?;
+        let mut file = self
+            .file_handle
+            .lock()
+            .map_err(|e| OxidbError::BorrowError(format!("Mutex lock error: {}", e)))?;
         let page_id = node.get_page_id();
         let offset = PAGE_SIZE.saturating_add(page_id.saturating_mul(PAGE_SIZE));
         let mut node_bytes = node.to_bytes()?;
-        let page_size_usize = usize::try_from(PAGE_SIZE).map_err(|_| OxidbError::Serialization(SerializationError::InvalidFormat("PAGE_SIZE too large for usize".to_string())))?;
+        let page_size_usize = usize::try_from(PAGE_SIZE).map_err(|_| {
+            OxidbError::Serialization(SerializationError::InvalidFormat(
+                "PAGE_SIZE too large for usize".to_string(),
+            ))
+        })?;
         if node_bytes.len() > page_size_usize {
             return Err(OxidbError::PageFull(format!(
                 "Serialized node size {} exceeds PAGE_SIZE {}",
@@ -216,7 +250,11 @@ impl BPlusTreeIndex {
     }
 
     /// Finds the leaf node for a given key and records the path taken.
-    pub fn find_leaf_node_path(&self, key: &KeyType, path: &mut Vec<PageId>) -> Result<BPlusTreeNode, OxidbError> {
+    pub fn find_leaf_node_path(
+        &self,
+        key: &KeyType,
+        path: &mut Vec<PageId>,
+    ) -> Result<BPlusTreeNode, OxidbError> {
         path.clear();
         let mut current_page_id = self.root_page_id;
         loop {
@@ -224,7 +262,8 @@ impl BPlusTreeIndex {
             let current_node = self.read_node(current_page_id)?;
             match current_node {
                 BPlusTreeNode::Internal { ref keys, ref children, .. } => {
-                    let child_idx = keys.partition_point(|k_partition| k_partition.as_slice() <= key.as_slice());
+                    let child_idx = keys
+                        .partition_point(|k_partition| k_partition.as_slice() <= key.as_slice());
                     current_page_id = children[child_idx];
                 }
                 BPlusTreeNode::Leaf { .. } => {
@@ -238,12 +277,10 @@ impl BPlusTreeIndex {
         let mut path = Vec::new();
         let leaf_node = self.find_leaf_node_path(key, &mut path)?;
         match leaf_node {
-            BPlusTreeNode::Leaf { keys, values, .. } => {
-                match keys.binary_search(key) {
-                    Ok(idx) => Ok(Some(values[idx].clone())),
-                    Err(_) => Ok(None),
-                }
-            }
+            BPlusTreeNode::Leaf { keys, values, .. } => match keys.binary_search(key) {
+                Ok(idx) => Ok(Some(values[idx].clone())),
+                Err(_) => Ok(None),
+            },
             _ => unreachable!("find_leaf_node_path should always return a Leaf node"),
         }
     }
@@ -251,25 +288,25 @@ impl BPlusTreeIndex {
     pub fn insert(&mut self, key: KeyType, value: PrimaryKey) -> Result<(), OxidbError> {
         let mut path_to_leaf: Vec<PageId> = Vec::new();
         let _ = self.find_leaf_node_path(&key, &mut path_to_leaf)?; // This populates path_to_leaf
-        let leaf_page_id = *path_to_leaf.last().ok_or(OxidbError::TreeLogicError("Path to leaf is empty".to_string()))?;
+        let leaf_page_id = *path_to_leaf
+            .last()
+            .ok_or(OxidbError::TreeLogicError("Path to leaf is empty".to_string()))?;
         let mut current_leaf_node = self.read_node_mut(leaf_page_id)?;
         match &mut current_leaf_node {
-            BPlusTreeNode::Leaf { keys, values, .. } => {
-                match keys.binary_search(&key) {
-                    Ok(idx) => {
-                        if !values[idx].contains(&value) {
-                            values[idx].push(value);
-                            values[idx].sort();
-                        } else {
-                            return Ok(());
-                        }
-                    }
-                    Err(idx) => {
-                        keys.insert(idx, key.clone());
-                        values.insert(idx, vec![value]);
+            BPlusTreeNode::Leaf { keys, values, .. } => match keys.binary_search(&key) {
+                Ok(idx) => {
+                    if !values[idx].contains(&value) {
+                        values[idx].push(value);
+                        values[idx].sort();
+                    } else {
+                        return Ok(());
                     }
                 }
-            }
+                Err(idx) => {
+                    keys.insert(idx, key.clone());
+                    values.insert(idx, vec![value]);
+                }
+            },
             _ => return Err(OxidbError::UnexpectedNodeType),
         }
         if current_leaf_node.get_keys().len() >= self.order {
@@ -282,14 +319,23 @@ impl BPlusTreeIndex {
 
     /// Reads a node from disk, making it mutable.
     fn read_node_mut(&mut self, page_id: PageId) -> Result<BPlusTreeNode, OxidbError> {
-        let mut file = self.file_handle.lock().map_err(|e| OxidbError::BorrowError(format!("Mutex lock error: {}", e)))?;
+        let mut file = self
+            .file_handle
+            .lock()
+            .map_err(|e| OxidbError::BorrowError(format!("Mutex lock error: {}", e)))?;
         let offset = PAGE_SIZE.saturating_add(page_id.saturating_mul(PAGE_SIZE));
         file.seek(SeekFrom::Start(offset))?;
-        let page_size_usize = usize::try_from(PAGE_SIZE).map_err(|_| OxidbError::Serialization(SerializationError::InvalidFormat("PAGE_SIZE too large for usize".to_string())))?;
+        let page_size_usize = usize::try_from(PAGE_SIZE).map_err(|_| {
+            OxidbError::Serialization(SerializationError::InvalidFormat(
+                "PAGE_SIZE too large for usize".to_string(),
+            ))
+        })?;
         let mut page_buffer = vec![0u8; page_size_usize];
         match file.read_exact(&mut page_buffer) {
-            Ok(_) => {},
-            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return Err(OxidbError::NodeNotFound(page_id)),
+            Ok(_) => {}
+            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                return Err(OxidbError::NodeNotFound(page_id))
+            }
             Err(e) => return Err(OxidbError::Io(e)),
         }
         BPlusTreeNode::from_bytes(&page_buffer).map_err(OxidbError::from)
@@ -298,12 +344,18 @@ impl BPlusTreeIndex {
     /// Handles splitting a node when it becomes full.
     /// This involves creating a new sibling, distributing keys/children,
     /// and updating the parent or creating a new root if necessary.
-    fn handle_split(&mut self, mut node_to_split: BPlusTreeNode, mut path: Vec<PageId>) -> Result<(), OxidbError> {
-        let _original_node_page_id = path.pop().ok_or(OxidbError::TreeLogicError("Path cannot be empty in handle_split".to_string()))?;
+    fn handle_split(
+        &mut self,
+        mut node_to_split: BPlusTreeNode,
+        mut path: Vec<PageId>,
+    ) -> Result<(), OxidbError> {
+        let _original_node_page_id = path.pop().ok_or(OxidbError::TreeLogicError(
+            "Path cannot be empty in handle_split".to_string(),
+        ))?;
         let new_sibling_page_id = self.allocate_new_page_id()?;
-        let (promoted_or_copied_key, mut new_sibling_node) =
-            node_to_split.split(self.order, new_sibling_page_id)
-                .map_err(|e| OxidbError::TreeLogicError(e.to_string()))?;
+        let (promoted_or_copied_key, mut new_sibling_node) = node_to_split
+            .split(self.order, new_sibling_page_id)
+            .map_err(|e| OxidbError::TreeLogicError(e.to_string()))?;
         new_sibling_node.set_parent_page_id(node_to_split.get_parent_page_id());
         self.write_node(&node_to_split)?;
         self.write_node(&new_sibling_node)?;
@@ -311,8 +363,9 @@ impl BPlusTreeIndex {
         if let Some(parent_page_id) = parent_page_id_opt {
             let mut parent_node = self.read_node_mut(parent_page_id)?;
             match &mut parent_node {
-                BPlusTreeNode::Internal { keys, children, ..} => {
-                    let insertion_point = keys.partition_point(|k| k.as_slice() < promoted_or_copied_key.as_slice());
+                BPlusTreeNode::Internal { keys, children, .. } => {
+                    let insertion_point =
+                        keys.partition_point(|k| k.as_slice() < promoted_or_copied_key.as_slice());
                     keys.insert(insertion_point, promoted_or_copied_key);
                     children.insert(insertion_point.saturating_add(1), new_sibling_page_id);
                     if parent_node.get_keys().len() >= self.order {
@@ -342,10 +395,16 @@ impl BPlusTreeIndex {
         }
     }
 
-    pub fn delete(&mut self, key_to_delete: &KeyType, pk_to_remove: Option<&PrimaryKey>) -> Result<bool, OxidbError> {
+    pub fn delete(
+        &mut self,
+        key_to_delete: &KeyType,
+        pk_to_remove: Option<&PrimaryKey>,
+    ) -> Result<bool, OxidbError> {
         let mut path: Vec<PageId> = Vec::new();
         let _ = self.find_leaf_node_path(key_to_delete, &mut path)?; // Populates path
-        let leaf_page_id = *path.last().ok_or(OxidbError::TreeLogicError("Path to leaf is empty for delete".to_string()))?;
+        let leaf_page_id = *path
+            .last()
+            .ok_or(OxidbError::TreeLogicError("Path to leaf is empty for delete".to_string()))?;
         let mut leaf_node = self.read_node_mut(leaf_page_id)?;
         let mut key_removed_from_structure = false;
         let mut modification_made = false;
@@ -365,7 +424,8 @@ impl BPlusTreeIndex {
                                     key_removed_from_structure = true;
                                 }
                             } // else: pk_ref not found, modification_made remains false
-                        } else { // pk_to_remove is None, remove all PKs for this key
+                        } else {
+                            // pk_to_remove is None, remove all PKs for this key
                             keys.remove(idx);
                             values.remove(idx);
                             key_removed_from_structure = true;
@@ -379,7 +439,10 @@ impl BPlusTreeIndex {
         }
 
         if modification_made {
-            if key_removed_from_structure && leaf_node.get_keys().len() < self.min_keys_for_node() && leaf_page_id != self.root_page_id {
+            if key_removed_from_structure
+                && leaf_node.get_keys().len() < self.min_keys_for_node()
+                && leaf_page_id != self.root_page_id
+            {
                 self.handle_underflow(leaf_node, path)?;
             } else {
                 // This covers:
@@ -400,8 +463,14 @@ impl BPlusTreeIndex {
     /// Handles node underflow after a delete operation.
     /// This might involve borrowing from a sibling or merging with a sibling.
     /// It can recursively call itself if the parent node also underflows.
-    fn handle_underflow(&mut self, mut current_node: BPlusTreeNode, mut path: Vec<PageId>) -> Result<(), OxidbError> {
-        let current_node_pid = path.pop().ok_or_else(|| OxidbError::TreeLogicError("Path cannot be empty".to_string()))?;
+    fn handle_underflow(
+        &mut self,
+        mut current_node: BPlusTreeNode,
+        mut path: Vec<PageId>,
+    ) -> Result<(), OxidbError> {
+        let current_node_pid = path
+            .pop()
+            .ok_or_else(|| OxidbError::TreeLogicError("Path cannot be empty".to_string()))?;
         if current_node_pid == self.root_page_id {
             // If the root itself is underflowing (e.g., an internal root with only one child after a merge)
             if let BPlusTreeNode::Internal { ref keys, ref children, .. } = current_node {
@@ -413,7 +482,10 @@ impl BPlusTreeIndex {
                     self.write_node(&new_root_node)?;
                     self.write_metadata()?; // Persist change to root_page_id
                     self.deallocate_page_id(old_root_page_id)?; // Deallocate the old root page
-                } else if keys.is_empty() && children.is_empty() && !matches!(current_node, BPlusTreeNode::Leaf{..}) {
+                } else if keys.is_empty()
+                    && children.is_empty()
+                    && !matches!(current_node, BPlusTreeNode::Leaf { .. })
+                {
                     // This case should ideally not happen if merge logic is correct (root becomes leaf).
                     // But if it does, and root is internal and completely empty, it's a problem.
                     // For now, we'll assume the above case (one child) or root becoming leaf is handled.
@@ -422,19 +494,34 @@ impl BPlusTreeIndex {
             return Ok(());
         }
 
-        let parent_pid = *path.last().ok_or_else(|| OxidbError::TreeLogicError("Parent not found for non-root underflow".to_string()))?;
+        let parent_pid = *path.last().ok_or_else(|| {
+            OxidbError::TreeLogicError("Parent not found for non-root underflow".to_string())
+        })?;
         let mut parent_node = self.read_node_mut(parent_pid)?;
 
-        let parent_children = parent_node.get_children().map_err(|e| OxidbError::TreeLogicError(e.to_string()))?;
-        let child_idx_in_parent = parent_children.iter().position(|&child_pid| child_pid == current_node_pid)
-            .ok_or_else(|| OxidbError::TreeLogicError("Child not found in parent during underflow handling".to_string()))?;
+        let parent_children =
+            parent_node.get_children().map_err(|e| OxidbError::TreeLogicError(e.to_string()))?;
+        let child_idx_in_parent = parent_children
+            .iter()
+            .position(|&child_pid| child_pid == current_node_pid)
+            .ok_or_else(|| {
+                OxidbError::TreeLogicError(
+                    "Child not found in parent during underflow handling".to_string(),
+                )
+            })?;
 
         // Try to borrow from left sibling
         if child_idx_in_parent > 0 {
             let left_sibling_pid = parent_children[child_idx_in_parent.saturating_sub(1)];
             let mut left_sibling_node = self.read_node_mut(left_sibling_pid)?;
             if left_sibling_node.get_keys().len() > self.min_keys_for_node() {
-                self.borrow_from_sibling(&mut current_node, &mut left_sibling_node, &mut parent_node, child_idx_in_parent.saturating_sub(1), true)?;
+                self.borrow_from_sibling(
+                    &mut current_node,
+                    &mut left_sibling_node,
+                    &mut parent_node,
+                    child_idx_in_parent.saturating_sub(1),
+                    true,
+                )?;
                 return Ok(());
             }
         }
@@ -444,29 +531,53 @@ impl BPlusTreeIndex {
             let right_sibling_pid = parent_children[child_idx_in_parent.saturating_add(1)];
             let mut right_sibling_node = self.read_node_mut(right_sibling_pid)?;
             if right_sibling_node.get_keys().len() > self.min_keys_for_node() {
-                self.borrow_from_sibling(&mut current_node, &mut right_sibling_node, &mut parent_node, child_idx_in_parent, false)?;
+                self.borrow_from_sibling(
+                    &mut current_node,
+                    &mut right_sibling_node,
+                    &mut parent_node,
+                    child_idx_in_parent,
+                    false,
+                )?;
                 return Ok(());
             }
         }
 
         // Merge if borrowing failed
-        if child_idx_in_parent > 0 { // Merge with left sibling
+        if child_idx_in_parent > 0 {
+            // Merge with left sibling
             let left_sibling_pid = parent_children[child_idx_in_parent.saturating_sub(1)];
             let mut left_sibling_node = self.read_node_mut(left_sibling_pid)?;
-            self.merge_nodes(&mut left_sibling_node, &mut current_node, &mut parent_node, child_idx_in_parent.saturating_sub(1))?;
-        } else { // Merge with right sibling
+            self.merge_nodes(
+                &mut left_sibling_node,
+                &mut current_node,
+                &mut parent_node,
+                child_idx_in_parent.saturating_sub(1),
+            )?;
+        } else {
+            // Merge with right sibling
             let right_sibling_pid = parent_children[child_idx_in_parent.saturating_add(1)];
             let mut right_sibling_node = self.read_node_mut(right_sibling_pid)?;
-            self.merge_nodes(&mut current_node, &mut right_sibling_node, &mut parent_node, child_idx_in_parent)?;
+            self.merge_nodes(
+                &mut current_node,
+                &mut right_sibling_node,
+                &mut parent_node,
+                child_idx_in_parent,
+            )?;
         }
 
         // After merge, parent might underflow
-        if parent_node.get_keys().len() < self.min_keys_for_node() && parent_pid != self.root_page_id {
+        if parent_node.get_keys().len() < self.min_keys_for_node()
+            && parent_pid != self.root_page_id
+        {
             self.handle_underflow(parent_node, path)?;
-        } else if parent_pid == self.root_page_id && parent_node.get_keys().is_empty() && matches!(parent_node, BPlusTreeNode::Internal{..}) {
+        } else if parent_pid == self.root_page_id
+            && parent_node.get_keys().is_empty()
+            && matches!(parent_node, BPlusTreeNode::Internal { .. })
+        {
             // If parent was root and became empty internal node
             if let BPlusTreeNode::Internal { ref children, .. } = parent_node {
-                if children.len() == 1 { // Root internal node has only one child left
+                if children.len() == 1 {
+                    // Root internal node has only one child left
                     let old_root_pid = parent_pid; // parent_pid is the root_page_id here
                     self.root_page_id = children[0];
                     let mut new_root_node = self.read_node_mut(self.root_page_id)?;
@@ -474,13 +585,16 @@ impl BPlusTreeIndex {
                     self.write_node(&new_root_node)?;
                     self.write_metadata()?;
                     self.deallocate_page_id(old_root_pid)?;
-                } else { // Root internal node still has enough children or is not empty
-                     self.write_node(&parent_node)?;
+                } else {
+                    // Root internal node still has enough children or is not empty
+                    self.write_node(&parent_node)?;
                 }
-            } else { // Parent is root leaf or non-empty internal root (should have been written if modified)
-                 self.write_node(&parent_node)?; // Ensure it's written if modified
+            } else {
+                // Parent is root leaf or non-empty internal root (should have been written if modified)
+                self.write_node(&parent_node)?; // Ensure it's written if modified
             }
-        } else { // Parent is not root and did not underflow, or is root leaf (and not empty)
+        } else {
+            // Parent is not root and did not underflow, or is root leaf (and not empty)
             self.write_node(&parent_node)?;
         }
         Ok(())
@@ -568,10 +682,15 @@ impl BPlusTreeIndex {
         parent_key_idx: usize, // Index of the key in parent that separates left_node and right_node
     ) -> Result<(), OxidbError> {
         match (&mut *left_node, &mut *right_node, &mut *parent_node) {
-            ( // Both are Leaf nodes
-                BPlusTreeNode::Leaf { keys: l_keys, values: l_values, next_leaf: l_next_leaf, .. },
-                BPlusTreeNode::Leaf { keys: r_keys, values: r_values, next_leaf: r_next_leaf, .. },
-                BPlusTreeNode::Internal { keys: p_keys, children: p_children, .. }
+            (
+                // Both are Leaf nodes
+                BPlusTreeNode::Leaf {
+                    keys: l_keys, values: l_values, next_leaf: l_next_leaf, ..
+                },
+                BPlusTreeNode::Leaf {
+                    keys: r_keys, values: r_values, next_leaf: r_next_leaf, ..
+                },
+                BPlusTreeNode::Internal { keys: p_keys, children: p_children, .. },
             ) => {
                 // Key from parent is NOT added to leaf nodes during merge.
                 l_keys.append(r_keys);
@@ -580,11 +699,17 @@ impl BPlusTreeIndex {
 
                 p_keys.remove(parent_key_idx);
                 p_children.remove(parent_key_idx.saturating_add(1)); // Remove pointer to the right_node
-            },
-            ( // Both are Internal nodes
-                BPlusTreeNode::Internal { page_id: l_pid_val, keys: l_keys, children: l_children, .. },
+            }
+            (
+                // Both are Internal nodes
+                BPlusTreeNode::Internal {
+                    page_id: l_pid_val,
+                    keys: l_keys,
+                    children: l_children,
+                    ..
+                },
                 BPlusTreeNode::Internal { keys: r_keys, children: r_children_original, .. },
-                BPlusTreeNode::Internal { keys: p_keys, children: p_children, .. }
+                BPlusTreeNode::Internal { keys: p_keys, children: p_children, .. },
             ) => {
                 // Key from parent comes down into the merged left_node
                 let key_from_parent = p_keys.remove(parent_key_idx);
@@ -602,12 +727,16 @@ impl BPlusTreeIndex {
                 }
 
                 p_children.remove(parent_key_idx.saturating_add(1)); // Remove pointer to the right_node
-            },
-            _ => return Err(OxidbError::TreeLogicError("Node types mismatch during merge, or parent is not Internal.".to_string())),
+            }
+            _ => {
+                return Err(OxidbError::TreeLogicError(
+                    "Node types mismatch during merge, or parent is not Internal.".to_string(),
+                ))
+            }
         }
         self.write_node(left_node)?; // Write modified left_node (which absorbed right_node)
-        // parent_node is written by the caller handle_underflow or its recursive calls
-        // self.write_node(parent_node)?; // Write modified parent_node - this is done by the caller
+                                     // parent_node is written by the caller handle_underflow or its recursive calls
+                                     // self.write_node(parent_node)?; // Write modified parent_node - this is done by the caller
 
         // Deallocate the page of the right_node which has been merged.
         let right_node_pid = right_node.get_page_id();
@@ -622,16 +751,23 @@ mod tests {
     use std::fs;
     use tempfile::{tempdir, TempDir};
 
-    fn k(s: &str) -> KeyType { s.as_bytes().to_vec() }
-    fn pk(s: &str) -> PrimaryKey { s.as_bytes().to_vec() }
+    fn k(s: &str) -> KeyType {
+        s.as_bytes().to_vec()
+    }
+    fn pk(s: &str) -> PrimaryKey {
+        s.as_bytes().to_vec()
+    }
 
     const TEST_TREE_ORDER: usize = 4;
 
     fn setup_tree(test_name: &str) -> (BPlusTreeIndex, PathBuf, TempDir) {
         let dir = tempdir().expect("Failed to create tempdir for test");
         let path = dir.path().join(format!("{}.db", test_name));
-        if path.exists() { fs::remove_file(&path).expect("Failed to remove existing test db file"); }
-        let tree = BPlusTreeIndex::new(test_name.to_string(), path.clone(), TEST_TREE_ORDER).expect("Failed to create BPlusTreeIndex");
+        if path.exists() {
+            fs::remove_file(&path).expect("Failed to remove existing test db file");
+        }
+        let tree = BPlusTreeIndex::new(test_name.to_string(), path.clone(), TEST_TREE_ORDER)
+            .expect("Failed to create BPlusTreeIndex");
         (tree, path, dir)
     }
 
@@ -674,9 +810,11 @@ mod tests {
         let dir = tempdir().unwrap();
         let path = dir.path().join(format!("{}.db", test_name));
         {
-            let _tree = BPlusTreeIndex::new(test_name.to_string(), path.clone(), TEST_TREE_ORDER).unwrap();
+            let _tree =
+                BPlusTreeIndex::new(test_name.to_string(), path.clone(), TEST_TREE_ORDER).unwrap();
         }
-        let loaded_tree = BPlusTreeIndex::new(test_name.to_string(), path.clone(), TEST_TREE_ORDER).unwrap();
+        let loaded_tree =
+            BPlusTreeIndex::new(test_name.to_string(), path.clone(), TEST_TREE_ORDER).unwrap();
         assert_eq!(loaded_tree.order, TEST_TREE_ORDER);
         assert_eq!(loaded_tree.root_page_id, 0);
         assert_eq!(loaded_tree.next_available_page_id, 1);
@@ -690,14 +828,20 @@ mod tests {
         let page_id1 = tree.allocate_new_page_id().expect("Failed to allocate page_id1");
         let node = BPlusTreeNode::Leaf {
             page_id: page_id1,
-            parent_page_id: Some(0), keys: vec![k("apple")], values: vec![vec![pk("v_apple")]], next_leaf: None,
+            parent_page_id: Some(0),
+            keys: vec![k("apple")],
+            values: vec![vec![pk("v_apple")]],
+            next_leaf: None,
         };
         tree.write_node(&node).expect("Failed to write node");
         let read_node = tree.read_node(page_id1).expect("Failed to read node");
         assert_eq!(node, read_node);
         let page_id2 = tree.allocate_new_page_id().expect("Failed to allocate page_id2");
         let internal_node = BPlusTreeNode::Internal {
-            page_id: page_id2, parent_page_id: None, keys: vec![k("banana")], children: vec![0,1]
+            page_id: page_id2,
+            parent_page_id: None,
+            keys: vec![k("banana")],
+            children: vec![0, 1],
         };
         tree.write_node(&internal_node).expect("Failed to write internal node");
         let read_internal_node = tree.read_node(page_id2).expect("Failed to read internal node");
@@ -719,15 +863,20 @@ mod tests {
         tree.insert(k("mango"), pk("v_mango")).expect("Insert mango failed");
         tree.insert(k("apple"), pk("v_apple")).expect("Insert apple failed");
         tree.insert(k("banana"), pk("v_banana")).expect("Insert banana failed");
-        assert_eq!(tree.find_primary_keys(&k("apple")).expect("Find apple failed"), Some(vec![pk("v_apple")]));
+        assert_eq!(
+            tree.find_primary_keys(&k("apple")).expect("Find apple failed"),
+            Some(vec![pk("v_apple")])
+        );
         let root_node = tree.read_node(tree.root_page_id).expect("Read root node failed");
-         if let BPlusTreeNode::Leaf { keys, .. } = root_node {
+        if let BPlusTreeNode::Leaf { keys, .. } = root_node {
             assert_eq!(keys.len(), 3);
             assert_eq!(keys[0], k("apple"));
             assert_eq!(keys[1], k("banana"));
             assert_eq!(keys[2], k("mango"));
-            assert!(keys.len() == tree.order -1);
-        } else { panic!("Root should be a leaf node"); }
+            assert!(keys.len() == tree.order - 1);
+        } else {
+            panic!("Root should be a leaf node");
+        }
     }
 
     #[test]
@@ -740,7 +889,13 @@ mod tests {
         assert_ne!(tree.root_page_id, 0); // Root should have changed
         let new_root_id = tree.root_page_id;
         let root_node = tree.read_node(new_root_id).expect("Read new root failed");
-        if let BPlusTreeNode::Internal {page_id: r_pid, keys: r_keys, children: r_children, parent_page_id: r_parent_pid} = root_node {
+        if let BPlusTreeNode::Internal {
+            page_id: r_pid,
+            keys: r_keys,
+            children: r_children,
+            parent_page_id: r_parent_pid,
+        } = root_node
+        {
             assert_eq!(r_pid, new_root_id);
             assert!(r_parent_pid.is_none());
             assert_eq!(r_keys, vec![k("b")]);
@@ -748,22 +903,42 @@ mod tests {
             let child0_page_id = r_children[0];
             let child1_page_id = r_children[1];
             let left_leaf = tree.read_node(child0_page_id).expect("Read child0 failed");
-            if let BPlusTreeNode::Leaf {page_id: l_pid, keys: l_keys, values: l_values, next_leaf: l_next, parent_page_id: l_parent_pid} = left_leaf {
+            if let BPlusTreeNode::Leaf {
+                page_id: l_pid,
+                keys: l_keys,
+                values: l_values,
+                next_leaf: l_next,
+                parent_page_id: l_parent_pid,
+            } = left_leaf
+            {
                 assert_eq!(l_pid, child0_page_id);
                 assert_eq!(l_parent_pid, Some(new_root_id));
                 assert_eq!(l_keys, vec![k("a")]);
                 assert_eq!(l_values, vec![vec![pk("v_a")]]);
                 assert_eq!(l_next, Some(child1_page_id));
-            } else { panic!("Child 0 is not a Leaf as expected"); }
+            } else {
+                panic!("Child 0 is not a Leaf as expected");
+            }
             let right_leaf = tree.read_node(child1_page_id).expect("Read child1 failed");
-             if let BPlusTreeNode::Leaf {page_id: rl_pid, keys: rl_keys, values: rl_values, next_leaf: rl_next, parent_page_id: rl_parent_pid} = right_leaf {
+            if let BPlusTreeNode::Leaf {
+                page_id: rl_pid,
+                keys: rl_keys,
+                values: rl_values,
+                next_leaf: rl_next,
+                parent_page_id: rl_parent_pid,
+            } = right_leaf
+            {
                 assert_eq!(rl_pid, child1_page_id);
                 assert_eq!(rl_parent_pid, Some(new_root_id));
                 assert_eq!(rl_keys, vec![k("b"), k("c"), k("d")]);
                 assert_eq!(rl_values, vec![vec![pk("v_b")], vec![pk("v_c")], vec![pk("v_d")]]);
                 assert_eq!(rl_next, None);
-            } else { panic!("Child 1 is not a Leaf as expected"); }
-        } else { panic!("New root is not an Internal node as expected"); }
+            } else {
+                panic!("Child 1 is not a Leaf as expected");
+            }
+        } else {
+            panic!("New root is not an Internal node as expected");
+        }
         assert_eq!(tree.find_primary_keys(&k("d")).expect("Find d failed"), Some(vec![pk("v_d")]));
     }
 
@@ -776,11 +951,16 @@ mod tests {
         let deleted = tree.delete(&k("b"), None).expect("Delete b failed");
         assert!(deleted);
         assert_eq!(tree.find_primary_keys(&k("b")).expect("Find b after delete failed"), None);
-        assert_eq!(tree.find_primary_keys(&k("a")).expect("Find a after delete failed"), Some(vec![pk("v_a")]));
+        assert_eq!(
+            tree.find_primary_keys(&k("a")).expect("Find a after delete failed"),
+            Some(vec![pk("v_a")])
+        );
         let root_node = tree.read_node(tree.root_page_id).expect("Read root node failed");
-        if let BPlusTreeNode::Leaf { keys, ..} = root_node {
+        if let BPlusTreeNode::Leaf { keys, .. } = root_node {
             assert_eq!(keys, vec![k("a"), k("c")]);
-        } else { panic!("Should be leaf root"); }
+        } else {
+            panic!("Should be leaf root");
+        }
     }
 
     #[test]
@@ -790,16 +970,27 @@ mod tests {
         tree.insert(k("a"), pk("v_a2")).expect("Insert v_a2 failed");
         tree.insert(k("a"), pk("v_a3")).expect("Insert v_a3 failed");
         tree.insert(k("b"), pk("v_b1")).expect("Insert v_b1 failed");
-        let deleted_pk_result = tree.delete(&k("a"), Some(&pk("v_a2"))).expect("Delete v_a2 failed");
-        assert!(deleted_pk_result, "Deletion of a specific PK should return true if PK was found and removed.");
-        let pks_a_after_delete = tree.find_primary_keys(&k("a")).expect("Find a after delete failed").expect("PKs for 'a' should exist");
+        let deleted_pk_result =
+            tree.delete(&k("a"), Some(&pk("v_a2"))).expect("Delete v_a2 failed");
+        assert!(
+            deleted_pk_result,
+            "Deletion of a specific PK should return true if PK was found and removed."
+        );
+        let pks_a_after_delete = tree
+            .find_primary_keys(&k("a"))
+            .expect("Find a after delete failed")
+            .expect("PKs for 'a' should exist");
         assert_eq!(pks_a_after_delete.len(), 2);
         assert!(pks_a_after_delete.contains(&pk("v_a1")));
         assert!(!pks_a_after_delete.contains(&pk("v_a2")));
         assert!(pks_a_after_delete.contains(&pk("v_a3")));
-        let deleted_key_entirely = tree.delete(&k("a"), None).expect("Delete entire key 'a' failed");
+        let deleted_key_entirely =
+            tree.delete(&k("a"), None).expect("Delete entire key 'a' failed");
         assert!(deleted_key_entirely, "Deletion of entire key should return true.");
-        assert!(tree.find_primary_keys(&k("a")).expect("Find 'a' after full delete failed").is_none(), "Key 'a' should be completely gone.");
+        assert!(
+            tree.find_primary_keys(&k("a")).expect("Find 'a' after full delete failed").is_none(),
+            "Key 'a' should be completely gone."
+        );
     }
 
     #[test]
@@ -812,14 +1003,19 @@ mod tests {
         let root_node = tree.read_node(tree.root_page_id).expect("Read root node failed");
         if let BPlusTreeNode::Leaf { keys, .. } = root_node {
             assert!(keys.is_empty(), "Root leaf should be empty but not removed");
-        } else { panic!("Root should remain a leaf"); }
+        } else {
+            panic!("Root should remain a leaf");
+        }
     }
 
     #[test]
     fn test_delete_leaf_borrow_from_right_sibling() -> Result<(), OxidbError> {
         const ORDER: usize = 4; // Min keys = (4-1)/2 = 1
         let (mut tree, _path, _dir) = setup_tree("borrow_from_right_leaf");
-        assert_eq!(tree.order, ORDER, "Test setup assumes order 4 from setup_tree which uses TEST_TREE_ORDER");
+        assert_eq!(
+            tree.order, ORDER,
+            "Test setup assumes order 4 from setup_tree which uses TEST_TREE_ORDER"
+        );
 
         // Setup:
         // Root (P0) with key "banana"
@@ -929,7 +1125,11 @@ mod tests {
         match &final_l2_node {
             BPlusTreeNode::Leaf { page_id, keys, values, parent_page_id, next_leaf } => {
                 assert_eq!(*page_id, final_l2_pid);
-                assert_eq!(keys, &vec![k("cherry"), k("date")], "L2 keys should be ['cherry', 'date']");
+                assert_eq!(
+                    keys,
+                    &vec![k("cherry"), k("date")],
+                    "L2 keys should be ['cherry', 'date']"
+                );
                 assert_eq!(values.len(), 2);
                 assert_eq!(values[0], vec![pk("v_cherry")]);
                 assert_eq!(values[1], vec![pk("v_date")]);
@@ -980,7 +1180,7 @@ mod tests {
         // 3. Deallocate p2
         tree.deallocate_page_id(p2).unwrap();
         assert_eq!(tree.free_list_head_page_id, p2); // p2 is now head of free list
-        // Check content of p2 (it should point to SENTINEL_PAGE_ID)
+                                                     // Check content of p2 (it should point to SENTINEL_PAGE_ID)
         let mut file = tree.file_handle.lock().unwrap();
         let offset = PAGE_SIZE + p2 * PAGE_SIZE;
         file.seek(SeekFrom::Start(offset)).unwrap();
@@ -992,7 +1192,7 @@ mod tests {
         // 4. Deallocate p1
         tree.deallocate_page_id(p1).unwrap();
         assert_eq!(tree.free_list_head_page_id, p1); // p1 is now head
-        // Check content of p1 (it should point to p2)
+                                                     // Check content of p1 (it should point to p2)
         let mut file = tree.file_handle.lock().unwrap();
         let offset = PAGE_SIZE + p1 * PAGE_SIZE;
         file.seek(SeekFrom::Start(offset)).unwrap();
@@ -1000,7 +1200,6 @@ mod tests {
         file.read_exact(&mut next_free_buf).unwrap();
         assert_eq!(PageId::from_be_bytes(next_free_buf), p2); // p1 points to p2
         drop(file);
-
 
         // 5. Allocate again - should get p1
         let p_reused1 = tree.allocate_new_page_id().unwrap();
@@ -1023,7 +1222,6 @@ mod tests {
         assert_eq!(p_reused3, p3);
         assert_eq!(tree.free_list_head_page_id, SENTINEL_PAGE_ID);
         assert_eq!(tree.next_available_page_id, 4);
-
 
         // 8. Allocate again - should get a new page (4)
         let p4 = tree.allocate_new_page_id().unwrap();

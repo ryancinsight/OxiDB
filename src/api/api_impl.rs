@@ -41,7 +41,10 @@ impl Oxidb {
 
         eprintln!("[Oxidb::new_with_config] SFKS main DB path: {:?}", store_path);
         // Actual SFKS WAL path is derived internally by SFKS, e.g. store_path.with_extension(...)
-        eprintln!("[Oxidb::new_with_config] Using TM WAL path for QueryExecutor: {:?}", tm_wal_path);
+        eprintln!(
+            "[Oxidb::new_with_config] Using TM WAL path for QueryExecutor: {:?}",
+            tm_wal_path
+        );
 
         let tm_wal_writer = WalWriter::new(tm_wal_path, wal_writer_config);
 
@@ -60,15 +63,17 @@ impl Oxidb {
     /// # Errors
     /// Returns `OxidbError` if the store cannot be initialized or the executor cannot be created.
     pub fn new(db_path: impl AsRef<Path>) -> Result<Self, OxidbError> {
-        let mut config = Config { // made mutable
+        let mut config = Config {
+            // made mutable
             database_file_path: db_path.as_ref().to_string_lossy().into_owned(),
             ..Default::default()
         };
         // Make index_base_path relative to db_path's parent if default or empty
         if let Some(parent) = db_path.as_ref().parent() {
-           if config.index_base_path.is_empty() || config.index_base_path == "oxidb_indexes/" {
-               config.index_base_path = parent.join("oxidb_indexes/").to_string_lossy().into_owned();
-           }
+            if config.index_base_path.is_empty() || config.index_base_path == "oxidb_indexes/" {
+                config.index_base_path =
+                    parent.join("oxidb_indexes/").to_string_lossy().into_owned();
+            }
         }
         Self::new_with_config(config)
     }
@@ -255,17 +260,24 @@ impl Oxidb {
     ///   represents a primary key or a full record, depending on index implementation.
     /// * `Ok(None)` if no values are found for the given indexed value.
     /// * `Err(OxidbError)` if any error occurs.
-    pub fn find_by_index(&mut self, index_name: String, value_to_find: DataType) -> Result<Option<Vec<DataType>>, OxidbError> {
+    pub fn find_by_index(
+        &mut self,
+        index_name: String,
+        value_to_find: DataType,
+    ) -> Result<Option<Vec<DataType>>, OxidbError> {
         // Serialize the DataType to Vec<u8> for the command
-        let serialized_value = match crate::core::common::serialization::serialize_data_type(&value_to_find) {
-            Ok(val) => val,
-            Err(e) => return Err(OxidbError::Serialization(format!("Failed to serialize value for index lookup: {}", e))),
-        };
+        let serialized_value =
+            match crate::core::common::serialization::serialize_data_type(&value_to_find) {
+                Ok(val) => val,
+                Err(e) => {
+                    return Err(OxidbError::Serialization(format!(
+                        "Failed to serialize value for index lookup: {}",
+                        e
+                    )))
+                }
+            };
 
-        let command = Command::FindByIndex {
-            index_name,
-            value: serialized_value,
-        };
+        let command = Command::FindByIndex { index_name, value: serialized_value };
 
         match self.executor.execute_command(command) {
             Ok(ExecutionResult::Values(values_vec)) => {

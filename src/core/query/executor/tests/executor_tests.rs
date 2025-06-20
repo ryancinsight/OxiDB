@@ -853,7 +853,8 @@ mod tests {
 
         let indexed_pks = executor
             .index_manager
-            .read().unwrap() // Acquire read lock
+            .read()
+            .unwrap() // Acquire read lock
             .find_by_index("default_value_index", &serialized_value)?
             .expect("Value should be indexed");
         assert!(indexed_pks.contains(&key));
@@ -875,7 +876,8 @@ mod tests {
 
         let indexed_pks = executor
             .index_manager
-            .read().unwrap() // Acquire read lock
+            .read()
+            .unwrap() // Acquire read lock
             .find_by_index("default_value_index", &serialized_value)?
             .expect("Value should be indexed after commit");
         assert!(indexed_pks.contains(&key));
@@ -896,7 +898,8 @@ mod tests {
 
         let indexed_pks_before_rollback = executor
             .index_manager
-            .read().unwrap() // Acquire read lock
+            .read()
+            .unwrap() // Acquire read lock
             .find_by_index("default_value_index", &serialized_value)?
             .expect("Value should be indexed before rollback");
         assert!(indexed_pks_before_rollback.contains(&key));
@@ -906,8 +909,11 @@ mod tests {
         let get_cmd = Command::Get { key: key.clone() };
         assert_eq!(executor.execute_command(get_cmd)?, ExecutionResult::Value(None));
 
-        let indexed_pks_after_rollback =
-            executor.index_manager.read().unwrap().find_by_index("default_value_index", &serialized_value)?; // Acquire read lock
+        let indexed_pks_after_rollback = executor
+            .index_manager
+            .read()
+            .unwrap()
+            .find_by_index("default_value_index", &serialized_value)?; // Acquire read lock
         assert!(
             indexed_pks_after_rollback.map_or(true, |pks| !pks.contains(&key)),
             "Value should NOT be in index after rolling back an insert"
@@ -928,15 +934,19 @@ mod tests {
 
         assert!(executor
             .index_manager
-            .read().unwrap() // Acquire read lock
+            .read()
+            .unwrap() // Acquire read lock
             .find_by_index("default_value_index", &serialized_value)?
             .is_some());
 
         let delete_cmd = Command::Delete { key: key.clone() };
         assert_eq!(executor.execute_command(delete_cmd)?, ExecutionResult::Deleted(true));
 
-        let indexed_pks =
-            executor.index_manager.read().unwrap().find_by_index("default_value_index", &serialized_value)?; // Acquire read lock
+        let indexed_pks = executor
+            .index_manager
+            .read()
+            .unwrap()
+            .find_by_index("default_value_index", &serialized_value)?; // Acquire read lock
         assert!(
             indexed_pks.map_or(true, |pks| !pks.contains(&key)),
             "Key should be removed from index"
@@ -960,8 +970,11 @@ mod tests {
         assert_eq!(executor.execute_command(delete_cmd)?, ExecutionResult::Deleted(true));
         executor.execute_command(Command::CommitTransaction)?;
 
-        let indexed_pks =
-            executor.index_manager.read().unwrap().find_by_index("default_value_index", &serialized_value)?; // Acquire read lock
+        let indexed_pks = executor
+            .index_manager
+            .read()
+            .unwrap()
+            .find_by_index("default_value_index", &serialized_value)?; // Acquire read lock
         assert!(
             indexed_pks.map_or(true, |pks| !pks.contains(&key)),
             "Key should be removed from index after commit"
@@ -984,8 +997,11 @@ mod tests {
         let delete_cmd = Command::Delete { key: key.clone() };
         executor.execute_command(delete_cmd)?;
 
-        let indexed_pks_before_rollback =
-            executor.index_manager.read().unwrap().find_by_index("default_value_index", &serialized_value)?; // Acquire read lock
+        let indexed_pks_before_rollback = executor
+            .index_manager
+            .read()
+            .unwrap()
+            .find_by_index("default_value_index", &serialized_value)?; // Acquire read lock
         assert!(
             indexed_pks_before_rollback.map_or(true, |pks| !pks.contains(&key)),
             "Key should be removed from index before rollback"
@@ -998,7 +1014,8 @@ mod tests {
 
         let indexed_pks_after_rollback = executor
             .index_manager
-            .read().unwrap() // Acquire read lock
+            .read()
+            .unwrap() // Acquire read lock
             .find_by_index("default_value_index", &serialized_value)?
             .expect("Index entry should be restored after rolling back a delete");
         assert!(
@@ -1808,8 +1825,11 @@ mod tests {
         let value_transient = DataType::String("value_transient".to_string());
 
         // 1. Setup initial state (committed)
-        let insert_initial_cmd = Command::Insert { key: key_updated.clone(), value: value_initial.clone() };
-        executor.execute_command(insert_initial_cmd).expect("Initial insert for key_updated failed");
+        let insert_initial_cmd =
+            Command::Insert { key: key_updated.clone(), value: value_initial.clone() };
+        executor
+            .execute_command(insert_initial_cmd)
+            .expect("Initial insert for key_updated failed");
 
         // Verify initial state in store and index
         let get_initial_cmd = Command::Get { key: key_updated.clone() };
@@ -1826,58 +1846,72 @@ mod tests {
         };
         match executor.execute_command(find_initial_cmd.clone())? {
             ExecutionResult::Values(pks) => {
-                assert!(pks.contains(&value_initial), "Index should contain initial value for key_updated");
+                assert!(
+                    pks.contains(&value_initial),
+                    "Index should contain initial value for key_updated"
+                );
             }
             res => panic!("Unexpected result for initial find by index: {:?}", res),
         }
 
-
         // 2. Start transaction and perform operations
-        executor.execute_command(Command::BeginTransaction).expect("BEGIN failed for main transaction");
+        executor
+            .execute_command(Command::BeginTransaction)
+            .expect("BEGIN failed for main transaction");
 
         // This is the "update" on key_updated
-        let update_cmd = Command::Insert { key: key_updated.clone(), value: value_new_in_tx.clone() };
-        executor.execute_command(update_cmd).expect("Update (insert) for key_updated in transaction failed");
+        let update_cmd =
+            Command::Insert { key: key_updated.clone(), value: value_new_in_tx.clone() };
+        executor
+            .execute_command(update_cmd)
+            .expect("Update (insert) for key_updated in transaction failed");
 
         // Optional: Insert a transient key
-        let insert_transient_cmd = Command::Insert { key: key_transient.clone(), value: value_transient.clone() };
-        executor.execute_command(insert_transient_cmd).expect("Insert for key_transient in transaction failed");
+        let insert_transient_cmd =
+            Command::Insert { key: key_transient.clone(), value: value_transient.clone() };
+        executor
+            .execute_command(insert_transient_cmd)
+            .expect("Insert for key_transient in transaction failed");
 
         // Verify state within transaction (optional, but good for sanity)
         let get_updated_in_tx_cmd = Command::Get { key: key_updated.clone() };
-         assert_eq!(
-             executor.execute_command(get_updated_in_tx_cmd)?,
-             ExecutionResult::Value(Some(value_new_in_tx.clone())),
-             "GET for key_updated within TX should return new value"
-         );
+        assert_eq!(
+            executor.execute_command(get_updated_in_tx_cmd)?,
+            ExecutionResult::Value(Some(value_new_in_tx.clone())),
+            "GET for key_updated within TX should return new value"
+        );
         let serialized_value_new_in_tx = serialize_data_type(&value_new_in_tx)?;
         let find_new_in_tx_cmd = Command::FindByIndex {
             index_name: "default_value_index".to_string(),
             value: serialized_value_new_in_tx.clone(),
         };
-         match executor.execute_command(find_new_in_tx_cmd.clone())? {
-             ExecutionResult::Values(pks) => {
-                 assert!(pks.contains(&value_new_in_tx), "Index within TX should contain new value for key_updated");
-             }
-             res => panic!("Unexpected result for find by index (new value) within TX: {:?}", res),
-         }
-         let find_initial_in_tx_cmd = Command::FindByIndex {
-             index_name: "default_value_index".to_string(),
-             value: serialized_value_initial.clone(),
-         };
-          match executor.execute_command(find_initial_in_tx_cmd.clone())? {
+        match executor.execute_command(find_new_in_tx_cmd.clone())? {
             ExecutionResult::Values(pks) => {
-                 // Depending on how index updates are visible within a transaction before commit,
-                 // the old value might or might not be found.
-                 // For this test, we primarily care about the state *after rollback*.
-                 // If the index update is immediate, old value should not be found associated with this key.
-                 // If index changes are deferred or use complex versioning, this check might differ.
-                 // Assuming default_hash_index updates immediately:
+                assert!(
+                    pks.contains(&value_new_in_tx),
+                    "Index within TX should contain new value for key_updated"
+                );
+            }
+            res => panic!("Unexpected result for find by index (new value) within TX: {:?}", res),
+        }
+        let find_initial_in_tx_cmd = Command::FindByIndex {
+            index_name: "default_value_index".to_string(),
+            value: serialized_value_initial.clone(),
+        };
+        match executor.execute_command(find_initial_in_tx_cmd.clone())? {
+            ExecutionResult::Values(pks) => {
+                // Depending on how index updates are visible within a transaction before commit,
+                // the old value might or might not be found.
+                // For this test, we primarily care about the state *after rollback*.
+                // If the index update is immediate, old value should not be found associated with this key.
+                // If index changes are deferred or use complex versioning, this check might differ.
+                // Assuming default_hash_index updates immediately:
                 assert!(!pks.contains(&value_initial), "Index within TX should NOT find key_updated for initial value if update is effective immediately");
             }
-            res => panic!("Unexpected result for find by index (initial value) within TX: {:?}", res),
+            res => {
+                panic!("Unexpected result for find by index (initial value) within TX: {:?}", res)
+            }
         }
-
 
         // 3. Rollback transaction
         executor.execute_command(Command::RollbackTransaction).expect("ROLLBACK failed");
@@ -1907,9 +1941,15 @@ mod tests {
         };
         match executor.execute_command(find_initial_after_rollback_cmd)? {
             ExecutionResult::Values(pks) => {
-                assert!(pks.contains(&value_initial), "Index after rollback should find key_updated associated with initial value");
+                assert!(
+                    pks.contains(&value_initial),
+                    "Index after rollback should find key_updated associated with initial value"
+                );
             }
-            res => panic!("Unexpected result for find by index (initial value) after rollback: {:?}", res),
+            res => panic!(
+                "Unexpected result for find by index (initial value) after rollback: {:?}",
+                res
+            ),
         }
 
         // b. Index should NOT map value_new_for_index to key_updated
@@ -1919,9 +1959,14 @@ mod tests {
         };
         match executor.execute_command(find_new_after_rollback_cmd)? {
             ExecutionResult::Values(pks) => {
-                assert!(!pks.contains(&value_new_in_tx), "Index after rollback should NOT find key_updated associated with new value");
+                assert!(
+                    !pks.contains(&value_new_in_tx),
+                    "Index after rollback should NOT find key_updated associated with new value"
+                );
             }
-            res => panic!("Unexpected result for find by index (new value) after rollback: {:?}", res),
+            res => {
+                panic!("Unexpected result for find by index (new value) after rollback: {:?}", res)
+            }
         }
 
         // c. Delete key_updated (which is now associated with value_initial_for_index)
@@ -1948,7 +1993,7 @@ mod tests {
             index_name: "default_value_index".to_string(),
             value: serialized_value_initial.clone(),
         };
-         match executor.execute_command(find_initial_after_delete_cmd)? {
+        match executor.execute_command(find_initial_after_delete_cmd)? {
             ExecutionResult::Values(pks) => {
                 assert!(!pks.contains(&value_initial), "Index after delete (post-rollback) should NOT find key_updated for initial value");
             }

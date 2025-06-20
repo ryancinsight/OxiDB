@@ -1,13 +1,21 @@
 use super::core::SqlParser;
 use crate::core::query::sql::ast::{
-    self, CreateTableStatement, SelectStatement, Statement, UpdateStatement, // Removed ColumnDef
+    self,
+    CreateTableStatement,
+    SelectStatement,
+    Statement,
+    UpdateStatement, // Removed ColumnDef
 };
 use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::tokenizer::Token; // For matching specific tokens like Token::Where
 
 impl SqlParser {
     // Helper to expect a specific identifier, case-insensitive
-    fn expect_specific_identifier(&mut self, expected: &str, _error_msg_if_not_specific: &str) -> Result<String, SqlParseError> {
+    fn expect_specific_identifier(
+        &mut self,
+        expected: &str,
+        _error_msg_if_not_specific: &str,
+    ) -> Result<String, SqlParseError> {
         let token_pos = self.current_token_pos();
         match self.consume_any() {
             Some(Token::Identifier(ident)) => {
@@ -26,7 +34,8 @@ impl SqlParser {
                 found: format!("{:?}", other_token),
                 position: token_pos,
             }),
-            None => Err(SqlParseError::UnexpectedToken { // Changed from CustomError
+            None => Err(SqlParseError::UnexpectedToken {
+                // Changed from CustomError
                 expected: expected.to_string(),
                 found: "EOF".to_string(),
                 position: token_pos, // Position where the token was expected
@@ -153,7 +162,11 @@ impl SqlParser {
                 }
             }
 
-            columns.push(ast::ColumnDef { name: column_name, data_type: data_type_string, constraints });
+            columns.push(ast::ColumnDef {
+                name: column_name,
+                data_type: data_type_string,
+                constraints,
+            });
 
             if self.match_token(Token::RParen) {
                 // This RParen should be the one for the column list
@@ -209,7 +222,8 @@ impl SqlParser {
         self.consume(Token::Values)?;
 
         let mut values_list = Vec::new();
-        loop { // Loop to parse multiple VALUES sets
+        loop {
+            // Loop to parse multiple VALUES sets
             self.consume(Token::LParen)?;
             let mut current_values_set = Vec::new();
             if !self.match_token(Token::RParen) {
@@ -284,9 +298,6 @@ impl SqlParser {
         // Semicolon handled by main parse()
 
         // ast::DeleteStatement is now used.
-        Ok(Statement::Delete(ast::DeleteStatement {
-            table_name,
-            condition,
-        }))
+        Ok(Statement::Delete(ast::DeleteStatement { table_name, condition }))
     }
 }

@@ -27,7 +27,8 @@ pub struct Optimizer {
 }
 
 impl Optimizer {
-    pub fn new(index_manager: Arc<RwLock<IndexManager>>) -> Self { // Changed to Arc<RwLock<IndexManager>>
+    pub fn new(index_manager: Arc<RwLock<IndexManager>>) -> Self {
+        // Changed to Arc<RwLock<IndexManager>>
         Optimizer { index_manager }
     }
 
@@ -119,10 +120,8 @@ impl Optimizer {
                 if let Some(ref condition_ast) = delete_ast.condition {
                     let expression =
                         self.ast_sql_condition_to_optimizer_expression(condition_ast)?;
-                    plan_node = QueryPlanNode::Filter {
-                        input: Box::new(plan_node),
-                        predicate: expression,
-                    };
+                    plan_node =
+                        QueryPlanNode::Filter { input: Box::new(plan_node), predicate: expression };
                 }
                 // The input to DeleteNode should provide the primary keys of rows to be deleted.
                 // For now, TableScan followed by Filter will provide all columns of matching rows.
@@ -240,15 +239,23 @@ impl Optimizer {
                 if let QueryPlanNode::TableScan { ref table_name, ref alias } = optimized_input {
                     // Check if the predicate is a CompareOp with Column on left and Literal on right
                     if let Expression::CompareOp { left, op, right } = &predicate {
-                        if let (Expression::Column(column_name), Expression::Literal(literal_value)) =
-                            (&**left, &**right)
+                        if let (
+                            Expression::Column(column_name),
+                            Expression::Literal(literal_value),
+                        ) = (&**left, &**right)
                         {
                             let index_name_candidate =
                                 format!("idx_{}_{}", table_name, column_name);
 
                             // Check for specific conditions suitable for index scan (e.g., equality on indexed column)
                             if *op == "="
-                                && self.index_manager.read().unwrap().get_index(&index_name_candidate).is_some() // Acquire read lock
+                                && self
+                                    .index_manager
+                                    .read()
+                                    .unwrap()
+                                    .get_index(&index_name_candidate)
+                                    .is_some()
+                            // Acquire read lock
                             {
                                 // Ensure serialize_data_type is handled or removed if not strictly needed for this logic block
                                 // let _scan_value_bytes = serialize_data_type(literal_value)?;
@@ -291,12 +298,10 @@ impl Optimizer {
             node @ QueryPlanNode::TableScan { .. } | node @ QueryPlanNode::IndexScan { .. } => {
                 Ok(node)
             }
-            QueryPlanNode::DeleteNode { input, table_name } => {
-                Ok(QueryPlanNode::DeleteNode {
-                    input: Box::new(self.apply_index_selection(*input)?),
-                    table_name,
-                })
-            }
+            QueryPlanNode::DeleteNode { input, table_name } => Ok(QueryPlanNode::DeleteNode {
+                input: Box::new(self.apply_index_selection(*input)?),
+                table_name,
+            }),
         }
     }
 }

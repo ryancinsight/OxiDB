@@ -164,7 +164,8 @@ pub(super) fn save_data_to_disk(
         // Find the latest version that is not expired. This represents the current committed state
         // that should be persisted to the main data file.
         let mut value_to_persist: Option<&Vec<u8>> = None;
-        for version in versions.iter().rev() { // Iterate newest to oldest
+        for version in versions.iter().rev() {
+            // Iterate newest to oldest
             if version.expired_tx_id.is_none() {
                 value_to_persist = Some(&version.value);
                 break; // Found the latest live version for this key

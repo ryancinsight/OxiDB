@@ -1,9 +1,9 @@
 // src/core/execution/operators/filter/tests.rs
 use crate::core::common::OxidbError;
+use crate::core::execution::operators::filter::FilterOperator; // Import the FilterOperator
 use crate::core::execution::{ExecutionOperator, Tuple};
 use crate::core::optimizer::Expression;
 use crate::core::types::DataType;
-use crate::core::execution::operators::filter::FilterOperator; // Import the FilterOperator
 use std::sync::{Arc, Mutex};
 
 // Mock ExecutionOperator for testing purposes
@@ -22,14 +22,15 @@ impl MockInputOperator {
 }
 
 impl ExecutionOperator for MockInputOperator {
-    fn execute(&mut self) -> Result<Box<dyn Iterator<Item = Result<Tuple, OxidbError>> + Send + Sync>, OxidbError> {
+    fn execute(
+        &mut self,
+    ) -> Result<Box<dyn Iterator<Item = Result<Tuple, OxidbError>> + Send + Sync>, OxidbError> {
         // Simple iterator that clones data on each call to execute
         // This is okay for tests but not for a real operator.
         let data_clone = self.tuples.lock().unwrap().clone();
         Ok(Box::new(data_clone.into_iter().map(Ok)))
     }
 }
-
 
 // Helper to create a simple literal expression
 fn literal(value: DataType) -> Box<Expression> {
@@ -43,22 +44,13 @@ fn column(index: usize) -> Box<Expression> {
 
 // Helper to create a comparison operation
 fn compare_op(left: Box<Expression>, op: &str, right: Box<Expression>) -> Expression {
-    Expression::CompareOp {
-        left,
-        op: op.to_string(),
-        right,
-    }
+    Expression::CompareOp { left, op: op.to_string(), right }
 }
 
 // Helper to create a binary logical operation
 fn binary_op(left: Box<Expression>, op: &str, right: Box<Expression>) -> Expression {
-    Expression::BinaryOp {
-        left,
-        op: op.to_string(),
-        right,
-    }
+    Expression::BinaryOp { left, op: op.to_string(), right }
 }
-
 
 #[test]
 fn test_filter_operator_simple_equals() -> Result<(), OxidbError> {
@@ -152,7 +144,7 @@ fn test_filter_operator_or() -> Result<(), OxidbError> {
     let input_tuples = vec![
         vec![DataType::Integer(50), DataType::Float(5.0)], // Pass (col0)
         vec![DataType::Integer(10), DataType::Float(15.0)], // Pass (col1)
-        vec![DataType::Integer(5), DataType::Float(2.0)],   // Fail
+        vec![DataType::Integer(5), DataType::Float(2.0)],  // Fail
         vec![DataType::Integer(60), DataType::Float(12.0)], // Pass (both)
     ];
     let mock_input = MockInputOperator::new(input_tuples);
@@ -183,7 +175,8 @@ fn test_filter_operator_and_short_circuit() -> Result<(), OxidbError> {
 
     // Predicate: tuple[0] < 50 AND (tuple[0] / "string_error") -> this would normally error
     let cond_left_false = compare_op(column(0), "<", literal(DataType::Integer(50))); // 100 < 50 is false
-    let cond_right_error = compare_op(column(0), "=", literal(DataType::String("error".to_string()))); // Type mismatch error if evaluated against Integer(100)
+    let cond_right_error =
+        compare_op(column(0), "=", literal(DataType::String("error".to_string()))); // Type mismatch error if evaluated against Integer(100)
 
     let predicate = binary_op(Box::new(cond_left_false), "AND", Box::new(cond_right_error));
 
@@ -204,7 +197,8 @@ fn test_filter_operator_or_short_circuit() -> Result<(), OxidbError> {
 
     // Predicate: tuple[0] < 50 OR (tuple[0] / "string_error")
     let cond_left_true = compare_op(column(0), "<", literal(DataType::Integer(50))); // 10 < 50 is true
-    let cond_right_error = compare_op(column(0), "=", literal(DataType::String("error".to_string())));
+    let cond_right_error =
+        compare_op(column(0), "=", literal(DataType::String("error".to_string())));
 
     let predicate = binary_op(Box::new(cond_left_true), "OR", Box::new(cond_right_error));
 
@@ -221,10 +215,10 @@ fn test_filter_operator_nested_logical_ops() -> Result<(), OxidbError> {
     let input_tuples = vec![
         // (val1 > 10 AND val2 == "A") OR val3 == true
         // Tuple: Integer, String, Boolean
-        vec![DataType::Integer(5), DataType::String("A".to_string()), DataType::Boolean(true)],  // (F && T) || T -> T
+        vec![DataType::Integer(5), DataType::String("A".to_string()), DataType::Boolean(true)], // (F && T) || T -> T
         vec![DataType::Integer(15), DataType::String("B".to_string()), DataType::Boolean(false)], // (T && F) || F -> F
         vec![DataType::Integer(20), DataType::String("A".to_string()), DataType::Boolean(false)], // (T && T) || F -> T
-        vec![DataType::Integer(5), DataType::String("B".to_string()), DataType::Boolean(false)],  // (F && F) || F -> F
+        vec![DataType::Integer(5), DataType::String("B".to_string()), DataType::Boolean(false)], // (F && F) || F -> F
     ];
     let mock_input = MockInputOperator::new(input_tuples);
 
@@ -239,8 +233,16 @@ fn test_filter_operator_nested_logical_ops() -> Result<(), OxidbError> {
     let results: Vec<Tuple> = filter_op.execute()?.collect::<Result<_, _>>()?;
 
     assert_eq!(results.len(), 2);
-    assert!(results.contains(&vec![DataType::Integer(5), DataType::String("A".to_string()), DataType::Boolean(true)]));
-    assert!(results.contains(&vec![DataType::Integer(20), DataType::String("A".to_string()), DataType::Boolean(false)]));
+    assert!(results.contains(&vec![
+        DataType::Integer(5),
+        DataType::String("A".to_string()),
+        DataType::Boolean(true)
+    ]));
+    assert!(results.contains(&vec![
+        DataType::Integer(20),
+        DataType::String("A".to_string()),
+        DataType::Boolean(false)
+    ]));
     Ok(())
 }
 
@@ -252,7 +254,9 @@ fn test_filter_unsupported_operator_in_compare() -> Result<(), OxidbError> {
     let result: Result<Vec<Tuple>, OxidbError> = filter_op.execute()?.collect();
     assert!(result.is_err());
     match result.err().unwrap() {
-        OxidbError::NotImplemented { feature } => assert!(feature.contains("Operator 'IS NULL' not implemented in CompareOp.")),
+        OxidbError::NotImplemented { feature } => {
+            assert!(feature.contains("Operator 'IS NULL' not implemented in CompareOp."))
+        }
         e => panic!("Expected NotImplemented error, got {:?}", e),
     }
     Ok(())
@@ -261,12 +265,15 @@ fn test_filter_unsupported_operator_in_compare() -> Result<(), OxidbError> {
 #[test]
 fn test_filter_unsupported_operator_in_binary() -> Result<(), OxidbError> {
     let mock_input = MockInputOperator::new(vec![vec![DataType::Boolean(true)]]);
-    let predicate = binary_op(literal(DataType::Boolean(true)), "XOR", literal(DataType::Boolean(false)));
+    let predicate =
+        binary_op(literal(DataType::Boolean(true)), "XOR", literal(DataType::Boolean(false)));
     let mut filter_op = FilterOperator::new(Box::new(mock_input), predicate);
     let result: Result<Vec<Tuple>, OxidbError> = filter_op.execute()?.collect();
     assert!(result.is_err());
     match result.err().unwrap() {
-        OxidbError::NotImplemented { feature } => assert!(feature.contains("Logical operator 'XOR' not implemented in BinaryOp.")),
+        OxidbError::NotImplemented { feature } => {
+            assert!(feature.contains("Logical operator 'XOR' not implemented in BinaryOp."))
+        }
         e => panic!("Expected NotImplemented error, got {:?}", e),
     }
     Ok(())
@@ -280,8 +287,10 @@ fn test_filter_unsupported_expression_type() -> Result<(), OxidbError> {
     let mut filter_op = FilterOperator::new(Box::new(mock_input), predicate);
     let result: Result<Vec<Tuple>, OxidbError> = filter_op.execute()?.collect();
     assert!(result.is_err());
-     match result.err().unwrap() {
-        OxidbError::NotImplemented { feature } => assert!(feature.contains("not supported as a predicate yet")),
+    match result.err().unwrap() {
+        OxidbError::NotImplemented { feature } => {
+            assert!(feature.contains("not supported as a predicate yet"))
+        }
         e => panic!("Expected NotImplemented error, got {:?}", e),
     }
     Ok(())

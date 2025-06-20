@@ -19,8 +19,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 
             // let lsn = self.log_manager.next_lsn(); // This LSN was for the store's WAL entry, now removed.
             // active_tx.prev_lsn = lsn; // DO NOT UPDATE prev_lsn here with this.
-                                        // TM::commit_transaction will use the existing active_tx.prev_lsn
-                                        // (set by the last data op) and then update it to the commit record's LSN.
+            // TM::commit_transaction will use the existing active_tx.prev_lsn
+            // (set by the last data op) and then update it to the commit record's LSN.
 
             // Physical WAL entry for commit is removed.
             // The TransactionManager's commit_transaction will log a LogRecord::CommitTransaction
@@ -45,7 +45,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 
         // For rollback, the committed_ids set should be those transactions committed *before* this one.
         // The current transaction (tx_id_to_release) is NOT committed.
-        let committed_ids_for_undo: HashSet<u64> = self.transaction_manager
+        let committed_ids_for_undo: HashSet<u64> = self
+            .transaction_manager
             .get_committed_tx_ids_snapshot()
             .into_iter()
             .map(|id| id.0) // Convert TransactionId to u64
@@ -54,7 +55,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 
         if let Some(active_tx) = self.transaction_manager.get_active_transaction_mut() {
             // Ensure active_tx.id is indeed tx_id_to_release (it should be, barring concurrent modification)
-            assert_eq!(active_tx.id, tx_id_to_release, "Mismatch in transaction ID during rollback prep");
+            assert_eq!(
+                active_tx.id, tx_id_to_release,
+                "Mismatch in transaction ID during rollback prep"
+            );
 
             eprintln!("[QueryExecutor::handle_rollback_transaction] Rolling back TX ID: {:?}, Undo Log: {:?}", tx_id_to_release, active_tx.undo_log);
             let temp_transaction_for_undo = Transaction::new(tx_id_to_release);
@@ -63,9 +67,15 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                 match undo_op {
                     UndoOperation::RevertInsert { key } => {
                         let lsn = self.log_manager.next_lsn();
-                        self.store.write().unwrap().delete(key, &temp_transaction_for_undo, lsn, &committed_ids_for_undo)?;
+                        self.store.write().unwrap().delete(
+                            key,
+                            &temp_transaction_for_undo,
+                            lsn,
+                            &committed_ids_for_undo,
+                        )?;
                     }
-                    UndoOperation::RevertUpdate { key, old_value: _ } => { // old_value is used for index, not directly here for store
+                    UndoOperation::RevertUpdate { key, old_value: _ } => {
+                        // old_value is used for index, not directly here for store
                         let lsn = self.log_manager.next_lsn();
                         // This delete operation finds the version created by temp_transaction_for_undo (the transaction being rolled back)
                         // and marks its expired_tx_id to its own transaction ID.
@@ -91,14 +101,25 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                     UndoOperation::IndexRevertInsert { index_name, key, value_for_index } => {
                         let mut indexed_values_map = HashMap::new();
                         indexed_values_map.insert(index_name.clone(), value_for_index.clone());
-                        self.index_manager.write().unwrap().on_delete_data(&indexed_values_map, key)?; // Acquire write lock
+                        self.index_manager
+                            .write()
+                            .unwrap()
+                            .on_delete_data(&indexed_values_map, key)?; // Acquire write lock
                     }
                     UndoOperation::IndexRevertDelete { index_name, key, old_value_for_index } => {
                         let mut indexed_values_map = HashMap::new();
                         indexed_values_map.insert(index_name.clone(), old_value_for_index.clone());
-                        self.index_manager.write().unwrap().on_insert_data(&indexed_values_map, key)?; // Acquire write lock
+                        self.index_manager
+                            .write()
+                            .unwrap()
+                            .on_insert_data(&indexed_values_map, key)?; // Acquire write lock
                     }
-                    UndoOperation::IndexRevertUpdate { index_name, key, old_value_for_index, new_value_for_index } => {
+                    UndoOperation::IndexRevertUpdate {
+                        index_name,
+                        key,
+                        old_value_for_index,
+                        new_value_for_index,
+                    } => {
                         // To revert an update in the index:
                         // 1. Delete the new value that was inserted.
                         let mut new_values_map = HashMap::new();
@@ -108,7 +129,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                         // 2. Re-insert the old value.
                         let mut old_values_map = HashMap::new();
                         old_values_map.insert(index_name.clone(), old_value_for_index.clone());
-                        self.index_manager.write().unwrap().on_insert_data(&old_values_map, key)?; // Acquire write lock
+                        self.index_manager.write().unwrap().on_insert_data(&old_values_map, key)?;
+                        // Acquire write lock
                     }
                 }
             }
@@ -118,8 +140,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             // let lsn = self.log_manager.next_lsn(); // This LSN was for the store's WAL entry, now removed.
             // Update prev_lsn of the transaction being rolled back.
             // active_tx.prev_lsn = lsn; // DO NOT UPDATE prev_lsn here.
-                                        // TM::abort_transaction will use the existing active_tx.prev_lsn
-                                        // (set by the last data op) and then update it to the abort record's LSN.
+            // TM::abort_transaction will use the existing active_tx.prev_lsn
+            // (set by the last data op) and then update it to the abort record's LSN.
 
             // Physical WAL entry for rollback is removed.
             // The TransactionManager's abort_transaction will log a LogRecord::AbortTransaction

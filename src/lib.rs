@@ -19,9 +19,9 @@
 //! This crate exposes the main `Oxidb` struct for database interaction and `DbError`
 //! for error handling.
 
-pub mod event_engine;
 pub mod api;
 pub mod core;
+pub mod event_engine;
 
 // Re-export key types for easier use by library consumers.
 // Oxidb is the main entry point for database operations.
@@ -221,9 +221,7 @@ mod tests {
         let val = db.execute_query_str("GET test").unwrap();
         assert_eq!(
             val,
-            crate::core::query::executor::ExecutionResult::Value(Some(
-                DataType::Integer(1)
-            ))
+            crate::core::query::executor::ExecutionResult::Value(Some(DataType::Integer(1)))
         );
 
         fs::remove_file(&config_file_path).ok();

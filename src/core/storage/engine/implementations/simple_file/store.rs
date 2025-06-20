@@ -84,10 +84,24 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         transaction: &Transaction,
         lsn: Lsn, // Added lsn parameter
     ) -> Result<(), OxidbError> {
-        eprintln!("[SimpleFileKvStore::put] Method entered for key: {:?}", String::from_utf8_lossy(&key)); // ADDED THIS LINE
-        if key == b"tx_delete_rollback_key".as_slice() || key == b"idx_del_key_tx_rollback".as_slice() {
-            println!("[store.put] Called for key: {:?}, value_bytes_len: {}, tx_id: {}", String::from_utf8_lossy(&key), value.len(), transaction.id.0);
-            println!("[store.put] Cache BEFORE for key {:?}: {:?}", String::from_utf8_lossy(&key), self.cache.get(&key));
+        eprintln!(
+            "[SimpleFileKvStore::put] Method entered for key: {:?}",
+            String::from_utf8_lossy(&key)
+        ); // ADDED THIS LINE
+        if key == b"tx_delete_rollback_key".as_slice()
+            || key == b"idx_del_key_tx_rollback".as_slice()
+        {
+            println!(
+                "[store.put] Called for key: {:?}, value_bytes_len: {}, tx_id: {}",
+                String::from_utf8_lossy(&key),
+                value.len(),
+                transaction.id.0
+            );
+            println!(
+                "[store.put] Cache BEFORE for key {:?}: {:?}",
+                String::from_utf8_lossy(&key),
+                self.cache.get(&key)
+            );
         }
 
         let wal_entry = crate::core::storage::engine::wal::WalEntry::Put {
@@ -99,36 +113,40 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         self.wal_writer.log_entry(&wal_entry)?; // Reverted to log_entry
 
         let versions = self.cache.entry(key.clone()).or_default(); // ensure key is cloned for cache entry
-        // Correctly iterate and update existing versions if necessary, then add new one.
-        // This simplified logic just adds; proper MVCC put would mark previous version of this tx expired.
-        // For the purpose of this store, let's assume QueryExecutor handles versioning logic before calling put,
-        // or that put is for new keys / overwriting is fine for some interpretation.
-        // However, typical MVCC store.put would handle version chain updates.
-        // The provided code snippet for put seems to be an attempt at this.
-        // Let's refine it based on typical MVCC: mark latest version by this tx as expired, then add new.
-        // Or, if it's a new value for a key, ensure old values by *other* txs are handled by QueryExecutor's get logic.
-        // The current test failure is about WAL count, so focusing on removing any auto-commit WAL logic from here.
+                                                                   // Correctly iterate and update existing versions if necessary, then add new one.
+                                                                   // This simplified logic just adds; proper MVCC put would mark previous version of this tx expired.
+                                                                   // For the purpose of this store, let's assume QueryExecutor handles versioning logic before calling put,
+                                                                   // or that put is for new keys / overwriting is fine for some interpretation.
+                                                                   // However, typical MVCC store.put would handle version chain updates.
+                                                                   // The provided code snippet for put seems to be an attempt at this.
+                                                                   // Let's refine it based on typical MVCC: mark latest version by this tx as expired, then add new.
+                                                                   // Or, if it's a new value for a key, ensure old values by *other* txs are handled by QueryExecutor's get logic.
+                                                                   // The current test failure is about WAL count, so focusing on removing any auto-commit WAL logic from here.
 
         // Preserving the existing MVCC cache logic from the file, assuming it's intended:
         for version in versions.iter_mut().rev() {
-            if version.created_tx_id == transaction.id.0 && version.expired_tx_id.is_none() { // Found unexpired version from same tx
+            if version.created_tx_id == transaction.id.0 && version.expired_tx_id.is_none() {
+                // Found unexpired version from same tx
                 version.expired_tx_id = Some(transaction.id.0); // Expire it
                 break;
             }
         }
-         // Add the new version
-        let new_version = VersionedValue {
-            value,
-            created_tx_id: transaction.id.0,
-            expired_tx_id: None,
-        };
+        // Add the new version
+        let new_version =
+            VersionedValue { value, created_tx_id: transaction.id.0, expired_tx_id: None };
         versions.push(new_version);
 
         // Removed the TransactionCommit logging for auto-commit from here.
         // That should be handled by QueryExecutor/TransactionManager.
 
-        if key == b"tx_delete_rollback_key".as_slice() || key == b"idx_del_key_tx_rollback".as_slice() {
-            println!("[store.put] Cache AFTER for key {:?}: {:?}", String::from_utf8_lossy(&key), self.cache.get(&key));
+        if key == b"tx_delete_rollback_key".as_slice()
+            || key == b"idx_del_key_tx_rollback".as_slice()
+        {
+            println!(
+                "[store.put] Cache AFTER for key {:?}: {:?}",
+                String::from_utf8_lossy(&key),
+                self.cache.get(&key)
+            );
         }
         Ok(())
     }
@@ -139,20 +157,30 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         snapshot_id: u64,
         committed_ids: &HashSet<u64>,
     ) -> Result<Option<Vec<u8>>, OxidbError> {
-        eprintln!("[SFKvStore::get] Attempting to get key: '{}', snapshot_id: {}", String::from_utf8_lossy(key), snapshot_id);
+        eprintln!(
+            "[SFKvStore::get] Attempting to get key: '{}', snapshot_id: {}",
+            String::from_utf8_lossy(key),
+            snapshot_id
+        );
 
         if snapshot_id == 0 {
             // Non-transactional read (snapshot_id 0): Read latest committed and not expired by a committed transaction.
             if let Some(versions) = self.cache.get(key) {
-                eprintln!("[SFKvStore::get] Key: '{}', snapshot_id: 0. Cache versions: {:?}", String::from_utf8_lossy(key), versions);
+                eprintln!(
+                    "[SFKvStore::get] Key: '{}', snapshot_id: 0. Cache versions: {:?}",
+                    String::from_utf8_lossy(key),
+                    versions
+                );
                 for version in versions.iter().rev() {
                     // Check if creator is committed (or primordial tx 0)
-                    let creator_is_committed = committed_ids.contains(&version.created_tx_id) || version.created_tx_id == 0;
+                    let creator_is_committed = committed_ids.contains(&version.created_tx_id)
+                        || version.created_tx_id == 0;
 
                     if creator_is_committed {
                         if let Some(expired_tx_id_val) = version.expired_tx_id {
                             // If expired, the expirer must NOT be committed for this version to be visible
-                            let expirer_is_committed = committed_ids.contains(&expired_tx_id_val) || expired_tx_id_val == 0;
+                            let expirer_is_committed = committed_ids.contains(&expired_tx_id_val)
+                                || expired_tx_id_val == 0;
                             if !expirer_is_committed {
                                 eprintln!("[SFKvStore::get] Key: '{}', snapshot_id: 0. Chosen version (creator committed, expirer not committed): {{ value_len: {}, created_tx: {}, expired_tx: {:?} }}", String::from_utf8_lossy(key), version.value.len(), version.created_tx_id, version.expired_tx_id);
                                 return Ok(Some(version.value.clone()));
@@ -167,23 +195,29 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
                 eprintln!("[SFKvStore::get] Key: '{}', snapshot_id: 0. No committed and visible version found in cache.", String::from_utf8_lossy(key));
                 Ok(None::<Vec<u8>>)
             } else {
-                eprintln!("[SFKvStore::get] Key: '{}', snapshot_id: 0. Key not found in cache.", String::from_utf8_lossy(key));
+                eprintln!(
+                    "[SFKvStore::get] Key: '{}', snapshot_id: 0. Key not found in cache.",
+                    String::from_utf8_lossy(key)
+                );
                 Ok(None::<Vec<u8>>)
             }
         } else {
             // Transactional read (snapshot_id != 0)
             if let Some(versions) = self.cache.get(key) {
-                eprintln!("[SFKvStore::get] Key: '{}', snapshot_id: {}. Cache versions: {:?}", String::from_utf8_lossy(key), snapshot_id, versions);
+                eprintln!(
+                    "[SFKvStore::get] Key: '{}', snapshot_id: {}. Cache versions: {:?}",
+                    String::from_utf8_lossy(key),
+                    snapshot_id,
+                    versions
+                );
                 for version in versions.iter().rev() {
-                    let creator_is_visible =
-                        (version.created_tx_id == snapshot_id) || // Own transaction's write
+                    let creator_is_visible = (version.created_tx_id == snapshot_id) || // Own transaction's write
                         committed_ids.contains(&version.created_tx_id) || // Other committed transaction
                         (version.created_tx_id == 0); // Primordial data
 
                     if creator_is_visible {
                         if let Some(expired_tx_id_val) = version.expired_tx_id {
-                            let expirer_is_visible =
-                                (expired_tx_id_val == snapshot_id) || // Expired by own transaction
+                            let expirer_is_visible = (expired_tx_id_val == snapshot_id) || // Expired by own transaction
                                 committed_ids.contains(&expired_tx_id_val) || // Expired by other committed transaction
                                 (expired_tx_id_val == 0); // Expired by primordial (unlikely for user data)
 
@@ -201,7 +235,11 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
                 eprintln!("[SFKvStore::get] Key: '{}', snapshot_id: {}. No visible version found for this transaction.", String::from_utf8_lossy(key), snapshot_id);
                 Ok(None::<Vec<u8>>)
             } else {
-                eprintln!("[SFKvStore::get] Key: '{}', snapshot_id: {}. Key not found in cache.", String::from_utf8_lossy(key), snapshot_id);
+                eprintln!(
+                    "[SFKvStore::get] Key: '{}', snapshot_id: {}. Key not found in cache.",
+                    String::from_utf8_lossy(key),
+                    snapshot_id
+                );
                 Ok(None::<Vec<u8>>)
             }
         }
@@ -227,14 +265,21 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
 
         let mut deleted_a_version = false;
         if let Some(versions) = self.cache.get_mut(key) {
-            eprintln!("[SFKvStore::delete] Key: '{}', tx_id: {}. Cache versions BEFORE delete op: {:?}", String::from_utf8_lossy(key), transaction.id.0, versions);
+            eprintln!(
+                "[SFKvStore::delete] Key: '{}', tx_id: {}. Cache versions BEFORE delete op: {:?}",
+                String::from_utf8_lossy(key),
+                transaction.id.0,
+                versions
+            );
             for version in versions.iter_mut().rev() {
-                let creator_is_committed_or_own_tx = (version.created_tx_id == transaction.id.0) || committed_ids.contains(&version.created_tx_id) || version.created_tx_id == 0;
+                let creator_is_committed_or_own_tx = (version.created_tx_id == transaction.id.0)
+                    || committed_ids.contains(&version.created_tx_id)
+                    || version.created_tx_id == 0;
 
                 if creator_is_committed_or_own_tx && version.expired_tx_id.is_none() {
                     // This version is visible to the current transaction and not yet expired.
                     // Or it's an uncommitted write by the current transaction.
-                     eprintln!("[SFKvStore::delete] Key: '{}', tx_id: {}. Found version to mark expired: {{ value_len: {}, created_tx: {}, current_expired_tx: None }}. Marking expired with tx_id: {}",
+                    eprintln!("[SFKvStore::delete] Key: '{}', tx_id: {}. Found version to mark expired: {{ value_len: {}, created_tx: {}, current_expired_tx: None }}. Marking expired with tx_id: {}",
                         String::from_utf8_lossy(key), transaction.id.0, version.value.len(), version.created_tx_id, transaction.id.0);
                     version.expired_tx_id = Some(transaction.id.0);
                     deleted_a_version = true;
@@ -242,12 +287,16 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
                 }
             }
             if deleted_a_version {
-                 eprintln!("[SFKvStore::delete] Key: '{}', tx_id: {}. Cache versions AFTER delete op: {:?}", String::from_utf8_lossy(key), transaction.id.0, versions);
+                eprintln!("[SFKvStore::delete] Key: '{}', tx_id: {}. Cache versions AFTER delete op: {:?}", String::from_utf8_lossy(key), transaction.id.0, versions);
             } else {
-                 eprintln!("[SFKvStore::delete] Key: '{}', tx_id: {}. No effectively live version found to mark expired by this transaction.", String::from_utf8_lossy(key), transaction.id.0);
+                eprintln!("[SFKvStore::delete] Key: '{}', tx_id: {}. No effectively live version found to mark expired by this transaction.", String::from_utf8_lossy(key), transaction.id.0);
             }
         } else {
-            eprintln!("[SFKvStore::delete] Key: '{}', tx_id: {}. Key not found in cache.", String::from_utf8_lossy(key), transaction.id.0);
+            eprintln!(
+                "[SFKvStore::delete] Key: '{}', tx_id: {}. Key not found in cache.",
+                String::from_utf8_lossy(key),
+                transaction.id.0
+            );
         }
 
         // Removed the TransactionCommit logging for auto-commit from here.
@@ -304,7 +353,12 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         Ok(results)
     }
 
-    fn get_schema(&self, schema_key: &Vec<u8>, snapshot_id: u64, committed_ids: &HashSet<u64>) -> Result<Option<crate::core::types::schema::Schema>, OxidbError> {
+    fn get_schema(
+        &self,
+        schema_key: &Vec<u8>,
+        snapshot_id: u64,
+        committed_ids: &HashSet<u64>,
+    ) -> Result<Option<crate::core::types::schema::Schema>, OxidbError> {
         match self.get(schema_key, snapshot_id, committed_ids)? {
             Some(bytes) => {
                 // Schema is assumed to be serialized directly (e.g., using serde_json)
@@ -313,7 +367,8 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
                     Ok(schema) => Ok(Some(schema)),
                     Err(e) => Err(OxidbError::Deserialization(format!(
                         "Failed to deserialize Schema for key {:?}: {}",
-                        String::from_utf8_lossy(schema_key), e
+                        String::from_utf8_lossy(schema_key),
+                        e
                     ))),
                 }
             }

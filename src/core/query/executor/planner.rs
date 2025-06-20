@@ -132,8 +132,12 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 let primary_key_column_index = 0;
 
                 // Fetch schema for the table to pass to DeleteOperator
-                let schema_arc = self.get_table_schema(&table_name)?
-                    .ok_or_else(|| OxidbError::Execution(format!("Table '{}' not found when building DeleteNode.", table_name)))?;
+                let schema_arc = self.get_table_schema(&table_name)?.ok_or_else(|| {
+                    OxidbError::Execution(format!(
+                        "Table '{}' not found when building DeleteNode.",
+                        table_name
+                    ))
+                })?;
 
                 let delete_operator = crate::core::execution::operators::DeleteOperator::new(
                     input_operator,
@@ -146,9 +150,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     schema_arc, // Pass the schema Arc
                 );
                 Ok(Box::new(delete_operator))
-            }
-            // If QueryPlanNode is extended, new variants must be handled here.
-            // The compiler will error if the match is not exhaustive.
+            } // If QueryPlanNode is extended, new variants must be handled here.
+              // The compiler will error if the match is not exhaustive.
         }
     }
 }

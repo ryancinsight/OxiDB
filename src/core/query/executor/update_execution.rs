@@ -3,13 +3,13 @@ use crate::core::common::serialization::{deserialize_data_type, serialize_data_t
 use crate::core::common::types::TransactionId; // Added TransactionId import
 use crate::core::common::OxidbError; // Changed
 use crate::core::query::commands::{Key, SqlAssignment, SqlCondition};
-use crate::core::types::JsonSafeMap; // Added import for JsonSafeMap
 use crate::core::query::sql::ast::{
     Condition as AstCondition, SelectColumn, Statement as AstStatement,
 };
 use crate::core::storage::engine::traits::KeyValueStore;
 use crate::core::transaction::transaction::{Transaction, TransactionState, UndoOperation};
 use crate::core::types::DataType;
+use crate::core::types::JsonSafeMap; // Added import for JsonSafeMap
 use std::collections::{HashMap, HashSet}; // Removed AstLiteralValue
                                           // AstAssignment from sql::ast is not needed here because assignments_cmd is already SqlAssignment
 use super::utils::datatype_to_ast_literal;
@@ -96,8 +96,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         let mut updated_count = 0;
 
         // Fetch schema once
-        let schema_arc = self.get_table_schema(&source_table_name)?
-            .ok_or_else(|| OxidbError::Execution(format!("Table '{}' not found for UPDATE.", source_table_name)))?;
+        let schema_arc = self.get_table_schema(&source_table_name)?.ok_or_else(|| {
+            OxidbError::Execution(format!("Table '{}' not found for UPDATE.", source_table_name))
+        })?;
         let schema = schema_arc.as_ref();
 
         for key in keys_to_update {
@@ -140,7 +141,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             if let Some(current_value_bytes) = current_value_bytes_opt {
                 let mut current_data_type = deserialize_data_type(&current_value_bytes)?;
 
-                if let DataType::Map(JsonSafeMap(ref mut map_data)) = current_data_type { // Use JsonSafeMap
+                if let DataType::Map(JsonSafeMap(ref mut map_data)) = current_data_type {
+                    // Use JsonSafeMap
                     // Apply assignments to a temporary map to check constraints first
                     let mut temp_updated_map_data = map_data.clone();
                     for assignment_cmd in &assignments_cmd {
@@ -153,7 +155,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     // Constraint Checks using temp_updated_map_data
                     for col_def in &schema.columns {
                         // Check only if this column is part of the current assignments
-                        let assigned_value_opt = assignments_cmd.iter().find(|a| a.column == col_def.name);
+                        let assigned_value_opt =
+                            assignments_cmd.iter().find(|a| a.column == col_def.name);
 
                         if let Some(assignment_cmd) = assigned_value_opt {
                             let new_value_for_column = &assignment_cmd.value;
@@ -161,13 +164,19 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                             // NOT NULL Check
                             if !col_def.is_nullable && *new_value_for_column == DataType::Null {
                                 return Err(OxidbError::ConstraintViolation {
-                                    message: format!("NOT NULL constraint failed for column '{}' in table '{}'", col_def.name, source_table_name),
+                                    message: format!(
+                                        "NOT NULL constraint failed for column '{}' in table '{}'",
+                                        col_def.name, source_table_name
+                                    ),
                                 });
                             }
 
                             // UNIQUE / PRIMARY KEY Uniqueness Check
-                            if col_def.is_unique { // is_primary_key implies is_unique
-                                if *new_value_for_column == DataType::Null && !col_def.is_primary_key {
+                            if col_def.is_unique {
+                                // is_primary_key implies is_unique
+                                if *new_value_for_column == DataType::Null
+                                    && !col_def.is_primary_key
+                                {
                                     // Skip uniqueness for NULL in UNIQUE column (not PK)
                                 } else {
                                     self.check_uniqueness(
@@ -177,7 +186,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                                         new_value_for_column,
                                         Some(&key), // Exclude current row by its PK (`key`)
                                         current_op_tx_id.0,
-                                        &committed_ids_for_get_u64_set
+                                        &committed_ids_for_get_u64_set,
                                     )?;
                                 }
                             }
@@ -191,29 +200,46 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
                     for col_def in &schema.columns {
                         if col_def.is_primary_key || col_def.is_unique {
-                            let old_value_for_column = original_map_data_for_indexes.get(col_def.name.as_bytes())
+                            let old_value_for_column = original_map_data_for_indexes
+                                .get(col_def.name.as_bytes())
                                 .cloned()
                                 .unwrap_or(DataType::Null);
-                            let new_value_for_column = temp_updated_map_data.get(col_def.name.as_bytes())
+                            let new_value_for_column = temp_updated_map_data
+                                .get(col_def.name.as_bytes())
                                 .cloned()
                                 .unwrap_or(DataType::Null);
 
                             // Determine if indexing is needed based on NULL status and PK status
-                            let old_value_needs_indexing = !(old_value_for_column == DataType::Null && !col_def.is_primary_key);
-                            let new_value_needs_indexing = !(new_value_for_column == DataType::Null && !col_def.is_primary_key);
+                            let old_value_needs_indexing = !(old_value_for_column
+                                == DataType::Null
+                                && !col_def.is_primary_key);
+                            let new_value_needs_indexing = !(new_value_for_column
+                                == DataType::Null
+                                && !col_def.is_primary_key);
 
-                            if old_value_for_column != new_value_for_column || old_value_needs_indexing != new_value_needs_indexing {
-                                let index_name = format!("idx_{}_{}", source_table_name, col_def.name);
+                            if old_value_for_column != new_value_for_column
+                                || old_value_needs_indexing != new_value_needs_indexing
+                            {
+                                let index_name =
+                                    format!("idx_{}_{}", source_table_name, col_def.name);
 
                                 // Delete old value from index if it needed indexing
                                 if old_value_needs_indexing {
-                                    let old_serialized_column_value = serialize_data_type(&old_value_for_column)?;
-                                    self.index_manager.write().unwrap().delete_from_index(&index_name, &old_serialized_column_value, Some(&key))?; // Acquire write lock
-                                    // Add undo log for this index deletion
+                                    let old_serialized_column_value =
+                                        serialize_data_type(&old_value_for_column)?;
+                                    self.index_manager.write().unwrap().delete_from_index(
+                                        &index_name,
+                                        &old_serialized_column_value,
+                                        Some(&key),
+                                    )?; // Acquire write lock
+                                        // Add undo log for this index deletion
                                     if !is_auto_commit {
-                                        if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
+                                        if let Some(active_tx_mut) =
+                                            self.transaction_manager.get_active_transaction_mut()
+                                        {
                                             active_tx_mut.add_undo_operation(
-                                                UndoOperation::IndexRevertInsert { // To revert delete, we insert
+                                                UndoOperation::IndexRevertInsert {
+                                                    // To revert delete, we insert
                                                     index_name: index_name.clone(),
                                                     key: key.clone(),
                                                     value_for_index: old_serialized_column_value,
@@ -225,16 +251,25 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
                                 // Insert new value into index if it needs indexing
                                 if new_value_needs_indexing {
-                                    let new_serialized_column_value = serialize_data_type(&new_value_for_column)?;
-                                    self.index_manager.write().unwrap().insert_into_index(&index_name, &new_serialized_column_value, &key)?; // Acquire write lock
-                                    // Add undo log for this index insertion
+                                    let new_serialized_column_value =
+                                        serialize_data_type(&new_value_for_column)?;
+                                    self.index_manager.write().unwrap().insert_into_index(
+                                        &index_name,
+                                        &new_serialized_column_value,
+                                        &key,
+                                    )?; // Acquire write lock
+                                        // Add undo log for this index insertion
                                     if !is_auto_commit {
-                                        if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
+                                        if let Some(active_tx_mut) =
+                                            self.transaction_manager.get_active_transaction_mut()
+                                        {
                                             active_tx_mut.add_undo_operation(
-                                                UndoOperation::IndexRevertDelete { // To revert insert, we delete
+                                                UndoOperation::IndexRevertDelete {
+                                                    // To revert insert, we delete
                                                     index_name, // index_name is moved here
                                                     key: key.clone(),
-                                                    old_value_for_index: new_serialized_column_value, // This is the value that was inserted
+                                                    old_value_for_index:
+                                                        new_serialized_column_value, // This is the value that was inserted
                                                 },
                                             );
                                         }
@@ -247,12 +282,13 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
                     // Now apply changes to actual map_data for main store persistence
                     *map_data = temp_updated_map_data;
-
-                } else if !assignments_cmd.is_empty() { // Should not happen if rows are DataType::Map
+                } else if !assignments_cmd.is_empty() {
+                    // Should not happen if rows are DataType::Map
                     if is_auto_commit {
                         self.lock_manager.release_locks(current_op_tx_id.0); // Use .0 for u64
                     }
-                    return Err(OxidbError::Execution( // Changed from NotImplemented
+                    return Err(OxidbError::Execution(
+                        // Changed from NotImplemented
                         "UPDATE target row is not a valid Map structure.".to_string(),
                     ));
                 }
@@ -261,15 +297,18 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
                 // Undo log for the main row data (RevertUpdate)
                 // This should be added *after* per-column index undo ops to maintain logical order for rollback
-                if !is_auto_commit { // Only if in an active transaction
-                    if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
+                if !is_auto_commit {
+                    // Only if in an active transaction
+                    if let Some(active_tx_mut) =
+                        self.transaction_manager.get_active_transaction_mut()
+                    {
                         // Insert RevertUpdate at the beginning of operations for this key,
                         // or ensure it's logically before specific index changes if order matters strictly.
                         // For simplicity, adding it here. If a strict "reverse order of operations" is needed for rollback,
                         // it implies RevertUpdate should be logged *before* IndexRevertInsert/Delete for the *same* logical step.
                         // However, existing code adds it after potential default_value_index changes.
                         // Let's keep it here for now, assuming the order in undo_log is processed correctly.
-                         active_tx_mut.add_undo_operation(UndoOperation::RevertUpdate {
+                        active_tx_mut.add_undo_operation(UndoOperation::RevertUpdate {
                             key: key.clone(),
                             old_value: current_value_bytes.clone(), // current_value_bytes is from before any modifications
                         });
@@ -282,16 +321,21 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 // The problem description mentioned reviewing it. For now, let's assume it's managed
                 // correctly by handle_insert/handle_delete logic or its own undo logging within on_update_data.
                 // The code below for default_value_index update and its undo logs is kept as is.
-                if current_value_bytes != updated_value_bytes { // Only if actual row data changed
+                if current_value_bytes != updated_value_bytes {
+                    // Only if actual row data changed
                     if !is_auto_commit {
-                         if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
+                        if let Some(active_tx_mut) =
+                            self.transaction_manager.get_active_transaction_mut()
+                        {
                             // These are for the "default_value_index", not the per-column ones.
-                            active_tx_mut.add_undo_operation(UndoOperation::IndexRevertInsert { // To revert new value, insert it back
+                            active_tx_mut.add_undo_operation(UndoOperation::IndexRevertInsert {
+                                // To revert new value, insert it back
                                 index_name: "default_value_index".to_string(),
                                 key: key.clone(),
                                 value_for_index: updated_value_bytes.clone(),
                             });
-                            active_tx_mut.add_undo_operation(UndoOperation::IndexRevertDelete { // To revert old value's deletion, delete it
+                            active_tx_mut.add_undo_operation(UndoOperation::IndexRevertDelete {
+                                // To revert old value's deletion, delete it
                                 index_name: "default_value_index".to_string(),
                                 key: key.clone(),
                                 old_value_for_index: current_value_bytes.clone(),
@@ -305,7 +349,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     let mut new_map_for_index = HashMap::new();
                     new_map_for_index
                         .insert("default_value_index".to_string(), updated_value_bytes.clone());
-                    self.index_manager.write().unwrap().on_update_data( // Acquire write lock
+                    self.index_manager.write().unwrap().on_update_data(
+                        // Acquire write lock
                         &old_map_for_index,
                         &new_map_for_index,
                         &key,

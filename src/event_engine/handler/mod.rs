@@ -10,15 +10,15 @@
 // - "processors.rs": Specific event processing implementations (The "Soul" - individual capabilities)
 // - "tests.rs": Unit tests (The "Immune System" - integrity checks)
 
-pub mod types;
 pub mod core;
 pub mod processors;
+pub mod types;
 
 // Re-export key components for easier use by the parent `event_engine` module
 // or other parts of the system that might interact with event handling.
-pub use types::{Event, EventResult}; // Event and EventResult will be defined in types.rs
-pub use core::process_event;       // process_event will be defined in core.rs
-pub use processors::Processor; // Processor trait will be defined in processors.rs - uncomment when defined
+pub use core::process_event; // process_event will be defined in core.rs
+pub use processors::Processor;
+pub use types::{Event, EventResult}; // Event and EventResult will be defined in types.rs // Processor trait will be defined in processors.rs - uncomment when defined
 
 #[cfg(test)]
 mod tests;

@@ -102,11 +102,13 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
             for version in versions.iter_mut().rev() {
                 // Determine if this version is currently visible (similar to snapshot_id=0 GET logic)
                 // For InMemoryKvStore, snapshot_id for delete operation is effectively 0 (read committed)
-                let creator_is_committed = committed_ids.contains(&version.created_tx_id) || version.created_tx_id == 0;
+                let creator_is_committed =
+                    committed_ids.contains(&version.created_tx_id) || version.created_tx_id == 0;
                 let mut is_visible = false;
                 if creator_is_committed {
                     if let Some(expired_tx_id_val) = version.expired_tx_id {
-                        let expirer_is_committed = committed_ids.contains(&expired_tx_id_val) || expired_tx_id_val == 0;
+                        let expirer_is_committed =
+                            committed_ids.contains(&expired_tx_id_val) || expired_tx_id_val == 0;
                         if !expirer_is_committed {
                             is_visible = true; // Creator committed, expirer not committed
                         }
@@ -117,12 +119,16 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
 
                 // If the version is visible, this is the one to mark as expired by the current transaction.
                 // Also, handle the case where the current transaction itself created the version (e.g. rollback of an insert).
-                let is_own_uncommitted_write = version.created_tx_id == transaction.id.0 && !committed_ids.contains(&transaction.id.0);
+                let is_own_uncommitted_write = version.created_tx_id == transaction.id.0
+                    && !committed_ids.contains(&transaction.id.0);
 
                 if is_visible || (is_own_uncommitted_write && version.expired_tx_id.is_none()) {
                     // If it's visible and not yet expired by this transaction or another committed one, mark it.
                     // Or if it's an uncommitted write by the same transaction that is now being deleted (e.g. rollback).
-                    if version.expired_tx_id.is_none() || !committed_ids.contains(&version.expired_tx_id.unwrap_or(0)) || version.expired_tx_id.unwrap_or(0) == transaction.id.0 {
+                    if version.expired_tx_id.is_none()
+                        || !committed_ids.contains(&version.expired_tx_id.unwrap_or(0))
+                        || version.expired_tx_id.unwrap_or(0) == transaction.id.0
+                    {
                         version.expired_tx_id = Some(transaction.id.0);
                         return Ok(true); // Successfully marked a version as deleted
                     }
@@ -191,7 +197,12 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
         Ok(results)
     }
 
-    fn get_schema(&self, schema_key: &Vec<u8>, snapshot_id: u64, committed_ids: &HashSet<u64>) -> Result<Option<crate::core::types::schema::Schema>, OxidbError> {
+    fn get_schema(
+        &self,
+        schema_key: &Vec<u8>,
+        snapshot_id: u64,
+        committed_ids: &HashSet<u64>,
+    ) -> Result<Option<crate::core::types::schema::Schema>, OxidbError> {
         match self.get(schema_key, snapshot_id, committed_ids)? {
             Some(bytes) => {
                 // Schema is assumed to be serialized directly (e.g., using serde_json)
@@ -200,7 +211,8 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
                     Ok(schema) => Ok(Some(schema)),
                     Err(e) => Err(OxidbError::Deserialization(format!(
                         "Failed to deserialize Schema for key {:?}: {}",
-                        String::from_utf8_lossy(schema_key), e
+                        String::from_utf8_lossy(schema_key),
+                        e
                     ))),
                 }
             }

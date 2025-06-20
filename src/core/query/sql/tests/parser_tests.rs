@@ -125,7 +125,10 @@ fn test_update_trailing_comma_in_assignment_list() {
         // also possible
         panic!("UnexpectedEOF, expected UnexpectedToken for 'UPDATE table SET field = 'val', ;'");
     } else {
-        panic!("Wrong error type for trailing comma in assignment: {:?}, expected UnexpectedToken", result);
+        panic!(
+            "Wrong error type for trailing comma in assignment: {:?}, expected UnexpectedToken",
+            result
+        );
     }
 }
 
@@ -149,7 +152,10 @@ fn test_update_empty_where_clause() {
         // also possible if input is "UPDATE table SET field = 'val' WHERE"
         panic!("UnexpectedEOF, expected UnexpectedToken for 'WHERE;'");
     } else {
-        panic!("Wrong error type for empty WHERE clause (UPDATE): {:?}, expected UnexpectedToken", result);
+        panic!(
+            "Wrong error type for empty WHERE clause (UPDATE): {:?}, expected UnexpectedToken",
+            result
+        );
     }
 }
 
@@ -302,7 +308,6 @@ fn test_parse_create_table_with_constraints() {
             assert_eq!(email_col.constraints[0], AstColumnConstraint::NotNull);
             assert_eq!(email_col.constraints[1], AstColumnConstraint::Unique);
 
-
             // age INT NOT NULL
             let age_col = &create_stmt.columns[2];
             assert_eq!(age_col.name, "age");
@@ -322,7 +327,6 @@ fn test_parse_create_table_with_constraints() {
             assert_eq!(bio_col.name, "bio");
             assert_eq!(bio_col.data_type, "TEXT");
             assert!(bio_col.constraints.is_empty());
-
         }
         _ => panic!("Expected CreateTableStatement"),
     }
@@ -333,8 +337,14 @@ fn test_parse_create_table_primary_key_not_null_variants() {
     // PRIMARY KEY implies NOT NULL, but users might specify it.
     // The parser should capture what's specified. Validation/normalization is a later step.
     let test_cases = vec![
-        ("id INTEGER PRIMARY KEY NOT NULL", vec![AstColumnConstraint::PrimaryKey, AstColumnConstraint::NotNull]),
-        ("id INTEGER NOT NULL PRIMARY KEY", vec![AstColumnConstraint::NotNull, AstColumnConstraint::PrimaryKey]),
+        (
+            "id INTEGER PRIMARY KEY NOT NULL",
+            vec![AstColumnConstraint::PrimaryKey, AstColumnConstraint::NotNull],
+        ),
+        (
+            "id INTEGER NOT NULL PRIMARY KEY",
+            vec![AstColumnConstraint::NotNull, AstColumnConstraint::PrimaryKey],
+        ),
     ];
 
     for (col_sql, expected_constraints) in test_cases {
@@ -347,7 +357,11 @@ fn test_parse_create_table_primary_key_not_null_variants() {
             Statement::CreateTable(create_stmt) => {
                 assert_eq!(create_stmt.columns.len(), 1);
                 let col_def = &create_stmt.columns[0];
-                assert_eq!(col_def.constraints, expected_constraints, "Constraints mismatch for: {}", col_sql);
+                assert_eq!(
+                    col_def.constraints, expected_constraints,
+                    "Constraints mismatch for: {}",
+                    col_sql
+                );
             }
             _ => panic!("Expected CreateTableStatement for: {}", sql),
         }
@@ -382,15 +396,26 @@ fn test_parse_create_table_invalid_constraint_sequence() {
     let tokens = tokenize_str(sql);
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
-    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })), "Result was: {:?}", result);
-    if let Err(SqlParseError::UnexpectedToken{expected, found, position: _}) = result {
-         assert_eq!(expected.to_lowercase(), "null"); // Expecting NULL after NOT
-         let lower_found = found.to_lowercase();
-         // Debug format for Identifier("PRIMARY") results in something like "Identifier(PRIMARY)"
-         // .to_lowercase() makes it "identifier(primary)"
-         assert!(lower_found.starts_with("identifier("), "Expected found to start with 'identifier(', got: {}", lower_found);
-         assert!(lower_found.contains("primary") && !lower_found.contains("\"primary\""),
-                 "Expected found to contain 'primary' (no quotes), got: {}", lower_found);
+    assert!(
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. })),
+        "Result was: {:?}",
+        result
+    );
+    if let Err(SqlParseError::UnexpectedToken { expected, found, position: _ }) = result {
+        assert_eq!(expected.to_lowercase(), "null"); // Expecting NULL after NOT
+        let lower_found = found.to_lowercase();
+        // Debug format for Identifier("PRIMARY") results in something like "Identifier(PRIMARY)"
+        // .to_lowercase() makes it "identifier(primary)"
+        assert!(
+            lower_found.starts_with("identifier("),
+            "Expected found to start with 'identifier(', got: {}",
+            lower_found
+        );
+        assert!(
+            lower_found.contains("primary") && !lower_found.contains("\"primary\""),
+            "Expected found to contain 'primary' (no quotes), got: {}",
+            lower_found
+        );
     } else {
         panic!("Expected UnexpectedToken for invalid 'NOT PRIMARY', got {:?}", result);
     }
@@ -592,7 +617,11 @@ fn test_select_missing_from_keyword() {
     );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert!(expected.to_lowercase().contains("from"));
-        assert_eq!(found, "Table", "Found token was {:?}, debug of Identifier(\"table\") seems to be 'Table'", found); // Expect "Table"
+        assert_eq!(
+            found, "Table",
+            "Found token was {:?}, debug of Identifier(\"table\") seems to be 'Table'",
+            found
+        ); // Expect "Table"
     } else {
         panic!("Wrong error type for select missing FROM keyword: {:?}", result);
     }
@@ -746,8 +775,7 @@ fn test_select_extra_token_after_semicolon() {
         let expected_lower = expected.to_lowercase();
         println!("Actual expected (with semi): '{}'", expected_lower); // Keep for logging during test run
         assert_eq!(
-            expected_lower,
-            "end of statement or eof",
+            expected_lower, "end of statement or eof",
             "Assertion failed: expected_lower was '{}', expected 'end of statement or eof'",
             expected_lower
         );
@@ -826,7 +854,8 @@ fn test_identifier_as_substring_of_keyword() {
 
 #[test]
 fn test_parse_insert_simple() {
-    let tokens = tokenize_str("INSERT INTO users (name, email) VALUES ('Alice', 'alice@example.com');");
+    let tokens =
+        tokenize_str("INSERT INTO users (name, email) VALUES ('Alice', 'alice@example.com');");
     let mut parser = SqlParser::new(tokens);
     let ast = parser.parse().unwrap();
     match ast {
@@ -836,7 +865,10 @@ fn test_parse_insert_simple() {
             assert_eq!(insert_stmt.values.len(), 1);
             assert_eq!(insert_stmt.values[0].len(), 2);
             assert_eq!(insert_stmt.values[0][0], AstLiteralValue::String("Alice".to_string()));
-            assert_eq!(insert_stmt.values[0][1], AstLiteralValue::String("alice@example.com".to_string()));
+            assert_eq!(
+                insert_stmt.values[0][1],
+                AstLiteralValue::String("alice@example.com".to_string())
+            );
         }
         _ => panic!("Expected InsertStatement"),
     }
@@ -851,7 +883,10 @@ fn test_parse_insert_multiple_values() {
     match ast1 {
         Statement::Insert(insert_stmt) => {
             assert_eq!(insert_stmt.table_name, "products");
-            assert_eq!(insert_stmt.columns, Some(vec!["id".to_string(), "name".to_string(), "price".to_string()]));
+            assert_eq!(
+                insert_stmt.columns,
+                Some(vec!["id".to_string(), "name".to_string(), "price".to_string()])
+            );
             assert_eq!(insert_stmt.values.len(), 3, "Expected 3 sets of values for TC1");
             // Check first set
             assert_eq!(insert_stmt.values[0].len(), 3);
@@ -873,7 +908,8 @@ fn test_parse_insert_multiple_values() {
     }
 
     // Test case 2: Multiple VALUES sets without explicit columns
-    let tokens2 = tokenize_str("INSERT INTO locations VALUES ('USA', 'New York'), ('CAN', 'Toronto');");
+    let tokens2 =
+        tokenize_str("INSERT INTO locations VALUES ('USA', 'New York'), ('CAN', 'Toronto');");
     let mut parser2 = SqlParser::new(tokens2);
     let ast2 = parser2.parse().unwrap();
     match ast2 {
@@ -901,7 +937,10 @@ fn test_parse_insert_multiple_values() {
             assert_eq!(insert_stmt.columns, Some(vec!["description".to_string()]));
             assert_eq!(insert_stmt.values.len(), 1, "Expected 1 set of values for TC3");
             assert_eq!(insert_stmt.values[0].len(), 1);
-            assert_eq!(insert_stmt.values[0][0], AstLiteralValue::String("Finish report".to_string()));
+            assert_eq!(
+                insert_stmt.values[0][0],
+                AstLiteralValue::String("Finish report".to_string())
+            );
         }
         _ => panic!("Expected InsertStatement for TC3"),
     }
@@ -910,19 +949,26 @@ fn test_parse_insert_multiple_values() {
     let tokens4 = tokenize_str("INSERT INTO test VALUES (1, 'a'),;");
     let mut parser4 = SqlParser::new(tokens4);
     let result4 = parser4.parse();
-    assert!(matches!(result4, Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)), "Result was: {:?}", result4);
-     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result4 {
-        assert!(expected.to_lowercase().contains("lparen") || expected.to_lowercase().contains("(")); // Expects start of new value set
+    assert!(
+        matches!(
+            result4,
+            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+        ),
+        "Result was: {:?}",
+        result4
+    );
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result4 {
+        assert!(
+            expected.to_lowercase().contains("lparen") || expected.to_lowercase().contains("(")
+        ); // Expects start of new value set
         assert!(found.to_lowercase().contains("semicolon"));
     } else if let Err(SqlParseError::UnexpectedEOF) = result4 {
         // This might also be valid if the parser expects another ( but finds EOF after comma
-         panic!("UnexpectedEOF, expected UnexpectedToken for trailing comma in VALUES");
-    }
-    else {
+        panic!("UnexpectedEOF, expected UnexpectedToken for trailing comma in VALUES");
+    } else {
         panic!("Wrong error type for trailing comma in VALUES: {:?}", result4);
     }
 }
-
 
 #[test]
 fn test_mixed_case_keywords() {

@@ -59,7 +59,9 @@ impl Processor for UserCreatedProcessor {
             println!("Notifying analytics service about new user: {}", user_id);
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Mismatched event type for UserCreatedProcessor. Expected UserCreated."))
+            Err(anyhow::anyhow!(
+                "Mismatched event type for UserCreatedProcessor. Expected UserCreated."
+            ))
         }
     }
 }
@@ -87,7 +89,9 @@ impl Processor for OrderPlacedProcessor {
             println!("Sending order confirmation for: {}", order_id);
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Mismatched event type for OrderPlacedProcessor. Expected OrderPlaced."))
+            Err(anyhow::anyhow!(
+                "Mismatched event type for OrderPlacedProcessor. Expected OrderPlaced."
+            ))
         }
     }
 }
@@ -100,7 +104,10 @@ impl Processor for NotificationSentProcessor {
         if let Event::NotificationSent { notification_id, recipient, message_type } = event {
             println!("NotificationSentProcessor: Handling NotificationSent event");
             // Logic extracted from the original match statement in core.rs
-            println!("Notification sent: ID={}, Recipient={}, Type={}", notification_id, recipient, message_type);
+            println!(
+                "Notification sent: ID={}, Recipient={}, Type={}",
+                notification_id, recipient, message_type
+            );
             match message_type.as_str() {
                 "PasswordReset" => {
                     println!("Logging password reset notification: {}", notification_id);
@@ -114,7 +121,9 @@ impl Processor for NotificationSentProcessor {
             }
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Mismatched event type for NotificationSentProcessor. Expected NotificationSent."))
+            Err(anyhow::anyhow!(
+                "Mismatched event type for NotificationSentProcessor. Expected NotificationSent."
+            ))
         }
     }
 }
@@ -130,13 +139,18 @@ impl Processor for DataUpdatedProcessor {
             println!("Data updated: ResourceID={}, ChangedBy={}", resource_id, changed_by);
             println!("Old value: '{}', New value: '{}'", old_value, new_value);
             if old_value.len() > new_value.len() && new_value.is_empty() {
-                 println!("Warning: Value for {} was potentially cleared by {}", resource_id, changed_by);
+                println!(
+                    "Warning: Value for {} was potentially cleared by {}",
+                    resource_id, changed_by
+                );
             }
             println!("Creating audit log for resource {}: changed by {}", resource_id, changed_by);
             println!("Notifying subscribers about update to resource {}", resource_id);
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Mismatched event type for DataUpdatedProcessor. Expected DataUpdated."))
+            Err(anyhow::anyhow!(
+                "Mismatched event type for DataUpdatedProcessor. Expected DataUpdated."
+            ))
         }
     }
 }

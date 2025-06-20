@@ -34,7 +34,8 @@ pub enum QueryPlanNode {
         right: Box<QueryPlanNode>,
         join_predicate: Option<JoinPredicate>,
     },
-    DeleteNode { // Added DeleteNode
+    DeleteNode {
+        // Added DeleteNode
         input: Box<QueryPlanNode>,
         table_name: String,
     },
@@ -58,7 +59,8 @@ pub enum Expression {
         op: String, // e.g., "+", "-", "AND", "OR"
         right: Box<Expression>,
     },
-    CompareOp { // Renamed from Predicate
+    CompareOp {
+        // Renamed from Predicate
         left: Box<Expression>,
         op: String, // e.g., "=", "<", ">"
         right: Box<Expression>,

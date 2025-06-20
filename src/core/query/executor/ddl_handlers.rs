@@ -1,7 +1,7 @@
 use super::{ExecutionResult, QueryExecutor};
 use crate::core::common::OxidbError;
 use crate::core::transaction::Transaction; // Added this import
-// use crate::core::common::serialization::{deserialize_data_type}; // No longer needed here
+                                           // use crate::core::common::serialization::{deserialize_data_type}; // No longer needed here
 use crate::core::common::types::TransactionId;
 // Key removed
 use crate::core::storage::engine::traits::KeyValueStore;
@@ -20,11 +20,13 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         value: Vec<u8>, // This is the serialized form of the value being searched
     ) -> Result<ExecutionResult, OxidbError> {
         // Changed
-        let candidate_keys = match self.index_manager.read().unwrap().find_by_index(&index_name, &value) { // Acquire read lock
-            Ok(Some(keys)) => keys,
-            Ok(None) => Vec::new(),
-            Err(e) => return Err(e),
-        };
+        let candidate_keys =
+            match self.index_manager.read().unwrap().find_by_index(&index_name, &value) {
+                // Acquire read lock
+                Ok(Some(keys)) => keys,
+                Ok(None) => Vec::new(),
+                Err(e) => return Err(e),
+            };
 
         if candidate_keys.is_empty() {
             return Ok(ExecutionResult::Values(Vec::new()));
@@ -118,9 +120,12 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         let schema_to_store = crate::core::types::schema::Schema::new(columns);
 
         // Serialize the Schema object. Assuming JSON serialization for now.
-        let serialized_schema = serde_json::to_vec(&schema_to_store).map_err(|e|
-            OxidbError::Serialization(format!("Failed to serialize schema for table '{}': {}", table_name, e))
-        )?;
+        let serialized_schema = serde_json::to_vec(&schema_to_store).map_err(|e| {
+            OxidbError::Serialization(format!(
+                "Failed to serialize schema for table '{}': {}",
+                table_name, e
+            ))
+        })?;
 
         // Use a system transaction (ID 0) for DDL operations like schema storage.
         // LSN generation for DDL is also important.
@@ -130,7 +135,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         // The schema itself is stored as a Vec<u8> value.
         // The `handle_insert` is for DataType values, so use store.put directly.
         // Use the current transaction context (which will be Tx0 if auto-committing)
-        let current_tx = self.transaction_manager.get_active_transaction()
+        let current_tx = self
+            .transaction_manager
+            .get_active_transaction()
             .map(|tx| tx.clone_for_store()) // Clone for store usage if active
             .unwrap_or_else(|| Transaction::new(TransactionId(0))); // Fallback to new Tx0 if somehow none (should be set by execute_command)
 
@@ -153,7 +160,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                 // Using "hash" as the index type for simplicity, good for exact lookups.
                 // The actual index implementation (e.g., BTree, Hash) would be determined by
                 // the string passed here and handled by the IndexManager.
-                match self.index_manager.write().unwrap().create_index(index_name.clone(), "hash") { // Acquire write lock
+                match self.index_manager.write().unwrap().create_index(index_name.clone(), "hash") {
+                    // Acquire write lock
                     Ok(_) => {
                         eprintln!("[Executor::handle_create_table] Successfully created index '{}' for table '{}', column '{}'.", index_name, table_name, col_def.name);
                     }

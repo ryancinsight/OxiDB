@@ -37,7 +37,13 @@ pub trait KeyValueStore<K, V>: Send + Sync + 'static {
 
     /// Deletes a key-value pair from the store.
     /// Returns `Ok(true)` if the key was found and deleted, `Ok(false)` otherwise.
-    fn delete(&mut self, key: &K, transaction: &Transaction, lsn: Lsn, committed_ids: &HashSet<u64>) -> Result<bool, OxidbError>;
+    fn delete(
+        &mut self,
+        key: &K,
+        transaction: &Transaction,
+        lsn: Lsn,
+        committed_ids: &HashSet<u64>,
+    ) -> Result<bool, OxidbError>;
 
     /// Checks if a key exists in the store.
     fn contains_key(
@@ -80,5 +86,10 @@ pub trait KeyValueStore<K, V>: Send + Sync + 'static {
 
     /// Retrieves the schema for a given table.
     /// The key provided should be the specific key under which the schema is stored.
-    fn get_schema(&self, schema_key: &K, snapshot_id: u64, committed_ids: &HashSet<u64>) -> Result<Option<crate::core::types::schema::Schema>, OxidbError>;
+    fn get_schema(
+        &self,
+        schema_key: &K,
+        snapshot_id: u64,
+        committed_ids: &HashSet<u64>,
+    ) -> Result<Option<crate::core::types::schema::Schema>, OxidbError>;
 }

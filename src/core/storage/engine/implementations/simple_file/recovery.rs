@@ -71,8 +71,13 @@ pub(super) fn replay_wal_into_cache(
     for tx_id in tx_ids {
         // If tx_id is 0 (auto-commit/non-transactional in store WAL) or explicitly committed,
         // and not rolled back, then apply.
-        if (tx_id == 0 || committed_transactions.contains(&tx_id)) && !rolled_back_transactions.contains(&tx_id) {
-            println!("[replay_wal] Applying operations for tx_id: {} (implicit or committed)", tx_id);
+        if (tx_id == 0 || committed_transactions.contains(&tx_id))
+            && !rolled_back_transactions.contains(&tx_id)
+        {
+            println!(
+                "[replay_wal] Applying operations for tx_id: {} (implicit or committed)",
+                tx_id
+            );
             if let Some(operations) = transaction_operations.get(&tx_id) {
                 for entry in operations {
                     println!("[replay_wal] Applying entry: {:?}", entry);
@@ -81,9 +86,9 @@ pub(super) fn replay_wal_into_cache(
                             let versions = cache.entry(key.clone()).or_default();
                             for version in versions.iter_mut().rev() {
                                 if version.expired_tx_id.is_none()
-                                    && (version.created_tx_id == *transaction_id ||
-                                    version.created_tx_id == 0 ||
-                                    committed_transactions.contains(&version.created_tx_id))
+                                    && (version.created_tx_id == *transaction_id
+                                        || version.created_tx_id == 0
+                                        || committed_transactions.contains(&version.created_tx_id))
                                 {
                                     version.expired_tx_id = Some(*transaction_id);
                                     break;
@@ -96,16 +101,20 @@ pub(super) fn replay_wal_into_cache(
                             };
                             versions.push(new_version);
                             if key == b"key_a_wal_restart".as_slice() {
-                                println!("[replay_wal] Cache for key_a after Put({}): {:?}", tx_id, versions);
+                                println!(
+                                    "[replay_wal] Cache for key_a after Put({}): {:?}",
+                                    tx_id, versions
+                                );
                             }
                         }
                         WalEntry::Delete { lsn: _, key, transaction_id } => {
                             if let Some(versions) = cache.get_mut(key) {
                                 for version in versions.iter_mut().rev() {
                                     if version.expired_tx_id.is_none()
-                                        && (version.created_tx_id == *transaction_id ||
-                                        version.created_tx_id == 0 ||
-                                        committed_transactions.contains(&version.created_tx_id))
+                                        && (version.created_tx_id == *transaction_id
+                                            || version.created_tx_id == 0
+                                            || committed_transactions
+                                                .contains(&version.created_tx_id))
                                     {
                                         version.expired_tx_id = Some(*transaction_id);
                                         break;
@@ -113,7 +122,11 @@ pub(super) fn replay_wal_into_cache(
                                 }
                             }
                             if key == b"key_a_wal_restart".as_slice() {
-                                println!("[replay_wal] Cache for key_a after Delete({}): {:?}", tx_id, cache.get(key));
+                                println!(
+                                    "[replay_wal] Cache for key_a after Delete({}): {:?}",
+                                    tx_id,
+                                    cache.get(key)
+                                );
                             }
                         }
                         _ => {} // TransactionCommit/Rollback entries handled by sets
@@ -121,7 +134,10 @@ pub(super) fn replay_wal_into_cache(
                 }
             }
         } else {
-            println!("[replay_wal] Skipping operations for tx_id: {} (not committed or was rolled back)", tx_id);
+            println!(
+                "[replay_wal] Skipping operations for tx_id: {} (not committed or was rolled back)",
+                tx_id
+            );
         }
     }
     Ok(())

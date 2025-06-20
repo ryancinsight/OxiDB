@@ -19,53 +19,155 @@ fn fold_expression(expression: Expression) -> Expression {
                     match op.as_str() {
                         // Arithmetic Operations
                         "+" => match (left_val, right_val) {
-                            (DataType::Integer(l), DataType::Integer(r)) => l.checked_add(*r).map_or_else(|| Expression::BinaryOp { left: folded_left.clone(), op: op.clone(), right: folded_right.clone() }, |res| Expression::Literal(DataType::Integer(res))),
-                            (DataType::Float(l), DataType::Float(r)) => Expression::Literal(DataType::Float(l + r)),
-                            (DataType::Integer(l), DataType::Float(r)) => Expression::Literal(DataType::Float(*l as f64 + r)), // Precision loss allowed by clippy::cast_precision_loss
-                            (DataType::Float(l), DataType::Integer(r)) => Expression::Literal(DataType::Float(l + *r as f64)), // Precision loss allowed by clippy::cast_precision_loss
-                            _ => Expression::BinaryOp { left: folded_left, op, right: folded_right }, // Type mismatch
+                            (DataType::Integer(l), DataType::Integer(r)) => {
+                                l.checked_add(*r).map_or_else(
+                                    || Expression::BinaryOp {
+                                        left: folded_left.clone(),
+                                        op: op.clone(),
+                                        right: folded_right.clone(),
+                                    },
+                                    |res| Expression::Literal(DataType::Integer(res)),
+                                )
+                            }
+                            (DataType::Float(l), DataType::Float(r)) => {
+                                Expression::Literal(DataType::Float(l + r))
+                            }
+                            (DataType::Integer(l), DataType::Float(r)) => {
+                                Expression::Literal(DataType::Float(*l as f64 + r))
+                            } // Precision loss allowed by clippy::cast_precision_loss
+                            (DataType::Float(l), DataType::Integer(r)) => {
+                                Expression::Literal(DataType::Float(l + *r as f64))
+                            } // Precision loss allowed by clippy::cast_precision_loss
+                            _ => {
+                                Expression::BinaryOp { left: folded_left, op, right: folded_right }
+                            } // Type mismatch
                         },
                         "-" => match (left_val, right_val) {
-                            (DataType::Integer(l), DataType::Integer(r)) => l.checked_sub(*r).map_or_else(|| Expression::BinaryOp { left: folded_left.clone(), op: op.clone(), right: folded_right.clone() }, |res| Expression::Literal(DataType::Integer(res))),
-                            (DataType::Float(l), DataType::Float(r)) => Expression::Literal(DataType::Float(l - r)),
-                            (DataType::Integer(l), DataType::Float(r)) => Expression::Literal(DataType::Float(*l as f64 - r)), // Precision loss allowed
-                            (DataType::Float(l), DataType::Integer(r)) => Expression::Literal(DataType::Float(l - *r as f64)), // Precision loss allowed
-                            _ => Expression::BinaryOp { left: folded_left, op, right: folded_right },
+                            (DataType::Integer(l), DataType::Integer(r)) => {
+                                l.checked_sub(*r).map_or_else(
+                                    || Expression::BinaryOp {
+                                        left: folded_left.clone(),
+                                        op: op.clone(),
+                                        right: folded_right.clone(),
+                                    },
+                                    |res| Expression::Literal(DataType::Integer(res)),
+                                )
+                            }
+                            (DataType::Float(l), DataType::Float(r)) => {
+                                Expression::Literal(DataType::Float(l - r))
+                            }
+                            (DataType::Integer(l), DataType::Float(r)) => {
+                                Expression::Literal(DataType::Float(*l as f64 - r))
+                            } // Precision loss allowed
+                            (DataType::Float(l), DataType::Integer(r)) => {
+                                Expression::Literal(DataType::Float(l - *r as f64))
+                            } // Precision loss allowed
+                            _ => {
+                                Expression::BinaryOp { left: folded_left, op, right: folded_right }
+                            }
                         },
                         "*" => match (left_val, right_val) {
-                            (DataType::Integer(l), DataType::Integer(r)) => l.checked_mul(*r).map_or_else(|| Expression::BinaryOp { left: folded_left.clone(), op: op.clone(), right: folded_right.clone() }, |res| Expression::Literal(DataType::Integer(res))),
-                            (DataType::Float(l), DataType::Float(r)) => Expression::Literal(DataType::Float(l * r)),
-                            (DataType::Integer(l), DataType::Float(r)) => Expression::Literal(DataType::Float(*l as f64 * r)), // Precision loss allowed
-                            (DataType::Float(l), DataType::Integer(r)) => Expression::Literal(DataType::Float(l * *r as f64)), // Precision loss allowed
-                            _ => Expression::BinaryOp { left: folded_left, op, right: folded_right },
+                            (DataType::Integer(l), DataType::Integer(r)) => {
+                                l.checked_mul(*r).map_or_else(
+                                    || Expression::BinaryOp {
+                                        left: folded_left.clone(),
+                                        op: op.clone(),
+                                        right: folded_right.clone(),
+                                    },
+                                    |res| Expression::Literal(DataType::Integer(res)),
+                                )
+                            }
+                            (DataType::Float(l), DataType::Float(r)) => {
+                                Expression::Literal(DataType::Float(l * r))
+                            }
+                            (DataType::Integer(l), DataType::Float(r)) => {
+                                Expression::Literal(DataType::Float(*l as f64 * r))
+                            } // Precision loss allowed
+                            (DataType::Float(l), DataType::Integer(r)) => {
+                                Expression::Literal(DataType::Float(l * *r as f64))
+                            } // Precision loss allowed
+                            _ => {
+                                Expression::BinaryOp { left: folded_left, op, right: folded_right }
+                            }
                         },
                         "/" => match (left_val, right_val) {
                             (DataType::Integer(l), DataType::Integer(r)) => {
-                                if *r == 0 { Expression::BinaryOp { left: folded_left, op, right: folded_right } } // Division by zero
-                                else { l.checked_div(*r).map_or_else(|| Expression::BinaryOp { left: folded_left.clone(), op: op.clone(), right: folded_right.clone() }, |res| Expression::Literal(DataType::Integer(res))) }
-                            },
+                                if *r == 0 {
+                                    Expression::BinaryOp {
+                                        left: folded_left,
+                                        op,
+                                        right: folded_right,
+                                    }
+                                }
+                                // Division by zero
+                                else {
+                                    l.checked_div(*r).map_or_else(
+                                        || Expression::BinaryOp {
+                                            left: folded_left.clone(),
+                                            op: op.clone(),
+                                            right: folded_right.clone(),
+                                        },
+                                        |res| Expression::Literal(DataType::Integer(res)),
+                                    )
+                                }
+                            }
                             (DataType::Float(l), DataType::Float(r)) => {
-                                if *r == 0.0 { Expression::BinaryOp { left: folded_left, op, right: folded_right } } // Division by zero (NaN/Infinity is valid float)
-                                else { Expression::Literal(DataType::Float(l / r)) }
-                            },
-                            (DataType::Integer(l), DataType::Float(r)) => { // Precision loss allowed
-                                if *r == 0.0 { Expression::BinaryOp { left: folded_left, op, right: folded_right } }
-                                else { Expression::Literal(DataType::Float(*l as f64 / r)) }
-                            },
-                            (DataType::Float(l), DataType::Integer(r)) => { // Precision loss allowed
-                                if *r == 0 { Expression::BinaryOp { left: folded_left, op, right: folded_right } }
-                                else { Expression::Literal(DataType::Float(l / (*r as f64))) }
-                            },
-                            _ => Expression::BinaryOp { left: folded_left, op, right: folded_right },
+                                if *r == 0.0 {
+                                    Expression::BinaryOp {
+                                        left: folded_left,
+                                        op,
+                                        right: folded_right,
+                                    }
+                                }
+                                // Division by zero (NaN/Infinity is valid float)
+                                else {
+                                    Expression::Literal(DataType::Float(l / r))
+                                }
+                            }
+                            (DataType::Integer(l), DataType::Float(r)) => {
+                                // Precision loss allowed
+                                if *r == 0.0 {
+                                    Expression::BinaryOp {
+                                        left: folded_left,
+                                        op,
+                                        right: folded_right,
+                                    }
+                                } else {
+                                    Expression::Literal(DataType::Float(*l as f64 / r))
+                                }
+                            }
+                            (DataType::Float(l), DataType::Integer(r)) => {
+                                // Precision loss allowed
+                                if *r == 0 {
+                                    Expression::BinaryOp {
+                                        left: folded_left,
+                                        op,
+                                        right: folded_right,
+                                    }
+                                } else {
+                                    Expression::Literal(DataType::Float(l / (*r as f64)))
+                                }
+                            }
+                            _ => {
+                                Expression::BinaryOp { left: folded_left, op, right: folded_right }
+                            }
                         },
                         // Logical Operations
                         "AND" => match (left_val, right_val) {
-                            (DataType::Boolean(l), DataType::Boolean(r)) => Expression::Literal(DataType::Boolean(*l && *r)),
-                            _ => Expression::BinaryOp { left: folded_left, op, right: folded_right }, // Type mismatch
+                            (DataType::Boolean(l), DataType::Boolean(r)) => {
+                                Expression::Literal(DataType::Boolean(*l && *r))
+                            }
+                            _ => {
+                                Expression::BinaryOp { left: folded_left, op, right: folded_right }
+                            } // Type mismatch
                         },
                         "OR" => match (left_val, right_val) {
-                            (DataType::Boolean(l), DataType::Boolean(r)) => Expression::Literal(DataType::Boolean(*l || *r)),
-                            _ => Expression::BinaryOp { left: folded_left, op, right: folded_right },
+                            (DataType::Boolean(l), DataType::Boolean(r)) => {
+                                Expression::Literal(DataType::Boolean(*l || *r))
+                            }
+                            _ => {
+                                Expression::BinaryOp { left: folded_left, op, right: folded_right }
+                            }
                         },
                         _ => Expression::BinaryOp { left: folded_left, op, right: folded_right }, // Unknown operator
                     }
@@ -84,69 +186,157 @@ fn fold_expression(expression: Expression) -> Expression {
                     // For simplicity here, we'll treat Nulls as type mismatches for direct comparisons,
                     // unless specifically comparing for IS NULL / IS NOT NULL (which are not standard CompareOps here).
                     if left_val == &DataType::Null || right_val == &DataType::Null {
-                         // Standard SQL comparison with NULL yields NULL.
-                         // Here, we could return Literal(DataType::Null) if it should propagate,
-                         // or Literal(DataType::Boolean(false)) if NULLs in comparisons are treated as false.
-                         // Returning the original op for now if we want to be conservative or if Expression can't hold Null result for a boolean op.
-                         // Let's assume for now it evaluates to Boolean(false) for simplicity in this context.
-                         // However, a more robust way might be to return Literal(DataType::Boolean(false)) or handle specific SQL ways.
-                         // For now, returning the original op if nulls are involved and not directly handled.
-                         return Expression::CompareOp { left: folded_left, op, right: folded_right };
+                        // Standard SQL comparison with NULL yields NULL.
+                        // Here, we could return Literal(DataType::Null) if it should propagate,
+                        // or Literal(DataType::Boolean(false)) if NULLs in comparisons are treated as false.
+                        // Returning the original op for now if we want to be conservative or if Expression can't hold Null result for a boolean op.
+                        // Let's assume for now it evaluates to Boolean(false) for simplicity in this context.
+                        // However, a more robust way might be to return Literal(DataType::Boolean(false)) or handle specific SQL ways.
+                        // For now, returning the original op if nulls are involved and not directly handled.
+                        return Expression::CompareOp {
+                            left: folded_left,
+                            op,
+                            right: folded_right,
+                        };
                     }
 
                     let result = match op.as_str() {
-                        "=" | "==" => match (left_val, right_val) { // Added "=="
-                            (DataType::Integer(l), DataType::Integer(r)) => DataType::Boolean(l == r),
+                        "=" | "==" => match (left_val, right_val) {
+                            // Added "=="
+                            (DataType::Integer(l), DataType::Integer(r)) => {
+                                DataType::Boolean(l == r)
+                            }
                             (DataType::Float(l), DataType::Float(r)) => DataType::Boolean(l == r),
                             (DataType::String(l), DataType::String(r)) => DataType::Boolean(l == r),
-                            (DataType::Boolean(l), DataType::Boolean(r)) => DataType::Boolean(l == r),
+                            (DataType::Boolean(l), DataType::Boolean(r)) => {
+                                DataType::Boolean(l == r)
+                            }
                             // Basic cross-type comparison for equality (e.g., Int and Float)
-                            (DataType::Integer(l), DataType::Float(r)) => DataType::Boolean((*l as f64) == *r),
-                            (DataType::Float(l), DataType::Integer(r)) => DataType::Boolean(*l == (*r as f64)),
-                            _ => return Expression::CompareOp { left: folded_left, op, right: folded_right }, // Type mismatch
+                            (DataType::Integer(l), DataType::Float(r)) => {
+                                DataType::Boolean((*l as f64) == *r)
+                            }
+                            (DataType::Float(l), DataType::Integer(r)) => {
+                                DataType::Boolean(*l == (*r as f64))
+                            }
+                            _ => {
+                                return Expression::CompareOp {
+                                    left: folded_left,
+                                    op,
+                                    right: folded_right,
+                                }
+                            } // Type mismatch
                         },
-                        "!=" | "<>" => match (left_val, right_val) { // Added "<>" as an alias for "!="
-                            (DataType::Integer(l), DataType::Integer(r)) => DataType::Boolean(l != r),
+                        "!=" | "<>" => match (left_val, right_val) {
+                            // Added "<>" as an alias for "!="
+                            (DataType::Integer(l), DataType::Integer(r)) => {
+                                DataType::Boolean(l != r)
+                            }
                             (DataType::Float(l), DataType::Float(r)) => DataType::Boolean(l != r),
                             (DataType::String(l), DataType::String(r)) => DataType::Boolean(l != r),
-                            (DataType::Boolean(l), DataType::Boolean(r)) => DataType::Boolean(l != r),
-                            (DataType::Integer(l), DataType::Float(r)) => DataType::Boolean((*l as f64) != *r),
-                            (DataType::Float(l), DataType::Integer(r)) => DataType::Boolean(*l != (*r as f64)),
-                            _ => return Expression::CompareOp { left: folded_left, op, right: folded_right },
+                            (DataType::Boolean(l), DataType::Boolean(r)) => {
+                                DataType::Boolean(l != r)
+                            }
+                            (DataType::Integer(l), DataType::Float(r)) => {
+                                DataType::Boolean((*l as f64) != *r)
+                            }
+                            (DataType::Float(l), DataType::Integer(r)) => {
+                                DataType::Boolean(*l != (*r as f64))
+                            }
+                            _ => {
+                                return Expression::CompareOp {
+                                    left: folded_left,
+                                    op,
+                                    right: folded_right,
+                                }
+                            }
                         },
                         "<" => match (left_val, right_val) {
-                            (DataType::Integer(l), DataType::Integer(r)) => DataType::Boolean(l < r),
+                            (DataType::Integer(l), DataType::Integer(r)) => {
+                                DataType::Boolean(l < r)
+                            }
                             (DataType::Float(l), DataType::Float(r)) => DataType::Boolean(l < r),
                             (DataType::String(l), DataType::String(r)) => DataType::Boolean(l < r),
-                            (DataType::Integer(l), DataType::Float(r)) => DataType::Boolean((*l as f64) < *r),
-                            (DataType::Float(l), DataType::Integer(r)) => DataType::Boolean(*l < (*r as f64)),
-                            _ => return Expression::CompareOp { left: folded_left, op, right: folded_right },
+                            (DataType::Integer(l), DataType::Float(r)) => {
+                                DataType::Boolean((*l as f64) < *r)
+                            }
+                            (DataType::Float(l), DataType::Integer(r)) => {
+                                DataType::Boolean(*l < (*r as f64))
+                            }
+                            _ => {
+                                return Expression::CompareOp {
+                                    left: folded_left,
+                                    op,
+                                    right: folded_right,
+                                }
+                            }
                         },
                         "<=" => match (left_val, right_val) {
-                            (DataType::Integer(l), DataType::Integer(r)) => DataType::Boolean(l <= r),
+                            (DataType::Integer(l), DataType::Integer(r)) => {
+                                DataType::Boolean(l <= r)
+                            }
                             (DataType::Float(l), DataType::Float(r)) => DataType::Boolean(l <= r),
                             (DataType::String(l), DataType::String(r)) => DataType::Boolean(l <= r),
-                            (DataType::Integer(l), DataType::Float(r)) => DataType::Boolean((*l as f64) <= *r),
-                            (DataType::Float(l), DataType::Integer(r)) => DataType::Boolean(*l <= (*r as f64)),
-                            _ => return Expression::CompareOp { left: folded_left, op, right: folded_right },
+                            (DataType::Integer(l), DataType::Float(r)) => {
+                                DataType::Boolean((*l as f64) <= *r)
+                            }
+                            (DataType::Float(l), DataType::Integer(r)) => {
+                                DataType::Boolean(*l <= (*r as f64))
+                            }
+                            _ => {
+                                return Expression::CompareOp {
+                                    left: folded_left,
+                                    op,
+                                    right: folded_right,
+                                }
+                            }
                         },
                         ">" => match (left_val, right_val) {
-                            (DataType::Integer(l), DataType::Integer(r)) => DataType::Boolean(l > r),
+                            (DataType::Integer(l), DataType::Integer(r)) => {
+                                DataType::Boolean(l > r)
+                            }
                             (DataType::Float(l), DataType::Float(r)) => DataType::Boolean(l > r),
                             (DataType::String(l), DataType::String(r)) => DataType::Boolean(l > r),
-                            (DataType::Integer(l), DataType::Float(r)) => DataType::Boolean((*l as f64) > *r),
-                            (DataType::Float(l), DataType::Integer(r)) => DataType::Boolean(*l > (*r as f64)),
-                            _ => return Expression::CompareOp { left: folded_left, op, right: folded_right },
+                            (DataType::Integer(l), DataType::Float(r)) => {
+                                DataType::Boolean((*l as f64) > *r)
+                            }
+                            (DataType::Float(l), DataType::Integer(r)) => {
+                                DataType::Boolean(*l > (*r as f64))
+                            }
+                            _ => {
+                                return Expression::CompareOp {
+                                    left: folded_left,
+                                    op,
+                                    right: folded_right,
+                                }
+                            }
                         },
                         ">=" => match (left_val, right_val) {
-                            (DataType::Integer(l), DataType::Integer(r)) => DataType::Boolean(l >= r),
+                            (DataType::Integer(l), DataType::Integer(r)) => {
+                                DataType::Boolean(l >= r)
+                            }
                             (DataType::Float(l), DataType::Float(r)) => DataType::Boolean(l >= r),
                             (DataType::String(l), DataType::String(r)) => DataType::Boolean(l >= r),
-                            (DataType::Integer(l), DataType::Float(r)) => DataType::Boolean((*l as f64) >= *r),
-                            (DataType::Float(l), DataType::Integer(r)) => DataType::Boolean(*l >= (*r as f64)),
-                            _ => return Expression::CompareOp { left: folded_left, op, right: folded_right },
+                            (DataType::Integer(l), DataType::Float(r)) => {
+                                DataType::Boolean((*l as f64) >= *r)
+                            }
+                            (DataType::Float(l), DataType::Integer(r)) => {
+                                DataType::Boolean(*l >= (*r as f64))
+                            }
+                            _ => {
+                                return Expression::CompareOp {
+                                    left: folded_left,
+                                    op,
+                                    right: folded_right,
+                                }
+                            }
                         },
-                        _ => return Expression::CompareOp { left: folded_left, op, right: folded_right }, // Unknown operator
+                        _ => {
+                            return Expression::CompareOp {
+                                left: folded_left,
+                                op,
+                                right: folded_right,
+                            }
+                        } // Unknown operator
                     };
                     Expression::Literal(result)
                 }
@@ -181,7 +371,8 @@ pub fn apply_constant_folding_rule(plan: QueryPlanNode) -> QueryPlanNode {
             QueryPlanNode::NestedLoopJoin { left: new_left, right: new_right, join_predicate }
         }
         QueryPlanNode::TableScan { .. } => plan, // No expressions to fold, no inputs to recurse
-        QueryPlanNode::IndexScan { .. } => { // Removed `ref scan_condition` as it's unused
+        QueryPlanNode::IndexScan { .. } => {
+            // Removed `ref scan_condition` as it's unused
             // The scan_condition is Option<SimplePredicate>. SimplePredicate contains a DataType literal.
             // It's not an Expression, so fold_expression() doesn't directly apply.
             // If SimplePredicate.value could somehow be an expression (it can't by current def),
@@ -193,8 +384,7 @@ pub fn apply_constant_folding_rule(plan: QueryPlanNode) -> QueryPlanNode {
         QueryPlanNode::DeleteNode { input, table_name } => {
             let new_input = Box::new(apply_constant_folding_rule(*input));
             QueryPlanNode::DeleteNode { input: new_input, table_name }
-        }
-        // Add other QueryPlanNode variants here if they have expressions or inputs
+        } // Add other QueryPlanNode variants here if they have expressions or inputs
     }
 }
 
@@ -230,7 +420,7 @@ mod tests {
             right: Box::new(Expression::Literal(DataType::Integer(0))),
         };
         let folded_div_zero = fold_expression(expr_div_zero.clone());
-         match folded_div_zero {
+        match folded_div_zero {
             Expression::BinaryOp { left, op, right } => {
                 assert_eq!(*left, Expression::Literal(DataType::Integer(10)));
                 assert_eq!(op, "/".to_string());
@@ -271,7 +461,6 @@ mod tests {
         let folded_rev = fold_expression(expr_rev);
         assert_eq!(folded_rev, Expression::Literal(DataType::Float(15.5)));
     }
-
 
     #[test]
     fn test_fold_binary_op_logical() {
@@ -366,7 +555,6 @@ mod tests {
         assert_eq!(folded2, Expression::Literal(DataType::Boolean(true)));
     }
 
-
     #[test]
     fn test_fold_nested_expression() {
         // (2 + 3) * 4  => 5 * 4 => 20
@@ -392,7 +580,7 @@ mod tests {
             right: Box::new(Expression::Literal(DataType::Integer(5))),
         };
         let folded_expr = fold_expression(expr.clone());
-         match folded_expr {
+        match folded_expr {
             Expression::BinaryOp { left, op, right } => {
                 assert_eq!(*left, Expression::Column("my_col".to_string()));
                 assert_eq!(op, "+".to_string());
@@ -451,7 +639,10 @@ mod tests {
             right: Box::new(Expression::Literal(DataType::Integer(5))),
         };
         let folded_null_left = fold_expression(expr_null_left.clone());
-        assert_eq!(folded_null_left, expr_null_left, "Comparison with Null on left should return original expression");
+        assert_eq!(
+            folded_null_left, expr_null_left,
+            "Comparison with Null on left should return original expression"
+        );
 
         // Test with both Null operands
         let expr_null_both = Expression::CompareOp {
@@ -460,6 +651,9 @@ mod tests {
             right: Box::new(Expression::Literal(DataType::Null)),
         };
         let folded_null_both = fold_expression(expr_null_both.clone());
-        assert_eq!(folded_null_both, expr_null_both, "Comparison with Null on both sides should return original expression");
+        assert_eq!(
+            folded_null_both, expr_null_both,
+            "Comparison with Null on both sides should return original expression"
+        );
     }
 }
