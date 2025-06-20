@@ -91,24 +91,24 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                     UndoOperation::IndexRevertInsert { index_name, key, value_for_index } => {
                         let mut indexed_values_map = HashMap::new();
                         indexed_values_map.insert(index_name.clone(), value_for_index.clone());
-                        self.index_manager.on_delete_data(&indexed_values_map, key)?;
+                        self.index_manager.write().unwrap().on_delete_data(&indexed_values_map, key)?; // Acquire write lock
                     }
                     UndoOperation::IndexRevertDelete { index_name, key, old_value_for_index } => {
                         let mut indexed_values_map = HashMap::new();
                         indexed_values_map.insert(index_name.clone(), old_value_for_index.clone());
-                        self.index_manager.on_insert_data(&indexed_values_map, key)?;
+                        self.index_manager.write().unwrap().on_insert_data(&indexed_values_map, key)?; // Acquire write lock
                     }
                     UndoOperation::IndexRevertUpdate { index_name, key, old_value_for_index, new_value_for_index } => {
                         // To revert an update in the index:
                         // 1. Delete the new value that was inserted.
                         let mut new_values_map = HashMap::new();
                         new_values_map.insert(index_name.clone(), new_value_for_index.clone());
-                        self.index_manager.on_delete_data(&new_values_map, key)?;
+                        self.index_manager.write().unwrap().on_delete_data(&new_values_map, key)?; // Acquire write lock
 
                         // 2. Re-insert the old value.
                         let mut old_values_map = HashMap::new();
                         old_values_map.insert(index_name.clone(), old_value_for_index.clone());
-                        self.index_manager.on_insert_data(&old_values_map, key)?;
+                        self.index_manager.write().unwrap().on_insert_data(&old_values_map, key)?; // Acquire write lock
                     }
                 }
             }

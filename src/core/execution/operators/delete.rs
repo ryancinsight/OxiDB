@@ -22,6 +22,7 @@ pub struct DeleteOperator<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'st
     // deleted_count will be stored in the iterator after execute
     // processed_input tracks if perform_deletes has run
     processed_input: bool,
+    schema: Arc<Schema>, // Added schema field
 }
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<S> {
@@ -33,6 +34,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<
         transaction_id: TransactionId,
         primary_key_column_index: usize,
         committed_ids: Arc<HashSet<u64>>, // Added committed_ids
+        schema: Arc<Schema>, // Added schema parameter
     ) -> Self {
         Self {
             input,
@@ -43,82 +45,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<
             primary_key_column_index,
             committed_ids, // Store committed_ids
             processed_input: false,
+            schema, // Store schema
         }
     }
 
     // Helper method to perform the actual delete logic, called by execute
-    fn perform_deletes(&mut self) -> Result<usize, OxidbError> {
-        let mut count = 0;
-        // Get the iterator from the input operator
-        let mut input_iterator = self.input.execute()?;
-
-        while let Some(tuple_result) = input_iterator.next() {
-            let tuple = tuple_result?; // Propagate error if tuple itself is an error
-
-            let pk_data_type = tuple.get(self.primary_key_column_index).ok_or_else(|| {
-                OxidbError::Execution("Primary key column missing in input tuple for DELETE.".to_string())
-            })?;
-
-            let primary_key: Key = match pk_data_type {
-                 crate::core::types::DataType::String(s) => s.as_bytes().to_vec(),
-                 crate::core::types::DataType::Integer(i) => i.to_be_bytes().to_vec(),
-                 _ => return Err(OxidbError::Execution("Unsupported primary key type for DELETE.".to_string())),
-            };
-
-            let lsn = self.log_manager.next_lsn();
-            let tx_for_store = crate::core::transaction::Transaction::new(self.transaction_id);
-
-            let was_deleted = self.store.write().unwrap().delete(&primary_key, &tx_for_store, lsn, &self.committed_ids)?;
-            if was_deleted {
-                count += 1;
-            }
-        }
-        Ok(count)
-    }
-}
-
-use crate::core::types::{DataType, JsonSafeMap}; // Added for constructing row map
-use crate::core::common::serialization::serialize_data_type; // For serializing row map
-use crate::core::types::schema::Schema; // Required to interpret the tuple correctly
-
-// Add schema to DeleteOperator
-pub struct DeleteOperator<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> {
-    pub input: Box<dyn ExecutionOperator + Send + Sync>,
-    pub table_name: String,
-    pub store: Arc<RwLock<S>>,
-    pub log_manager: Arc<LogManager>,
-    pub transaction_id: TransactionId,
-    pub primary_key_column_index: usize,
-    pub committed_ids: Arc<HashSet<u64>>,
-    pub schema: Arc<Schema>, // Added schema
-    processed_input: bool,
-}
-
-impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<S> {
-    pub fn new(
-        input: Box<dyn ExecutionOperator + Send + Sync>,
-        table_name: String,
-        store: Arc<RwLock<S>>,
-        log_manager: Arc<LogManager>,
-        transaction_id: TransactionId,
-        primary_key_column_index: usize,
-        committed_ids: Arc<HashSet<u64>>,
-        schema: Arc<Schema>, // Added schema
-    ) -> Self {
-        Self {
-            input,
-            table_name,
-            store,
-            log_manager,
-            transaction_id,
-            primary_key_column_index,
-            committed_ids,
-            schema, // Store schema
-            processed_input: false,
-        }
-    }
-
-    // Helper method to perform the actual delete logic
     // Now returns Vec<(Key, Vec<u8>)>: list of (primary_key, serialized_row_data)
     fn perform_deletes(&mut self) -> Result<Vec<(Key, Vec<u8>)>, OxidbError> {
         let mut deleted_rows_info = Vec::new();
@@ -134,7 +65,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<
             let primary_key: Key = match pk_data_type {
                 DataType::String(s) => s.as_bytes().to_vec(),
                 DataType::Integer(i) => i.to_be_bytes().to_vec(),
-                _ => return Err(OxidbError::Execution("Unsupported primary key type for DELETE.".to_string())),
+                DataType::RawBytes(b) => b.clone(), // Handle RawBytes
+                _ => return Err(OxidbError::Execution(format!("Unsupported primary key type {:?} for DELETE.", pk_data_type))),
             };
 
             // Construct row map from tuple and schema for serialization
@@ -154,12 +86,18 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<
 
             let was_deleted = self.store.write().unwrap().delete(&primary_key, &tx_for_store, lsn, &self.committed_ids)?;
             if was_deleted {
+                // count += 1; // No longer returning count directly
                 deleted_rows_info.push((primary_key, serialized_row_data));
             }
         }
+        // Ok(count)
         Ok(deleted_rows_info)
     }
 }
+
+use crate::core::types::{DataType, JsonSafeMap}; // Added for constructing row map
+use crate::core::common::serialization::serialize_data_type; // For serializing row map
+use crate::core::types::schema::Schema; // Required to interpret the tuple correctly
 
 // Implement the ExecutionOperator trait
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> ExecutionOperator for DeleteOperator<S> {
@@ -222,10 +160,10 @@ impl Iterator for DeleteResultIterator {
         } else {
             let (pk_bytes, row_bytes) = self.deleted_rows[self.current_index].clone(); // Clone to avoid lifetime issues with self
             self.current_index += 1;
-            // Represent PK and row_bytes as DataType::Bytes within a Tuple
+            // Represent PK and row_bytes as DataType::RawBytes within a Tuple
             let tuple = vec![
-                DataType::Bytes(pk_bytes),
-                DataType::Bytes(row_bytes)
+                DataType::RawBytes(pk_bytes),
+                DataType::RawBytes(row_bytes)
             ];
             Some(Ok(tuple))
         }

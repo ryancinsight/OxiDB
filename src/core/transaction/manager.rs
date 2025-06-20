@@ -73,6 +73,47 @@ impl TransactionManager {
         Ok(transaction)
     }
 
+    // Method to begin a transaction with a specific ID, e.g., for Tx0 auto-commit
+    pub fn begin_transaction_with_id(&mut self, tx_id: CommonTransactionId) -> Result<Transaction, IoError> {
+        if self.active_transactions.contains_key(&tx_id) || self.current_active_transaction_id.is_some() {
+            // Or handle more gracefully depending on desired behavior for nested/overlapping auto-commits
+            return Err(IoError::new(std::io::ErrorKind::Other, "Cannot begin specific transaction; another is active or ID exists."));
+        }
+
+        let mut transaction = Transaction::new(tx_id);
+
+        if tx_id != CommonTransactionId(0) { // Only log BeginTransaction for non-Tx0
+            let lsn = self.log_manager.next_lsn();
+            let begin_log_record = LogRecord::BeginTransaction {
+                lsn,
+                tx_id: transaction.id,
+            };
+            transaction.prev_lsn = lsn;
+            self.wal_writer.add_record(begin_log_record)?;
+        } else {
+            // For Tx0 (auto-commit), its conceptual "begin" doesn't need a log record in TM's WAL.
+            // Its operations will be logged, then a Commit/Rollback for Tx0.
+            // prev_lsn for Tx0 will be set by its first actual operation's LSN.
+            // Or, more consistently, QueryExecutor::handle_commit_transaction for Tx0
+            // should use the LSN of the *last data operation* as prev_lsn for the physical commit WAL entry.
+            // For now, let's ensure prev_lsn for Tx0 is handled by its first data op,
+            // or correctly set by QueryExecutor::handle_commit_transaction.
+            // The current handle_commit_transaction uses active_tx.prev_lsn, which for Tx0
+            // would be 0 if not set by a data op, or the LSN of the Begin Tx0 if it was logged.
+            // Let's ensure prev_lsn is 0 for a fresh Tx0.
+            transaction.prev_lsn = self.log_manager.current_lsn(); // Or a more specific initial LSN for Tx0
+        }
+
+        // For Tx0 auto-commit, immediate flush might be debated, but for safety/testing:
+        // if tx_id == CommonTransactionId(0) { // Flushing moved to execute_command logic if needed
+        //     self.wal_writer.flush()?;
+        // }
+
+        self.active_transactions.insert(tx_id, transaction.clone());
+        self.current_active_transaction_id = Some(tx_id);
+        Ok(transaction)
+    }
+
     pub fn get_active_transaction(&self) -> Option<&Transaction> {
         self.current_active_transaction_id.and_then(|id| self.active_transactions.get(&id))
     }

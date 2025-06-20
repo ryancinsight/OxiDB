@@ -14,7 +14,7 @@ use crate::core::query::sql::ast::{
     SelectColumn as AstSqlSelectColumn, Statement as AstStatement,
 };
 use crate::core::types::DataType;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock}; // Added RwLock
 
 /// The `Optimizer` is responsible for transforming an initial query plan
 /// (derived directly from the AST) into a more efficient execution plan.
@@ -23,11 +23,11 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub struct Optimizer {
     /// A shared reference to the `IndexManager` to access available indexes.
-    index_manager: Arc<IndexManager>,
+    index_manager: Arc<RwLock<IndexManager>>, // Changed to Arc<RwLock<IndexManager>>
 }
 
 impl Optimizer {
-    pub fn new(index_manager: Arc<IndexManager>) -> Self {
+    pub fn new(index_manager: Arc<RwLock<IndexManager>>) -> Self { // Changed to Arc<RwLock<IndexManager>>
         Optimizer { index_manager }
     }
 
@@ -248,7 +248,7 @@ impl Optimizer {
 
                             // Check for specific conditions suitable for index scan (e.g., equality on indexed column)
                             if *op == "="
-                                && self.index_manager.get_index(&index_name_candidate).is_some()
+                                && self.index_manager.read().unwrap().get_index(&index_name_candidate).is_some() // Acquire read lock
                             {
                                 // Ensure serialize_data_type is handled or removed if not strictly needed for this logic block
                                 // let _scan_value_bytes = serialize_data_type(literal_value)?;

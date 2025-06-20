@@ -843,6 +843,7 @@ mod tests {
 
         let indexed_pks = executor
             .index_manager
+            .read().unwrap() // Acquire read lock
             .find_by_index("default_value_index", &serialized_value)?
             .expect("Value should be indexed");
         assert!(indexed_pks.contains(&key));
@@ -864,6 +865,7 @@ mod tests {
 
         let indexed_pks = executor
             .index_manager
+            .read().unwrap() // Acquire read lock
             .find_by_index("default_value_index", &serialized_value)?
             .expect("Value should be indexed after commit");
         assert!(indexed_pks.contains(&key));
@@ -884,6 +886,7 @@ mod tests {
 
         let indexed_pks_before_rollback = executor
             .index_manager
+            .read().unwrap() // Acquire read lock
             .find_by_index("default_value_index", &serialized_value)?
             .expect("Value should be indexed before rollback");
         assert!(indexed_pks_before_rollback.contains(&key));
@@ -894,7 +897,7 @@ mod tests {
         assert_eq!(executor.execute_command(get_cmd)?, ExecutionResult::Value(None));
 
         let indexed_pks_after_rollback =
-            executor.index_manager.find_by_index("default_value_index", &serialized_value)?;
+            executor.index_manager.read().unwrap().find_by_index("default_value_index", &serialized_value)?; // Acquire read lock
         assert!(
             indexed_pks_after_rollback.map_or(true, |pks| !pks.contains(&key)),
             "Value should NOT be in index after rolling back an insert"
@@ -915,6 +918,7 @@ mod tests {
 
         assert!(executor
             .index_manager
+            .read().unwrap() // Acquire read lock
             .find_by_index("default_value_index", &serialized_value)?
             .is_some());
 
@@ -922,7 +926,7 @@ mod tests {
         assert_eq!(executor.execute_command(delete_cmd)?, ExecutionResult::Deleted(true));
 
         let indexed_pks =
-            executor.index_manager.find_by_index("default_value_index", &serialized_value)?;
+            executor.index_manager.read().unwrap().find_by_index("default_value_index", &serialized_value)?; // Acquire read lock
         assert!(
             indexed_pks.map_or(true, |pks| !pks.contains(&key)),
             "Key should be removed from index"
@@ -947,7 +951,7 @@ mod tests {
         executor.execute_command(Command::CommitTransaction)?;
 
         let indexed_pks =
-            executor.index_manager.find_by_index("default_value_index", &serialized_value)?;
+            executor.index_manager.read().unwrap().find_by_index("default_value_index", &serialized_value)?; // Acquire read lock
         assert!(
             indexed_pks.map_or(true, |pks| !pks.contains(&key)),
             "Key should be removed from index after commit"
@@ -971,7 +975,7 @@ mod tests {
         executor.execute_command(delete_cmd)?;
 
         let indexed_pks_before_rollback =
-            executor.index_manager.find_by_index("default_value_index", &serialized_value)?;
+            executor.index_manager.read().unwrap().find_by_index("default_value_index", &serialized_value)?; // Acquire read lock
         assert!(
             indexed_pks_before_rollback.map_or(true, |pks| !pks.contains(&key)),
             "Key should be removed from index before rollback"
@@ -984,6 +988,7 @@ mod tests {
 
         let indexed_pks_after_rollback = executor
             .index_manager
+            .read().unwrap() // Acquire read lock
             .find_by_index("default_value_index", &serialized_value)?
             .expect("Index entry should be restored after rolling back a delete");
         assert!(

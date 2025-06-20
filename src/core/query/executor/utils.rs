@@ -86,5 +86,11 @@ pub fn datatype_to_ast_literal(data_type: &DataType) -> Result<AstLiteralValue, 
             // This might need refinement based on how JSON literals are handled in SQL (e.g., direct JSON type vs. string)
             Ok(AstLiteralValue::String(json_val.to_string()))
         }
+        DataType::RawBytes(bytes) => {
+            // Represent bytes as a hex string literal or handle as an error
+            // For now, let's convert to a hex string, assuming it might be used in some contexts.
+            // This might not be directly usable in all SQL condition contexts without specific function calls.
+            Ok(AstLiteralValue::String(hex::encode(bytes)))
+        }
     }
 }

@@ -328,6 +328,7 @@ dependencies = [
  "bincode",
  "byteorder",
  "crc32fast",
+ "hex",
  "paste",
  "serde",
  "serde_json",

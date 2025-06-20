@@ -77,12 +77,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 ));
             }
             match tuple[0].clone() {
-                DataType::String(s) => keys_to_update.push(s.into_bytes()),
-                DataType::Integer(i) => keys_to_update.push(i.to_le_bytes().to_vec()),
+                DataType::RawBytes(key_bytes) => keys_to_update.push(key_bytes),
                 val => {
+                    eprintln!("[DEBUG] handle_update unsupported key type from plan: {:?}", val);
                     return Err(OxidbError::Type(format!(
-                        // Changed
-                        "Unsupported key type {:?} from UPDATE selection plan.",
+                        "Unsupported key type {:?} from UPDATE selection plan. Expected RawBytes.",
                         val
                     )));
                 }
@@ -209,7 +208,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                                 // Delete old value from index if it needed indexing
                                 if old_value_needs_indexing {
                                     let old_serialized_column_value = serialize_data_type(&old_value_for_column)?;
-                                    self.index_manager.delete_from_index(&index_name, &old_serialized_column_value, Some(&key))?;
+                                    self.index_manager.write().unwrap().delete_from_index(&index_name, &old_serialized_column_value, Some(&key))?; // Acquire write lock
                                     // Add undo log for this index deletion
                                     if !is_auto_commit {
                                         if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
@@ -227,7 +226,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                                 // Insert new value into index if it needs indexing
                                 if new_value_needs_indexing {
                                     let new_serialized_column_value = serialize_data_type(&new_value_for_column)?;
-                                    self.index_manager.insert_into_index(&index_name, &new_serialized_column_value, &key)?;
+                                    self.index_manager.write().unwrap().insert_into_index(&index_name, &new_serialized_column_value, &key)?; // Acquire write lock
                                     // Add undo log for this index insertion
                                     if !is_auto_commit {
                                         if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
@@ -306,7 +305,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     let mut new_map_for_index = HashMap::new();
                     new_map_for_index
                         .insert("default_value_index".to_string(), updated_value_bytes.clone());
-                    self.index_manager.on_update_data(
+                    self.index_manager.write().unwrap().on_update_data( // Acquire write lock
                         &old_map_for_index,
                         &new_map_for_index,
                         &key,
@@ -341,27 +340,15 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     &tx_for_store,
                     new_lsn, // Pass the new LSN
                 )?;
-
-                if is_auto_commit {
-                    // Generate LSN for the auto-commit WalEntry
-                    let commit_lsn = self.log_manager.next_lsn();
-                    let commit_entry =
-                        crate::core::storage::engine::wal::WalEntry::TransactionCommit {
-                            lsn: commit_lsn,
-                            transaction_id: current_op_tx_id.0, // Use .0 for u64
-                        };
-                    self.store.write().unwrap().log_wal_entry(&commit_entry)?;
-                    self.transaction_manager.add_committed_tx_id(current_op_tx_id);
-                    // Pass TransactionId
-                }
                 updated_count += 1;
             }
-
-            if is_auto_commit {
-                self.lock_manager.release_locks(current_op_tx_id.0); // Use .0 for u64
-            }
+            // Auto-commit logic is now handled by QueryExecutor::execute_command
+            // if is_auto_commit {
+            //     self.lock_manager.release_locks(current_op_tx_id.0);
+            // }
         }
-
+        // If it was an auto-commit, QueryExecutor::execute_command will release locks.
+        // If it was part of a larger transaction, locks are held until COMMIT/ROLLBACK.
         Ok(ExecutionResult::Updated { count: updated_count })
     }
 }

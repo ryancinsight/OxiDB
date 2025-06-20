@@ -20,7 +20,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         value: Vec<u8>, // This is the serialized form of the value being searched
     ) -> Result<ExecutionResult, OxidbError> {
         // Changed
-        let candidate_keys = match self.index_manager.find_by_index(&index_name, &value) {
+        let candidate_keys = match self.index_manager.read().unwrap().find_by_index(&index_name, &value) { // Acquire read lock
             Ok(Some(keys)) => keys,
             Ok(None) => Vec::new(),
             Err(e) => return Err(e),
@@ -143,7 +143,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                 // Using "hash" as the index type for simplicity, good for exact lookups.
                 // The actual index implementation (e.g., BTree, Hash) would be determined by
                 // the string passed here and handled by the IndexManager.
-                match self.index_manager.create_index(index_name.clone(), "hash") {
+                match self.index_manager.write().unwrap().create_index(index_name.clone(), "hash") { // Acquire write lock
                     Ok(_) => {
                         eprintln!("[Executor::handle_create_table] Successfully created index '{}' for table '{}', column '{}'.", index_name, table_name, col_def.name);
                     }
@@ -169,6 +169,16 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         // TODO: Persist schema changes and new index metadata immediately or rely on normal WAL/persist cycle?
         // For simplicity now, rely on normal cycle. Critical DDL might force persist.
         // IndexManager::create_index typically handles its own persistence for index metadata.
+
+        if self.transaction_manager.current_active_transaction_id().is_none() {
+            // Auto-commit for DDL if no explicit transaction
+            let lsn = self.log_manager.next_lsn();
+            self.store.write().unwrap().log_wal_entry(&crate::core::storage::engine::wal::WalEntry::TransactionCommit {
+                lsn,
+                transaction_id: 0, // System transaction for auto-commit
+            })?;
+            self.transaction_manager.add_committed_tx_id(TransactionId(0)); // Mark Tx0 as committed
+        }
 
         Ok(ExecutionResult::Success)
     }

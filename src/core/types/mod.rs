@@ -32,6 +32,7 @@ pub enum DataType {
     Null,           // Added Null variant
     Map(JsonSafeMap), // Changed to use JsonSafeMap
     JsonBlob(serde_json::Value),
+    RawBytes(Vec<u8>), // Added RawBytes variant
     // Potentially other types like Timestamp, etc. could be added later
 }
 
@@ -46,6 +47,7 @@ impl DataType {
             DataType::Null => "Null",
             DataType::Map(_) => "Map",
             DataType::JsonBlob(_) => "JsonBlob",
+            DataType::RawBytes(_) => "RawBytes",
         }
     }
 }

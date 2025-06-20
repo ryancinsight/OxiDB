@@ -540,6 +540,7 @@ fn test_execute_query_str_update_ok() {
                 DataType::Boolean(b) => Ok(b.to_string()),
                 DataType::Float(f) => Ok(f.to_string()),
                 DataType::Null => Ok("NULL".to_string()),
+                DataType::RawBytes(b) => Ok(String::from_utf8_lossy(b).into_owned()),
                 // The following Boolean, Float, and Null are unreachable and have been removed.
                 DataType::JsonBlob(json_val) => serde_json::to_string(json_val),
             };

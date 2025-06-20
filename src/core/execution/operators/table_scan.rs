@@ -63,7 +63,7 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for TableScanOp
                         // is stored as a string or can be meaningfully represented as one here.
                         // For the purpose of UPDATE, the first element of this tuple is crucial
                         // as it's used to fetch the row again.
-                        let key_data_type = DataType::String(String::from_utf8_lossy(&key_bytes).into_owned());
+                        let key_data_type = DataType::RawBytes(key_bytes.clone()); // Use RawBytes for keys
 
                         // The tuple now contains the KV store's key as the first element,
                         // and the deserialized row data (expected to be a DataType::Map) as the second.

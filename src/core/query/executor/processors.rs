@@ -115,11 +115,20 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
 
                     // Determine KV store key
                     // TODO: Handle composite PKs. For now, assume single PK or use UUID.
-                    let kv_key = if let (Some(pk_val), Some(pk_name)) = (pk_value_opt, pk_col_name_opt) {
-                        // Use a consistent format for PK-based keys
-                        // This format needs to be used by SELECT/UPDATE/DELETE as well.
-                        format!("{}_pk_{}_{:?}", table_name, pk_name, pk_val)
-                            .replace("Integer(", "").replace("String(\"", "").replace("\")", "").replace(")", "") // Basic normalization
+                    let kv_key = if let (Some(DataType::String(pk_str_val)), Some(ref pk_c_name)) = (&pk_value_opt, &pk_col_name_opt) {
+                        if pk_c_name == "_kv_key" {
+                            // Special convention: if PK column is named _kv_key and is String, use its value directly.
+                            pk_str_val.as_bytes().to_vec()
+                        } else {
+                            // Standard PK-based key generation
+                            format!("{}_pk_{}_{:?}", table_name, pk_c_name, pk_value_opt.as_ref().unwrap())
+                                .replace("Integer(", "").replace("String(\"", "").replace("\")", "").replace(")", "")
+                                .into_bytes()
+                        }
+                    } else if let (Some(pk_val), Some(pk_c_name)) = (&pk_value_opt, &pk_col_name_opt) {
+                        // Standard PK-based key generation for non-string PKs or different PK col name
+                        format!("{}_pk_{}_{:?}", table_name, pk_c_name, pk_val)
+                            .replace("Integer(", "").replace("String(\"", "").replace("\")", "").replace(")", "")
                             .into_bytes()
                     } else {
                         // Fallback to UUID if no PK or complex PK (not yet supported for keying)
@@ -144,7 +153,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                             let serialized_column_value = crate::core::common::serialization::serialize_data_type(&value_for_column)?;
 
                             // Insert into the specific column index
-                            executor.index_manager.insert_into_index(&index_name, &serialized_column_value, &kv_key)?;
+                            executor.index_manager.write().unwrap().insert_into_index(&index_name, &serialized_column_value, &kv_key)?; // Acquire write lock
 
                             // Add undo log for this index insertion
                             if current_op_tx_id.0 != 0 { // Only if in an active transaction

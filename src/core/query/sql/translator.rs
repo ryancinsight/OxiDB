@@ -138,6 +138,7 @@ pub fn translate_datatype_to_ast_literal(
         DataType::Float(f) => Ok(ast::AstLiteralValue::Number(f.to_string())),
         DataType::Boolean(b) => Ok(ast::AstLiteralValue::Boolean(*b)),
         DataType::Null => Ok(ast::AstLiteralValue::Null),
+        DataType::RawBytes(bytes) => Ok(ast::AstLiteralValue::String(hex::encode(bytes))),
         DataType::Map(_) | DataType::JsonBlob(_) => Err(OxidbError::SqlParsing(
             "Cannot translate complex DataType (Map/JsonBlob) to simple AST literal for conditions.".to_string(),
         )),
