@@ -195,12 +195,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                                 } else {
                                     self.check_uniqueness(
                                         &source_table_name,
-                                        schema,
                                         col_def,
                                         new_value_for_column,
                                         Some(&key), // Exclude current row by its PK (`key`)
-                                        current_op_tx_id.0,
-                                        &committed_ids_for_get_u64_set,
                                     )?;
                                 }
                             }

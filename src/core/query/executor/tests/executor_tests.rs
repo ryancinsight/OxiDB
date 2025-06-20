@@ -20,7 +20,7 @@ mod tests {
     use std::sync::{Arc, RwLock}; // Added for WalWriter
 
     use crate::core::common::serialization::serialize_data_type;
-    use crate::core::transaction::transaction::Transaction; // Removed UndoOperation
+    use crate::core::transaction::Transaction; // Removed UndoOperation
 
     // Helper functions (original test logic, now generic)
     fn run_test_get_non_existent<S: KeyValueStore<Vec<u8>, Vec<u8>>>(

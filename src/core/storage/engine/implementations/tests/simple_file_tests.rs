@@ -1162,8 +1162,6 @@ fn test_physical_wal_lsn_integration() {
     exec.execute_command(crate::core::query::commands::Command::BeginTransaction)
         .expect("BEGIN failed");
 
-    let mut expected_lsn_offset_for_logical_wal = 1; // For logical BEGIN
-
     exec.execute_command(crate::core::query::commands::Command::SqlInsert {
         table_name: "test_lsn".to_string(),
         columns: Some(vec!["id".to_string(), "name".to_string()]),

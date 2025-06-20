@@ -4,15 +4,15 @@
 // ensuring its components function correctly and maintain integrity.
 
 // Removed outer #[cfg(test)] and mod tests { ... } wrapper
-use super::super::core::process_event;
-use super::super::processors::{
+use super::core::process_event;
+use super::processors::{
     DataUpdatedProcessor,
         NotificationSentProcessor,
         OrderPlacedProcessor,
         Processor, // The trait
         UserCreatedProcessor,
     };
-    use super::super::types::Event; // Event types // The refactored process_event function
+    use super::types::Event; // Event types // The refactored process_event function
 
     // Helper to create a UserCreated event
     fn user_created_event_sample() -> Event {

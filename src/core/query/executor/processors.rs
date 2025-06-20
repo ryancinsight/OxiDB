@@ -47,12 +47,6 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                     .transaction_manager
                     .current_active_transaction_id()
                     .unwrap_or(crate::core::common::types::TransactionId(0));
-                let committed_ids_for_read: std::collections::HashSet<u64> = executor
-                    .transaction_manager
-                    .get_committed_tx_ids_snapshot()
-                    .into_iter()
-                    .map(|tx_id| tx_id.0)
-                    .collect();
 
                 for row_values_to_insert in values {
                     let mut row_map_data = std::collections::HashMap::new();
@@ -113,12 +107,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                                 // For INSERT, current_row_pk_bytes is None as there's no "current row" yet.
                                 executor.check_uniqueness(
                                     table_name,
-                                    schema,
                                     col_def,
                                     &value_for_column,
                                     None, // No existing row's PK to exclude for INSERT
-                                    current_op_tx_id.0,
-                                    &committed_ids_for_read,
                                 )?;
                             }
                         }

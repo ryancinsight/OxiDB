@@ -174,12 +174,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     pub(crate) fn check_uniqueness(
         &self,
         table_name: &str,
-        _schema: &crate::core::types::schema::Schema, // Reverted: Not used directly, kept for potential API stability
         column_to_check: &crate::core::types::schema::ColumnDef,
         value_to_check: &DataType,
         current_row_pk_bytes: Option<&[u8]>,
-        _snapshot_id: u64, // Reverted: Not directly used by find_by_index
-        _committed_ids: &HashSet<u64>, // Reverted
     ) -> Result<(), OxidbError> {
         // 1. Construct the index name
         let index_name = format!("idx_{}_{}", table_name, column_to_check.name);
@@ -299,7 +296,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 if let Some(old_value_bytes) = old_value_bytes_opt {
                     // Key exists, this is an update. Log RevertUpdate.
                     active_tx_mut.add_undo_operation(
-                        crate::core::transaction::transaction::UndoOperation::RevertUpdate {
+                        crate::core::transaction::UndoOperation::RevertUpdate {
                             key: key.clone(),
                             old_value: old_value_bytes.clone(), // Clone for RevertUpdate
                         },
@@ -311,7 +308,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     let new_value_for_index_bytes =
                         crate::core::common::serialization::serialize_data_type(&value)?; // This is the new value
                     active_tx_mut.add_undo_operation(
-                        crate::core::transaction::transaction::UndoOperation::IndexRevertUpdate {
+                        crate::core::transaction::UndoOperation::IndexRevertUpdate {
                             index_name: "default_value_index".to_string(),
                             key: key.clone(),
                             old_value_for_index: old_value_bytes, // Pass the original old_value_bytes
@@ -321,14 +318,14 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 } else {
                     // Key does not exist, this is a true insert.
                     active_tx_mut.add_undo_operation(
-                        crate::core::transaction::transaction::UndoOperation::RevertInsert {
+                        crate::core::transaction::UndoOperation::RevertInsert {
                             key: key.clone(),
                         },
                     );
                     let new_value_for_index_bytes =
                         crate::core::common::serialization::serialize_data_type(&value)?;
                     active_tx_mut.add_undo_operation(
-                        crate::core::transaction::transaction::UndoOperation::IndexRevertInsert {
+                        crate::core::transaction::UndoOperation::IndexRevertInsert {
                             index_name: "default_value_index".to_string(),
                             key: key.clone(),
                             value_for_index: new_value_for_index_bytes.clone(),
@@ -487,13 +484,13 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     {
                         // Add UndoOperation for the data itself
                         active_tx_mut.add_undo_operation(
-                            crate::core::transaction::transaction::UndoOperation::RevertDelete {
+                            crate::core::transaction::UndoOperation::RevertDelete {
                                 key: key.clone(),
                                 old_value: value_bytes.clone(), // value_bytes is Vec<u8>
                             },
                         );
                         // Add UndoOperation for the index
-                        active_tx_mut.add_undo_operation(crate::core::transaction::transaction::UndoOperation::IndexRevertDelete {
+                        active_tx_mut.add_undo_operation(crate::core::transaction::UndoOperation::IndexRevertDelete {
                             index_name: "default_value_index".to_string(),
                             key: key.clone(),
                             old_value_for_index: value_bytes, // Pass the original serialized value
@@ -671,7 +668,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                             self.transaction_manager.get_active_transaction_mut()
                         {
                             active_tx_mut.add_undo_operation(
-                                crate::core::transaction::transaction::UndoOperation::IndexRevertInsert { // To revert delete, we insert
+                                    crate::core::transaction::UndoOperation::IndexRevertInsert { // To revert delete, we insert
                                     index_name,
                                     key: key_to_delete.clone(),
                                     value_for_index: serialized_column_value,
@@ -689,7 +686,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             if !is_auto_commit {
                 if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
                     active_tx_mut.add_undo_operation(
-                        crate::core::transaction::transaction::UndoOperation::RevertDelete {
+                            crate::core::transaction::UndoOperation::RevertDelete {
                             key: key_to_delete.clone(),
                             old_value: serialized_row_to_delete_vec.clone(), // The full serialized row
                         },
@@ -706,7 +703,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 // Only if in an active transaction
                 if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
                     active_tx_mut.add_undo_operation(
-                        crate::core::transaction::transaction::UndoOperation::IndexRevertInsert {
+                            crate::core::transaction::UndoOperation::IndexRevertInsert {
                             index_name: "default_value_index".to_string(),
                             key: key_to_delete.clone(),
                             value_for_index: serialized_row_to_delete_vec.clone(),
