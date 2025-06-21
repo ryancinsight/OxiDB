@@ -32,6 +32,7 @@ pub enum DataType {
     Map(JsonSafeMap), // Changed to use JsonSafeMap
     JsonBlob(serde_json::Value),
     RawBytes(Vec<u8>), // Added RawBytes variant
+    Vector(VectorData), // Added Vector variant
                        // Potentially other types like Timestamp, etc. could be added later
 }
 
@@ -47,6 +48,7 @@ impl DataType {
             DataType::Map(_) => "Map",
             DataType::JsonBlob(_) => "JsonBlob",
             DataType::RawBytes(_) => "RawBytes",
+            DataType::Vector(_) => "Vector",
         }
     }
 }
@@ -68,6 +70,52 @@ pub type Lsn = u64;
 // pub use row::Row;
 // pub mod value; // Assuming value.rs exists
 // pub use value::Value;
+
+/// Represents vector data, including its dimension and the actual vector.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VectorData {
+    pub dimension: u32,
+    pub data: Vec<f32>,
+}
+
+impl VectorData {
+    /// Creates a new VectorData, ensuring the data matches the dimension.
+    /// Returns None if the data length does not match the dimension.
+    pub fn new(dimension: u32, data: Vec<f32>) -> Option<Self> {
+        if data.len() as u32 == dimension {
+            // This covers both (0, empty_vec) and (N, vec_of_N_elements)
+            // Note: A dimension of 0 might be valid for an "empty" vector concept.
+            Some(Self { dimension, data })
+        } else {
+            None
+        }
+    }
+
+    /// Calculates the Euclidean distance between this vector and another.
+    /// Returns None if dimensions do not match or if dimension is 0.
+    pub fn euclidean_distance(&self, other: &VectorData) -> Option<f32> {
+        if self.dimension != other.dimension || self.dimension == 0 {
+            return None;
+        }
+        // VectorData::new should ensure self.data.len() == self.dimension,
+        // but an explicit check here could be added for robustness if VectorData instances
+        // could be created without ::new (e.g. direct struct instantiation).
+        // Assuming ::new is the canonical way, this check is redundant:
+        // if self.data.len() != self.dimension as usize || other.data.len() != other.dimension as usize {
+        //     return None;
+        // }
+
+        let mut sum_sq_diff = 0.0;
+        for i in 0..self.dimension as usize {
+            // Accessing self.data[i] and other.data[i] is safe due to the dimension check
+            // and the invariant that data.len() == dimension.
+            let diff = self.data[i] - other.data[i];
+            sum_sq_diff += diff * diff;
+        }
+        Some(sum_sq_diff.sqrt())
+    }
+}
+
 
 // Tests module (if any specific to types/mod.rs, otherwise it's usually in individual type files)
 // #[cfg(test)]

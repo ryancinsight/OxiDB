@@ -6,10 +6,77 @@ use crate::core::query::sql::ast::{
     Statement,
     UpdateStatement, // Removed ColumnDef
 };
+use crate::core::query::sql::ast; // Already imported but ensure it's available for AstDataType
 use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::tokenizer::Token; // For matching specific tokens like Token::Where
 
 impl SqlParser {
+    // Adding the new method here
+    fn parse_data_type_definition(&mut self) -> Result<ast::AstDataType, SqlParseError> {
+        let type_ident_token_pos = self.current_token_pos();
+        let type_name_ident = self.expect_identifier("Expected data type name (e.g., INTEGER, TEXT, VECTOR)")?;
+        let type_name_upper = type_name_ident.to_uppercase();
+
+        // Handle types with parameters like VARCHAR(255) or DECIMAL(10,2) if needed here
+        // For now, we primarily focus on VECTOR[dim] and simple types.
+        // The old logic for `data_type_string.push('('); ... data_type_string.push(')');`
+        // would need to be integrated if we want to capture the full string for types
+        // not explicitly handled by AstDataType variants with parameters.
+
+        match type_name_upper.as_str() {
+            "INTEGER" | "INT" => Ok(ast::AstDataType::Integer),
+            "TEXT" | "STRING" => Ok(ast::AstDataType::Text), // VARCHAR would need param parsing
+            "BOOLEAN" | "BOOL" => Ok(ast::AstDataType::Boolean),
+            "FLOAT" | "REAL" | "DOUBLE" => Ok(ast::AstDataType::Float),
+            "BLOB" => Ok(ast::AstDataType::Blob),
+            "VECTOR" => {
+                self.consume(Token::LBracket)?;
+                let dim_token_pos = self.current_token_pos();
+                let dim_str = match self.consume_any() {
+                    Some(Token::NumericLiteral(s)) => s,
+                    Some(other) => return Err(SqlParseError::UnexpectedToken {
+                        expected: "numeric dimension for VECTOR type".to_string(),
+                        found: format!("{:?}", other),
+                        position: dim_token_pos,
+                    }),
+                    None => return Err(SqlParseError::UnexpectedEOF),
+                };
+                let dimension = dim_str.parse::<u32>().map_err(|_| SqlParseError::InvalidDataTypeParameter {
+                    type_name: "VECTOR".to_string(),
+                    parameter: dim_str.clone(), // Use clone if original dim_str is needed later
+                    position: dim_token_pos,
+                    reason: "Dimension must be a positive integer".to_string(),
+                })?;
+                if dimension == 0 {
+                     return Err(SqlParseError::InvalidDataTypeParameter {
+                        type_name: "VECTOR".to_string(),
+                        parameter: dim_str,
+                        position: dim_token_pos,
+                        reason: "Dimension must be greater than 0".to_string(),
+                    });
+                }
+                self.consume(Token::RBracket)?;
+                Ok(ast::AstDataType::Vector { dimension })
+            }
+            // Example for a type with parameters (like VARCHAR)
+            // "VARCHAR" => {
+            //     if self.match_token(Token::LParen) {
+            //         self.consume(Token::LParen)?;
+            //         // Parse length, etc.
+            //         // For now, AstDataType doesn't store these params for VARCHAR.
+            //         // This would require AstDataType::Varchar { length: Option<u32> }
+            //         // Skipping detailed parsing for now.
+            //         while !self.match_token(Token::RParen) && !self.is_at_end() {
+            //             self.consume_any(); // Just consume to get past params for now
+            //         }
+            //         self.consume(Token::RParen)?;
+            //     }
+            //     Ok(ast::AstDataType::Text) // Map to generic Text
+            // }
+            _ => Err(SqlParseError::UnknownDataType(type_name_ident, type_ident_token_pos)),
+        }
+    }
+
     // Helper to expect a specific identifier, case-insensitive
     fn expect_specific_identifier(
         &mut self,
@@ -95,52 +162,9 @@ impl SqlParser {
 
         loop {
             let column_name = self.expect_identifier("Expected column name in CREATE TABLE")?;
-            let mut data_type_string =
-                self.expect_identifier("Expected column data type in CREATE TABLE")?;
 
-            // Check for and consume type parameters like VARCHAR(255)
-            if self.match_token(Token::LParen) {
-                self.consume(Token::LParen)?; // Consume '('
-                data_type_string.push('(');
-
-                let mut first_param_token = true;
-                // Consume tokens within type parameters
-                while !self.match_token(Token::RParen) && !self.is_at_end() {
-                    if !first_param_token {
-                        // If not the first token after '(', and we see a comma, consume it and add to string
-                        if self.match_token(Token::Comma) {
-                            self.consume_any(); // Consume comma
-                            data_type_string.push_str(", ");
-                        } else {
-                            // If not a comma, assume it's part of a multi-token parameter or end of params
-                            // This part might need more robust handling for complex type params
-                        }
-                    }
-                    match self.peek().cloned() {
-                        Some(Token::NumericLiteral(n)) => {
-                            data_type_string.push_str(&n);
-                            self.consume_any();
-                        }
-                        Some(Token::Identifier(s)) => {
-                            data_type_string.push_str(&s);
-                            self.consume_any();
-                        }
-                        // Potentially handle other literal types if type definitions can include them
-                        _ => break, // Stop if unexpected token in type params
-                    }
-                    first_param_token = false;
-                }
-                if !self.match_token(Token::RParen) {
-                    // Check if RParen is present after params
-                    return Err(SqlParseError::UnexpectedToken {
-                        expected: ")".to_string(),
-                        found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
-                        position: self.current_token_pos(),
-                    });
-                }
-                self.consume(Token::RParen)?; // Consume ')'
-                data_type_string.push(')');
-            }
+            // Use the new method to parse data type definition
+            let ast_data_type = self.parse_data_type_definition()?;
 
             let mut constraints = Vec::new();
             loop {
@@ -164,7 +188,7 @@ impl SqlParser {
 
             columns.push(ast::ColumnDef {
                 name: column_name,
-                data_type: data_type_string,
+                data_type: ast_data_type, // Use the parsed AstDataType
                 constraints,
             });
 

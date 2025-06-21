@@ -32,6 +32,8 @@ pub enum Token {
     Comma,
     Asterisk,
     Semicolon,
+    LBracket, // Added [
+    RBracket, // Added ]
 
     // End of File
     EOF,
@@ -63,6 +65,8 @@ impl fmt::Debug for Token {
             Token::Comma => write!(f, "Comma"),
             Token::Asterisk => write!(f, "Asterisk"),
             Token::Semicolon => write!(f, "Semicolon"),
+            Token::LBracket => write!(f, "LBracket"),
+            Token::RBracket => write!(f, "RBracket"),
             Token::EOF => write!(f, "EOF"),
         }
     }
@@ -259,6 +263,16 @@ impl<'a> Tokenizer<'a> {
                         ';' => {
                             self.chars.next();
                             tokens.push(Token::Semicolon);
+                            self.current_pos = idx + 1;
+                        }
+                        '[' => {
+                            self.chars.next();
+                            tokens.push(Token::LBracket);
+                            self.current_pos = idx + 1;
+                        }
+                        ']' => {
+                            self.chars.next();
+                            tokens.push(Token::RBracket);
                             self.current_pos = idx + 1;
                         }
                         '\'' | '"' => {

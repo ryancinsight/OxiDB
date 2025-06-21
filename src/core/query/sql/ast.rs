@@ -4,6 +4,7 @@ pub enum AstLiteralValue {
     Number(String), // Keep as string to preserve exact representation initially
     Boolean(bool),
     Null, // Added Null for completeness
+    Vector(Vec<AstLiteralValue>), // Represents a list of literals, e.g., [1.0, 2.0, 3.0]
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -58,9 +59,24 @@ pub enum AstColumnConstraint {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum AstDataType {
+    Integer,
+    Text,
+    Boolean,
+    Float,
+    // SQL standard types that map to engine types
+    // VARCHAR, CHAR, DECIMAL, etc. can be added here.
+    // For now, keeping it simple.
+    Vector { dimension: u32 }, // Represents VECTOR[dimension]
+    // Adding other known types from the engine for completeness if they can be declared in SQL
+    Blob, // If blobs can be declared directly in SQL like CREATE TABLE t (b BLOB)
+    // NullType is usually implicit, not a declared column type.
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct ColumnDef {
     pub name: String,
-    pub data_type: String, // Using String for type for now, can be an enum later
+    pub data_type: AstDataType, // Changed from String
     pub constraints: Vec<AstColumnConstraint>,
 }
 

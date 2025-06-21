@@ -7,7 +7,7 @@
 
 use crate::core::common::OxidbError; // Changed
 use crate::core::query::commands::{Command, Key};
-use crate::core::types::DataType;
+use crate::core::types::{DataType, VectorData}; // Added VectorData
 
 // Imports for the new SQL parser integration
 use crate::core::query::sql::{self, parser::SqlParser, tokenizer::Tokenizer};
@@ -112,7 +112,10 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, OxidbError> {
     {
         // Legacy commands (excluding INSERT and DELETE)
         parse_legacy_command_string(query_str)
-    } else {
+    } else if first_word == "SIMILARITY_SEARCH" {
+        parse_similarity_search_command_details(query_str)
+    }
+     else {
         // Fallback for unknown commands, try SQL then error
         let mut tokenizer = Tokenizer::new(query_str);
         match tokenizer.tokenize() {
@@ -288,6 +291,89 @@ fn parse_legacy_command_string(query_str: &str) -> Result<Command, OxidbError> {
 mod tests {
     use super::*;
     use crate::core::query::commands::SelectColumnSpec;
+    use crate::core::types::VectorData; // For tests if needed
+
+    // Helper function to parse vector literal string like "[1.0,2.0,3.0]"
+    fn parse_vector_literal_from_string(s: &str) -> Result<VectorData, OxidbError> {
+        if !s.starts_with('[') || !s.ends_with(']') {
+            return Err(OxidbError::SqlParsing("Vector literal must start with '[' and end with ']'".to_string()));
+        }
+        let inner = &s[1..s.len()-1];
+        if inner.trim().is_empty() { // Handle "[]"
+            // VectorData::new will return None if dimension is 0 and data is not empty, or vice-versa
+            // but here, if inner is empty, data is empty, dimension is 0.
+            return VectorData::new(0, vec![]).ok_or_else(|| OxidbError::SqlParsing("Failed to create empty VectorData".to_string()));
+        }
+        let mut data = Vec::new();
+        for part in inner.split(',') {
+            let trimmed_part = part.trim();
+            if trimmed_part.is_empty() { // handle cases like "[1,,2]" or "[1,]"
+                return Err(OxidbError::SqlParsing(format!("Empty element in vector literal: '{}'", s)));
+            }
+            match trimmed_part.parse::<f32>() {
+                Ok(f) => data.push(f),
+                Err(_) => return Err(OxidbError::SqlParsing(format!("Invalid float in vector literal: '{}'", trimmed_part))),
+            }
+        }
+        let dimension = data.len() as u32;
+        VectorData::new(dimension, data).ok_or_else(|| OxidbError::SqlParsing(
+            format!("Dimension mismatch for vector literal (dim: {}, len: {}) (should not occur here)", dimension, dimension)
+        ))
+    }
+
+    fn parse_similarity_search_command_details(query_str: &str) -> Result<Command, OxidbError> {
+        // SIMILARITY_SEARCH table_name ON column_name QUERY '[v1,v2,...]' TOP_K k_value
+        let mut parts = query_str.split_whitespace();
+
+        parts.next(); // Consume "SIMILARITY_SEARCH"
+
+        let table_name = parts.next().ok_or_else(|| OxidbError::SqlParsing("Missing table name for SIMILARITY_SEARCH".to_string()))?.to_string();
+
+        let on_keyword = parts.next().ok_or_else(|| OxidbError::SqlParsing("Missing ON keyword for SIMILARITY_SEARCH".to_string()))?;
+        if on_keyword.to_uppercase() != "ON" {
+            return Err(OxidbError::SqlParsing("Expected ON keyword after table name for SIMILARITY_SEARCH".to_string()));
+        }
+
+        let vector_column_name = parts.next().ok_or_else(|| OxidbError::SqlParsing("Missing column name for SIMILARITY_SEARCH".to_string()))?.to_string();
+
+        let query_keyword = parts.next().ok_or_else(|| OxidbError::SqlParsing("Missing QUERY keyword for SIMILARITY_SEARCH".to_string()))?;
+        if query_keyword.to_uppercase() != "QUERY" {
+            return Err(OxidbError::SqlParsing("Expected QUERY keyword after column name for SIMILARITY_SEARCH".to_string()));
+        }
+
+        // The vector literal might contain spaces if not quoted, e.g. "[1.0, 2.0, 3.0]"
+        // The current split_whitespace will break this.
+        // We need to rejoin parts until we find TOP_K or consume the rest if TOP_K is last.
+        // A simpler approach for this custom command: require the vector literal to be a single token,
+        // e.g., QUERY [1.0,2.0,3.0] (no spaces inside) or QUERY "[1.0, 2.0, 3.0]" (quoted).
+        // Let's assume it's a single token for now, like "[0.1,0.2,0.3]"
+        let vector_literal_str = parts.next().ok_or_else(|| OxidbError::SqlParsing("Missing vector literal for SIMILARITY_SEARCH".to_string()))?;
+        let query_vector = parse_vector_literal_from_string(vector_literal_str)?;
+
+        let top_k_keyword = parts.next().ok_or_else(|| OxidbError::SqlParsing("Missing TOP_K keyword for SIMILARITY_SEARCH".to_string()))?;
+        if top_k_keyword.to_uppercase() != "TOP_K" {
+            return Err(OxidbError::SqlParsing("Expected TOP_K keyword after QUERY vector for SIMILARITY_SEARCH".to_string()));
+        }
+
+        let top_k_str = parts.next().ok_or_else(|| OxidbError::SqlParsing("Missing K value for TOP_K in SIMILARITY_SEARCH".to_string()))?;
+        let top_k = top_k_str.parse::<usize>().map_err(|_| OxidbError::SqlParsing(format!("Invalid K value for TOP_K: '{}'", top_k_str)))?;
+
+        if top_k == 0 {
+            return Err(OxidbError::SqlParsing("TOP_K value must be greater than 0".to_string()));
+        }
+
+        if parts.next().is_some() {
+            return Err(OxidbError::SqlParsing("Too many arguments for SIMILARITY_SEARCH".to_string()));
+        }
+
+        Ok(Command::SimilaritySearch {
+            table_name,
+            vector_column_name,
+            query_vector,
+            top_k,
+        })
+    }
+
 
     #[test]
     fn test_legacy_parse_get() {

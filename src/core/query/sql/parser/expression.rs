@@ -100,14 +100,43 @@ impl SqlParser {
     ) -> Result<AstLiteralValue, SqlParseError> {
         // Store position before consuming, for more accurate error reporting
         let error_pos = self.current_token_pos();
-        match self.consume_any() {
-            Some(Token::StringLiteral(s)) => Ok(AstLiteralValue::String(s)),
-            Some(Token::NumericLiteral(n)) => Ok(AstLiteralValue::Number(n)),
-            Some(Token::BooleanLiteral(b)) => Ok(AstLiteralValue::Boolean(b)),
-            // Handle NULL case-insensitively by checking the original identifier text
-            Some(Token::Identifier(ident)) => {
-                if ident.to_uppercase() == "NULL" {
-                    Ok(AstLiteralValue::Null)
+        // Peek first to decide the parsing path for vectors
+        if self.peek() == Some(&Token::LBracket) {
+            self.consume(Token::LBracket)?; // Consume '['
+            let mut elements = Vec::new();
+            if self.peek() != Some(&Token::RBracket) { // Handle non-empty list
+                loop {
+                    elements.push(self.parse_literal_value("Expected value in vector literal")?);
+                    if self.peek() == Some(&Token::RBracket) {
+                        break;
+                    }
+                    self.consume(Token::Comma).map_err(|_e| SqlParseError::UnexpectedToken {
+                        expected: "comma or ']' in vector literal".to_string(),
+                        found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
+                        position: self.current_token_pos()
+                    })?;
+                    // Handle trailing comma before RBracket
+                    if self.peek() == Some(&Token::RBracket) {
+                         return Err(SqlParseError::UnexpectedToken {
+                            expected: "value after comma in vector literal".to_string(),
+                            found: "]".to_string(),
+                            position: self.current_token_pos(),
+                        });
+                    }
+                }
+            }
+            self.consume(Token::RBracket)?; // Consume ']'
+            Ok(AstLiteralValue::Vector(elements))
+        } else {
+            // Existing literal parsing logic
+            match self.consume_any() {
+                Some(Token::StringLiteral(s)) => Ok(AstLiteralValue::String(s)),
+                Some(Token::NumericLiteral(n)) => Ok(AstLiteralValue::Number(n)),
+                Some(Token::BooleanLiteral(b)) => Ok(AstLiteralValue::Boolean(b)),
+                // Handle NULL case-insensitively by checking the original identifier text
+                Some(Token::Identifier(ident)) => {
+                    if ident.to_uppercase() == "NULL" {
+                        Ok(AstLiteralValue::Null)
                 } else {
                     // If it's an identifier but not NULL, it's an unexpected token in a literal value context
                     Err(SqlParseError::UnexpectedToken {

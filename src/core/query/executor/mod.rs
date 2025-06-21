@@ -39,6 +39,7 @@ pub enum ExecutionResult {
     Deleted(bool),
     Values(Vec<DataType>),
     Updated { count: usize }, // Added for update operations
+    RankedResults(Vec<(f32, Vec<DataType>)>), // For similarity search results (distance, row_data)
 }
 
 #[derive(Debug)]

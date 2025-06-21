@@ -1,6 +1,6 @@
 // src/core/query/commands.rs
 
-use crate::core::types::DataType;
+use crate::core::types::{DataType, VectorData}; // Added VectorData
 
 /// Represents a key for operations.
 pub type Key = Vec<u8>;
@@ -73,6 +73,12 @@ pub enum Command {
     SqlDelete {
         table_name: String,
         condition: Option<SqlCondition>,
+    },
+    SimilaritySearch {
+        table_name: String,
+        vector_column_name: String,
+        query_vector: VectorData,
+        top_k: usize,
     },
     // Potentially others later, like:
     // Scan { prefix: Option<Key> },

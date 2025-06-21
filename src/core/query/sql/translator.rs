@@ -1,7 +1,7 @@
 use super::ast;
 use crate::core::common::OxidbError; // Changed
 use crate::core::query::commands::{self, Command};
-use crate::core::types::DataType;
+use crate::core::types::{DataType, VectorData}; // Added VectorData
 
 pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command, OxidbError> {
     // Changed
@@ -37,33 +37,28 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
         ast::Statement::CreateTable(create_ast) => {
             let mut command_columns = Vec::new();
             for ast_col_def in create_ast.columns {
-                // Basic type mapping, can be expanded
-                // This mapping should align with types supported by DataType and schema system
-                let uppercase_type_str = ast_col_def.data_type.to_uppercase();
-                let data_type = if uppercase_type_str.starts_with("INTEGER")
-                    || uppercase_type_str.starts_with("INT")
-                {
-                    DataType::Integer(0)
-                } else if uppercase_type_str.starts_with("TEXT")
-                    || uppercase_type_str.starts_with("STRING")
-                    || uppercase_type_str.starts_with("VARCHAR")
-                {
-                    DataType::String("".to_string())
-                } else if uppercase_type_str.starts_with("BOOLEAN")
-                    || uppercase_type_str.starts_with("BOOL")
-                {
-                    DataType::Boolean(false)
-                } else if uppercase_type_str.starts_with("FLOAT")
-                    || uppercase_type_str.starts_with("REAL")
-                    || uppercase_type_str.starts_with("DOUBLE")
-                {
-                    DataType::Float(0.0)
-                } else {
-                    return Err(OxidbError::SqlParsing(format!(
-                        "Unsupported column type during CREATE TABLE translation: {}",
-                        ast_col_def.data_type
-                    )));
+                let data_type = match ast_col_def.data_type {
+                    ast::AstDataType::Integer => DataType::Integer(0), // Default value for schema
+                    ast::AstDataType::Text => DataType::String("".to_string()),
+                    ast::AstDataType::Boolean => DataType::Boolean(false),
+                    ast::AstDataType::Float => DataType::Float(0.0),
+                    ast::AstDataType::Blob => DataType::RawBytes(Vec::new()), // Assuming RawBytes is the engine type for Blob
+                    ast::AstDataType::Vector { dimension } => {
+                        // For schema definition, data is empty. Dimension is key.
+                        crate::core::types::VectorData::new(dimension, vec![])
+                            .map(DataType::Vector)
+                            .ok_or_else(|| OxidbError::SqlParsing(format!(
+                                "Invalid dimension {} for VECTOR type in CREATE TABLE (should not happen if parser validated > 0)",
+                                dimension
+                            )))?
+                    }
+                    // Potentially other AstDataTypes if added
+                    // _ => return Err(OxidbError::SqlParsing(format!(
+                    //    "Unsupported AST column type during CREATE TABLE translation: {:?}",
+                    //    ast_col_def.data_type
+                    // ))),
                 };
+
                 let mut is_primary_key = false;
                 let mut is_unique = false;
                 let mut is_nullable = true; // Default to nullable
@@ -158,6 +153,35 @@ fn translate_literal(literal: &ast::AstLiteralValue) -> Result<DataType, OxidbEr
         }
         ast::AstLiteralValue::Boolean(b) => Ok(DataType::Boolean(*b)),
         ast::AstLiteralValue::Null => Ok(DataType::Null),
+        ast::AstLiteralValue::Vector(elements_ast) => {
+            let mut float_elements = Vec::with_capacity(elements_ast.len());
+            for el_ast in elements_ast {
+                match translate_literal(el_ast)? {
+                    DataType::Integer(i) => float_elements.push(i as f32),
+                    DataType::Float(f) => float_elements.push(f as f32),
+                    // DataType::Number(s) => { // If translate_literal returned Number variant
+                    //    match s.parse::<f32>() {
+                    //        Ok(f) => float_elements.push(f),
+                    //        Err(_) => return Err(OxidbError::SqlParsing(format!(
+                    //            "Invalid numeric string '{}' in vector literal", s
+                    //        ))),
+                    //    }
+                    // }
+                    other_type => return Err(OxidbError::SqlParsing(format!(
+                        "Vector literal elements must be numbers, found type {:?} (value: {:?})",
+                        other_type.type_name(), other_type
+                    ))),
+                }
+            }
+            let dimension = float_elements.len() as u32;
+            // VectorData::new performs validation if dimension matches data length,
+            // which it will by construction here.
+            VectorData::new(dimension, float_elements)
+                .map(DataType::Vector)
+                .ok_or_else(|| OxidbError::SqlParsing(
+                    "Failed to create VectorData from parsed elements (dimension mismatch, should not happen here)".to_string()
+                ))
+        }
     }
 }
 
