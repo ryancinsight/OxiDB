@@ -7,11 +7,20 @@ pub type Key = Vec<u8>;
 /// Represents a value for operations.
 pub type Value = Vec<u8>;
 
+// Renamed from SqlCondition to be part of the new SqlConditionTree enum
 #[derive(Debug, PartialEq, Clone)]
-pub struct SqlCondition {
+pub struct SqlSimpleCondition {
     pub column: String,
     pub operator: String, // e.g., "=", "!=", "<", ">", "<=", ">="
     pub value: DataType,  // Use DataType here
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum SqlConditionTree {
+    Comparison(SqlSimpleCondition),
+    And(Box<SqlConditionTree>, Box<SqlConditionTree>),
+    Or(Box<SqlConditionTree>, Box<SqlConditionTree>),
+    Not(Box<SqlConditionTree>),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -24,6 +33,18 @@ pub struct SqlAssignment {
 pub enum SelectColumnSpec {
     Specific(Vec<String>), // List of column names
     All,                   // Represents SELECT *
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct SqlOrderByExpr {
+    pub expression: String, // Column name
+    pub direction: Option<SqlOrderDirection>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum SqlOrderDirection {
+    Asc,
+    Desc,
 }
 
 /// Enum defining the different types of commands the database can execute.
@@ -53,12 +74,14 @@ pub enum Command {
     Select {
         columns: SelectColumnSpec,
         source: String, // Table/source name
-        condition: Option<SqlCondition>,
+        condition: Option<SqlConditionTree>, // Changed
+        order_by: Option<Vec<SqlOrderByExpr>>,
+        limit: Option<u64>,
     },
     Update {
         source: String, // Table/source name
         assignments: Vec<SqlAssignment>,
-        condition: Option<SqlCondition>,
+        condition: Option<SqlConditionTree>, // Changed
     },
     CreateTable {
         table_name: String,
@@ -72,13 +95,17 @@ pub enum Command {
     },
     SqlDelete {
         table_name: String,
-        condition: Option<SqlCondition>,
+        condition: Option<SqlConditionTree>, // Changed
     },
     SimilaritySearch {
         table_name: String,
         vector_column_name: String,
         query_vector: VectorData,
         top_k: usize,
+    },
+    DropTable {
+        table_name: String,
+        if_exists: bool,
     },
     // Potentially others later, like:
     // Scan { prefix: Option<Key> },

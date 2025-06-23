@@ -123,31 +123,67 @@ impl Optimizer {
 
     fn ast_sql_condition_to_optimizer_expression(
         &self,
-        ast_cond: &AstSqlCondition,
+        ast_cond_tree: &crate::core::query::sql::ast::ConditionTree,
     ) -> Result<Expression, OxidbError> {
-        let value = match &ast_cond.value {
-            AstSqlLiteralValue::String(s) => DataType::String(s.clone()),
-            AstSqlLiteralValue::Number(n_str) => {
-                if let Ok(i_val) = n_str.parse::<i64>() {
-                    DataType::Integer(i_val)
-                } else if let Ok(f_val) = n_str.parse::<f64>() {
-                    DataType::Float(f_val)
-                } else {
-                    return Err(OxidbError::SqlParsing(format!(
-                        "Cannot parse numeric literal '{}'",
-                        n_str
-                    )));
-                }
-            }
-            AstSqlLiteralValue::Boolean(b) => DataType::Boolean(*b),
-            AstSqlLiteralValue::Null => DataType::Null,
-        };
+        match ast_cond_tree {
+            crate::core::query::sql::ast::ConditionTree::Comparison(ast_simple_cond) => {
+                let value = match &ast_simple_cond.value {
+                    AstSqlLiteralValue::String(s) => DataType::String(s.clone()),
+                    AstSqlLiteralValue::Number(n_str) => {
+                        if let Ok(i_val) = n_str.parse::<i64>() {
+                            DataType::Integer(i_val)
+                        } else if let Ok(f_val) = n_str.parse::<f64>() {
+                            DataType::Float(f_val)
+                        } else {
+                            return Err(OxidbError::SqlParsing(format!(
+                                "Cannot parse numeric literal '{}'",
+                                n_str
+                            )));
+                        }
+                    }
+                    AstSqlLiteralValue::Boolean(b) => DataType::Boolean(*b),
+                    AstSqlLiteralValue::Null => DataType::Null,
+                    AstSqlLiteralValue::Vector(_) => {
+                        // Optimizer might not handle vector comparisons directly yet.
+                        // This could be an error or a specific non-optimizable expression.
+                        return Err(OxidbError::NotImplemented {
+                            feature: "Vector comparison in optimizer expressions".to_string(),
+                        });
+                    }
+                };
 
-        Ok(Expression::CompareOp {
-            left: Box::new(Expression::Column(ast_cond.column.clone())),
-            op: ast_cond.operator.clone(),
-            right: Box::new(Expression::Literal(value)),
-        })
+                Ok(Expression::CompareOp {
+                    left: Box::new(Expression::Column(ast_simple_cond.column.clone())),
+                    op: ast_simple_cond.operator.clone(),
+                    right: Box::new(Expression::Literal(value)),
+                })
+            }
+            crate::core::query::sql::ast::ConditionTree::And(left_ast, right_ast) => {
+                let left_expr = self.ast_sql_condition_to_optimizer_expression(left_ast)?;
+                let right_expr = self.ast_sql_condition_to_optimizer_expression(right_ast)?;
+                Ok(Expression::BinaryOp {
+                    left: Box::new(left_expr),
+                    op: "AND".to_string(), // Optimizer uses "AND" for BinaryOp
+                    right: Box::new(right_expr),
+                })
+            }
+            crate::core::query::sql::ast::ConditionTree::Or(left_ast, right_ast) => {
+                let left_expr = self.ast_sql_condition_to_optimizer_expression(left_ast)?;
+                let right_expr = self.ast_sql_condition_to_optimizer_expression(right_ast)?;
+                Ok(Expression::BinaryOp {
+                    left: Box::new(left_expr),
+                    op: "OR".to_string(), // Optimizer uses "OR" for BinaryOp
+                    right: Box::new(right_expr),
+                })
+            }
+            crate::core::query::sql::ast::ConditionTree::Not(ast_cond) => {
+                let expr = self.ast_sql_condition_to_optimizer_expression(ast_cond)?;
+                Ok(Expression::UnaryOp {
+                    op: "NOT".to_string(),
+                    expr: Box::new(expr),
+                })
+            }
+        }
     }
 
     pub fn optimize(&self, plan: QueryPlanNode) -> Result<QueryPlanNode, OxidbError> {
@@ -323,6 +359,10 @@ pub enum Expression {
         left: Box<Expression>,
         op: String,
         right: Box<Expression>,
+    },
+    UnaryOp { // Added for NOT
+        op: String, // e.g., "NOT"
+        expr: Box<Expression>,
     },
 }
 

@@ -514,7 +514,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     pub(crate) fn handle_sql_delete(
         &mut self,
         table_name: String,
-        condition: Option<crate::core::query::commands::SqlCondition>,
+        condition: Option<crate::core::query::commands::SqlConditionTree>, // Changed
     ) -> Result<ExecutionResult, OxidbError> {
         let current_op_tx_id =
             self.transaction_manager.current_active_transaction_id().unwrap_or(TransactionId(0)); // Default to 0 for auto-commit
@@ -532,22 +532,20 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         // This suggests the planning/optimization pipeline might need to start earlier, from the Command itself.
         // For now, reconstruct a minimal AST for the optimizer.
 
-        let ast_condition = if let Some(cond) = condition {
-            Some(crate::core::query::sql::ast::Condition {
-                column: cond.column,
-                operator: cond.operator,
-                value: crate::core::query::sql::translator::translate_datatype_to_ast_literal(
-                    &cond.value,
+        let ast_condition_tree = match condition {
+            Some(sql_cond_tree) => Some(
+                super::select_execution::command_condition_tree_to_ast_condition_tree(
+                    &sql_cond_tree,
+                    self,
                 )?,
-            })
-        } else {
-            None
+            ),
+            None => None,
         };
 
         let ast_delete_stmt = crate::core::query::sql::ast::Statement::Delete(
             crate::core::query::sql::ast::DeleteStatement {
                 table_name: table_name.clone(), // Optimizer expects String
-                condition: ast_condition,
+                condition: ast_condition_tree,  // Changed
             },
         );
 

@@ -1,12 +1,9 @@
 use super::core::SqlParser;
 use crate::core::query::sql::ast::{
-    self,
-    CreateTableStatement,
-    SelectStatement,
-    Statement,
-    UpdateStatement, // Removed ColumnDef
+    self, AstColumnConstraint, AstDataType, AstLiteralValue, ColumnDef, CreateTableStatement,
+    DeleteStatement, DropTableStatement, InsertStatement, OrderByExpr, OrderDirection,
+    SelectColumn, SelectStatement, Statement, UpdateStatement,
 };
-use crate::core::query::sql::ast; // Already imported but ensure it's available for AstDataType
 use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::tokenizer::Token; // For matching specific tokens like Token::Where
 
@@ -78,7 +75,7 @@ impl SqlParser {
     }
 
     // Helper to expect a specific identifier, case-insensitive
-    fn expect_specific_identifier(
+    pub(super) fn expect_specific_identifier( // Changed to pub(super)
         &mut self,
         expected: &str,
         _error_msg_if_not_specific: &str,
@@ -121,6 +118,7 @@ impl SqlParser {
             Some(Token::Create) => self.parse_create_table_statement(),
             Some(Token::Insert) => self.parse_insert_statement(),
             Some(Token::Delete) => self.parse_delete_statement(), // Added
+            Some(Token::Drop) => self.parse_drop_table_statement(), // Added
             Some(_other_token) => {
                 return Err(SqlParseError::UnknownStatementType(self.current_token_pos()))
             }
@@ -289,8 +287,84 @@ impl SqlParser {
         } else {
             None
         };
+
+        // Parse ORDER BY
+        let order_by = if self.match_token(Token::Order) {
+            self.consume(Token::Order)?;
+            self.consume(Token::By)?;
+            Some(self.parse_order_by_list()?)
+        } else {
+            None
+        };
+
+        // Parse LIMIT
+        let limit = if self.match_token(Token::Limit) {
+            self.consume(Token::Limit)?;
+            // Expect a numeric literal for LIMIT
+            match self.parse_literal_value("Expected numeric literal for LIMIT clause")? {
+                AstLiteralValue::Number(n) => Some(AstLiteralValue::Number(n)),
+                other_literal => {
+                    return Err(SqlParseError::UnexpectedToken {
+                        expected: "numeric literal for LIMIT".to_string(),
+                        found: format!("{:?}", other_literal), // This might not be ideal if other_literal is complex
+                        position: self.current_token_pos() -1, // Position of the consumed literal
+                    });
+                }
+            }
+        } else {
+            None
+        };
+
         // Semicolon handled by main parse()
-        Ok(Statement::Select(SelectStatement { columns, source, condition }))
+        Ok(Statement::Select(SelectStatement {
+            columns,
+            source,
+            condition,
+            order_by,
+            limit,
+        }))
+    }
+
+    fn parse_order_by_list(&mut self) -> Result<Vec<OrderByExpr>, SqlParseError> {
+        let mut order_expressions = Vec::new();
+        loop {
+            let expr_name = self.expect_identifier("Expected column name for ORDER BY clause")?;
+            let mut direction: Option<OrderDirection> = None;
+
+            if self.match_token(Token::Asc) {
+                self.consume(Token::Asc)?;
+                direction = Some(OrderDirection::Asc);
+            } else if self.match_token(Token::Desc) {
+                self.consume(Token::Desc)?;
+                direction = Some(OrderDirection::Desc);
+            }
+
+            order_expressions.push(OrderByExpr {
+                expression: expr_name,
+                direction,
+            });
+
+            if !self.match_token(Token::Comma) {
+                break;
+            }
+            self.consume(Token::Comma)?;
+            // Ensure not a trailing comma before LIMIT or Semicolon or EOF
+            if self.match_token(Token::Limit) || self.match_token(Token::Semicolon) || self.is_at_end() {
+                 return Err(SqlParseError::UnexpectedToken {
+                    expected: "column name after comma in ORDER BY".to_string(),
+                    found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
+                    position: self.current_token_pos(),
+                });
+            }
+        }
+        if order_expressions.is_empty() {
+             return Err(SqlParseError::UnexpectedToken {
+                expected: "at least one column for ORDER BY clause".to_string(),
+                found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
+                position: self.current_token_pos(),
+            });
+        }
+        Ok(order_expressions)
     }
 
     pub(super) fn parse_update_statement(&mut self) -> Result<Statement, SqlParseError> {
@@ -323,5 +397,25 @@ impl SqlParser {
 
         // ast::DeleteStatement is now used.
         Ok(Statement::Delete(ast::DeleteStatement { table_name, condition }))
+    }
+
+    fn parse_drop_table_statement(&mut self) -> Result<Statement, SqlParseError> {
+        self.consume(Token::Drop)?;
+        self.consume(Token::Table)?;
+
+        let mut if_exists = false;
+        if self.peek_is_identifier_str("IF") {
+            self.consume_any().ok_or(SqlParseError::UnexpectedEOF)?; // Consume IF
+            self.expect_specific_identifier("EXISTS", "Expected EXISTS after IF in DROP TABLE")?;
+            if_exists = true;
+        }
+
+        let table_name = self.expect_identifier("Expected table name after DROP TABLE")?;
+
+        // Semicolon handled by main parse()
+        Ok(Statement::DropTable(DropTableStatement {
+            table_name,
+            if_exists,
+        }))
     }
 }

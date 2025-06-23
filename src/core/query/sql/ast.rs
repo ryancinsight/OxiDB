@@ -41,6 +41,20 @@ pub struct SelectStatement {
     pub columns: Vec<SelectColumn>, // Changed to Vec<SelectColumn> to support specific columns or *
     pub source: String,             // Table name
     pub condition: Option<ConditionTree>,
+    pub order_by: Option<Vec<OrderByExpr>>,
+    pub limit: Option<AstLiteralValue>, // Using AstLiteralValue for now, translator will ensure it's a number
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct OrderByExpr {
+    pub expression: String, // For now, simple column name. Could be more complex Ast::Expression later.
+    pub direction: Option<OrderDirection>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum OrderDirection {
+    Asc,
+    Desc,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -108,4 +122,11 @@ pub enum Statement {
     CreateTable(CreateTableStatement),
     Insert(InsertStatement),
     Delete(DeleteStatement),
+    DropTable(DropTableStatement),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct DropTableStatement {
+    pub table_name: String,
+    pub if_exists: bool, // Support IF EXISTS
 }

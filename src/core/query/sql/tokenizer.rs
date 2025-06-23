@@ -18,6 +18,12 @@ pub enum Token {
     True,
     False,
     Delete, // Added Delete Token
+    Drop,   // Added Drop Token
+    Order,  // Added Order Token
+    By,     // Added By Token
+    Asc,    // Added Asc Token
+    Desc,   // Added Desc Token
+    Limit,  // Added Limit Token
 
     // Literals
     Identifier(String),
@@ -55,6 +61,12 @@ impl fmt::Debug for Token {
             Token::True => write!(f, "True"),
             Token::False => write!(f, "False"),
             Token::Delete => write!(f, "Delete"), // Added for Delete Token
+            Token::Drop => write!(f, "Drop"),     // Added for Drop Token
+            Token::Order => write!(f, "Order"),   // Added for Order Token
+            Token::By => write!(f, "By"),         // Added for By Token
+            Token::Asc => write!(f, "Asc"),       // Added for Asc Token
+            Token::Desc => write!(f, "Desc"),     // Added for Desc Token
+            Token::Limit => write!(f, "Limit"),   // Added for Limit Token
             Token::Identifier(s) => f.debug_tuple("Identifier").field(s).finish(),
             Token::StringLiteral(s) => f.debug_tuple("StringLiteral").field(s).finish(),
             Token::NumericLiteral(s) => f.debug_tuple("NumericLiteral").field(s).finish(),
@@ -128,6 +140,12 @@ impl<'a> Tokenizer<'a> {
             "TRUE" => Token::BooleanLiteral(true),
             "FALSE" => Token::BooleanLiteral(false),
             "DELETE" => Token::Delete, // Added for Delete Token
+            "DROP" => Token::Drop,     // Added for Drop Token
+            "ORDER" => Token::Order,   // Added for Order Token
+            "BY" => Token::By,         // Added for By Token
+            "ASC" => Token::Asc,       // Added for Asc Token
+            "DESC" => Token::Desc,     // Added for Desc Token
+            "LIMIT" => Token::Limit,   // Added for Limit Token
             _ => Token::Identifier(ident.to_string()),
         })
     }

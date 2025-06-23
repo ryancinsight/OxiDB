@@ -2,10 +2,8 @@ use super::{ExecutionResult, QueryExecutor};
 use crate::core::common::serialization::{deserialize_data_type, serialize_data_type};
 use crate::core::common::types::TransactionId; // Added TransactionId import
 use crate::core::common::OxidbError; // Changed
-use crate::core::query::commands::{Key, SqlAssignment, SqlCondition};
-use crate::core::query::sql::ast::{
-    Condition as AstCondition, SelectColumn, Statement as AstStatement,
-};
+use crate::core::query::commands::{Key, SqlAssignment}; // Removed SqlCondition
+use crate::core::query::sql::ast::{SelectColumn, Statement as AstStatement}; // Removed Condition as AstCondition
 use crate::core::storage::engine::traits::KeyValueStore;
 use crate::core::transaction::{Transaction, TransactionState, UndoOperation}; // Adjusted path
 use crate::core::types::DataType;
@@ -34,7 +32,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         &mut self,
         source_table_name: String,
         assignments_cmd: Vec<SqlAssignment>,
-        condition_opt: Option<SqlCondition>,
+        condition_opt: Option<crate::core::query::commands::SqlConditionTree>, // Changed
     ) -> Result<ExecutionResult, OxidbError> {
         let plan_snapshot_id: TransactionId;
         let plan_committed_ids_vec: Vec<TransactionId>;
@@ -54,22 +52,25 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
         let ast_select_items = vec![SelectColumn::Asterisk];
 
-        // Convert Option<SqlCondition> to Option<ast::Condition>
-        let ast_sql_condition_for_select: Option<AstCondition> = match condition_opt.as_ref() {
-            Some(sql_cond) => Some(AstCondition {
-                column: sql_cond.column.clone(),
-                operator: sql_cond.operator.clone(),
-                value: datatype_to_ast_literal(&sql_cond.value)?, // Use the helper
-            }),
-            None => None,
-        };
+        // Convert Option<commands::SqlConditionTree> to Option<ast::ConditionTree>
+        let ast_condition_tree_opt: Option<crate::core::query::sql::ast::ConditionTree> =
+            match condition_opt.as_ref() {
+                Some(sql_cond_tree) => Some(
+                    super::select_execution::command_condition_tree_to_ast_condition_tree(
+                        sql_cond_tree,
+                        self,
+                    )?,
+                ),
+                None => None,
+            };
 
         let ast_statement_for_select =
             AstStatement::Select(crate::core::query::sql::ast::SelectStatement {
                 columns: ast_select_items,
                 source: source_table_name.clone(),
-                condition: ast_sql_condition_for_select,
-                // alias field is not present in sql::ast::SelectStatement
+                condition: ast_condition_tree_opt, // Changed
+                order_by: None,                    // Added
+                limit: None,                       // Added
             });
 
         let initial_select_plan = self.optimizer.build_initial_plan(&ast_statement_for_select)?;

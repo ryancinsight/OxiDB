@@ -102,7 +102,7 @@ impl SqlParser {
     // Parses a base condition, e.g., column = value or (condition_tree)
     fn parse_condition_factor(&mut self) -> Result<ast::ConditionTree, SqlParseError> {
         if self.peek_is_identifier_str("NOT") {
-            self.consume_any()?; // Consume NOT
+            self.consume_any().ok_or(SqlParseError::UnexpectedEOF)?; // Consume NOT
             let condition = self.parse_condition_factor()?; // Recurse for the condition to negate
             return Ok(ast::ConditionTree::Not(Box::new(condition)));
         }
@@ -124,7 +124,7 @@ impl SqlParser {
             if operator.eq_ignore_ascii_case("IS") {
                 let mut is_not = false;
                 if self.peek_is_identifier_str("NOT") {
-                    self.consume_any()?; // Consume "NOT"
+                    self.consume_any().ok_or(SqlParseError::UnexpectedEOF)?; // Consume "NOT"
                     is_not = true;
                 }
                 self.expect_specific_identifier("NULL", "Expected NULL after IS [NOT]")?;
@@ -149,7 +149,7 @@ impl SqlParser {
     fn parse_condition_term(&mut self) -> Result<ast::ConditionTree, SqlParseError> {
         let mut left = self.parse_condition_factor()?;
         while self.peek_is_identifier_str("AND") {
-            self.consume_any()?; // Consume AND
+            self.consume_any().ok_or(SqlParseError::UnexpectedEOF)?; // Consume AND
             let right = self.parse_condition_factor()?;
             left = ast::ConditionTree::And(Box::new(left), Box::new(right));
         }
@@ -161,7 +161,7 @@ impl SqlParser {
     pub(super) fn parse_condition_expr(&mut self) -> Result<ast::ConditionTree, SqlParseError> {
         let mut left = self.parse_condition_term()?;
         while self.peek_is_identifier_str("OR") {
-            self.consume_any()?; // Consume OR
+            self.consume_any().ok_or(SqlParseError::UnexpectedEOF)?; // Consume OR
             let right = self.parse_condition_term()?;
             left = ast::ConditionTree::Or(Box::new(left), Box::new(right));
         }
@@ -185,10 +185,12 @@ impl SqlParser {
                     if self.peek() == Some(&Token::RBracket) {
                         break;
                     }
+                    let next_token_str_for_err = format!("{:?}", self.peek().unwrap_or(&Token::EOF));
+                    let current_pos_for_err = self.current_token_pos();
                     self.consume(Token::Comma).map_err(|_e| SqlParseError::UnexpectedToken {
                         expected: "comma or ']' in vector literal".to_string(),
-                        found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
-                        position: self.current_token_pos()
+                        found: next_token_str_for_err,
+                        position: current_pos_for_err,
                     })?;
                     // Handle trailing comma before RBracket
                     if self.peek() == Some(&Token::RBracket) {
@@ -228,5 +230,7 @@ impl SqlParser {
             }),
             None => Err(SqlParseError::UnexpectedEOF) // Comma removed if it was here, or ensure no comma for last arm expression
         } // Closes match
-    }
+    } // Closes else block for LBracket check
+} // Closes fn parse_literal_value
+
 } // Closes impl SqlParser

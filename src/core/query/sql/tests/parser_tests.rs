@@ -1,5 +1,5 @@
 // Imports needed for the tests
-    use crate::core::query::sql::ast::{self, Assignment, AstColumnConstraint, AstDataType, AstLiteralValue, Condition, ConditionTree, CreateTableStatement, DeleteStatement, InsertStatement, SelectColumn, SelectStatement, Statement, UpdateStatement, ColumnDef};
+    use crate::core::query::sql::ast::{self, Assignment, AstColumnConstraint, AstDataType, AstLiteralValue, Condition, ConditionTree, CreateTableStatement, DeleteStatement, DropTableStatement, InsertStatement, OrderByExpr, OrderDirection, SelectColumn, SelectStatement, Statement, UpdateStatement, ColumnDef};
 use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::parser::SqlParser; // The struct being tested
 use crate::core::query::sql::tokenizer::{Token, Tokenizer}; // For tokenizing test strings // Error type for assertions
@@ -287,14 +287,15 @@ fn test_parse_create_table_with_constraints() {
             // id INTEGER PRIMARY KEY
             let id_col = &create_stmt.columns[0];
             assert_eq!(id_col.name, "id");
-            assert_eq!(id_col.data_type, "INTEGER");
+            assert_eq!(id_col.data_type, AstDataType::Integer);
             assert_eq!(id_col.constraints.len(), 1);
             assert!(id_col.constraints.contains(&AstColumnConstraint::PrimaryKey));
 
             // email VARCHAR(255) NOT NULL UNIQUE
             let email_col = &create_stmt.columns[1];
             assert_eq!(email_col.name, "email");
-            assert_eq!(email_col.data_type, "VARCHAR(255)");
+            // Parser simplifies VARCHAR(255) to Text as it doesn't store length parameter in AstDataType::Text
+            assert_eq!(email_col.data_type, AstDataType::Text);
             assert_eq!(email_col.constraints.len(), 2);
             assert!(email_col.constraints.contains(&AstColumnConstraint::NotNull));
             assert!(email_col.constraints.contains(&AstColumnConstraint::Unique));
@@ -1448,5 +1449,261 @@ fn test_create_table_empty_column_list_error() {
         assert_eq!(found.to_lowercase(), ")");
     } else {
         panic!("Wrong error type for empty column list in CREATE TABLE: {:?}", result);
+    }
+}
+
+// --- Tests for DROP TABLE ---
+
+#[test]
+fn test_parse_drop_table_simple() {
+    let sql = "DROP TABLE users;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::DropTable(drop_stmt) => {
+            assert_eq!(drop_stmt.table_name, "users");
+            assert!(!drop_stmt.if_exists);
+        }
+        _ => panic!("Expected DropTableStatement"),
+    }
+}
+
+#[test]
+fn test_parse_drop_table_if_exists() {
+    let sql = "DROP TABLE IF EXISTS customers;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::DropTable(drop_stmt) => {
+            assert_eq!(drop_stmt.table_name, "customers");
+            assert!(drop_stmt.if_exists);
+        }
+        _ => panic!("Expected DropTableStatement with IF EXISTS"),
+    }
+}
+
+#[test]
+fn test_parse_drop_table_missing_table_keyword() {
+    let sql = "DROP users;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
+        assert!(expected.to_lowercase().contains("table"));
+        assert!(found.to_lowercase().contains("identifier(\"users\")"));
+    } else {
+        panic!("Wrong error type for DROP missing TABLE: {:?}", result);
+    }
+}
+
+#[test]
+fn test_parse_drop_table_missing_table_name() {
+    let sql = "DROP TABLE;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)));
+     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
+        assert!(expected.to_lowercase().contains("expected table name"));
+        assert!(found.to_lowercase().contains("semicolon"));
+    } else if let Err(SqlParseError::UnexpectedEOF) = result {
+        // This can happen if input is "DROP TABLE"
+    }
+    else {
+        panic!("Wrong error type for DROP TABLE missing name: {:?}", result);
+    }
+}
+
+#[test]
+fn test_parse_drop_table_if_exists_missing_table_name() {
+    let sql = "DROP TABLE IF EXISTS;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+     assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)));
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
+        assert!(expected.to_lowercase().contains("expected table name"));
+        assert!(found.to_lowercase().contains("semicolon"));
+    } else if let Err(SqlParseError::UnexpectedEOF) = result {
+        // This can happen if input is "DROP TABLE IF EXISTS"
+    } else {
+        panic!("Wrong error type for DROP TABLE IF EXISTS missing name: {:?}", result);
+    }
+}
+
+#[test]
+fn test_parse_drop_table_if_missing_exists() {
+    let sql = "DROP TABLE IF customers;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
+        assert!(expected.to_lowercase().contains("exists"));
+        assert!(found.to_lowercase().contains("identifier(\"customers\")"));
+    } else {
+        panic!("Wrong error type for DROP TABLE IF missing EXISTS: {:?}", result);
+    }
+}
+
+// --- Tests for ORDER BY and LIMIT ---
+
+#[test]
+fn test_parse_select_order_by_simple() {
+    let sql = "SELECT name FROM users ORDER BY name;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.source, "users");
+            assert!(select_stmt.order_by.is_some());
+            let order_by_list = select_stmt.order_by.unwrap();
+            assert_eq!(order_by_list.len(), 1);
+            assert_eq!(order_by_list[0].expression, "name");
+            assert!(order_by_list[0].direction.is_none()); // Default ASC
+            assert!(select_stmt.limit.is_none());
+        }
+        _ => panic!("Expected SelectStatement with ORDER BY"),
+    }
+}
+
+#[test]
+fn test_parse_select_order_by_asc_desc() {
+    let sql = "SELECT id, score FROM results ORDER BY score DESC, id ASC;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Select(select_stmt) => {
+            assert!(select_stmt.order_by.is_some());
+            let order_by_list = select_stmt.order_by.unwrap();
+            assert_eq!(order_by_list.len(), 2);
+            assert_eq!(order_by_list[0].expression, "score");
+            assert_eq!(order_by_list[0].direction, Some(OrderDirection::Desc));
+            assert_eq!(order_by_list[1].expression, "id");
+            assert_eq!(order_by_list[1].direction, Some(OrderDirection::Asc));
+        }
+        _ => panic!("Expected SelectStatement with ORDER BY ASC/DESC"),
+    }
+}
+
+#[test]
+fn test_parse_select_limit_simple() {
+    let sql = "SELECT * FROM products LIMIT 10;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Select(select_stmt) => {
+            assert!(select_stmt.limit.is_some());
+            assert_eq!(select_stmt.limit.unwrap(), AstLiteralValue::Number("10".to_string()));
+            assert!(select_stmt.order_by.is_none());
+        }
+        _ => panic!("Expected SelectStatement with LIMIT"),
+    }
+}
+
+#[test]
+fn test_parse_select_order_by_limit() {
+    let sql = "SELECT name, age FROM people ORDER BY age DESC LIMIT 5;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Select(select_stmt) => {
+            assert!(select_stmt.order_by.is_some());
+            let order_by_list = select_stmt.order_by.unwrap();
+            assert_eq!(order_by_list.len(), 1);
+            assert_eq!(order_by_list[0].expression, "age");
+            assert_eq!(order_by_list[0].direction, Some(OrderDirection::Desc));
+
+            assert!(select_stmt.limit.is_some());
+            assert_eq!(select_stmt.limit.unwrap(), AstLiteralValue::Number("5".to_string()));
+        }
+        _ => panic!("Expected SelectStatement with ORDER BY and LIMIT"),
+    }
+}
+
+#[test]
+fn test_parse_select_limit_order_by_invalid_order() {
+    // LIMIT must come after ORDER BY if both are present
+    let sql = "SELECT name FROM people LIMIT 5 ORDER BY age DESC;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
+        assert!(expected.to_lowercase().contains("end of statement or eof"));
+        assert!(found.to_lowercase().contains("order"));
+    } else {
+        panic!("Wrong error type for LIMIT before ORDER BY: {:?}", result);
+    }
+}
+
+
+#[test]
+fn test_parse_order_by_missing_column() {
+    let sql = "SELECT * FROM t ORDER BY ;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
+    if let Err(SqlParseError::UnexpectedToken {expected, found, ..}) = result {
+        assert!(expected.to_lowercase().contains("at least one column for order by"));
+        assert!(found.to_lowercase().contains("semicolon"));
+    } else {
+        panic!("Wrong error: {:?}", result);
+    }
+}
+
+#[test]
+fn test_parse_order_by_trailing_comma() {
+    let sql = "SELECT * FROM t ORDER BY name, ;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
+     if let Err(SqlParseError::UnexpectedToken {expected, found, ..}) = result {
+        assert!(expected.to_lowercase().contains("column name after comma in order by"));
+        assert!(found.to_lowercase().contains("semicolon"));
+    } else {
+        panic!("Wrong error: {:?}", result);
+    }
+}
+
+#[test]
+fn test_parse_limit_missing_value() {
+    let sql = "SELECT * FROM t LIMIT ;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+     assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)));
+    if let Err(SqlParseError::UnexpectedToken {expected, found, ..}) = result {
+        assert!(expected.to_lowercase().contains("numeric literal for limit"));
+        assert!(found.to_lowercase().contains("semicolon"));
+    } else if let Err(SqlParseError::UnexpectedEOF) = result {
+        // ok if no semicolon
+    }
+    else {
+        panic!("Wrong error: {:?}", result);
+    }
+}
+
+#[test]
+fn test_parse_limit_non_numeric_value() {
+    let sql = "SELECT * FROM t LIMIT 'abc';";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
+    if let Err(SqlParseError::UnexpectedToken {expected, found, ..}) = result {
+        assert!(expected.to_lowercase().contains("numeric literal for limit"));
+        assert!(found.to_lowercase().contains("stringliteral(\"abc\")"));
+    } else {
+        panic!("Wrong error: {:?}", result);
     }
 }
