@@ -1,11 +1,5 @@
 // Imports needed for the tests
-use crate::core::query::sql::ast::{
-    AstColumnConstraint, // Added this import
-    AstLiteralValue,
-    SelectColumn,
-    // AST nodes for assertions
-    Statement,
-};
+    use crate::core::query::sql::ast::{self, Assignment, AstColumnConstraint, AstDataType, AstLiteralValue, Condition, ConditionTree, CreateTableStatement, DeleteStatement, InsertStatement, SelectColumn, SelectStatement, Statement, UpdateStatement, ColumnDef};
 use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::parser::SqlParser; // The struct being tested
 use crate::core::query::sql::tokenizer::{Token, Tokenizer}; // For tokenizing test strings // Error type for assertions
@@ -311,21 +305,21 @@ fn test_parse_create_table_with_constraints() {
             // age INT NOT NULL
             let age_col = &create_stmt.columns[2];
             assert_eq!(age_col.name, "age");
-            assert_eq!(age_col.data_type, "INT");
+            assert_eq!(age_col.data_type, AstDataType::Integer);
             assert_eq!(age_col.constraints.len(), 1);
             assert!(age_col.constraints.contains(&AstColumnConstraint::NotNull));
 
             // username TEXT UNIQUE
             let username_col = &create_stmt.columns[3];
             assert_eq!(username_col.name, "username");
-            assert_eq!(username_col.data_type, "TEXT");
+            assert_eq!(username_col.data_type, AstDataType::Text);
             assert_eq!(username_col.constraints.len(), 1);
             assert!(username_col.constraints.contains(&AstColumnConstraint::Unique));
 
             // bio TEXT (no constraints)
             let bio_col = &create_stmt.columns[4];
             assert_eq!(bio_col.name, "bio");
-            assert_eq!(bio_col.data_type, "TEXT");
+            assert_eq!(bio_col.data_type, AstDataType::Text);
             assert!(bio_col.constraints.is_empty());
         }
         _ => panic!("Expected CreateTableStatement"),
@@ -339,15 +333,17 @@ fn test_parse_create_table_primary_key_not_null_variants() {
     let test_cases = vec![
         (
             "id INTEGER PRIMARY KEY NOT NULL",
+            AstDataType::Integer,
             vec![AstColumnConstraint::PrimaryKey, AstColumnConstraint::NotNull],
         ),
         (
             "id INTEGER NOT NULL PRIMARY KEY",
+            AstDataType::Integer,
             vec![AstColumnConstraint::NotNull, AstColumnConstraint::PrimaryKey],
         ),
     ];
 
-    for (col_sql, expected_constraints) in test_cases {
+    for (col_sql, expected_data_type, expected_constraints) in test_cases {
         let sql = format!("CREATE TABLE test_pk ( {} );", col_sql);
         let tokens = tokenize_str(&sql);
         let mut parser = SqlParser::new(tokens);
@@ -357,6 +353,7 @@ fn test_parse_create_table_primary_key_not_null_variants() {
             Statement::CreateTable(create_stmt) => {
                 assert_eq!(create_stmt.columns.len(), 1);
                 let col_def = &create_stmt.columns[0];
+                assert_eq!(col_def.data_type, expected_data_type, "Data type mismatch for: {}", col_sql);
                 assert_eq!(
                     col_def.constraints, expected_constraints,
                     "Constraints mismatch for: {}",
@@ -367,6 +364,7 @@ fn test_parse_create_table_primary_key_not_null_variants() {
         }
     }
 }
+
 
 #[test]
 fn test_parse_create_table_no_constraints() {
@@ -379,15 +377,141 @@ fn test_parse_create_table_no_constraints() {
             assert_eq!(create_stmt.table_name, "simple");
             assert_eq!(create_stmt.columns.len(), 2);
             assert_eq!(create_stmt.columns[0].name, "id");
-            assert_eq!(create_stmt.columns[0].data_type, "INT");
+            assert_eq!(create_stmt.columns[0].data_type, self::ast::AstDataType::Integer);
             assert!(create_stmt.columns[0].constraints.is_empty());
             assert_eq!(create_stmt.columns[1].name, "name");
-            assert_eq!(create_stmt.columns[1].data_type, "VARCHAR");
+            assert_eq!(create_stmt.columns[1].data_type, self::ast::AstDataType::Text); // Assuming VARCHAR maps to Text
             assert!(create_stmt.columns[1].constraints.is_empty());
         }
         _ => panic!("Expected CreateTableStatement"),
     }
 }
+
+
+#[test]
+fn test_parse_create_table_with_vector_and_blob() {
+    let sql = "CREATE TABLE items (
+        id INT PRIMARY KEY,
+        feature_vector VECTOR[128],
+        image_data BLOB NOT NULL,
+        description TEXT
+    );";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+
+    match ast {
+        Statement::CreateTable(create_stmt) => {
+            assert_eq!(create_stmt.table_name, "items");
+            assert_eq!(create_stmt.columns.len(), 4);
+
+            let id_col = &create_stmt.columns[0];
+            assert_eq!(id_col.name, "id");
+            assert_eq!(id_col.data_type, self::ast::AstDataType::Integer);
+            assert!(id_col.constraints.contains(&AstColumnConstraint::PrimaryKey));
+
+            let vector_col = &create_stmt.columns[1];
+            assert_eq!(vector_col.name, "feature_vector");
+            assert_eq!(vector_col.data_type, self::ast::AstDataType::Vector{ dimension: 128 });
+            assert!(vector_col.constraints.is_empty());
+
+            let blob_col = &create_stmt.columns[2];
+            assert_eq!(blob_col.name, "image_data");
+            assert_eq!(blob_col.data_type, self::ast::AstDataType::Blob);
+            assert!(blob_col.constraints.contains(&AstColumnConstraint::NotNull));
+
+            let desc_col = &create_stmt.columns[3];
+            assert_eq!(desc_col.name, "description");
+            assert_eq!(desc_col.data_type, self::ast::AstDataType::Text);
+            assert!(desc_col.constraints.is_empty());
+        }
+        _ => panic!("Expected CreateTableStatement for vector/blob test"),
+    }
+}
+
+#[test]
+fn test_parse_create_table_invalid_vector_dimension() {
+    let sql_invalid_dim = "CREATE TABLE t (v VECTOR[0]);"; // Dimension 0
+    let tokens_invalid = tokenize_str(sql_invalid_dim);
+    let mut parser_invalid = SqlParser::new(tokens_invalid);
+    let result_invalid = parser_invalid.parse();
+    assert!(matches!(result_invalid, Err(SqlParseError::InvalidDataTypeParameter { .. })));
+    if let Err(SqlParseError::InvalidDataTypeParameter{type_name, parameter, reason,..}) = result_invalid {
+        assert_eq!(type_name, "VECTOR");
+        assert_eq!(parameter, "0");
+        assert!(reason.contains("greater than 0"));
+    } else {
+        panic!("Wrong error type for invalid vector dimension: {:?}", result_invalid);
+    }
+
+    let sql_non_numeric_dim = "CREATE TABLE t (v VECTOR[abc]);";
+    let tokens_non_numeric = tokenize_str(sql_non_numeric_dim);
+    let mut parser_non_numeric = SqlParser::new(tokens_non_numeric);
+    let result_non_numeric = parser_non_numeric.parse();
+     assert!(matches!(result_non_numeric, Err(SqlParseError::UnexpectedToken { .. })));
+     if let Err(SqlParseError::UnexpectedToken{expected, found, ..}) = result_non_numeric {
+        assert!(expected.contains("numeric dimension"));
+        assert!(found.to_lowercase().contains("identifier(\"abc\")"));
+    } else {
+        panic!("Wrong error type for non-numeric vector dimension: {:?}", result_non_numeric);
+    }
+}
+
+
+#[test]
+fn test_parse_delete_simple() {
+    let sql = "DELETE FROM users WHERE id = 100;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Delete(del_stmt) => {
+            assert_eq!(del_stmt.table_name, "users");
+            assert!(del_stmt.condition.is_some());
+            match del_stmt.condition.unwrap() {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "id");
+                    assert_eq!(cond.operator, "=");
+                    assert_eq!(cond.value, AstLiteralValue::Number("100".to_string()));
+                }
+                _ => panic!("Expected simple comparison in DELETE"),
+            }
+        }
+        _ => panic!("Expected DeleteStatement"),
+    }
+}
+
+#[test]
+fn test_parse_delete_no_where() {
+    let sql = "DELETE FROM logs;"; // Deletes all rows
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Delete(del_stmt) => {
+            assert_eq!(del_stmt.table_name, "logs");
+            assert!(del_stmt.condition.is_none());
+        }
+        _ => panic!("Expected DeleteStatement"),
+    }
+}
+
+#[test]
+fn test_parse_delete_complex_where() {
+    let sql = "DELETE FROM items WHERE (category = 'old' AND last_updated < 2020) OR stock_count = 0;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Delete(del_stmt) => {
+            assert_eq!(del_stmt.table_name, "items");
+            assert!(del_stmt.condition.is_some());
+            // Further checks on ConditionTree structure can be added, similar to SELECT test
+        }
+        _ => panic!("Expected DeleteStatement"),
+    }
+}
+
 
 #[test]
 fn test_parse_create_table_invalid_constraint_sequence() {
@@ -476,6 +600,143 @@ fn test_parse_select_with_where_clause() {
         _ => panic!("Expected SelectStatement"),
     }
 }
+
+
+#[test]
+fn test_parse_select_with_complex_where_clause_and_or_not_parens() {
+    let sql = "SELECT * FROM data WHERE (col1 = 10 AND col2 = 'test') OR NOT (col3 < 5.5);";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+
+    match ast {
+        Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.source, "data");
+            assert!(select_stmt.condition.is_some());
+            let condition_tree = select_stmt.condition.unwrap();
+
+            // Expected: OR( AND( (col1=10), (col2='test') ), NOT( (col3<5.5) ) )
+            match condition_tree {
+                ConditionTree::Or(left_or, right_or) => {
+                    // Left side of OR: AND( (col1=10), (col2='test') )
+                    match *left_or {
+                        ConditionTree::And(left_and, right_and) => {
+                            match *left_and {
+                                ConditionTree::Comparison(cond) => {
+                                    assert_eq!(cond.column, "col1");
+                                    assert_eq!(cond.operator, "=");
+                                    assert_eq!(cond.value, AstLiteralValue::Number("10".to_string()));
+                                }
+                                _ => panic!("Expected Comparison for col1=10"),
+                            }
+                            match *right_and {
+                                ConditionTree::Comparison(cond) => {
+                                    assert_eq!(cond.column, "col2");
+                                    assert_eq!(cond.operator, "=");
+                                    assert_eq!(cond.value, AstLiteralValue::String("test".to_string()));
+                                }
+                                _ => panic!("Expected Comparison for col2='test'"),
+                            }
+                        }
+                        _ => panic!("Expected AND on the left side of OR"),
+                    }
+
+                    // Right side of OR: NOT( (col3<5.5) )
+                    match *right_or {
+                        ConditionTree::Not(negated_condition) => {
+                            match *negated_condition {
+                                ConditionTree::Comparison(cond) => {
+                                    assert_eq!(cond.column, "col3");
+                                    assert_eq!(cond.operator, "<");
+                                    assert_eq!(cond.value, AstLiteralValue::Number("5.5".to_string()));
+                                }
+                                _ => panic!("Expected Comparison for col3<5.5 inside NOT"),
+                            }
+                        }
+                        _ => panic!("Expected NOT on the right side of OR"),
+                    }
+                }
+                _ => panic!("Expected top-level OR condition"),
+            }
+        }
+        _ => panic!("Expected SelectStatement"),
+    }
+}
+
+#[test]
+fn test_parse_select_where_precedence() {
+    // a = 1 OR b = 2 AND c = 3  =>  (a=1) OR ((b=2) AND (c=3))
+    let sql = "SELECT * FROM test WHERE a = 1 OR b = 2 AND c = 3;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Select(select_stmt) => {
+            let condition_tree = select_stmt.condition.unwrap();
+            match condition_tree {
+                ConditionTree::Or(left_or, right_or) => {
+                    match *left_or {
+                        ConditionTree::Comparison(cond) => assert_eq!(cond.column, "a"),
+                        _ => panic!("Expected comparison for 'a=1'"),
+                    }
+                    match *right_or {
+                        ConditionTree::And(left_and, right_and) => {
+                            match *left_and {
+                                ConditionTree::Comparison(cond) => assert_eq!(cond.column, "b"),
+                                _ => panic!("Expected comparison for 'b=2'"),
+                            }
+                            match *right_and {
+                                ConditionTree::Comparison(cond) => assert_eq!(cond.column, "c"),
+                                _ => panic!("Expected comparison for 'c=3'"),
+                            }
+                        }
+                        _ => panic!("Expected AND for 'b=2 AND c=3'"),
+                    }
+                }
+                _ => panic!("Expected OR at top level due to precedence"),
+            }
+        }
+        _ => panic!("Expected SelectStatement"),
+    }
+}
+
+
+#[test]
+fn test_parse_select_where_is_null_and_is_not_null() {
+    let sql = "SELECT * FROM test WHERE name IS NULL AND description IS NOT NULL;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+     match ast {
+        Statement::Select(select_stmt) => {
+            assert!(select_stmt.condition.is_some());
+            let condition_tree = select_stmt.condition.unwrap();
+            match condition_tree {
+                ConditionTree::And(left_and, right_and) => {
+                    match *left_and {
+                        ConditionTree::Comparison(cond) => {
+                            assert_eq!(cond.column, "name");
+                            assert_eq!(cond.operator, "IS NULL");
+                            assert_eq!(cond.value, AstLiteralValue::Null);
+                        }
+                        _ => panic!("Expected Comparison for name IS NULL"),
+                    }
+                    match *right_and {
+                        ConditionTree::Comparison(cond) => {
+                            assert_eq!(cond.column, "description");
+                            assert_eq!(cond.operator, "IS NOT NULL");
+                            assert_eq!(cond.value, AstLiteralValue::Null);
+                        }
+                        _ => panic!("Expected Comparison for description IS NOT NULL"),
+                    }
+                }
+                _ => panic!("Expected AND at top level"),
+            }
+        }
+        _ => panic!("Expected SelectStatement"),
+    }
+}
+
 
 #[test]
 fn test_parse_update_simple() {
@@ -979,10 +1240,213 @@ fn test_mixed_case_keywords() {
         Statement::Select(select_stmt) => {
             assert_eq!(select_stmt.columns, vec![SelectColumn::Asterisk]);
             assert_eq!(select_stmt.source, "my_table");
-            let cond = select_stmt.condition.unwrap();
-            assert_eq!(cond.column, "value");
-            assert_eq!(cond.value, AstLiteralValue::Boolean(true));
+            let cond_tree = select_stmt.condition.unwrap();
+            match cond_tree {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "value");
+                    assert_eq!(cond.value, AstLiteralValue::Boolean(true));
+                }
+                _ => panic!("Expected simple comparison")
+            }
         }
         _ => panic!("Expected SelectStatement"),
+    }
+}
+
+#[test]
+fn test_parse_vector_literal_simple() {
+    let sql = "SELECT * FROM vectors WHERE embedding = [1.0, 2.5, 3.0];";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Select(select_stmt) => {
+            let cond_tree = select_stmt.condition.unwrap();
+            match cond_tree {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "embedding");
+                    assert_eq!(cond.operator, "=");
+                    assert_eq!(
+                        cond.value,
+                        AstLiteralValue::Vector(vec![
+                            AstLiteralValue::Number("1.0".to_string()),
+                            AstLiteralValue::Number("2.5".to_string()),
+                            AstLiteralValue::Number("3.0".to_string()),
+                        ])
+                    );
+                }
+                _ => panic!("Expected simple comparison for vector literal"),
+            }
+        }
+        _ => panic!("Expected SelectStatement for vector literal test"),
+    }
+}
+
+#[test]
+fn test_parse_vector_literal_mixed_types_and_nested() {
+    // Assuming grammar allows nested vectors, though `AstLiteralValue::Vector` might not be used this way by engine.
+    // Current parser should handle syntax: `[1, [2,3], 'text']`
+    let sql = "INSERT INTO complex_data (val) VALUES ([1, ['nested_str', 2.0], true, NULL]);";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Insert(insert_stmt) => {
+            assert_eq!(insert_stmt.values.len(), 1);
+            assert_eq!(insert_stmt.values[0].len(), 1);
+            let vector_val = &insert_stmt.values[0][0];
+            match vector_val {
+                AstLiteralValue::Vector(elements) => {
+                    assert_eq!(elements.len(), 4);
+                    assert_eq!(elements[0], AstLiteralValue::Number("1".to_string()));
+                    match &elements[1] { // Nested vector
+                        AstLiteralValue::Vector(nested_elements) => {
+                            assert_eq!(nested_elements.len(), 2);
+                            assert_eq!(nested_elements[0], AstLiteralValue::String("nested_str".to_string()));
+                            assert_eq!(nested_elements[1], AstLiteralValue::Number("2.0".to_string()));
+                        }
+                        _ => panic!("Expected nested vector for second element"),
+                    }
+                    assert_eq!(elements[2], AstLiteralValue::Boolean(true));
+                    assert_eq!(elements[3], AstLiteralValue::Null);
+                }
+                _ => panic!("Expected top-level vector literal"),
+            }
+        }
+        _ => panic!("Expected InsertStatement for mixed/nested vector test"),
+    }
+}
+
+#[test]
+fn test_parse_vector_literal_empty() {
+    let sql = "SELECT * FROM items WHERE tags = [];";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+     match ast {
+        Statement::Select(select_stmt) => {
+            let cond_tree = select_stmt.condition.unwrap();
+            match cond_tree {
+                 ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "tags");
+                    assert_eq!(cond.operator, "=");
+                    assert_eq!(cond.value, AstLiteralValue::Vector(vec![]));
+                }
+                _ => panic!("Expected simple comparison for empty vector"),
+            }
+        }
+        _ => panic!("Expected SelectStatement for empty vector test"),
+    }
+}
+
+#[test]
+fn test_parse_vector_literal_trailing_comma_error() {
+    let sql = "SELECT * FROM items WHERE tags = [1, 2,];";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
+    if let Err(SqlParseError::UnexpectedToken{expected, found, position: _}) = result {
+        assert_eq!(expected.to_lowercase(), "value after comma in vector literal");
+        assert_eq!(found, "]");
+    } else {
+         panic!("Wrong error type for trailing comma in vector: {:?}", result);
+    }
+}
+
+#[test]
+fn test_parse_vector_literal_missing_comma_error() {
+    let sql = "SELECT * FROM items WHERE tags = [1 2];";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
+     if let Err(SqlParseError::UnexpectedToken{expected, found, position: _}) = result {
+        assert_eq!(expected.to_lowercase(), "comma or ']' in vector literal");
+        assert!(found.to_lowercase().contains("number(\"2\")"));
+    } else {
+         panic!("Wrong error type for missing comma in vector: {:?}", result);
+    }
+}
+
+#[test]
+fn test_parse_vector_literal_unclosed_error() {
+    let sql = "SELECT * FROM items WHERE tags = [1, 2";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse(); // This might be UnexpectedEOF or UnexpectedToken depending on semicolon
+    if sql.ends_with(';') {
+         assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
+         if let Err(SqlParseError::UnexpectedToken{expected, found, ..}) = result {
+            assert_eq!(expected.to_lowercase(), "comma or ']' in vector literal");
+            assert_eq!(found.to_lowercase(), "semicolon");
+        } else {
+            panic!("Wrong error for unclosed vector with semicolon: {:?}", result);
+        }
+    } else {
+        assert!(matches!(result, Err(SqlParseError::UnexpectedEOF)));
+    }
+}
+
+
+// --- Tests for specific error handling improvements from previous step ---
+
+#[test]
+fn test_select_trailing_comma_refined() {
+    let sql = "SELECT col1, FROM mytable;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
+        assert_eq!(expected.to_lowercase(), "column name or '*' after comma");
+        assert_eq!(found.to_lowercase(), "from");
+    } else {
+        panic!("Wrong error type for trailing comma in SELECT: {:?}", result);
+    }
+}
+
+#[test]
+fn test_update_trailing_comma_in_set_refined() {
+    let sql = "UPDATE mytable SET col1 = 1, WHERE id = 0;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
+        assert_eq!(expected.to_lowercase(), "column name for assignment after comma");
+        assert_eq!(found.to_lowercase(), "where");
+    } else {
+        panic!("Wrong error type for trailing comma in SET: {:?}", result);
+    }
+}
+
+#[test]
+fn test_create_table_trailing_comma_refined() {
+    let sql = "CREATE TABLE mytable (col1 INT, );";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
+        assert_eq!(expected.to_lowercase(), "column definition");
+        assert_eq!(found.to_lowercase(), ")");
+    } else {
+        panic!("Wrong error type for trailing comma in CREATE TABLE: {:?}", result);
+    }
+}
+
+#[test]
+fn test_create_table_empty_column_list_error() {
+    let sql = "CREATE TABLE mytable ();";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
+        assert_eq!(expected.to_lowercase(), "column definition");
+        assert_eq!(found.to_lowercase(), ")");
+    } else {
+        panic!("Wrong error type for empty column list in CREATE TABLE: {:?}", result);
     }
 }

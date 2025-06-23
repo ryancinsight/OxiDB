@@ -14,13 +14,15 @@ pub struct Condition {
     pub value: AstLiteralValue,
 }
 
-// More complex conditions (AND, OR, NOT) can be added later
-// pub enum ConditionTree {
-//     Single(Condition),
-//     And(Box<ConditionTree>, Box<ConditionTree>),
-//     Or(Box<ConditionTree>, Box<ConditionTree>),
-//     Not(Box<ConditionTree>),
-// }
+/// Represents a tree of conditions for WHERE clauses.
+#[derive(Debug, PartialEq, Clone)]
+pub enum ConditionTree {
+    Comparison(Condition), // A simple comparison like column = value
+    And(Box<ConditionTree>, Box<ConditionTree>),
+    Or(Box<ConditionTree>, Box<ConditionTree>),
+    Not(Box<ConditionTree>),
+    // Parenthesized(Box<ConditionTree>) // Can be implicitly handled by recursion and precedence
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Assignment {
@@ -38,14 +40,14 @@ pub enum SelectColumn {
 pub struct SelectStatement {
     pub columns: Vec<SelectColumn>, // Changed to Vec<SelectColumn> to support specific columns or *
     pub source: String,             // Table name
-    pub condition: Option<Condition>, // Simplified: Option<ConditionTree> for complex conditions
+    pub condition: Option<ConditionTree>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct UpdateStatement {
     pub source: String, // Table name
     pub assignments: Vec<Assignment>,
-    pub condition: Option<Condition>, // Simplified: Option<ConditionTree> for complex conditions
+    pub condition: Option<ConditionTree>,
 }
 
 // Future statements: InsertStatement, DeleteStatement, CreateTableStatement etc.
@@ -96,7 +98,7 @@ pub struct InsertStatement {
 #[derive(Debug, PartialEq, Clone)]
 pub struct DeleteStatement {
     pub table_name: String,
-    pub condition: Option<Condition>,
+    pub condition: Option<ConditionTree>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

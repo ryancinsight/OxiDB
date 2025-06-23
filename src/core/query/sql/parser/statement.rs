@@ -285,7 +285,7 @@ impl SqlParser {
         let source = self.expect_identifier("Expected table name after FROM")?;
         let condition = if self.match_token(Token::Where) {
             self.consume(Token::Where)?;
-            Some(self.parse_condition()?)
+            Some(self.parse_condition_expr()?)
         } else {
             None
         };
@@ -300,7 +300,7 @@ impl SqlParser {
         let assignments = self.parse_assignment_list()?;
         let condition = if self.match_token(Token::Where) {
             self.consume(Token::Where)?;
-            Some(self.parse_condition()?)
+            Some(self.parse_condition_expr()?)
         } else {
             None
         };
@@ -315,7 +315,7 @@ impl SqlParser {
         let table_name = self.expect_identifier("Expected table name after DELETE FROM")?;
         let condition = if self.match_token(Token::Where) {
             self.consume(Token::Where)?;
-            Some(self.parse_condition()?)
+            Some(self.parse_condition_expr()?)
         } else {
             None // Or error if WHERE clause is mandatory for DELETE
         };
