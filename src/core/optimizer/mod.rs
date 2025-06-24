@@ -118,6 +118,11 @@ impl Optimizer {
                     table_name: delete_ast.table_name.clone(),
                 })
             }
+            AstStatement::DropTable(_) => {
+                Err(OxidbError::NotImplemented {
+                    feature: "Query planning for DROP TABLE statements".to_string(),
+                })
+            }
         }
     }
 

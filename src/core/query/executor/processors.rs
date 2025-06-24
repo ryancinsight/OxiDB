@@ -224,6 +224,17 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
             Command::SqlDelete { table_name, condition } => {
                 executor.handle_sql_delete(table_name.clone(), condition.clone())
             }
+            Command::SimilaritySearch { table_name, vector_column_name, query_vector, top_k } => {
+                // TODO: Implement actual call to an executor method for similarity search
+                // For now, using a placeholder. This will likely involve calling a new method on `executor`.
+                // executor.handle_similarity_search(table_name.clone(), vector_column_name.clone(), query_vector.clone(), *top_k)
+                Err(OxidbError::NotImplemented { feature: "SimilaritySearch command processing".to_string() })
+            }
+            Command::DropTable { table_name, if_exists } => {
+                // TODO: Implement actual call to an executor method for drop table
+                // executor.handle_drop_table(table_name.clone(), *if_exists)
+                Err(OxidbError::NotImplemented { feature: "DropTable command processing".to_string() })
+            }
         }
     }
 }

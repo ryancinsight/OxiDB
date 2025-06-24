@@ -113,15 +113,13 @@ impl SqlParser {
             self.consume(Token::RParen)?;
             Ok(condition)
         } else {
-            // Base case: a simple comparison
+            // Base case: a simple comparison or IS NULL / IS NOT NULL
             let column = self.expect_identifier("Expected column name, 'NOT', or '(' for condition")?;
-            let operator = self.expect_operator_any(
-                &["=", "!=", "<", ">", "<=", ">=","IS"], // Added "IS" for "IS NULL"
-                "Expected comparison operator in condition",
-            )?;
 
-            // Handle "IS NULL" and "IS NOT NULL"
-            if operator.eq_ignore_ascii_case("IS") {
+            // Check for IS NULL / IS NOT NULL specifically
+            if self.peek_is_identifier_str("IS") {
+                self.consume_any().ok_or(SqlParseError::UnexpectedEOF)?; // Consume IS
+
                 let mut is_not = false;
                 if self.peek_is_identifier_str("NOT") {
                     self.consume_any().ok_or(SqlParseError::UnexpectedEOF)?; // Consume "NOT"
@@ -129,16 +127,19 @@ impl SqlParser {
                 }
                 self.expect_specific_identifier("NULL", "Expected NULL after IS [NOT]")?;
 
-                // We can represent "IS NULL" as Op("=", Value(Null)) and "IS NOT NULL" as Op("!=", Value(Null))
-                // Or add specific variants to ConditionTree/Condition if preferred.
-                // For now, let's use existing Condition struct with a special operator.
                 let final_operator = if is_not { "IS NOT NULL".to_string() } else { "IS NULL".to_string() };
-                 return Ok(ast::ConditionTree::Comparison(Condition {
+                return Ok(ast::ConditionTree::Comparison(Condition {
                     column,
                     operator: final_operator,
                     value: ast::AstLiteralValue::Null, // Value is irrelevant for IS NULL/IS NOT NULL
                 }));
             }
+
+            // If not "IS", then expect a standard comparison operator
+            let operator = self.expect_operator_any(
+                &["=", "!=", "<", ">", "<=", ">="], // "IS" removed from here
+                "Expected comparison operator in condition",
+            )?;
 
             let value = self.parse_literal_value("Expected value for condition")?;
             Ok(ast::ConditionTree::Comparison(Condition { column, operator, value }))

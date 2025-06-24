@@ -67,10 +67,10 @@ impl BPlusTreeNode {
         matches!(self, BPlusTreeNode::Leaf { .. })
     }
 
-    pub fn get_children(&self) -> Result<&Vec<PageId>, &'static str> {
+    pub fn get_children(&self) -> Result<&Vec<PageId>, super::tree::OxidbError> { // Changed error type
         match self {
             BPlusTreeNode::Internal { children, .. } => Ok(children),
-            BPlusTreeNode::Leaf { .. } => Err("Leaf nodes do not have children."),
+            BPlusTreeNode::Leaf { .. } => Err(super::tree::OxidbError::TreeLogicError("Leaf nodes do not have children.".to_string())), // Changed error type
         }
     }
 

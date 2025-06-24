@@ -157,6 +157,7 @@ impl Oxidb {
                     DataType::JsonBlob(json_val) => serde_json::to_string(&json_val)
                         .unwrap_or_else(|e| format!("Error serializing JsonBlob: {}", e)),
                     DataType::RawBytes(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+                    DataType::Vector(_) => todo!("Handle DataType::Vector in Oxidb::get"),
                 }))
             }
             Ok(unexpected_result) => Err(OxidbError::Internal(format!(

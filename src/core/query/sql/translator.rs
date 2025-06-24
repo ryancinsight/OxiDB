@@ -189,6 +189,7 @@ pub fn translate_datatype_to_ast_literal(
         DataType::Map(_) | DataType::JsonBlob(_) => Err(OxidbError::SqlParsing(
             "Cannot translate complex DataType (Map/JsonBlob) to simple AST literal for conditions.".to_string(),
         )),
+        DataType::Vector(_) => todo!("Handle DataType::Vector in translate_datatype_to_ast_literal"),
     }
 }
 

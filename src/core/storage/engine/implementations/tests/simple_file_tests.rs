@@ -1141,21 +1141,25 @@ fn test_physical_wal_lsn_integration() {
             column: "name".to_string(),
             value: crate::core::types::DataType::String("Alicia".to_string()),
         }],
-        condition: Some(crate::core::query::commands::SqlCondition {
-            column: "id".to_string(),
-            operator: "=".to_string(),
-            value: crate::core::types::DataType::Integer(1),
-        }),
+        condition: Some(crate::core::query::commands::SqlConditionTree::Comparison(
+            crate::core::query::commands::SqlSimpleCondition {
+                column: "id".to_string(),
+                operator: "=".to_string(),
+                value: crate::core::types::DataType::Integer(1),
+            },
+        )),
     })
     .expect("UPDATE failed");
 
     exec.execute_command(crate::core::query::commands::Command::SqlDelete {
         table_name: "test_lsn".to_string(),
-        condition: Some(crate::core::query::commands::SqlCondition {
-            column: "id".to_string(),
-            operator: "=".to_string(),
-            value: crate::core::types::DataType::Integer(2),
-        }),
+        condition: Some(crate::core::query::commands::SqlConditionTree::Comparison(
+            crate::core::query::commands::SqlSimpleCondition {
+                column: "id".to_string(),
+                operator: "=".to_string(),
+                value: crate::core::types::DataType::Integer(2),
+            },
+        )),
     })
     .expect("DELETE failed");
 
@@ -1179,11 +1183,13 @@ fn test_physical_wal_lsn_integration() {
             column: "name".to_string(),
             value: crate::core::types::DataType::String("AliceNewName".to_string()),
         }],
-        condition: Some(crate::core::query::commands::SqlCondition {
-            column: "id".to_string(),
-            operator: "=".to_string(),
-            value: crate::core::types::DataType::Integer(1),
-        }),
+        condition: Some(crate::core::query::commands::SqlConditionTree::Comparison(
+            crate::core::query::commands::SqlSimpleCondition {
+                column: "id".to_string(),
+                operator: "=".to_string(),
+                value: crate::core::types::DataType::Integer(1),
+            },
+        )),
     })
     .expect("TX1: UPDATE Alice failed");
 

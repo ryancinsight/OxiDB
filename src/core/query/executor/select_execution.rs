@@ -92,7 +92,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 }
 
 // Helper function to convert commands::SqlConditionTree to ast::ConditionTree
-fn command_condition_tree_to_ast_condition_tree<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static>(
+pub(super) fn command_condition_tree_to_ast_condition_tree<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static>(
     sql_tree: &crate::core::query::commands::SqlConditionTree,
     _executor: &QueryExecutor<S>, // May be needed if type conversion requires context, e.g. schema
 ) -> Result<crate::core::query::sql::ast::ConditionTree, OxidbError> {

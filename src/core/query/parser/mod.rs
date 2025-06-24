@@ -497,7 +497,7 @@ mod tests {
     fn test_main_parse_select_simple_sql() {
         let result = parse_query_string("SELECT name FROM users;");
         match result {
-            Ok(Command::Select { columns, source, condition }) => {
+            Ok(Command::Select { columns, source, condition, order_by: _, limit: _ }) => {
                 assert_eq!(columns, SelectColumnSpec::Specific(vec!["name".to_string()]));
                 assert_eq!(source, "users");
                 assert!(condition.is_none());
@@ -511,14 +511,18 @@ mod tests {
     fn test_main_parse_select_star_sql() {
         let result = parse_query_string("SELECT * FROM products WHERE id = 10;");
         match result {
-            Ok(Command::Select { columns, source, condition }) => {
+            Ok(Command::Select { columns, source, condition, order_by: _, limit: _ }) => {
                 assert_eq!(columns, SelectColumnSpec::All);
                 assert_eq!(source, "products");
                 assert!(condition.is_some());
-                let cond = condition.unwrap();
-                assert_eq!(cond.column, "id");
-                assert_eq!(cond.operator, "=");
-                assert_eq!(cond.value, DataType::Integer(10));
+                match condition.unwrap() {
+                    crate::core::query::commands::SqlConditionTree::Comparison(cond) => {
+                        assert_eq!(cond.column, "id");
+                        assert_eq!(cond.operator, "=");
+                        assert_eq!(cond.value, DataType::Integer(10));
+                    }
+                    _ => panic!("Expected SqlConditionTree::Comparison"),
+                }
             }
             Err(e) => panic!("Expected SELECT * to parse, got error: {:?}", e),
             _ => panic!("Expected Command::Select for SQL with WHERE"),
@@ -537,9 +541,13 @@ mod tests {
                 assert_eq!(assignments[0].column, "email");
                 assert_eq!(assignments[0].value, DataType::String("new@example.com".to_string()));
                 assert!(condition.is_some());
-                let cond = condition.unwrap();
-                assert_eq!(cond.column, "name");
-                assert_eq!(cond.value, DataType::String("old name".to_string()));
+                match condition.unwrap() {
+                    crate::core::query::commands::SqlConditionTree::Comparison(cond) => {
+                        assert_eq!(cond.column, "name");
+                        assert_eq!(cond.value, DataType::String("old name".to_string()));
+                    }
+                    _ => panic!("Expected SqlConditionTree::Comparison"),
+                }
             }
             Err(e) => panic!("Expected UPDATE to parse, got error: {:?}", e),
             _ => panic!("Expected Command::Update for SQL"),

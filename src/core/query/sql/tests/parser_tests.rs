@@ -593,10 +593,14 @@ fn test_parse_select_with_where_clause() {
             assert_eq!(select_stmt.source, "products");
             assert_eq!(select_stmt.columns, vec![SelectColumn::ColumnName("id".to_string())]);
             assert!(select_stmt.condition.is_some());
-            let cond = select_stmt.condition.unwrap();
-            assert_eq!(cond.column, "price");
-            assert_eq!(cond.operator, "=");
-            assert_eq!(cond.value, AstLiteralValue::Number("10.99".to_string()));
+            match select_stmt.condition.unwrap() {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "price");
+                    assert_eq!(cond.operator, "=");
+                    assert_eq!(cond.value, AstLiteralValue::Number("10.99".to_string()));
+                }
+                _ => panic!("Expected ConditionTree::Comparison for price condition"),
+            }
         }
         _ => panic!("Expected SelectStatement"),
     }
@@ -618,11 +622,11 @@ fn test_parse_select_with_complex_where_clause_and_or_not_parens() {
 
             // Expected: OR( AND( (col1=10), (col2='test') ), NOT( (col3<5.5) ) )
             match condition_tree {
-                ConditionTree::Or(left_or, right_or) => {
+                ConditionTree::Or(left_or_box, right_or_box) => {
                     // Left side of OR: AND( (col1=10), (col2='test') )
-                    match *left_or {
-                        ConditionTree::And(left_and, right_and) => {
-                            match *left_and {
+                    match *left_or_box {
+                        ConditionTree::And(left_and_box, right_and_box) => {
+                            match *left_and_box {
                                 ConditionTree::Comparison(cond) => {
                                     assert_eq!(cond.column, "col1");
                                     assert_eq!(cond.operator, "=");
@@ -630,7 +634,7 @@ fn test_parse_select_with_complex_where_clause_and_or_not_parens() {
                                 }
                                 _ => panic!("Expected Comparison for col1=10"),
                             }
-                            match *right_and {
+                            match *right_and_box {
                                 ConditionTree::Comparison(cond) => {
                                     assert_eq!(cond.column, "col2");
                                     assert_eq!(cond.operator, "=");
@@ -643,9 +647,9 @@ fn test_parse_select_with_complex_where_clause_and_or_not_parens() {
                     }
 
                     // Right side of OR: NOT( (col3<5.5) )
-                    match *right_or {
-                        ConditionTree::Not(negated_condition) => {
-                            match *negated_condition {
+                    match *right_or_box {
+                        ConditionTree::Not(negated_condition_box) => {
+                            match *negated_condition_box {
                                 ConditionTree::Comparison(cond) => {
                                     assert_eq!(cond.column, "col3");
                                     assert_eq!(cond.operator, "<");
@@ -675,19 +679,31 @@ fn test_parse_select_where_precedence() {
         Statement::Select(select_stmt) => {
             let condition_tree = select_stmt.condition.unwrap();
             match condition_tree {
-                ConditionTree::Or(left_or, right_or) => {
-                    match *left_or {
-                        ConditionTree::Comparison(cond) => assert_eq!(cond.column, "a"),
+                ConditionTree::Or(left_or_box, right_or_box) => {
+                    match *left_or_box {
+                        ConditionTree::Comparison(cond) => {
+                            assert_eq!(cond.column, "a");
+                            assert_eq!(cond.operator, "="); // Added operator check
+                            assert_eq!(cond.value, AstLiteralValue::Number("1".to_string())); // Added value check
+                        }
                         _ => panic!("Expected comparison for 'a=1'"),
                     }
-                    match *right_or {
-                        ConditionTree::And(left_and, right_and) => {
-                            match *left_and {
-                                ConditionTree::Comparison(cond) => assert_eq!(cond.column, "b"),
+                    match *right_or_box {
+                        ConditionTree::And(left_and_box, right_and_box) => {
+                            match *left_and_box {
+                                ConditionTree::Comparison(cond) => {
+                                    assert_eq!(cond.column, "b");
+                                    assert_eq!(cond.operator, "="); // Added operator check
+                                    assert_eq!(cond.value, AstLiteralValue::Number("2".to_string())); // Added value check
+                                }
                                 _ => panic!("Expected comparison for 'b=2'"),
                             }
-                            match *right_and {
-                                ConditionTree::Comparison(cond) => assert_eq!(cond.column, "c"),
+                            match *right_and_box {
+                                ConditionTree::Comparison(cond) => {
+                                    assert_eq!(cond.column, "c");
+                                    assert_eq!(cond.operator, "="); // Added operator check
+                                    assert_eq!(cond.value, AstLiteralValue::Number("3".to_string())); // Added value check
+                                }
                                 _ => panic!("Expected comparison for 'c=3'"),
                             }
                         }
@@ -713,8 +729,8 @@ fn test_parse_select_where_is_null_and_is_not_null() {
             assert!(select_stmt.condition.is_some());
             let condition_tree = select_stmt.condition.unwrap();
             match condition_tree {
-                ConditionTree::And(left_and, right_and) => {
-                    match *left_and {
+                ConditionTree::And(left_and_box, right_and_box) => {
+                    match *left_and_box {
                         ConditionTree::Comparison(cond) => {
                             assert_eq!(cond.column, "name");
                             assert_eq!(cond.operator, "IS NULL");
@@ -722,7 +738,7 @@ fn test_parse_select_where_is_null_and_is_not_null() {
                         }
                         _ => panic!("Expected Comparison for name IS NULL"),
                     }
-                    match *right_and {
+                    match *right_and_box {
                         ConditionTree::Comparison(cond) => {
                             assert_eq!(cond.column, "description");
                             assert_eq!(cond.operator, "IS NOT NULL");
@@ -754,10 +770,14 @@ fn test_parse_update_simple() {
                 AstLiteralValue::String("New Name".to_string())
             );
             assert!(update_stmt.condition.is_some());
-            let cond = update_stmt.condition.unwrap();
-            assert_eq!(cond.column, "id");
-            assert_eq!(cond.operator, "=");
-            assert_eq!(cond.value, AstLiteralValue::Number("1".to_string()));
+            match update_stmt.condition.unwrap() {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "id");
+                    assert_eq!(cond.operator, "=");
+                    assert_eq!(cond.value, AstLiteralValue::Number("1".to_string()));
+                }
+                _ => panic!("Expected ConditionTree::Comparison for id condition"),
+            }
         }
         _ => panic!("Expected UpdateStatement"),
     }
@@ -786,10 +806,14 @@ fn test_parse_update_multiple_assignments() {
             );
 
             assert!(update_stmt.condition.is_some());
-            let cond = update_stmt.condition.unwrap();
-            assert_eq!(cond.column, "category");
-            assert_eq!(cond.operator, "=");
-            assert_eq!(cond.value, AstLiteralValue::String("electronics".to_string()));
+            match update_stmt.condition.unwrap() {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "category");
+                    assert_eq!(cond.operator, "=");
+                    assert_eq!(cond.value, AstLiteralValue::String("electronics".to_string()));
+                }
+                _ => panic!("Expected ConditionTree::Comparison for category condition"),
+            }
         }
         _ => panic!("Expected UpdateStatement"),
     }
@@ -1054,10 +1078,14 @@ fn test_select_empty_string_literal() {
     let result = parser.parse().unwrap();
     match result {
         Statement::Select(select_stmt) => {
-            let cond = select_stmt.condition.unwrap();
-            assert_eq!(cond.column, "name");
-            assert_eq!(cond.operator, "=");
-            assert_eq!(cond.value, AstLiteralValue::String("".to_string()));
+            match select_stmt.condition.unwrap() {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "name");
+                    assert_eq!(cond.operator, "=");
+                    assert_eq!(cond.value, AstLiteralValue::String("".to_string()));
+                }
+                _ => panic!("Expected ConditionTree::Comparison for name condition"),
+            }
         }
         _ => panic!("Expected SelectStatement"),
     }
@@ -1072,10 +1100,14 @@ fn test_update_set_null_value() {
         Statement::Update(update_stmt) => {
             assert_eq!(update_stmt.assignments[0].column, "value");
             assert_eq!(update_stmt.assignments[0].value, AstLiteralValue::Null);
-            let cond = update_stmt.condition.unwrap();
-            assert_eq!(cond.column, "id");
-            assert_eq!(cond.operator, "=");
-            assert_eq!(cond.value, AstLiteralValue::Number("1".to_string()));
+            match update_stmt.condition.unwrap() {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "id");
+                    assert_eq!(cond.operator, "=");
+                    assert_eq!(cond.value, AstLiteralValue::Number("1".to_string()));
+                }
+                _ => panic!("Expected ConditionTree::Comparison for id condition"),
+            }
         }
         _ => panic!("Expected UpdateStatement"),
     }
@@ -1088,10 +1120,14 @@ fn test_select_where_null_value() {
     let result = parser.parse().unwrap();
     match result {
         Statement::Select(select_stmt) => {
-            let cond = select_stmt.condition.unwrap();
-            assert_eq!(cond.column, "data");
-            assert_eq!(cond.operator, "=");
-            assert_eq!(cond.value, AstLiteralValue::Null);
+            match select_stmt.condition.unwrap() {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "data");
+                    assert_eq!(cond.operator, "=");
+                    assert_eq!(cond.value, AstLiteralValue::Null);
+                }
+                _ => panic!("Expected ConditionTree::Comparison for data condition"),
+            }
         }
         _ => panic!("Expected SelectStatement"),
     }
@@ -1106,9 +1142,14 @@ fn test_identifier_as_substring_of_keyword() {
         Statement::Select(select_stmt) => {
             assert_eq!(select_stmt.columns, vec![SelectColumn::ColumnName("selector".to_string())]);
             assert_eq!(select_stmt.source, "selections");
-            let cond = select_stmt.condition.unwrap();
-            assert_eq!(cond.column, "selector_id");
-            assert_eq!(cond.value, AstLiteralValue::Number("1".to_string()));
+            match select_stmt.condition.unwrap() {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "selector_id");
+                    assert_eq!(cond.operator, "="); // Added operator check, was missing
+                    assert_eq!(cond.value, AstLiteralValue::Number("1".to_string()));
+                }
+                _ => panic!("Expected ConditionTree::Comparison for selector_id condition"),
+            }
         }
         _ => panic!("Expected SelectStatement"),
     }
@@ -1245,6 +1286,7 @@ fn test_mixed_case_keywords() {
             match cond_tree {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "value");
+                    assert_eq!(cond.operator, "="); // Added operator check
                     assert_eq!(cond.value, AstLiteralValue::Boolean(true));
                 }
                 _ => panic!("Expected simple comparison")
@@ -1262,8 +1304,7 @@ fn test_parse_vector_literal_simple() {
     let ast = parser.parse().unwrap();
     match ast {
         Statement::Select(select_stmt) => {
-            let cond_tree = select_stmt.condition.unwrap();
-            match cond_tree {
+            match select_stmt.condition.unwrap() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "embedding");
                     assert_eq!(cond.operator, "=");
@@ -1326,8 +1367,7 @@ fn test_parse_vector_literal_empty() {
     let ast = parser.parse().unwrap();
      match ast {
         Statement::Select(select_stmt) => {
-            let cond_tree = select_stmt.condition.unwrap();
-            match cond_tree {
+            match select_stmt.condition.unwrap() {
                  ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "tags");
                     assert_eq!(cond.operator, "=");

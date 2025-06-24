@@ -39,6 +39,7 @@ fn map_btree_error_to_common(btree_error: tree::OxidbError) -> CommonError {
             CommonError::Index(format!("BTree Logic Error: {}", s))
         }
         tree::OxidbError::BorrowError(s) => CommonError::Lock(format!("BTree Borrow Error: {}", s)),
+        tree::OxidbError::Generic(s) => CommonError::Internal(format!("BTree Generic Error: {}", s)),
     }
 }
 

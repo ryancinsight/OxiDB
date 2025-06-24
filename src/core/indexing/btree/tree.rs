@@ -27,6 +27,28 @@ pub enum OxidbError {
     UnexpectedNodeType,
     TreeLogicError(String),
     BorrowError(String), // For RefCell borrow errors
+    Generic(String),     // For general string errors
+}
+
+impl std::fmt::Display for OxidbError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OxidbError::Io(err) => write!(f, "BTree IO error: {}", err),
+            OxidbError::Serialization(err) => write!(f, "BTree Serialization error: {:?}", err),
+            OxidbError::NodeNotFound(page_id) => write!(f, "BTree Node not found: {}", page_id),
+            OxidbError::PageFull(msg) => write!(f, "BTree Page full: {}", msg),
+            OxidbError::UnexpectedNodeType => write!(f, "BTree Unexpected node type"),
+            OxidbError::TreeLogicError(msg) => write!(f, "BTree logic error: {}", msg),
+            OxidbError::BorrowError(msg) => write!(f, "BTree borrow error: {}", msg),
+            OxidbError::Generic(msg) => write!(f, "BTree generic error: {}", msg),
+        }
+    }
+}
+
+impl From<&str> for OxidbError {
+    fn from(s: &str) -> Self {
+        OxidbError::Generic(s.to_string())
+    }
 }
 
 impl From<std::cell::BorrowMutError> for OxidbError {
@@ -1432,7 +1454,7 @@ mod tests {
         //  L0[01,02,03], L1[04,05,06], L2[07,08,09], L3[10,11,12], L4[13,14,15]
         // Insert 01..15
         let keys_to_insert: Vec<&str> = (1..=15)
-            .map(|i| Box::leak(format!("{:02}", i).into_boxed_str()))
+            .map(|i| &*Box::leak(format!("{:02}", i).into_boxed_str()) as &str)
             .collect();
         insert_keys(&mut tree, &keys_to_insert)?;
 
@@ -1742,7 +1764,7 @@ mod tests {
         // Approx 3 keys per leaf, 2 leaves per internal = 6 keys per internal branch
         // 3 internal branches = 18 keys. Plus separators. ~20-25 keys.
         let keys: Vec<&str> = (1..=25)
-            .map(|i| Box::leak(format!("{:02}", i).into_boxed_str()))
+            .map(|i| &*Box::leak(format!("{:02}", i).into_boxed_str()) as &str)
             .collect();
         insert_keys(&mut tree, &keys)?;
         // tree.print_tree_structure_bfs(); // Manual inspection
@@ -1975,7 +1997,7 @@ mod tests {
         let final_root_node = tree.read_node(tree.root_page_id)?;
         match final_root_node {
             Leaf { keys, ..} => {
-                assert_eq!(keys, &vec![k("3")]); // L0 had [2], L1 had [3]. After deleting 2, L0 empty. L0 merges L1. L1 had [3].
+                 assert_eq!(keys, vec![k("3")]); // L0 had [2], L1 had [3]. After deleting 2, L0 empty. L0 merges L1. L1 had [3].
                                                  // Merged leaf has [3].
             }
             _ => panic!("Root should be leaf at the end"),

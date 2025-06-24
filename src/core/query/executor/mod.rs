@@ -534,7 +534,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
         let ast_condition_tree = match condition {
             Some(sql_cond_tree) => Some(
-                super::select_execution::command_condition_tree_to_ast_condition_tree(
+                self::select_execution::command_condition_tree_to_ast_condition_tree(
                     &sql_cond_tree,
                     self,
                 )?,

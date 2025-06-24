@@ -22,7 +22,25 @@ impl SqlParser {
 
         match type_name_upper.as_str() {
             "INTEGER" | "INT" => Ok(ast::AstDataType::Integer),
-            "TEXT" | "STRING" => Ok(ast::AstDataType::Text), // VARCHAR would need param parsing
+            "TEXT" | "STRING" => Ok(ast::AstDataType::Text),
+            "VARCHAR" | "CHAR" => {
+                // Optionally consume (length) or (length, precision) parameters
+                if self.match_token(Token::LParen) {
+                    self.consume(Token::LParen)?;
+                    // For now, just consume tokens until RParen, as AstDataType::Text doesn't store length/precision
+                    let mut paren_depth = 1;
+                    while paren_depth > 0 {
+                        match self.consume_any() {
+                            Some(Token::LParen) => paren_depth += 1,
+                            Some(Token::RParen) => paren_depth -= 1,
+                            Some(Token::EOF) => return Err(SqlParseError::UnexpectedEOF), // Unterminated type parameters
+                            Some(_) => {} // Consume other tokens within parentheses
+                            None => return Err(SqlParseError::UnexpectedEOF),
+                        }
+                    }
+                }
+                Ok(ast::AstDataType::Text)
+            }
             "BOOLEAN" | "BOOL" => Ok(ast::AstDataType::Boolean),
             "FLOAT" | "REAL" | "DOUBLE" => Ok(ast::AstDataType::Float),
             "BLOB" => Ok(ast::AstDataType::Blob),

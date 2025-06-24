@@ -346,6 +346,16 @@ fn fold_expression(expression: Expression) -> Expression {
         // Base cases: Literals and Columns are already "folded"
         Expression::Literal(_) => expression,
         Expression::Column(_) => expression,
+        Expression::UnaryOp { op, expr } => {
+            let folded_expr = Box::new(fold_expression(*expr));
+            if op.as_str() == "NOT" {
+                if let Expression::Literal(DataType::Boolean(b)) = *folded_expr {
+                    return Expression::Literal(DataType::Boolean(!b));
+                }
+            }
+            // Return original UnaryOp if not foldable (e.g., NOT on non-boolean or non-literal)
+            Expression::UnaryOp { op, expr: folded_expr }
+        }
     }
 }
 
