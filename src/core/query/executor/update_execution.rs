@@ -10,7 +10,7 @@ use crate::core::types::DataType;
 use crate::core::types::JsonSafeMap; // Added import for JsonSafeMap
 use std::collections::{HashMap, HashSet}; // Removed AstLiteralValue
                                           // AstAssignment from sql::ast is not needed here because assignments_cmd is already SqlAssignment
-use super::utils::datatype_to_ast_literal;
+// Removed: use super::utils::datatype_to_ast_literal;
 use std::sync::Arc; // Import the helper
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S> {
@@ -147,10 +147,13 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 crate::core::transaction::lock_manager::LockType::Exclusive,
             )?;
 
-            let current_value_bytes_opt = self.store.read().unwrap().get(
-                &key,
-                current_op_tx_id.0,
-                &committed_ids_for_get_u64_set,
+            let current_value_bytes_opt = self.store
+                .read()
+                .expect("Failed to acquire read lock on store for update")
+                .get(
+                    &key,
+                    current_op_tx_id.0,
+                    &committed_ids_for_get_u64_set,
             )?;
 
             if let Some(current_value_bytes) = current_value_bytes_opt {

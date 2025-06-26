@@ -9,35 +9,43 @@ impl SqlParser {
         if self.match_token(Token::Asterisk) {
             self.consume(Token::Asterisk)?;
             columns.push(SelectColumn::Asterisk);
-            // After '*', we should not expect more columns in a simple list.
-            // If a comma follows '*', it would be a syntax error caught by the next part of the statement parser.
             return Ok(columns);
         }
+
+        if !matches!(self.peek(), Some(Token::Identifier(_))) && !self.match_token(Token::Asterisk) {
+             return Err(SqlParseError::UnexpectedToken {
+                expected: "column name or '*'".to_string(),
+                found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
+                position: self.current_token_pos(),
+            });
+        }
+
         loop {
-            let col_name = self.expect_identifier("Expected column name or '*'")?;
-            columns.push(SelectColumn::ColumnName(col_name));
+            if self.match_token(Token::Asterisk) { // Allow '*' also in a list e.g. col1, *
+                 self.consume(Token::Asterisk)?;
+                 columns.push(SelectColumn::Asterisk);
+            } else {
+                let col_name = self.expect_identifier("Expected column name or '*'")?;
+                columns.push(SelectColumn::ColumnName(col_name));
+            }
+
             if !self.match_token(Token::Comma) {
                 break;
             }
             self.consume(Token::Comma)?;
-            // After a comma, we must find another column name.
-            // If we find FROM, or EOF, or anything not an identifier, it's an error (likely a trailing comma).
+            // After a comma, we must find another column name or '*'.
             match self.peek() {
-                Some(Token::Identifier(_)) => { /* Good, loop will continue */ }
-                Some(Token::Asterisk) => { /* Also valid after a comma, though unusual for hand-written SQL, e.g. SELECT col1, * */ }
+                Some(Token::Identifier(_)) | Some(Token::Asterisk) => { /* Good, loop will continue */ }
                 Some(next_token) => {
-                    // If the next token is FROM, it's a clear trailing comma before FROM.
-                    // Otherwise, it's some other unexpected token where an identifier was expected.
-                    let found_str = format!("{:?}", next_token);
                     return Err(SqlParseError::UnexpectedToken {
-                        expected: "column name or '*' after comma".to_string(),
-                        found: found_str,
+                        expected: "column name or '*' after comma".to_string(), // Reverted to specific message
+                        found: format!("{:?}", next_token.clone()),
                         position: self.current_token_pos(),
                     });
                 }
-                None => { // EOF after comma
+                None => {
                     return Err(SqlParseError::UnexpectedToken {
-                        expected: "column name or '*' after comma".to_string(),
+                        expected: "column name or '*' after comma".to_string(), // Reverted to specific message
                         found: "EOF".to_string(),
                         position: self.current_token_pos(),
                     });
@@ -45,11 +53,9 @@ impl SqlParser {
             }
         }
         if columns.is_empty() {
-            // This case should ideally be caught by the first call to expect_identifier if nothing is matched.
-            // However, keeping it as a safeguard.
-            return Err(SqlParseError::UnexpectedToken {
+             return Err(SqlParseError::UnexpectedToken {
                 expected: "column name or '*' for select list".to_string(),
-                found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)), // EOF if nothing, or current token
+                found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
                 position: self.current_token_pos(),
             });
         }
@@ -58,6 +64,13 @@ impl SqlParser {
 
     pub(super) fn parse_assignment_list(&mut self) -> Result<Vec<Assignment>, SqlParseError> {
         let mut assignments = Vec::new();
+        if !matches!(self.peek(), Some(Token::Identifier(_))) {
+             return Err(SqlParseError::UnexpectedToken {
+                expected: "column name for assignment".to_string(),
+                found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
+                position: self.current_token_pos(),
+            });
+        }
         loop {
             let column = self.expect_identifier("Expected column name for assignment")?;
             self.expect_operator("=", "Expected '=' after column name in SET clause")?;
@@ -67,19 +80,16 @@ impl SqlParser {
                 break;
             }
             self.consume(Token::Comma)?;
-            // After a comma, we must find another assignment (starting with an identifier).
             match self.peek() {
                 Some(Token::Identifier(_)) => { /* Good, loop will continue */ }
                 Some(next_token) => {
-                    // If it's not an identifier, it's an error (e.g., trailing comma before WHERE).
-                    let found_str = format!("{:?}", next_token);
                     return Err(SqlParseError::UnexpectedToken {
                         expected: "column name for assignment after comma".to_string(),
-                        found: found_str,
+                        found: format!("{:?}", next_token.clone()),
                         position: self.current_token_pos(),
                     });
                 }
-                None => { // EOF after comma
+                None => {
                     return Err(SqlParseError::UnexpectedToken {
                         expected: "column name for assignment after comma".to_string(),
                         found: "EOF".to_string(),
@@ -89,7 +99,6 @@ impl SqlParser {
             }
         }
         if assignments.is_empty() {
-            // This error should be triggered if the SET clause is present but no assignments are found.
             return Err(SqlParseError::UnexpectedToken {
                 expected: "at least one assignment expression for SET clause".to_string(),
                 found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
@@ -114,7 +123,9 @@ impl SqlParser {
             Ok(condition)
         } else {
             // Base case: a simple comparison or IS NULL / IS NOT NULL
-            let column = self.expect_identifier("Expected column name, 'NOT', or '(' for condition")?;
+            let column = self.expect_identifier(
+                "Expected column name, 'NOT', or '(' for condition"
+            )?;
 
             // Check for IS NULL / IS NOT NULL specifically
             if self.peek_is_identifier_str("IS") {
@@ -203,7 +214,9 @@ impl SqlParser {
                     }
                 }
             }
-            self.consume(Token::RBracket)?; // Consume ']'
+            // Consume ']'
+            // Let consume handle EOF or wrong token for RBracket.
+            self.consume(Token::RBracket)?;
             Ok(AstLiteralValue::Vector(elements))
         } else {
             // Existing literal parsing logic

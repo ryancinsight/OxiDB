@@ -316,16 +316,37 @@ impl SqlParser {
         };
 
         // Parse LIMIT
-        let limit = if self.match_token(Token::Limit) {
+        let limit_val = if self.match_token(Token::Limit) {
             self.consume(Token::Limit)?;
-            // Expect a numeric literal for LIMIT
-            match self.parse_literal_value("Expected numeric literal for LIMIT clause")? {
-                AstLiteralValue::Number(n) => Some(AstLiteralValue::Number(n)),
-                other_literal => {
+            let current_pos = self.current_token_pos();
+            match self.peek().cloned() { // Clone peeked token
+                Some(Token::NumericLiteral(_)) => {
+                     match self.parse_literal_value("Expected numeric literal for LIMIT clause")? {
+                        AstLiteralValue::Number(n) => Some(AstLiteralValue::Number(n)),
+                        _ => {
+                            return Err(SqlParseError::UnexpectedToken {
+                                expected: "numeric literal for LIMIT".to_string(),
+                                found: "unexpected literal type after checking".to_string(), // Should be unreachable
+                                position: current_pos,
+                            });
+                        }
+                    }
+                }
+                Some(other_token_val) => { // Use the cloned value
+                    // If it's not a NumericLiteral, it's an error.
+                    // Consume the actual token from the stream to advance the parser state.
+                    self.consume_any();
                     return Err(SqlParseError::UnexpectedToken {
                         expected: "numeric literal for LIMIT".to_string(),
-                        found: format!("{:?}", other_literal), // This might not be ideal if other_literal is complex
-                        position: self.current_token_pos() -1, // Position of the consumed literal
+                        found: format!("{:?}", other_token_val), // Report the peeked token
+                        position: current_pos,
+                    });
+                }
+                None => {
+                    return Err(SqlParseError::UnexpectedToken {
+                        expected: "numeric literal for LIMIT".to_string(),
+                        found: "EOF".to_string(),
+                        position: current_pos,
                     });
                 }
             }
@@ -339,12 +360,21 @@ impl SqlParser {
             source,
             condition,
             order_by,
-            limit,
+            limit: limit_val, // This was 'limit', should be 'limit_val'
         }))
     }
 
     fn parse_order_by_list(&mut self) -> Result<Vec<OrderByExpr>, SqlParseError> {
         let mut order_expressions = Vec::new();
+        // Check if ORDER BY is immediately followed by something that's not an identifier
+        if !matches!(self.peek(), Some(Token::Identifier(_))) {
+            return Err(SqlParseError::UnexpectedToken {
+                expected: "at least one column for order by".to_string(),
+                found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
+                position: self.current_token_pos(),
+            });
+        }
+
         loop {
             let expr_name = self.expect_identifier("Expected column name for ORDER BY clause")?;
             let mut direction: Option<OrderDirection> = None;

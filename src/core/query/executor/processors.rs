@@ -27,7 +27,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
             Command::CommitTransaction => executor.handle_commit_transaction(),
             Command::RollbackTransaction => executor.handle_rollback_transaction(),
             Command::Vacuum => executor.handle_vacuum(),
-            Command::Select { columns, source, condition, order_by, limit } => { // Updated pattern
+            Command::Select { columns, source, condition, order_by: _order_by, limit: _limit } => { // Updated pattern
                 // TODO: Pass order_by and limit to handle_select
                 executor.handle_select(columns.clone(), source.clone(), condition.clone())
             }

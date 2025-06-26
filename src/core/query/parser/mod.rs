@@ -28,7 +28,7 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, OxidbError> {
             "Input query string is effectively empty or whitespace only.".to_string(),
         ));
     }
-    let first_word = first_word_opt.unwrap().to_uppercase();
+    let first_word = first_word_opt.expect("first_word_opt should be Some due to check above").to_uppercase();
 
     if first_word == "INSERT" {
         let second_word = words_iter.next().unwrap_or("").to_uppercase();

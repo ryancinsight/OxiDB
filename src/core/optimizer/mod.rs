@@ -14,7 +14,7 @@ use crate::core::indexing::manager::IndexManager;
 use crate::core::optimizer::rules::apply_constant_folding_rule;
 use crate::core::optimizer::rules::apply_noop_filter_removal_rule;
 use crate::core::query::sql::ast::{
-    AstLiteralValue as AstSqlLiteralValue, Condition as AstSqlCondition,
+    AstLiteralValue as AstSqlLiteralValue, // Removed AstSqlCondition
     SelectColumn as AstSqlSelectColumn, Statement as AstStatement,
 };
 use crate::core::types::DataType; // Unified import

@@ -46,12 +46,18 @@ impl SqlParser {
                 self.current += 1;
                 Ok(self.previous().unwrap())
             }
-            Some(found_token) => Err(SqlParseError::UnexpectedToken {
-                expected: format!("{:?}", expected_token),
-                found: format!("{:?}", found_token.clone()),
-                position: self.current_token_pos(),
-            }),
-            None => Err(SqlParseError::UnexpectedEOF),
+            Some(found_token) => {
+                if *found_token == Token::EOF { // If we found EOF but expected something else
+                    Err(SqlParseError::UnexpectedEOF)
+                } else {
+                    Err(SqlParseError::UnexpectedToken {
+                        expected: format!("{:?}", expected_token),
+                        found: format!("{:?}", found_token.clone()),
+                        position: self.current_token_pos(),
+                    })
+                }
+            }
+            None => Err(SqlParseError::UnexpectedEOF), // This case means tokens array is exhausted
         }
     }
 
