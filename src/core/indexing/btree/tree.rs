@@ -13,7 +13,7 @@ use std::sync::Mutex; // Import Mutex
 /// The size of a page in bytes.
 const PAGE_SIZE: u64 = 4096;
 /// Sentinel Page ID to signify the end of the free list or no page.
-const SENTINEL_PAGE_ID: PageId = u64::MAX;
+pub const SENTINEL_PAGE_ID: PageId = u64::MAX;
 /// The size of the metadata stored at the beginning of the B+Tree file.
 /// order (u32) + root_page_id (u64) + next_available_page_id (u64) + free_list_head_page_id (u64)
 const METADATA_SIZE: u64 = 4 + 8 + 8 + 8;

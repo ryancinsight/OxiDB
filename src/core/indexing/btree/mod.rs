@@ -7,6 +7,7 @@
 // Module declarations for node and tree logic
 pub mod node;
 pub mod tree;
+mod internal_tests;
 
 // Re-export key structures for easier access from parent modules (e.g., `super::IndexManager`)
 pub use node::BPlusTreeNode;
