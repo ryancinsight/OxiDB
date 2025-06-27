@@ -1,5 +1,5 @@
 // Imports needed for the tests
-    use crate::core::query::sql::ast::{self, Assignment, AstColumnConstraint, AstDataType, AstLiteralValue, Condition, ConditionTree, CreateTableStatement, DeleteStatement, DropTableStatement, InsertStatement, OrderByExpr, OrderDirection, SelectColumn, SelectStatement, Statement, UpdateStatement, ColumnDef};
+    use crate::core::query::sql::ast::{self, AstColumnConstraint, AstDataType, AstLiteralValue, ConditionTree, OrderDirection, SelectColumn, Statement};
 use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::parser::SqlParser; // The struct being tested
 use crate::core::query::sql::tokenizer::{Token, Tokenizer}; // For tokenizing test strings // Error type for assertions

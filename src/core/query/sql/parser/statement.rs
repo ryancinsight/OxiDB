@@ -1,8 +1,6 @@
 use super::core::SqlParser;
 use crate::core::query::sql::ast::{
-    self, AstColumnConstraint, AstDataType, AstLiteralValue, ColumnDef, CreateTableStatement,
-    DeleteStatement, DropTableStatement, InsertStatement, OrderByExpr, OrderDirection,
-    SelectColumn, SelectStatement, Statement, UpdateStatement,
+    self, AstLiteralValue, CreateTableStatement, DropTableStatement, OrderByExpr, OrderDirection, SelectStatement, Statement, UpdateStatement,
 };
 use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::tokenizer::Token; // For matching specific tokens like Token::Where

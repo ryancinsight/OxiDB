@@ -1320,8 +1320,8 @@ mod tests {
         insert_keys(&mut tree, &["10", "20", "30"])?; // Root (leaf) [10,20,30]
         tree.insert(k("05"), pk("v_05"))?; // Split leaf: Root [20] -> L[05,10], R[20,30]
                                            // This is P_IL, with children P_LA, P_LB
-        let p_la = tree.read_node(tree.root_page_id)?.get_children()?[0];
-        let p_lb = tree.read_node(tree.root_page_id)?.get_children()?[1];
+        let _p_la = tree.read_node(tree.root_page_id)?.get_children()?[0];
+        let _p_lb = tree.read_node(tree.root_page_id)?.get_children()?[1];
 
         // To get P_IR: [60, 80] -> (L_C, L_D, L_E)
         //   L_C: [50], L_D: [60,70], L_E: [80,90]
@@ -1482,12 +1482,12 @@ mod tests {
         // Find P_IL0 (left child of root) and P_L0 (leftmost grandchild)
         let p_r_id = tree.root_page_id;
         let p_r_node = tree.read_node(p_r_id)?;
-        let (p_il0_id, p_il1_id) = match &p_r_node {
+        let (p_il0_id, _p_il1_id) = match &p_r_node {
             Internal { children, .. } => (children[0], children[1]),
             _ => panic!("Root is not internal"),
         };
         let p_il0_node_before = tree.read_node(p_il0_id)?;
-        let (p_l0_id, _p_l1_id) = match &p_il0_node_before {
+        let (_p_l0_id, _p_l1_id) = match &p_il0_node_before {
             Internal { children, .. } => (children[0], children[1]),
             _ => panic!("P_IL0 is not internal"),
         };
@@ -1628,23 +1628,23 @@ mod tests {
         let r_pid = tree4.root_page_id;
         let r_node_before_del = tree4.read_node(r_pid)?;
         let (il0_pid, il1_pid) = match &r_node_before_del {
-            Internal { keys, children, .. } => (children[0], children[1]),
+            Internal {  children, .. } => (children[0], children[1]),
             _ => panic!("Root not internal before delete"),
         };
         let il0_node_pre_del = tree4.read_node(il0_pid)?;
-        let (l0_pid, _l1_pid_pre_del) = match &il0_node_pre_del {
+        let (_l0_pid, _l1_pid_pre_del) = match &il0_node_pre_del {
             Internal { children, .. } => (children[0], children[1]),
             _ => panic!("IL0 not internal before delete"),
         };
-         let l2_pid_pre_del = match tree4.read_node(il1_pid)? {
+         let _l2_pid_pre_del = match tree4.read_node(il1_pid)? {
             Internal { children, .. } => children[0],
             _ => panic!("IL1 not internal before delete")
         };
-        let l3_pid_pre_del = match tree4.read_node(il1_pid)? {
+         let _l3_pid_pre_del = match tree4.read_node(il1_pid)? {
             Internal { children, .. } => children[1],
             _ => panic!("IL1 not internal before delete")
         };
-        let l4_pid_pre_del = match tree4.read_node(il1_pid)? {
+         let _l4_pid_pre_del = match tree4.read_node(il1_pid)? {
             Internal { children, .. } => children[2],
             _ => panic!("IL1 not internal before delete")
         };
@@ -1727,7 +1727,7 @@ mod tests {
         //   Child from IL1 (L2 `k("03"),k("04")`) moves to IL0.
         // This path makes the expected `vec![k("03")]` for IL0 correct.
 
-        let (mut tree_final, _pf, _df) = setup_tree("internal_borrow_right_v3_setup");
+        let (_tree_final, _pf, _df) = setup_tree("internal_borrow_right_v3_setup");
         // Keys to set up: L0[00], L1[01]. IL0_sep [00].
         // L2[03,04], L3[05,06], L4[07,08,09]. IL1_sep [05],[07].
         // Root_sep [02].
@@ -2067,9 +2067,9 @@ mod tests {
 
         let r_pid_before = tree6.root_page_id;
         let r_node_before = tree6.read_node(r_pid_before)?;
-        let (i0_pid, i1_pid) = match &r_node_before { Internal{children,..} => (children[0],children[1]), _=>panic!()};
+        let (i0_pid, _i1_pid) = match &r_node_before { Internal{children,..} => (children[0],children[1]), _=>panic!()};
         let i0_node_before = tree6.read_node(i0_pid)?;
-        let (l0_pid, _l1_pid) = match &i0_node_before { Internal{children,..} => (children[0],children[1]), _=>panic!()};
+        let (_l0_pid, _l1_pid) = match &i0_node_before { Internal{children,..} => (children[0],children[1]), _=>panic!()};
 
         // Delete "0". L0 (child of I0) will underflow and merge with its sibling L1.
         // This causes I0 to lose its key and underflow.
