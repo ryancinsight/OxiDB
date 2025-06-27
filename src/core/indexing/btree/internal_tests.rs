@@ -320,7 +320,7 @@ fn construct_tree_with_nodes(
         }
 
         let il0_node_after = tree.read_node(IL0_PID)?;
-        assert_eq!(il0_node_after.get_keys(), &vec![k("01"), k("03"), k("05")], "IL0 keys incorrect after merge");
+        assert_eq!(il0_node_after.get_keys(), &vec![k("01"), k("03")], "IL0 keys incorrect after merge (k('05') was separator in IL1, removed when L2/L3 merged)");
         assert_eq!(il0_node_after.get_parent_page_id(), Some(R_PID), "IL0 parent incorrect");
         match &il0_node_after {
             BPlusTreeNode::Internal { children, .. } => {
@@ -333,7 +333,7 @@ fn construct_tree_with_nodes(
         assert_eq!(ml23_node.get_keys(), &vec![k("06")], "Merged leaf ML23 (on L2_PID) keys incorrect");
         assert_eq!(ml23_node.get_parent_page_id(), Some(IL0_PID), "Merged leaf ML23 parent pointer incorrect");
         match ml23_node {
-            Leaf { next_leaf, .. } => assert_eq!(*next_leaf, Some(L4_PID), "Merged leaf ML23 next pointer incorrect"),
+            Leaf { next_leaf, .. } => assert_eq!(next_leaf, Some(L4_PID), "Merged leaf ML23 next pointer incorrect"),
             _ => panic!("ML23 node is not a leaf"),
         }
 
@@ -348,7 +348,7 @@ fn construct_tree_with_nodes(
         let il2_node_after = tree.read_node(IL2_PID)?;
         assert_eq!(il2_node_after.get_parent_page_id(), Some(R_PID));
         assert_eq!(il2_node_after.get_keys(), &vec![k("09")]);
-        match il2_node_after { Internal{children, ..} => assert_eq!(children, &vec![L4_PID, L5_PID]), _=>panic!()};
+        match il2_node_after { Internal{children, ..} => assert_eq!(children, vec![L4_PID, L5_PID]), _=>panic!()};
 
         let mut deallocated_pages_found = std::collections::HashSet::new();
         deallocated_pages_found.insert(tree.allocate_new_page_id()?);
