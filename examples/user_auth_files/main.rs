@@ -1,9 +1,10 @@
 use anyhow::Result;
 use clap::Parser;
-use oxidb::core::query::executor::ExecutionResult; // For handling query results
+use oxidb::api::Value as ApiValue; // For new return type
 use oxidb::core::types::DataType; // For parsing query results
 use oxidb::{Oxidb, OxidbError};
 use serde::{Deserialize, Serialize};
+// use oxidb::core::query::executor::ExecutionResult; // No longer directly used for matching
 use sha2::{Digest, Sha256};
 use std::collections::HashMap; // For parsing map data type
 use std::path::Path;
@@ -75,7 +76,7 @@ struct UserFile {
 }
 
 // --- Database Initialization ---
-fn ensure_tables_exist(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn ensure_tables_exist(db: &mut Oxidb) -> Result<()> { // Changed to anyhow::Result
     // Create Users Table
     let create_users_table_query = format!(
         "CREATE TABLE {} (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)",
@@ -88,7 +89,7 @@ fn ensure_tables_exist(db: &mut Oxidb) -> Result<(), OxidbError> {
                 && !e.to_string().to_lowercase().contains("duplicate table name")
             {
                 eprintln!("Error creating/ensuring table '{}': {:?}", USERS_TABLE, e);
-                return Err(e.into());
+                return Err(anyhow::Error::new(e)); // Convert ApiError to anyhow::Error
             }
         }
     }
@@ -105,7 +106,7 @@ fn ensure_tables_exist(db: &mut Oxidb) -> Result<(), OxidbError> {
                 && !e.to_string().to_lowercase().contains("duplicate table name")
             {
                 eprintln!("Error creating/ensuring table '{}': {:?}", USER_FILES_TABLE, e);
-                return Err(e.into());
+                return Err(anyhow::Error::new(e)); // Convert ApiError to anyhow::Error
             }
         }
     }
@@ -196,7 +197,7 @@ fn register_user(db: &mut Oxidb, username: &str, password: &str) -> Result<()> {
     );
 
     match db.execute_query_str(&query)? {
-        ExecutionResult::Success => {
+        ApiValue::Success => {
             println!("User '{}' registered successfully.", username);
             Ok(())
         }
@@ -204,7 +205,7 @@ fn register_user(db: &mut Oxidb, username: &str, password: &str) -> Result<()> {
     }
 }
 
-fn login_user(db: &mut Oxidb, username: &str, password: &str) -> Result<Option<User>> {
+fn login_user(db: &mut Oxidb, username: &str, password: &str) -> Result<Option<User>> { // anyhow::Result implied
     ensure_tables_exist(db)?;
     let escaped_username = username.replace("'", "''");
     let query = format!(
@@ -213,7 +214,7 @@ fn login_user(db: &mut Oxidb, username: &str, password: &str) -> Result<Option<U
     );
 
     match db.execute_query_str(&query)? {
-        ExecutionResult::Values(values) => {
+        ApiValue::Multiple(values) => {
             if values.is_empty() {
                 println!("Login failed: User '{}' not found.", username);
                 return Ok(None);
@@ -243,8 +244,8 @@ fn login_user(db: &mut Oxidb, username: &str, password: &str) -> Result<Option<U
                 ))
             }
         }
-        ExecutionResult::Success => {
-            println!("Login failed: User '{}' not found (ExecutionResult::Success).", username);
+        ApiValue::Success => { // Should ideally be ApiValue::Multiple with empty vec for SELECT not found
+            println!("Login failed: User '{}' not found (ApiValue::Success, expected Multiple).", username);
             Ok(None)
         }
         other => Err(anyhow::anyhow!("Login failed for user '{}': {:?}", username, other)),
@@ -265,7 +266,7 @@ fn add_file(db: &mut Oxidb, user_id: u64, file_name: &str, content: &str) -> Res
     );
 
     match db.execute_query_str(&query)? {
-        ExecutionResult::Success => {
+        ApiValue::Success => {
             println!("File '{}' added successfully for user ID {}.", file_name, user_id);
             Ok(())
         }
@@ -281,7 +282,7 @@ fn list_files(db: &mut Oxidb, user_id: u64) -> Result<()> {
     );
 
     match db.execute_query_str(&query)? {
-        ExecutionResult::Values(values) => {
+        ApiValue::Multiple(values) => {
             if values.is_empty() {
                 println!("No files found for user ID {}.", user_id);
                 return Ok(());
@@ -303,8 +304,8 @@ fn list_files(db: &mut Oxidb, user_id: u64) -> Result<()> {
                 Err(e) => eprintln!("Error parsing files for user ID {}: {}", user_id, e),
             }
         }
-        ExecutionResult::Success => {
-            println!("No files found for user ID {} (ExecutionResult::Success).", user_id);
+        ApiValue::Success => { // Should be ApiValue::Multiple with empty vec
+            println!("No files found for user ID {} (ApiValue::Success).", user_id);
         }
         other => {
             eprintln!("Unexpected result when listing files for user ID {}: {:?}", user_id, other)
@@ -313,7 +314,7 @@ fn list_files(db: &mut Oxidb, user_id: u64) -> Result<()> {
     Ok(())
 }
 
-fn get_file(db: &mut Oxidb, user_id: u64, file_id: u64) -> Result<Option<UserFile>> {
+fn get_file(db: &mut Oxidb, user_id: u64, file_id: u64) -> Result<Option<UserFile>> { // anyhow::Result implied
     ensure_tables_exist(db)?;
     let query = format!(
         "SELECT id, user_id, file_name, file_content FROM {} WHERE id = {} AND user_id = {}",
@@ -321,7 +322,7 @@ fn get_file(db: &mut Oxidb, user_id: u64, file_id: u64) -> Result<Option<UserFil
     );
 
     match db.execute_query_str(&query)? {
-        ExecutionResult::Values(values) => {
+        ApiValue::Multiple(values) => {
             if values.is_empty() {
                 return Ok(None); // File not found or not owned by user
             }
@@ -333,7 +334,7 @@ fn get_file(db: &mut Oxidb, user_id: u64, file_id: u64) -> Result<Option<UserFil
                 }
             }
         }
-        ExecutionResult::Success => Ok(None), // No file found
+        ApiValue::Success => Ok(None), // No file found (Should be ApiValue::Multiple with empty vec)
         other => Err(anyhow::anyhow!("Failed to get file ID {}: {:?}", file_id, other)),
     }
 }

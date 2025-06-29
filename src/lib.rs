@@ -33,6 +33,8 @@ pub use crate::core::common::OxidbError; // Changed
 mod tests {
     // Imports used by tests in this module
     use crate::Oxidb;
+    use crate::api::types::Value as ApiValue; // For execute_query_str results
+    use crate::core::types::DataType;      // For asserting DataType within ApiValue
     use std::fs::{self, File}; // fs and File are used
     use std::io::Write;
     use std::path::{Path, PathBuf}; // Path is used
@@ -53,32 +55,29 @@ mod tests {
         let key1 = b"int_key1".to_vec();
         let value1_str = "int_value1".to_string();
 
-        assert!(db.insert(key1.clone(), value1_str.clone()).is_ok());
+        assert!(matches!(db.insert(key1.clone(), value1_str.clone()), Ok(ApiValue::Success)));
 
         match db.get(key1.clone()) {
-            Ok(Some(v_str)) => assert_eq!(v_str, value1_str),
-            Ok(None) => panic!("Key not found after insert"),
-            Err(e) => panic!("Error during get: {:?}", e),
+            Ok(ApiValue::Single(Some(DataType::String(s)))) => assert_eq!(s, value1_str),
+            res => panic!("Error during get: {:?}, expected Ok(ApiValue::Single(Some(String)))", res),
         }
 
         match db.delete(key1.clone()) {
-            Ok(true) => (),
-            Ok(false) => panic!("Key not found for deletion"),
-            Err(e) => panic!("Error during delete: {:?}", e),
+            Ok(ApiValue::Deleted(true)) => (),
+            res => panic!("Error during delete: {:?}, expected Ok(ApiValue::Deleted(true))", res),
         }
 
         match db.get(key1.clone()) {
-            Ok(None) => (),
-            Ok(Some(_)) => panic!("Key found after delete"),
-            Err(e) => panic!("Error during get after delete: {:?}", e),
+            Ok(ApiValue::Single(None)) => (),
+            res => panic!("Error during get after delete: {:?}, expected Ok(ApiValue::Single(None))", res),
         }
 
         let key2 = b"int_key2".to_vec();
         let value2_str = "int_value2".to_string();
-        assert!(db.insert(key2.clone(), value2_str.clone()).is_ok());
+        assert!(matches!(db.insert(key2.clone(), value2_str.clone()), Ok(ApiValue::Success)));
         match db.get(key2.clone()) {
-            Ok(Some(v_str)) => assert_eq!(v_str, value2_str),
-            _ => panic!("Second key not processed correctly"),
+            Ok(ApiValue::Single(Some(DataType::String(s)))) => assert_eq!(s, value2_str),
+            res => panic!("Second key not processed correctly, got {:?}", res),
         }
     }
 
@@ -110,8 +109,8 @@ mod tests {
             let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb (instance 1)");
             db.insert(key_a.clone(), val_a_initial_str.clone()).unwrap();
             db.insert(key_b.clone(), val_b_str.clone()).unwrap();
-            db.insert(key_a.clone(), val_a_updated_str.clone()).unwrap();
-            db.delete(key_b.clone()).unwrap();
+            db.insert(key_a.clone(), val_a_updated_str.clone()).expect("Insert failed");
+            assert!(matches!(db.delete(key_b.clone()), Ok(ApiValue::Deleted(true))));
 
             assert!(wal_path.exists(), "WAL file should exist before forgetting the DB instance.");
             std::mem::forget(db);
@@ -123,12 +122,11 @@ mod tests {
             let mut db_restarted =
                 Oxidb::new(&db_path).expect("Failed to create Oxidb (instance 2)");
 
-            assert_eq!(
-                db_restarted.get(key_a.clone()).unwrap(),
-                Some(val_a_updated_str.clone()),
-                "Key A should have updated value"
-            );
-            assert_eq!(db_restarted.get(key_b.clone()).unwrap(), None, "Key B should be deleted");
+            match db_restarted.get(key_a.clone()) {
+                Ok(ApiValue::Single(Some(DataType::String(s)))) => assert_eq!(s, val_a_updated_str, "Key A should have updated value"),
+                res => panic!("Get for key_a failed after restart, expected Some(val_a_updated_str), got {:?}", res),
+            }
+            assert!(matches!(db_restarted.get(key_b.clone()), Ok(ApiValue::Single(None))), "Key B should be deleted");
 
             db_restarted.persist().unwrap();
             assert!(
@@ -150,34 +148,31 @@ mod tests {
 
         {
             let mut db1 = Oxidb::new(db_path).expect("Failed to create Oxidb (instance 1)");
-            db1.insert(key_c.clone(), val_c_str.clone()).unwrap();
+            assert!(matches!(db1.insert(key_c.clone(), val_c_str.clone()), Ok(ApiValue::Success)));
             db1.persist().unwrap();
         }
 
         {
             let mut db2 = Oxidb::new(db_path).expect("Failed to create Oxidb (instance 2)");
-            assert_eq!(
-                db2.get(key_c.clone()).unwrap(),
-                Some(val_c_str.clone()),
-                "Key C should be present in instance 2"
-            );
+            match db2.get(key_c.clone()) {
+                Ok(ApiValue::Single(Some(DataType::String(s)))) => assert_eq!(s, val_c_str, "Key C should be present in instance 2"),
+                res => panic!("Get for key_c in instance 2 failed, got {:?}", res),
+            }
 
-            db2.insert(key_d.clone(), val_d_str.clone()).unwrap();
+            assert!(matches!(db2.insert(key_d.clone(), val_d_str.clone()), Ok(ApiValue::Success)));
             db2.persist().unwrap();
         }
 
         {
             let mut db3 = Oxidb::new(db_path).expect("Failed to create Oxidb (instance 3)");
-            assert_eq!(
-                db3.get(key_c.clone()).unwrap(),
-                Some(val_c_str.clone()),
-                "Key C should be present in instance 3"
-            );
-            assert_eq!(
-                db3.get(key_d.clone()).unwrap(),
-                Some(val_d_str.clone()),
-                "Key D should be present in instance 3"
-            );
+            match db3.get(key_c.clone()) {
+                Ok(ApiValue::Single(Some(DataType::String(s)))) => assert_eq!(s, val_c_str, "Key C should be present in instance 3"),
+                res => panic!("Get for key_c in instance 3 failed, got {:?}", res),
+            }
+            match db3.get(key_d.clone()) {
+                Ok(ApiValue::Single(Some(DataType::String(s)))) => assert_eq!(s, val_d_str, "Key D should be present in instance 3"),
+                res => panic!("Get for key_d in instance 3 failed, got {:?}", res),
+            }
         }
     }
 
@@ -221,7 +216,7 @@ mod tests {
         let val = db.execute_query_str("GET test").unwrap();
         assert_eq!(
             val,
-            crate::core::query::executor::ExecutionResult::Value(Some(DataType::Integer(1)))
+            ApiValue::Single(Some(DataType::Integer(1)))
         );
 
         fs::remove_file(&config_file_path).ok();
@@ -262,7 +257,7 @@ mod tests {
 
         let key = b"test_key_defaults".to_vec();
         let value = "test_value_defaults".to_string();
-        db.insert(key.clone(), value.clone()).unwrap();
+        assert!(matches!(db.insert(key.clone(), value.clone()), Ok(ApiValue::Success)));
         db.persist().unwrap();
         drop(db);
 

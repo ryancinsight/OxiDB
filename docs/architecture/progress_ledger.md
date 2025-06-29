@@ -152,3 +152,21 @@ This ledger will be updated as work progresses on each component. "Required Comp
     *   Removed an obsolete TODO comment from `src/core/query/sql/parser/statement.rs` as the described functionality (`ast::DeleteStatement`) was already in use.
     *   Updated a TODO comment in `src/core/query/executor/planner.rs` to clarify that dynamic primary key determination for DELETE operations is currently blocked by schema limitations (`ColumnDef` lacking an `is_primary_key` marker).
     *   Previously noted TODOs in `src/core/optimizer/mod.rs` (related to `#[allow(dead_code)]`) and `src/core/storage/engine/heap/table_page.rs` (design considerations for record management and advanced updates) remain deferred for future work.
+
+## Recent Updates - Current Date (YYYY-MM-DD)
+
+*   **Similarity Search (RAG - Phase 1):**
+    *   Implemented initial brute-force `SIMILARITY_SEARCH` command.
+        *   Added `VectorData` type in `core/types/mod.rs` with Euclidean distance calculation.
+        *   Added `Command::SimilaritySearch` to `core/query/commands.rs`.
+        *   Implemented parsing for `SIMILARITY_SEARCH table ON column QUERY [vec] TOP_K k` in `core/query/parser/mod.rs`.
+        *   Added `handle_similarity_search` to `core/query/executor/mod.rs` (performs full table scan).
+        *   Updated `CommandProcessor` in `core/query/executor/processors.rs` to call the handler.
+        *   Added `ExecutionResult::RankedResults` and corresponding `api::Value::RankedResults`.
+    *   **API Refactoring for Consistency:**
+        *   Moved public `api::Value` enum (wrapper for `ExecutionResult`) to `src/api/types.rs`.
+        *   All public methods in `Oxidb` (`insert`, `get`, `delete`, `find_by_index`, `execute_query_str`) now consistently return `Result<api::Value, api::ApiError>`.
+        *   Updated all relevant tests in `api/tests/` and `src/lib.rs` to reflect new API return types.
+    *   Added `VECTOR[N]` data type support in `CREATE TABLE` SQL syntax and schema translation.
+    *   Added documentation for `SIMILARITY_SEARCH` in `docs/sql_support.md`.
+*   **Test Suite**: All relevant API and similarity search tests are passing. Some pre-existing B-Tree and WAL test failures are being tracked separately.

@@ -12,6 +12,7 @@ pub mod types;
 
 pub use self::errors::ApiError;
 pub use self::types::Oxidb; // Changed from db::Oxidb // Added as per plan
+pub use self::types::Value; // Re-export the public Value enum
 
 // Re-export key types/traits for easier use by external crates, if desired.
 // For example:

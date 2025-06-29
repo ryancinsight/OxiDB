@@ -335,7 +335,10 @@ fn parse_similarity_search_command_details(query_str: &str) -> Result<Command, O
     if top_k_keyword.to_uppercase() != "TOP_K" {
         return Err(OxidbError::SqlParsing("Expected TOP_K keyword after QUERY vector for SIMILARITY_SEARCH".to_string()));
     }
-    let top_k_str = parts.next().ok_or_else(|| OxidbError::SqlParsing("Missing K value for TOP_K in SIMILARITY_SEARCH".to_string()))?;
+    let mut top_k_str = parts.next().ok_or_else(|| OxidbError::SqlParsing("Missing K value for TOP_K in SIMILARITY_SEARCH".to_string()))?.to_string();
+    if top_k_str.ends_with(';') {
+        top_k_str.pop(); // Remove trailing semicolon
+    }
     let top_k = top_k_str.parse::<usize>().map_err(|_| OxidbError::SqlParsing(format!("Invalid K value for TOP_K: '{}'", top_k_str)))?;
     if top_k == 0 {
         return Err(OxidbError::SqlParsing("TOP_K value must be greater than 0".to_string()));

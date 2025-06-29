@@ -1,8 +1,10 @@
 use crate::api::Oxidb;
 use crate::core::common::OxidbError;
 // use crate::core::query::commands::Command; // Removed unused import
-use crate::core::query::executor::ExecutionResult;
+// use crate::core::query::executor::ExecutionResult as CoreExecutionResult; // Aliased - REMOVED
 use crate::core::types::{DataType, JsonSafeMap}; // Import JsonSafeMap
+use crate::api::types::Value as ApiValue; // Import the public API Value
+use crate::api::errors::ApiError;      // Import ApiError
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
@@ -21,14 +23,16 @@ fn test_oxidb_insert_and_get() {
     let key = b"api_key_1".to_vec();
     let value_str = "api_value_1".to_string();
 
-    // Test insert (now takes String)
+    // Test insert
     let insert_result = db.insert(key.clone(), value_str.clone());
-    assert!(insert_result.is_ok());
+    assert!(matches!(insert_result, Ok(ApiValue::Success)));
 
-    // Test get (now returns Option<String>)
+    // Test get
     let get_result = db.get(key.clone());
-    assert!(get_result.is_ok(), "get operation failed");
-    assert_eq!(get_result.expect("get_result was Err"), Some(value_str));
+    match get_result {
+        Ok(ApiValue::Single(Some(DataType::String(s)))) => assert_eq!(s, value_str),
+        _ => panic!("Expected Ok(ApiValue::Single(Some(DataType::String))) got {:?}", get_result),
+    }
 }
 
 #[test]
@@ -38,8 +42,7 @@ fn test_oxidb_get_non_existent() {
         Oxidb::new(&db_path).expect("Failed to create Oxidb instance for get_non_existent test");
     let key = b"api_non_existent".to_vec();
     let get_result = db.get(key);
-    assert!(get_result.is_ok(), "get_non_existent operation failed");
-    assert_eq!(get_result.expect("get_result for non_existent was Err"), None); // Stays None
+    assert!(matches!(get_result, Ok(ApiValue::Single(None))));
 }
 
 #[test]
@@ -49,18 +52,18 @@ fn test_oxidb_delete() {
     let key = b"api_delete_key".to_vec();
     let value_str = "api_delete_value".to_string();
 
-    db.insert(key.clone(), value_str.clone()).expect("Insert failed before delete test");
-    let get_inserted_result = db.get(key.clone());
-    assert!(get_inserted_result.is_ok(), "Get after insert failed in delete test");
-    assert_eq!(get_inserted_result.expect("get_inserted_result was Err"), Some(value_str)); // Verify insert
+    assert!(matches!(db.insert(key.clone(), value_str.clone()), Ok(ApiValue::Success)));
+
+    match db.get(key.clone()) {
+        Ok(ApiValue::Single(Some(DataType::String(s)))) => assert_eq!(s, value_str),
+        res => panic!("Get after insert failed in delete test, got {:?}", res),
+    }
 
     let delete_result = db.delete(key.clone());
-    assert!(delete_result.is_ok(), "Delete operation failed");
-    assert!(delete_result.expect("delete_result was Err")); // Key existed and was deleted
+    assert!(matches!(delete_result, Ok(ApiValue::Deleted(true))));
 
     let get_deleted_result = db.get(key.clone());
-    assert!(get_deleted_result.is_ok(), "Get after delete failed");
-    assert_eq!(get_deleted_result.expect("get_deleted_result was Err"), None); // Verify deleted
+    assert!(matches!(get_deleted_result, Ok(ApiValue::Single(None))));
 }
 
 #[test]
@@ -71,8 +74,7 @@ fn test_oxidb_delete_non_existent() {
     let key = b"api_delete_non_existent".to_vec();
 
     let delete_result = db.delete(key.clone());
-    assert!(delete_result.is_ok(), "Delete non_existent operation failed");
-    assert!(!delete_result.expect("delete_result for non_existent was Err")); // Key did not exist
+    assert!(matches!(delete_result, Ok(ApiValue::Deleted(false))));
 }
 
 #[test]
@@ -83,16 +85,17 @@ fn test_oxidb_update() {
     let value1_str = "value1".to_string();
     let value2_str = "value2".to_string();
 
-    db.insert(key.clone(), value1_str.clone()).expect("First insert failed in update test");
-    let get_v1_result = db.get(key.clone());
-    assert!(get_v1_result.is_ok(), "Get v1 failed in update test");
-    assert_eq!(get_v1_result.expect("get_v1_result was Err"), Some(value1_str));
+    assert!(matches!(db.insert(key.clone(), value1_str.clone()), Ok(ApiValue::Success)));
+    match db.get(key.clone()) {
+        Ok(ApiValue::Single(Some(DataType::String(s)))) => assert_eq!(s, value1_str),
+        res => panic!("Get v1 failed in update test, got {:?}", res),
+    }
 
-    db.insert(key.clone(), value2_str.clone())
-        .expect("Second insert (update) failed in update test"); // This is an update
-    let get_v2_result = db.get(key.clone());
-    assert!(get_v2_result.is_ok(), "Get v2 failed in update test");
-    assert_eq!(get_v2_result.expect("get_v2_result was Err"), Some(value2_str));
+    assert!(matches!(db.insert(key.clone(), value2_str.clone()), Ok(ApiValue::Success)));
+    match db.get(key.clone()) {
+        Ok(ApiValue::Single(Some(DataType::String(s)))) => assert_eq!(s, value2_str),
+        res => panic!("Get v2 failed in update test, got {:?}", res),
+    }
 }
 
 // Helper function to derive WAL path from DB path for testing
@@ -125,9 +128,11 @@ fn test_oxidb_persist_method() {
                                                                                            // WAL file should exist if inserts happened.
                                                                                            // (This check depends on SimpleFileKvStore's WAL behavior after insert)
                                                                                            // For this test, we assume WAL is written to on put.
-                                                                                           // Replace direct store access with API usage:
-        if db.get(key.clone()).expect("Get failed during WAL check in persist test").is_some() {
-            assert!(wal_path.exists(), "WAL file should exist after insert before persist.");
+        match db.get(key.clone()) {
+            Ok(ApiValue::Single(Some(_))) => {
+                 assert!(wal_path.exists(), "WAL file should exist after insert before persist.");
+            }
+            res => panic!("Get failed during WAL check in persist test, got {:?}", res),
         }
 
         let persist_result = db.persist();
@@ -140,10 +145,11 @@ fn test_oxidb_persist_method() {
     // Re-load the database
     let mut reloaded_db =
         Oxidb::new(&db_path).expect("Failed to create Oxidb instance for persist test (reloaded)");
-    let get_result = reloaded_db.get(key.clone());
-    assert!(get_result.is_ok(), "Get after reload failed in persist test");
-    assert_eq!(get_result.expect("get_result after reload was Err"), Some(value_str));
-    // Assert against String value
+
+    match reloaded_db.get(key.clone()) {
+        Ok(ApiValue::Single(Some(DataType::String(s)))) => assert_eq!(s, value_str),
+        res => panic!("Get after reload failed in persist test, expected Some(value_str), got {:?}", res),
+    }
 }
 
 // Tests for execute_query_str
@@ -156,11 +162,10 @@ fn test_execute_query_str_get_ok() {
 
     let result = db.execute_query_str("GET mykey");
     match result {
-        // Expecting DataType::String from the executor
-        Ok(ExecutionResult::Value(Some(DataType::String(val_str)))) => {
+        Ok(ApiValue::Single(Some(DataType::String(val_str)))) => {
             assert_eq!(val_str, "myvalue")
         }
-        _ => panic!("Expected Value(Some(DataType::String(...))), got {:?}", result),
+        _ => panic!("Expected ApiValue::Single(Some(DataType::String(...))), got {:?}", result),
     }
 }
 
@@ -180,20 +185,20 @@ fn test_constraint_not_null_violation_insert() {
     let result1 = db
         .execute_query_str("INSERT INTO users_nn (id, email, name) VALUES (1, NULL, 'Test User');");
     match result1 {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(ApiError::CoreError(OxidbError::ConstraintViolation { message })) => {
             assert!(message.contains("NOT NULL constraint failed for column 'email'"));
         }
-        _ => panic!("Expected ConstraintViolation for NULL email, got {:?}", result1),
+        _ => panic!("Expected ApiError::CoreError(OxidbError::ConstraintViolation) for NULL email, got {:?}", result1),
     }
 
     // Attempt to insert without providing email (implicitly NULL)
     let result2 =
         db.execute_query_str("INSERT INTO users_nn (id, name) VALUES (2, 'Another User');");
     match result2 {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(ApiError::CoreError(OxidbError::ConstraintViolation { message })) => {
             assert!(message.contains("NOT NULL constraint failed for column 'email'"));
         }
-        _ => panic!("Expected ConstraintViolation for missing email, got {:?}", result2),
+        _ => panic!("Expected ApiError::CoreError(OxidbError::ConstraintViolation) for missing email, got {:?}", result2),
     }
 
     // Valid insert
@@ -220,18 +225,18 @@ fn test_constraint_not_null_violation_update() {
     // Attempt to update description to NULL
     let result = db.execute_query_str("UPDATE items_nn SET description = NULL WHERE id = 1;");
     match result {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(ApiError::CoreError(OxidbError::ConstraintViolation { message })) => {
             assert!(message.contains("NOT NULL constraint failed for column 'description'"));
         }
-        _ => panic!("Expected ConstraintViolation for updating to NULL, got {:?}", result),
+        _ => panic!("Expected ApiError::CoreError(OxidbError::ConstraintViolation) for updating to NULL, got {:?}", result),
     }
 
     // Valid update
     let result_valid = db.execute_query_str("UPDATE items_nn SET price = 10.99 WHERE id = 1;");
     assert!(result_valid.is_ok(), "Valid update failed: {:?}", result_valid);
     match result_valid.unwrap() {
-        ExecutionResult::Updated { count } => assert_eq!(count, 1),
-        _ => panic!("Expected Updated result for valid update"),
+        ApiValue::Updated { count } => assert_eq!(count, 1),
+        _ => panic!("Expected ApiValue::Updated result for valid update"),
     }
 }
 
@@ -247,11 +252,11 @@ fn test_constraint_primary_key_violation_insert() {
     // Attempt to insert another product with the same pid
     let result = db.execute_query_str("INSERT INTO products_pk (pid, name) VALUES (100, 'Mouse');");
     match result {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(ApiError::CoreError(OxidbError::ConstraintViolation { message })) => {
             assert!(message.contains("UNIQUE constraint failed for column 'pid'"));
             // PK implies UNIQUE
         }
-        _ => panic!("Expected ConstraintViolation for PK duplicate, got {:?}", result),
+        _ => panic!("Expected ApiError::CoreError(OxidbError::ConstraintViolation) for PK duplicate, got {:?}", result),
     }
 }
 
@@ -271,10 +276,10 @@ fn test_constraint_unique_violation_insert() {
     let result =
         db.execute_query_str("INSERT INTO employees_uq (id, emp_code) VALUES (2, 'E101');");
     match result {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(ApiError::CoreError(OxidbError::ConstraintViolation { message })) => {
             assert!(message.contains("UNIQUE constraint failed for column 'emp_code'"));
         }
-        _ => panic!("Expected ConstraintViolation for UNIQUE duplicate, got {:?}", result),
+        _ => panic!("Expected ApiError::CoreError(OxidbError::ConstraintViolation) for UNIQUE duplicate, got {:?}", result),
     }
 }
 
@@ -306,11 +311,11 @@ fn test_constraint_unique_allows_multiple_nulls() {
     let result_dup_non_null =
         db.execute_query_str("INSERT INTO gadgets_uq_null (id, serial_no) VALUES (4, 'XYZ123');");
     match result_dup_non_null {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(ApiError::CoreError(OxidbError::ConstraintViolation { message })) => {
             assert!(message.contains("UNIQUE constraint failed for column 'serial_no'"));
         }
         _ => panic!(
-            "Expected ConstraintViolation for duplicate non-NULL UNIQUE value, got {:?}",
+            "Expected ApiError::CoreError(OxidbError::ConstraintViolation) for duplicate non-NULL UNIQUE value, got {:?}",
             result_dup_non_null
         ),
     }
@@ -335,10 +340,10 @@ fn test_constraint_update_violating_unique() {
     let result =
         db.execute_query_str("UPDATE services_uq SET service_name = 'Premium' WHERE id = 1;");
     match result {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(ApiError::CoreError(OxidbError::ConstraintViolation { message })) => {
             assert!(message.contains("UNIQUE constraint failed for column 'service_name'"));
         }
-        _ => panic!("Expected ConstraintViolation for UPDATE violating UNIQUE, got {:?}", result),
+        _ => panic!("Expected ApiError::CoreError(OxidbError::ConstraintViolation) for UPDATE violating UNIQUE, got {:?}", result),
     }
 }
 
@@ -364,11 +369,11 @@ fn test_constraint_update_pk_violating_unique() {
     let result_pk =
         db.execute_query_str("UPDATE devices_pk_uq SET device_id = 1 WHERE device_id = 2;");
     match result_pk {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(ApiError::CoreError(OxidbError::ConstraintViolation { message })) => {
             assert!(message.contains("UNIQUE constraint failed for column 'device_id'"));
         }
         _ => panic!(
-            "Expected ConstraintViolation for UPDATE violating PK uniqueness, got {:?}",
+            "Expected ApiError::CoreError(OxidbError::ConstraintViolation) for UPDATE violating PK uniqueness, got {:?}",
             result_pk
         ),
     }
@@ -387,41 +392,34 @@ fn test_oxidb_find_by_index() {
     let key3 = b"idx_key3".to_vec();
     let val3 = "another_value".to_string();
 
-    db.insert(key1.clone(), val1.clone()).expect("Insert 1 failed");
-    db.insert(key2.clone(), val2.clone()).expect("Insert 2 failed");
-    db.insert(key3.clone(), val3.clone()).expect("Insert 3 failed");
+    assert!(matches!(db.insert(key1.clone(), val1.clone()), Ok(ApiValue::Success)));
+    assert!(matches!(db.insert(key2.clone(), val2.clone()), Ok(ApiValue::Success)));
+    assert!(matches!(db.insert(key3.clone(), val3.clone()), Ok(ApiValue::Success)));
+
 
     // Find by the common value
     let find_result =
         db.find_by_index("default_value_index".to_string(), DataType::String(val1.clone()));
-    assert!(find_result.is_ok(), "find_by_index failed: {:?}", find_result.err());
 
-    match find_result.unwrap() {
-        Some(mut values_vec) => {
-            // The values returned are the full DataType::String values of the records found
+    match find_result {
+        Ok(ApiValue::Multiple(mut values_vec)) => {
             assert_eq!(values_vec.len(), 2, "Expected two records for the common indexed value");
-            // Sort for consistent comparison as order is not guaranteed
-            values_vec.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
+            values_vec.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b))); // Order might not be guaranteed
             assert_eq!(values_vec[0], DataType::String(val1.clone()));
-            assert_eq!(values_vec[1], DataType::String(val2.clone())); // val1 and val2 are identical strings
+            assert_eq!(values_vec[1], DataType::String(val2.clone()));
         }
-        None => panic!("Expected Some(Vec<DataType>), got None for common value"),
+        _ => panic!("Expected Ok(ApiValue::Multiple) with 2 items, got {:?}", find_result),
     }
 
     // Find by a unique value
     let find_result_unique =
         db.find_by_index("default_value_index".to_string(), DataType::String(val3.clone()));
-    assert!(
-        find_result_unique.is_ok(),
-        "find_by_index for unique value failed: {:?}",
-        find_result_unique.err()
-    );
-    match find_result_unique.unwrap() {
-        Some(values_vec) => {
+    match find_result_unique {
+        Ok(ApiValue::Multiple(values_vec)) => {
             assert_eq!(values_vec.len(), 1, "Expected one record for the unique indexed value");
             assert_eq!(values_vec[0], DataType::String(val3.clone()));
         }
-        None => panic!("Expected Some(Vec<DataType>), got None for unique value"),
+        _ => panic!("Expected Ok(ApiValue::Multiple) with 1 item, got {:?}", find_result_unique),
     }
 
     // Find by a non-existent value
@@ -429,20 +427,20 @@ fn test_oxidb_find_by_index() {
         "default_value_index".to_string(),
         DataType::String("non_existent_value".to_string()),
     );
-    assert!(
-        find_result_none.is_ok(),
-        "find_by_index for non-existent value failed: {:?}",
-        find_result_none.err()
-    );
-    assert!(find_result_none.unwrap().is_none(), "Expected None for non-existent value");
+    match find_result_none {
+        Ok(ApiValue::Multiple(values_vec)) => {
+            assert!(values_vec.is_empty(), "Expected empty vec for non-existent value, got {:?}", values_vec);
+        }
+        _ => panic!("Expected Ok(ApiValue::Multiple(empty_vec)) for non-existent value, got {:?}", find_result_none),
+    }
 
     // Find on non-existent index
     let find_result_no_index =
         db.find_by_index("wrong_index_name".to_string(), DataType::String(val1.clone()));
     assert!(find_result_no_index.is_err(), "Expected error for non-existent index");
     match find_result_no_index.err().unwrap() {
-        OxidbError::Index(msg) => assert!(msg.contains("not found for find operation")),
-        other_err => panic!("Expected OxidbError::Index, got {:?}", other_err),
+        ApiError::CoreError(OxidbError::Index(msg)) => assert!(msg.contains("not found for find operation")),
+        other_err => panic!("Expected ApiError::CoreError(OxidbError::Index), got {:?}", other_err),
     }
 }
 
@@ -452,8 +450,8 @@ fn test_execute_query_str_get_not_found() {
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb for get_not_found test");
     let result = db.execute_query_str("GET nonkey");
     match result {
-        Ok(ExecutionResult::Value(None)) => {} // Expected
-        _ => panic!("Expected Value(None), got {:?}", result),
+        Ok(ApiValue::Single(None)) => {} // Expected
+        _ => panic!("Expected ApiValue::Single(None), got {:?}", result),
     }
 }
 
@@ -464,13 +462,13 @@ fn test_execute_query_str_insert_ok() {
     // The parser will turn "newvalue" into DataType::String("newvalue")
     let result = db.execute_query_str("INSERT newkey newvalue");
     match result {
-        Ok(ExecutionResult::Success) => {} // Expected
-        _ => panic!("Expected Success, got {:?}", result),
+        Ok(ApiValue::Success) => {} // Expected
+        _ => panic!("Expected ApiValue::Success, got {:?}", result),
     }
-    // db.get now returns Option<String>
+    // db.get now returns Result<ApiValue, ApiError>
     assert_eq!(
-        db.get(b"newkey".to_vec()).expect("Get failed after insert_ok"),
-        Some("newvalue".to_string())
+        db.get(b"newkey".to_vec()).unwrap(),
+        ApiValue::Single(Some(DataType::String("newvalue".to_string())))
     );
 }
 
@@ -481,12 +479,12 @@ fn test_execute_query_str_insert_with_quotes_ok() {
     // Parser turns "\"quoted value\"" into DataType::String("quoted value")
     let result = db.execute_query_str("INSERT qkey \"quoted value\"");
     match result {
-        Ok(ExecutionResult::Success) => {} // Expected
-        _ => panic!("Expected Success, got {:?}", result),
+        Ok(ApiValue::Success) => {} // Expected
+        _ => panic!("Expected ApiValue::Success, got {:?}", result),
     }
     assert_eq!(
-        db.get(b"qkey".to_vec()).expect("Get failed after insert_with_quotes"),
-        Some("quoted value".to_string())
+        db.get(b"qkey".to_vec()).unwrap(),
+        ApiValue::Single(Some(DataType::String("quoted value".to_string())))
     );
 }
 
@@ -497,13 +495,12 @@ fn test_execute_query_str_insert_integer_via_parser() {
     // Parser turns "123" into DataType::Integer(123)
     let result = db.execute_query_str("INSERT intkey 123");
     match result {
-        Ok(ExecutionResult::Success) => {} // Expected
-        _ => panic!("Expected Success, got {:?}", result),
+        Ok(ApiValue::Success) => {} // Expected
+        _ => panic!("Expected ApiValue::Success, got {:?}", result),
     }
-    // db.get now returns Option<String>
     assert_eq!(
-        db.get(b"intkey".to_vec()).expect("Get failed after insert_integer"),
-        Some("123".to_string())
+        db.get(b"intkey".to_vec()).unwrap(),
+        ApiValue::Single(Some(DataType::Integer(123)))
     );
 }
 
@@ -514,12 +511,12 @@ fn test_execute_query_str_insert_boolean_via_parser() {
     // Parser turns "true" into DataType::Boolean(true)
     let result = db.execute_query_str("INSERT boolkey true");
     match result {
-        Ok(ExecutionResult::Success) => {} // Expected
-        _ => panic!("Expected Success, got {:?}", result),
+        Ok(ApiValue::Success) => {} // Expected
+        _ => panic!("Expected ApiValue::Success, got {:?}", result),
     }
     assert_eq!(
-        db.get(b"boolkey".to_vec()).expect("Get failed after insert_boolean"),
-        Some("true".to_string())
+        db.get(b"boolkey".to_vec()).unwrap(),
+        ApiValue::Single(Some(DataType::Boolean(true)))
     );
 }
 
@@ -530,10 +527,10 @@ fn test_execute_query_str_delete_ok() {
     db.insert(b"delkey".to_vec(), "delvalue".to_string()).expect("Insert failed in delete_ok test"); // Use String for insert
     let result = db.execute_query_str("DELETE delkey");
     match result {
-        Ok(ExecutionResult::Deleted(true)) => {} // Expected
-        _ => panic!("Expected Deleted(true), got {:?}", result),
+        Ok(ApiValue::Deleted(true)) => {} // Expected
+        _ => panic!("Expected ApiValue::Deleted(true), got {:?}", result),
     }
-    assert_eq!(db.get(b"delkey".to_vec()).expect("Get after delete_ok failed"), None);
+    assert_eq!(db.get(b"delkey".to_vec()).unwrap(), ApiValue::Single(None));
 }
 
 #[test]
@@ -542,8 +539,8 @@ fn test_execute_query_str_delete_not_found() {
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb for delete_not_found test");
     let result = db.execute_query_str("DELETE nonkey");
     match result {
-        Ok(ExecutionResult::Deleted(false)) => {} // Expected
-        _ => panic!("Expected Deleted(false), got {:?}", result),
+        Ok(ApiValue::Deleted(false)) => {} // Expected
+        _ => panic!("Expected ApiValue::Deleted(false), got {:?}", result),
     }
 }
 
@@ -553,8 +550,8 @@ fn test_execute_query_str_parse_error() {
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb for parse_error test");
     let result = db.execute_query_str("GARBAGE COMMAND");
     match result {
-        Err(OxidbError::SqlParsing(_)) => {} // Expected, changed from InvalidQuery to SqlParsing
-        _ => panic!("Expected OxidbError::SqlParsing, got {:?}", result),
+        Err(ApiError::CoreError(OxidbError::SqlParsing(_))) => {}
+        _ => panic!("Expected ApiError::CoreError(OxidbError::SqlParsing), got {:?}", result),
     }
 }
 
@@ -564,8 +561,8 @@ fn test_execute_query_str_empty_query() {
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb for empty_query test");
     let result = db.execute_query_str("");
     match result {
-        Err(OxidbError::SqlParsing(msg)) => assert_eq!(msg, "Input query string cannot be empty."), // Changed
-        _ => panic!("Expected OxidbError::SqlParsing for empty string, got {:?}", result),
+        Err(ApiError::CoreError(OxidbError::SqlParsing(msg))) => assert_eq!(msg, "Input query string cannot be empty."),
+        _ => panic!("Expected ApiError::CoreError(OxidbError::SqlParsing) for empty string, got {:?}", result),
     }
 }
 
@@ -604,10 +601,10 @@ fn test_execute_query_str_update_ok() {
     let update_query = "UPDATE users SET city = 'New York' WHERE name = 'Alice'";
     let update_result = db.execute_query_str(update_query);
     match update_result {
-        Ok(ExecutionResult::Updated { count }) => {
+        Ok(ApiValue::Updated { count }) => {
             assert_eq!(count, 1, "UPDATE: Expected 1 row updated")
         }
-        _ => panic!("UPDATE: Expected Updated {{ count: 1 }}, got {:?}", update_result),
+        _ => panic!("UPDATE: Expected ApiValue::Updated {{ count: 1 }}, got {:?}", update_result),
     }
 
     // Get the updated data using execute_query_str to see the raw ExecutionResult
@@ -616,7 +613,7 @@ fn test_execute_query_str_update_ok() {
     let get_alice_result_from_executor = db.execute_query_str("GET users_alice_kv_key"); // Use the PK value used in INSERT
 
     match get_alice_result_from_executor {
-        Ok(ExecutionResult::Value(Some(ref data_type_val))) => {
+        Ok(ApiValue::Single(Some(ref data_type_val))) => {
             let mut file_debug_content = format!("Retrieved DataType: {:?}\n", data_type_val);
 
             // Simulate the string conversion that Oxidb::get() would do on data_type_val
@@ -679,11 +676,11 @@ fn test_execute_query_str_update_ok() {
                 panic!("[Test] Expected DataType::Map for key_alice, but got: {:?}", data_type_val);
             }
         }
-        Ok(ExecutionResult::Value(None)) => {
+        Ok(ApiValue::Single(None)) => {
             eprintln!("Problematic data written to: /tmp/debug_output.txt (GET for key_alice Value was None)");
-            std::fs::write("/tmp/debug_output.txt", "ExecutionResult::Value(None) for key_alice")
+            std::fs::write("/tmp/debug_output.txt", "ApiValue::Single(None) for key_alice")
                 .expect("Failed to write None case");
-            panic!("[Test] Expected Value(Some(_)) for key_alice, got Value(None)");
+            panic!("[Test] Expected ApiValue::Single(Some(_)) for key_alice, got ApiValue::Single(None)");
         }
         Err(e) => {
             // Err from db.execute_query_str("GET users_alice")
@@ -710,10 +707,10 @@ fn test_execute_query_str_update_ok() {
     let update_query_no_match = "UPDATE users SET city = 'Berlin' WHERE name = 'Unknown'";
     let result_no_match = db.execute_query_str(update_query_no_match);
     match result_no_match {
-        Ok(ExecutionResult::Updated { count }) => {
+        Ok(ApiValue::Updated { count }) => {
             assert_eq!(count, 0, "UPDATE no match: Expected 0 rows updated")
         }
-        _ => panic!("UPDATE no match: Expected Updated {{ count: 0 }}, got {:?}", result_no_match),
+        _ => panic!("UPDATE no match: Expected ApiValue::Updated {{ count: 0 }}, got {:?}", result_no_match),
     }
 }
 
@@ -748,8 +745,8 @@ fn test_get_visibility_read_uncommitted_should_not_see() {
     // A simpler variant: if a key was never inserted, it should be None.
     let result = db.execute_query_str("GET key_uncommitted_test");
     match result {
-        Ok(ExecutionResult::Value(None)) => {} // Good, key never existed.
-        _ => panic!("Expected Value(None) for a non-existent key, got {:?}", result),
+        Ok(ApiValue::Single(None)) => {} // Good, key never existed.
+        _ => panic!("Expected ApiValue::Single(None) for a non-existent key, got {:?}", result),
     }
     // This doesn't test the "uncommitted" aspect from another transaction well.
     // We'll proceed with other tests that are more feasible with current `Oxidb` API.
@@ -765,10 +762,10 @@ fn test_get_visibility_read_committed_should_see() {
 
     let result = db.execute_query_str("GET key2");
     match result {
-        Ok(ExecutionResult::Value(Some(DataType::String(val)))) => {
+        Ok(ApiValue::Single(Some(DataType::String(val)))) => {
             assert_eq!(val, "value_committed");
         }
-        _ => panic!("Expected Value(Some(\"value_committed\")), got {:?}", result),
+        _ => panic!("Expected ApiValue::Single(Some(\"value_committed\")), got {:?}", result),
     }
 }
 
@@ -788,10 +785,10 @@ fn test_get_visibility_read_own_write_within_transaction_should_see() {
     db.execute_query_str("INSERT key3 value_own_write").expect("Insert failed");
     let result = db.execute_query_str("GET key3"); // This is an auto-commit read
     match result {
-        Ok(ExecutionResult::Value(Some(DataType::String(val)))) => {
+        Ok(ApiValue::Single(Some(DataType::String(val)))) => {
             assert_eq!(val, "value_own_write");
         }
-        _ => panic!("Expected Value(Some(\"value_own_write\")), got {:?}", result),
+        _ => panic!("Expected ApiValue::Single(Some(\"value_own_write\")), got {:?}", result),
     }
     // This simplifies Test Case 3 to "read after write in auto-commit", not "read own uncommitted write".
 }
@@ -819,11 +816,11 @@ fn test_get_visibility_read_committed_then_overwritten_by_uncommitted_should_see
     // For now, asserting the state after the first commit.
     let result = db.execute_query_str("GET key4");
     match result {
-        Ok(ExecutionResult::Value(Some(DataType::String(val)))) => {
+        Ok(ApiValue::Single(Some(DataType::String(val)))) => {
             assert_eq!(val, "value_initial_commit");
         }
         _ => panic!(
-            "Expected Value(Some(\"value_initial_commit\")) after initial commit, got {:?}",
+            "Expected ApiValue::Single(Some(\"value_initial_commit\")) after initial commit, got {:?}",
             result
         ),
     }
@@ -850,10 +847,10 @@ fn test_get_visibility_read_committed_then_overwritten_by_committed_should_see_n
     // Main thread (auto-commit, snapshot_id = 0): get("key5")
     let result = db.execute_query_str("GET key5");
     match result {
-        Ok(ExecutionResult::Value(Some(DataType::String(val)))) => {
+        Ok(ApiValue::Single(Some(DataType::String(val)))) => {
             assert_eq!(val, "value_second_commit");
         }
-        _ => panic!("Expected Value(Some(\"value_second_commit\")), got {:?}", result),
+        _ => panic!("Expected ApiValue::Single(Some(\"value_second_commit\")), got {:?}", result),
     }
 }
 
@@ -875,10 +872,10 @@ fn test_get_visibility_read_committed_then_deleted_by_uncommitted_should_still_s
     // For now, asserting the state after the initial commit, as uncommitted delete is hard to model here.
     let result = db.execute_query_str("GET key6");
     match result {
-        Ok(ExecutionResult::Value(Some(DataType::String(val)))) => {
+        Ok(ApiValue::Single(Some(DataType::String(val)))) => {
             assert_eq!(val, "value_to_delete_uncommitted");
         }
-        _ => panic!("Expected Value(Some(\"value_to_delete_uncommitted\")) when delete is uncommitted, got {:?}", result),
+        _ => panic!("Expected ApiValue::Single(Some(\"value_to_delete_uncommitted\")) when delete is uncommitted, got {:?}", result),
     }
     // To properly test this:
     // db.begin_transaction();
@@ -899,15 +896,15 @@ fn test_get_visibility_read_committed_then_deleted_by_committed_should_not_see()
     // TX2: delete("key7"), TX2: commit()
     let delete_result = db.execute_query_str("DELETE key7");
     match delete_result {
-        Ok(ExecutionResult::Deleted(true)) => {} // Expected
-        _ => panic!("Expected Deleted(true) for key7, got {:?}", delete_result),
+        Ok(ApiValue::Deleted(true)) => {} // Expected
+        _ => panic!("Expected ApiValue::Deleted(true) for key7, got {:?}", delete_result),
     }
 
     // Main thread (auto-commit, snapshot_id = 0): get("key7")
     let result = db.execute_query_str("GET key7");
     match result {
-        Ok(ExecutionResult::Value(None)) => {} // Expected
-        _ => panic!("Expected Value(None) after committed delete, got {:?}", result),
+        Ok(ApiValue::Single(None)) => {} // Expected
+        _ => panic!("Expected ApiValue::Single(None) after committed delete, got {:?}", result),
     }
 }
 
@@ -925,7 +922,7 @@ fn test_constraint_primary_key_not_null_violation_insert() {
     let result =
         db.execute_query_str("INSERT INTO products_pk_nn (pid, name) VALUES (NULL, 'Tablet');");
     match result {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(ApiError::CoreError(OxidbError::ConstraintViolation { message })) => {
             // Expecting NOT NULL constraint failure here, as PKs are implicitly not nullable.
             assert!(
                 message.contains("NOT NULL constraint failed for column 'pid'"),
@@ -933,14 +930,14 @@ fn test_constraint_primary_key_not_null_violation_insert() {
                 message
             );
         }
-        _ => panic!("Expected ConstraintViolation for NULL PK insert, got {:?}", result),
+        _ => panic!("Expected ApiError::CoreError(OxidbError::ConstraintViolation) for NULL PK insert, got {:?}", result),
     }
 
     // Attempt to insert by omitting the PK column (implicitly NULL)
     let result_missing_pk =
         db.execute_query_str("INSERT INTO products_pk_nn (name) VALUES ('Monitor');");
     match result_missing_pk {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(ApiError::CoreError(OxidbError::ConstraintViolation { message })) => {
             assert!(
                 message.contains("NOT NULL constraint failed for column 'pid'"),
                 "Unexpected constraint violation message for missing PK: {}",
@@ -953,8 +950,8 @@ fn test_constraint_primary_key_not_null_violation_insert() {
         other_error => {
             // Allow specific execution errors related to column count or missing values if not a constraint violation.
             // This part of the test is secondary to the explicit NULL test.
-            if !matches!(other_error, Err(OxidbError::Execution(_))) {
-                panic!("Expected ConstraintViolation or specific ExecutionError for missing PK, got {:?}", other_error);
+            if !matches!(other_error, Err(ApiError::CoreError(OxidbError::Execution(_)))) {
+                 panic!("Expected ApiError::CoreError(OxidbError::ConstraintViolation) or specific ApiError::CoreError(OxidbError::Execution) for missing PK, got {:?}", other_error);
             }
             eprintln!("Note: Implicit NULL for PK (omitted column) resulted in: {:?}", other_error);
         }

@@ -2,7 +2,7 @@
 //! Defines abstract patterns of behavior (traits) for the API layer.
 
 use crate::api::errors::ApiError;
-use crate::api::types::QueryResult;
+use crate::api::types::Value; // Changed QueryResult to Value
 use crate::core::query::commands::Command;
 // use crate::core::types::schema::{Schema, TableSchema}; // Future use
 // use crate::core::common::types::Value; // Future use
@@ -17,8 +17,8 @@ pub trait OxidbApi {
     ///
     /// # Returns
     ///
-    /// A `Result` containing a `QueryResult` on success, or an `ApiError` on failure.
-    fn execute_statement(&self, statement: &Command) -> Result<QueryResult, ApiError>;
+    /// A `Result` containing a `Value` on success, or an `ApiError` on failure.
+    fn execute_statement(&self, statement: &Command) -> Result<Value, ApiError>;
 
     // == Future Placeholder Methods for schema and data type operations ==
     //

@@ -5,13 +5,14 @@ use super::types::Oxidb; // To refer to the Oxidb struct in types.rs
 use crate::core::common::OxidbError;
 use crate::core::config::Config;
 use crate::core::query::commands::{Command, Key};
-use crate::core::query::executor::{ExecutionResult, QueryExecutor}; // QueryExecutor is needed for Oxidb::new_with_config
+use crate::core::query::executor::{ExecutionResult as CoreExecutionResult, QueryExecutor}; // QueryExecutor is needed for Oxidb::new_with_config
 use crate::core::query::parser::parse_query_string;
 use crate::core::storage::engine::SimpleFileKvStore; // SimpleFileKvStore is needed for Oxidb::new_with_config
 use crate::core::types::DataType; // Removed JsonSafeMap
 use crate::core::wal::log_manager::LogManager;
+use super::types::Value; // Import the public Value
 use crate::core::wal::writer::WalWriter;
-use serde_json; // For the get method
+// use serde_json; // No longer needed directly by get()
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -105,17 +106,16 @@ impl Oxidb {
     /// * `value` - The value (`String`) to associate with the key. This will be stored as `DataType::String`.
     ///
     /// # Errors
-    /// Returns `OxidbError` if the operation fails, for instance, due to issues
-    /// writing to the WAL.
-    pub fn insert(&mut self, key: Key, value: String) -> Result<(), OxidbError> {
+    /// Returns `ApiError` if the operation fails.
+    pub fn insert(&mut self, key: Key, value: String) -> Result<Value, super::errors::ApiError> {
         let command = Command::Insert { key, value: DataType::String(value) };
         match self.executor.execute_command(command) {
-            Ok(ExecutionResult::Success) => Ok(()),
-            Ok(unexpected_result) => Err(OxidbError::Internal(format!(
+            Ok(CoreExecutionResult::Success) => Ok(Value::Success),
+            Ok(unexpected_result) => Err(super::errors::ApiError::CoreError(OxidbError::Internal(format!(
                 "Insert: Expected Success, got {:?}",
                 unexpected_result
-            ))),
-            Err(e) => Err(e),
+            )))),
+            Err(e) => Err(super::errors::ApiError::from(e)),
         }
     }
 
@@ -127,44 +127,20 @@ impl Oxidb {
     /// * `key` - The key (`Vec<u8>`) whose value is to be retrieved.
     ///
     /// # Returns
-    /// * `Ok(Some(String))` if the key is found, containing the string representation of the associated value.
-    /// * `Ok(None)` if the key is not found.
-    /// * `Err(OxidbError)` if any other error occurs during the operation.
-    pub fn get(&mut self, key: Key) -> Result<Option<String>, OxidbError> {
+    /// * `Ok(Value::Single(Some(DataType)))` if the key is found.
+    /// * `Ok(Value::Single(None))` if the key is not found.
+    /// * `Err(ApiError)` if any other error occurs during the operation.
+    pub fn get(&mut self, key: Key) -> Result<Value, super::errors::ApiError> {
         let command = Command::Get { key };
         match self.executor.execute_command(command) {
-            Ok(ExecutionResult::Value(data_type_option)) => {
-                println!("[Oxidb::get] Value from executor: {:?}", data_type_option); // Debug print
-                Ok(data_type_option.map(|dt| match dt {
-                    DataType::Integer(i) => i.to_string(),
-                    DataType::String(s) => s,
-                    DataType::Boolean(b) => b.to_string(),
-                    DataType::Float(f) => f.to_string(),
-                    DataType::Null => "NULL".to_string(),
-                    DataType::Map(json_safe_map) => { // Match on JsonSafeMap wrapper
-                        // Debug print the map content before serialization
-                        println!("[api_impl.rs get() -> Map serialization] Map content before serde_json::to_string:");
-                        // Iterate over the inner HashMap using .0
-                        for (k_bytes, v_datatype) in &json_safe_map.0 {
-                            println!("  Key: {:?} (UTF-8: '{}'), Value: {:?}", k_bytes, String::from_utf8_lossy(k_bytes), v_datatype);
-                        }
-                        // Serialize the JsonSafeMap wrapper itself, which has the #[serde_as] annotations
-                        let json_string = serde_json::to_string(&json_safe_map)
-                            .unwrap_or_else(|e| format!("Error serializing Map: {}", e));
-                        println!("[api_impl.rs get() -> Map serialization] Serialized JSON string: {}", json_string);
-                        json_string
-                    }
-                    DataType::JsonBlob(json_val) => serde_json::to_string(&json_val)
-                        .unwrap_or_else(|e| format!("Error serializing JsonBlob: {}", e)),
-                    DataType::RawBytes(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-                    DataType::Vector(_) => todo!("Handle DataType::Vector in Oxidb::get"),
-                }))
+            Ok(CoreExecutionResult::Value(data_type_option)) => {
+                Ok(Value::Single(data_type_option)) // Return the DataType directly
             }
-            Ok(unexpected_result) => Err(OxidbError::Internal(format!(
+            Ok(unexpected_result) => Err(super::errors::ApiError::CoreError(OxidbError::Internal(format!(
                 "Get: Expected Value, got {:?}",
                 unexpected_result
-            ))),
-            Err(e) => Err(e),
+            )))),
+            Err(e) => Err(super::errors::ApiError::from(e)),
         }
     }
 
@@ -178,18 +154,18 @@ impl Oxidb {
     /// * `key` - The key (`Vec<u8>`) to delete.
     ///
     /// # Returns
-    /// * `Ok(true)` if the key was found and successfully deleted.
-    /// * `Ok(false)` if the key was not found.
-    /// * `Err(OxidbError)` if the operation fails, for example, due to WAL write issues.
-    pub fn delete(&mut self, key: Key) -> Result<bool, OxidbError> {
+    /// * `Ok(Value::Deleted(true))` if the key was found and successfully deleted.
+    /// * `Ok(Value::Deleted(false))` if the key was not found.
+    /// * `Err(ApiError)` if the operation fails.
+    pub fn delete(&mut self, key: Key) -> Result<Value, super::errors::ApiError> {
         let command = Command::Delete { key };
         match self.executor.execute_command(command) {
-            Ok(ExecutionResult::Deleted(status)) => Ok(status),
-            Ok(unexpected_result) => Err(OxidbError::Internal(format!(
+            Ok(CoreExecutionResult::Deleted(status)) => Ok(Value::Deleted(status)),
+            Ok(unexpected_result) => Err(super::errors::ApiError::CoreError(OxidbError::Internal(format!(
                 "Delete: Expected Deleted, got {:?}",
                 unexpected_result
-            ))),
-            Err(e) => Err(e),
+            )))),
+            Err(e) => Err(super::errors::ApiError::from(e)),
         }
     }
 
@@ -224,18 +200,21 @@ impl Oxidb {
     ///     - `DELETE <key>`
     ///
     /// # Returns
-    /// * `Ok(ExecutionResult)`: If the query is successfully parsed and executed. The `ExecutionResult`
-    ///   enum indicates the outcome of the command (e.g., `ExecutionResult::Value(Some(data))` for a successful GET,
-    ///   `ExecutionResult::Success` for an INSERT, `ExecutionResult::Deleted(true)` for a successful DELETE).
-    /// * `Err(OxidbError)`: If an error occurs at any stage. This can be:
-    ///     - `OxidbError::SqlParsing(String)`: If the `query_string` is malformed (e.g., unknown command,
-    ///       incorrect number of arguments, unclosed quotes).
-    ///     - Other `OxidbError` variants if the command execution itself fails (e.g., I/O errors during
-    ///       storage operations).
-    pub fn execute_query_str(&mut self, query_string: &str) -> Result<ExecutionResult, OxidbError> {
+    /// * `Ok(Value)`: If the query is successfully parsed and executed. The `Value`
+    ///   enum indicates the outcome of the command (e.g., `Value::Single(Some(data))` for a successful GET,
+    ///   `Value::Success` for an INSERT, `Value::Deleted(true)` for a successful DELETE).
+    /// * `Err(ApiError)`: If an error occurs at any stage. This can be:
+    ///     - `ApiError::ParsingError(String)`: If the `query_string` is malformed.
+    ///     - Other `ApiError` variants if the command execution itself fails.
+    pub fn execute_query_str(&mut self, query_string: &str) -> Result<Value, super::errors::ApiError> {
         match parse_query_string(query_string) {
-            Ok(command) => self.executor.execute_command(command),
-            Err(e) => Err(e),
+            Ok(command) => {
+                match self.executor.execute_command(command) {
+                    Ok(core_result) => Ok(Value::from(core_result)),
+                    Err(oxidb_error) => Err(super::errors::ApiError::from(oxidb_error)),
+                }
+            }
+            Err(oxidb_error) => Err(super::errors::ApiError::from(oxidb_error)),
         }
     }
 
@@ -257,42 +236,37 @@ impl Oxidb {
     /// * `value_to_find` - The `DataType` representing the value to search for in the index.
     ///
     /// # Returns
-    /// * `Ok(Some(Vec<DataType>))` if values are found. Each `DataType` in the vector typically
-    ///   represents a primary key or a full record, depending on index implementation.
-    /// * `Ok(None)` if no values are found for the given indexed value.
-    /// * `Err(OxidbError)` if any error occurs.
+    /// * `Ok(Value::Multiple(Vec<DataType>))` containing found items (empty if none).
+    /// * `Err(ApiError)` if any error occurs.
     pub fn find_by_index(
         &mut self,
         index_name: String,
         value_to_find: DataType,
-    ) -> Result<Option<Vec<DataType>>, OxidbError> {
+    ) -> Result<Value, super::errors::ApiError> {
         // Serialize the DataType to Vec<u8> for the command
         let serialized_value =
             match crate::core::common::serialization::serialize_data_type(&value_to_find) {
                 Ok(val) => val,
                 Err(e) => {
-                    return Err(OxidbError::Serialization(format!(
+                    // Convert OxidbError::Serialization to ApiError::SerializationError
+                    return Err(super::errors::ApiError::SerializationError(format!(
                         "Failed to serialize value for index lookup: {}",
                         e
-                    )))
+                    )));
                 }
             };
 
         let command = Command::FindByIndex { index_name, value: serialized_value };
 
         match self.executor.execute_command(command) {
-            Ok(ExecutionResult::Values(values_vec)) => {
-                if values_vec.is_empty() {
-                    Ok(None)
-                } else {
-                    Ok(Some(values_vec))
-                }
+            Ok(CoreExecutionResult::Values(values_vec)) => {
+                Ok(Value::Multiple(values_vec)) // Wrap the vec (even if empty) in Value::Multiple
             }
-            Ok(unexpected_result) => Err(OxidbError::Internal(format!(
+            Ok(unexpected_result) => Err(super::errors::ApiError::CoreError(OxidbError::Internal(format!(
                 "FindByIndex: Expected Values, got {:?}",
                 unexpected_result
-            ))),
-            Err(e) => Err(e),
+            )))),
+            Err(e) => Err(super::errors::ApiError::from(e)),
         }
     }
 }

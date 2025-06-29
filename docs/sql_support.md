@@ -85,11 +85,35 @@ A significant issue observed across multiple tests is that data written using `I
     *   Subqueries: Not supported.
     *   `UNION`, `INTERSECT`, `EXCEPT`: Not supported.
 *   **Result Set Format:**
-    *   `SELECT` queries return `ExecutionResult::Values(Vec<DataType>)`.
+    *   `SELECT` queries (via `execute_query_str`) return `api::Value::Multiple(Vec<DataType>)`.
     *   This vector is structured as `[kv_key1, map_of_columns1, kv_key2, map_of_columns2, ...]`.
     *   `kv_keyN` is the internal key used by the storage engine for the row. For tables with `INTEGER PRIMARY KEY`, this is often the integer ID. For tables with other primary keys, it might be a string representation.
     *   `map_of_columnsN` is a `DataType::Map` where keys are column names (as `Vec<u8>`) and values are `DataType` instances representing the cell data.
     *   Client-side parsing is required to extract meaningful data from this structure.
+
+### `SIMILARITY_SEARCH` (Non-Standard SQL)
+*   **Syntax Overview:**
+    ```sql
+    SIMILARITY_SEARCH table_name ON vector_column_name QUERY [v1, v2, ..., vN] TOP_K k_value;
+    ```
+*   **Purpose:** Performs a brute-force similarity search on a vector column.
+*   **Parameters:**
+    *   `table_name`: The table containing the vector data.
+    *   `vector_column_name`: The name of the column of type `VECTOR[D]` to search.
+    *   `QUERY [v1, ..., vN]`: The query vector literal. `N` must match the dimension `D` of the `vector_column_name`.
+    *   `TOP_K k_value`: The number of closest results to return.
+*   **Supported Features:**
+    *   Calculates Euclidean distance between the query vector and all vectors in the specified column.
+    *   Returns the top `k_value` rows, sorted by distance (ascending).
+*   **Result Format:**
+    *   Returns `api::Value::RankedResults(Vec<(f32, Vec<DataType>)>)`.
+    *   Each tuple in the outer vector contains:
+        *   `f32`: The calculated Euclidean distance.
+        *   `Vec<DataType>`: The full row data for the matching record, with columns in schema order.
+*   **Limitations:**
+    *   Performs a full table scan; no specialized vector indexing is used yet.
+    *   Only Euclidean distance is supported.
+    *   Error handling for type mismatches (e.g., non-vector column specified) is present.
 
 ### `UPDATE`
 *   **Syntax Overview:**
