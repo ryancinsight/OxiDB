@@ -657,12 +657,12 @@ impl BPlusTreeIndex {
             },
             ( // Both are Internal nodes
                 BPlusTreeNode::Internal { page_id: u_pid_val, keys: u_keys, children: u_children, .. },
-                BPlusTreeNode::Internal { keys: l_keys, children: l_children, .. },
-                BPlusTreeNode::Internal { keys: p_keys, .. }
+                BPlusTreeNode::Internal { keys: l_keys, children: l_children, .. }, // lender_sibling's parts
+                BPlusTreeNode::Internal { keys: p_keys, .. } // parent_node's parts
             ) => {
                 if is_left_lender { // Borrow from left sibling
                     // Key from parent comes down to underflowed node
-                    let key_from_parent = p_keys.remove(parent_key_idx); // This is the key separating left_lender and underflowed_node
+                    let key_from_parent = p_keys.remove(parent_key_idx);
                     u_keys.insert(0, key_from_parent);
                     // Rightmost key from left_lender goes up to parent
                     let new_separator_for_parent = l_keys.pop().ok_or(OxidbError::TreeLogicError("Lender internal (left) empty".to_string()))?;
@@ -676,7 +676,7 @@ impl BPlusTreeIndex {
                     self.write_node(&moved_child_node)?;
                 } else { // Borrow from right sibling
                     // Key from parent comes down to underflowed node
-                    let key_from_parent = p_keys.remove(parent_key_idx); // This is the key separating underflowed_node and right_lender
+                    let key_from_parent = p_keys.remove(parent_key_idx);
                     u_keys.push(key_from_parent);
                     // Leftmost key from right_lender goes up to parent
                     let new_separator_for_parent = l_keys.remove(0);
@@ -739,7 +739,10 @@ impl BPlusTreeIndex {
                 // Key from parent comes down into the merged left_node
                 let key_from_parent = p_keys.remove(parent_key_idx);
                 l_keys.push(key_from_parent);
-                l_keys.append(r_keys);
+
+                let mut r_keys_temp = r_keys.clone(); // Use a clone to avoid consuming r_keys if it's needed later, or if append signature requires owned.
+                                                      // Standard Vec::append drains the other Vec, so if r_keys is &mut Vec, it's fine.
+                l_keys.append(&mut r_keys_temp); // If r_keys is &mut Vec, this moves elements.
 
                 let children_to_move = r_children_original.clone(); // Clone to avoid borrow checker issues
                 l_children.append(r_children_original); // Move children from right to left
@@ -772,11 +775,42 @@ impl BPlusTreeIndex {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::core::indexing::btree::node::BPlusTreeNode::{Internal, Leaf};
+    use super::*; // Brings BPlusTreeIndex, OxidbError, KeyType, PrimaryKey, SENTINEL_PAGE_ID etc.
+    use crate::core::indexing::btree::node::BPlusTreeNode::{Internal, Leaf}; // For node variants
+    use crate::core::indexing::btree::node::PageId; // Explicitly needed for function signatures
     // use std::collections::VecDeque; // This was unused
     use std::fs;
     use tempfile::{tempdir, TempDir};
+
+    // Helper function for precise test setups
+    fn construct_tree_with_nodes_for_tests(
+        tree: &mut BPlusTreeIndex,
+        nodes: Vec<BPlusTreeNode>,
+        root_page_id: PageId,
+        next_available_page_id: PageId,
+    ) -> Result<(), OxidbError> {
+        if nodes.is_empty() {
+            return Err(OxidbError::TreeLogicError("Cannot construct tree with empty node list".to_string()));
+        }
+
+        for node in &nodes {
+            // Debug print before writing the node
+            println!("[DEBUG CONSTRUCT] Writing node PageID: {:?}, Keys: {:?}", node.get_page_id(), node.get_keys());
+            if let BPlusTreeNode::Internal { children, .. } = node {
+                println!("[DEBUG CONSTRUCT] ... Children: {:?}", children);
+            } else if let BPlusTreeNode::Leaf { values, next_leaf, .. } = node {
+                // Printing all values might be too verbose, let's just print count for now or skip
+                println!("[DEBUG CONSTRUCT] ... Value sets count: {}, NextLeaf: {:?}", values.len(), next_leaf);
+            }
+            tree.write_node(node)?;
+        }
+
+        tree.root_page_id = root_page_id;
+        tree.next_available_page_id = next_available_page_id;
+        tree.free_list_head_page_id = super::SENTINEL_PAGE_ID; // Correctly reference from outer module
+        tree.write_metadata()?;
+        Ok(())
+    }
 
     fn k(s: &str) -> KeyType {
         s.as_bytes().to_vec()
@@ -2106,18 +2140,126 @@ mod tests {
 
     #[test]
     fn test_delete_internal_merge_with_right_sibling() -> Result<(), OxidbError> {
-        // Symmetric to merge_with_left_sibling.
-        // The core merge_nodes logic is called with (underflower, right_sibling, parent, idx_of_underflower).
-        // Or (left_sibling, underflower, parent, idx_of_left_sibling).
-        // The handle_underflow prefers merging with left if possible.
-        // `if child_idx_in_parent > 0 { merge_with_left } else { merge_with_right }`
-        // So, to test merge_with_right, the underflowing node must be the leftmost child (idx 0).
-        // Use the same setup as internal_merge_cascade_root_change_v6:
+    // This test relies on the setup of test_delete_internal_merge_with_left_sibling,
+    // but ensures the merge happens with the right sibling.
+    // The logic `if child_idx_in_parent > 0 { merge_with_left } else { merge_with_right }`
+    // means for a merge-right, the underflowing node must be the leftmost child (idx 0).
+
+    // The scenario from test_delete_internal_merge_cascade_root_change (which is effectively merge-right for I0)
         // Root[3] -> I0[1](L0[0],L1[1,2]), I1[5](L2[3,4],L3[5,6,7])
         // Delete "0". L0 underflows, merges L1. I0 loses key "1", underflows.
         // I0 is child_idx 0 of Root. It cannot merge left. It will merge with I1 (right sibling).
-        // This is exactly what test_delete_internal_merge_cascade_root_change tests.
         // The merged node is I0 (it absorbs I1).
+    // This is covered by test_delete_internal_merge_with_left_sibling if we consider that test
+    // already tests a cascading merge that results in root change.
+    // If test_delete_internal_merge_with_left_sibling is fixed to use precise construction,
+    // and it correctly tests a merge that propagates up and changes the root,
+    // that scenario inherently tests a merge where an internal node (like I0 above)
+    // becomes the new root by absorbing its right sibling (or being absorbed, depending on perspective).
+
+    // For now, let's use the setup from internal_tests for merge_left, but adapt it if needed
+    // to ensure the underflowing node is the *leftmost* child to force a merge-right.
+    // The internal_tests merge_left has IL1 merge into IL0.
+    // For merge-right, we'd need IL0 to merge into IL1 (less common B-tree variant) or IL0 to underflow and be the leftmost.
+
+    // Re-using the setup from the *passing* internal_test for merge_left, as it's well-defined.
+    // We expect similar behavior if the roles are swapped or if an edge condition forces merge-right.
+    // The key is that a merge happens and the tree structure is valid.
+    // The `test_delete_internal_merge_cascade_root_change` actually tests this exact scenario (I0 merges I1).
+    // So, if that test is correctly formulated (as it is after refactor), this case is covered.
+    // Adding a specific distinct test for merge-right with precise construction:
+    let (mut tree, _path, _dir) = setup_tree("internal_merge_right_precisely");
+    assert_eq!(tree.order, 4, "Test assumes order 4");
+
+    const R_PID: PageId = 0;
+    const IL0_PID: PageId = 1; // Will underflow and merge into IL1
+    const L0_PID: PageId = 2;
+    const L1_PID: PageId = 3;  // Target for key deletion
+    const IL1_PID: PageId = 4; // Absorber
+    const L2_PID: PageId = 5;
+    const L3_PID: PageId = 6;
+    const IL2_PID: PageId = 7; // Guard
+    const L4_PID: PageId = 8;
+    const L5_PID: PageId = 9;
+    const NEXT_AVAILABLE_PAGE_ID: PageId = 10;
+    const ML01_PID: PageId = L0_PID; // L0 will host merged L0+L1
+
+    // Initial Tree Structure:
+    // Root (R_PID): keys [k("03"), k("07")] -> children [IL0, IL1, IL2]
+    //   IL0 (Will underflow): keys [k("01")] -> children [L0, L1]
+    //     L0: keys [k("00")]
+    //     L1: keys [k("02")] (delete this)
+    //   IL1 (Absorber): keys [k("05")] -> children [L2, L3] (at min keys)
+    //     L2: keys [k("04")]
+    //     L3: keys [k("06")]
+    //   IL2 (Right Guard): keys [k("09")] -> children [L4, L5] (at min keys)
+    //     L4: keys [k("08")]
+    //     L5: keys [k("10")]
+    let nodes_to_construct = vec![
+        Internal { page_id: R_PID, parent_page_id: None, keys: vec![k("03"), k("07")], children: vec![IL0_PID, IL1_PID, IL2_PID] },
+        Internal { page_id: IL0_PID, parent_page_id: Some(R_PID), keys: vec![k("01")], children: vec![L0_PID, L1_PID] },
+        Leaf { page_id: L0_PID, parent_page_id: Some(IL0_PID), keys: vec![k("00")], values: vec![vec![pk("v00")]], next_leaf: Some(L1_PID) },
+        Leaf { page_id: L1_PID, parent_page_id: Some(IL0_PID), keys: vec![k("02")], values: vec![vec![pk("v02")]], next_leaf: Some(L2_PID) },
+        Internal { page_id: IL1_PID, parent_page_id: Some(R_PID), keys: vec![k("05")], children: vec![L2_PID, L3_PID] },
+        Leaf { page_id: L2_PID, parent_page_id: Some(IL1_PID), keys: vec![k("04")], values: vec![vec![pk("v04")]], next_leaf: Some(L3_PID) },
+        Leaf { page_id: L3_PID, parent_page_id: Some(IL1_PID), keys: vec![k("06")], values: vec![vec![pk("v06")]], next_leaf: Some(L4_PID) },
+        Internal { page_id: IL2_PID, parent_page_id: Some(R_PID), keys: vec![k("09")], children: vec![L4_PID, L5_PID] },
+        Leaf { page_id: L4_PID, parent_page_id: Some(IL2_PID), keys: vec![k("08")], values: vec![vec![pk("v08")]], next_leaf: Some(L5_PID) },
+        Leaf { page_id: L5_PID, parent_page_id: Some(IL2_PID), keys: vec![k("10")], values: vec![vec![pk("v10")]], next_leaf: None },
+    ];
+    construct_tree_with_nodes_for_tests(&mut tree, nodes_to_construct, R_PID, NEXT_AVAILABLE_PAGE_ID)?;
+
+    tree.delete(&k("02"), None)?; // Delete from L1, causing L0/L1 merge, IL0 underflow
+
+    // Expected: IL0 merges into IL1.
+    // Root keys: [k("07")] (k("03") removed, IL0 pointer removed)
+    // IL1 (absorber) keys: [k("00"), k("03"), k("05")] (orig k("05"), k("03") from root, k("01") from IL0 but IL0's k("01") was separator for L0/L1, L0 key k("00") remains)
+    //    Actually, IL0 original keys: [k("01")]. Children of L0: [k("00")].
+    //    After L0/L1 merge (L1 deleted), ML01 has [k("00")]. IL0 loses k("01"), becomes empty.
+    //    IL0 merges with IL1 (right sibling). Parent key k("03") comes down.
+    //    IL1 (absorber, on page IL1_PID) gets:
+    //      - its original keys: [k("05")]
+    //      - parent separator: k("03")
+    //      - IL0's keys: [] (IL0 was empty after its children merged)
+    //      So, IL1 keys should be [k("03"), k("05")] (sorted)
+    //    IL1 children: [ML01_PID (child of IL0), L2_PID, L3_PID (original children of IL1)]
+    // Root children: [IL1_PID, IL2_PID]
+
+    let root_node_after = tree.read_node(R_PID)?;
+    assert_eq!(root_node_after.get_keys(), &vec![k("07")], "Root key incorrect after merge-right");
+    match &root_node_after {
+        Internal { children, .. } => assert_eq!(children, &vec![IL0_PID, IL2_PID], "Root children incorrect after merge-right"), // Corrected: IL0_PID is the absorber
+        _ => panic!("Root not internal"),
+    }
+
+    let il0_node_after = tree.read_node(IL0_PID)?; // IL0 absorbed IL1
+    assert_eq!(il0_node_after.get_keys(), &vec![k("030"), k("050")], "IL0 keys incorrect after absorbing IL1"); // Adjusted keys based on trace
+    assert_eq!(il0_node_after.get_parent_page_id(), Some(R_PID));
+    match &il0_node_after {
+        Internal { children, .. } => {
+            assert_eq!(children.len(), 3, "IL0 should have 3 children after merge");
+            assert_eq!(children[0], ML01_PID); // Child from original IL0 (L0 hosted merged L0+L1)
+            assert_eq!(children[1], L2_PID);   // Child from original IL1
+            assert_eq!(children[2], L3_PID);   // Child from original IL1
+
+            let ml01_node = tree.read_node(ML01_PID)?;
+            assert_eq!(ml01_node.get_keys(), &vec![k("001")]); // L0 originally had k("001"), L1 had k("011") and was deleted
+            assert_eq!(ml01_node.get_parent_page_id(), Some(IL0_PID));
+
+            let l2_node = tree.read_node(L2_PID)?;
+            assert_eq!(l2_node.get_parent_page_id(), Some(IL0_PID)); // Reparented
+            let l3_node = tree.read_node(L3_PID)?;
+            assert_eq!(l3_node.get_parent_page_id(), Some(IL0_PID)); // Reparented
+        }
+        _ => panic!("IL0 not internal after absorbing IL1"),
+    }
+    // Check deallocations
+    let mut deallocated_pages = std::collections::HashSet::new();
+    deallocated_pages.insert(tree.allocate_new_page_id()?); // Should be L1_PID (original content of key "011" from setup)
+    deallocated_pages.insert(tree.allocate_new_page_id()?); // Should be IL1_PID
+    assert!(deallocated_pages.contains(&L1_PID), "L1_PID (page 3) not deallocated");
+    assert!(deallocated_pages.contains(&IL1_PID), "IL1_PID (page 4) not deallocated");
+
         Ok(())
     }
 
@@ -2152,7 +2294,7 @@ mod tests {
         }
 
 
-        // Delete "1". L0 underflows. Cannot borrow from L1 (L1 has 2 keys, min 1, can lend 1).
+    // Delete "1". L0 underflows. L1 (2 keys) can lend.
         // L0 gets "2" from L1. L1 becomes [3]. Root separator becomes "3".
         // Root[3] -> L0[2], L1[3]
         tree.delete(&k("1"), None)?;
@@ -2168,7 +2310,8 @@ mod tests {
             _ => panic!("Root still not internal?"),
         }
 
-        // Delete "2". L0 underflows. L0 merges L1. (L0 becomes [2,3]).
+    // Delete "2". L0 underflows. L0 merges L1 (L1 has 1 key, cannot lend).
+    // Merged leaf (on L0's page) becomes [k("3")].
         // Root loses key "3". Root becomes empty internal node with 1 child (merged L0L1).
         // Root becomes the merged L0L1 page. This new root is a LEAF.
         let old_root_page_id = tree.root_page_id;
@@ -2178,8 +2321,7 @@ mod tests {
         let final_root_node = tree.read_node(tree.root_page_id)?;
         match final_root_node {
             Leaf { keys, ..} => {
-                 assert_eq!(keys, vec![k("3")]); // L0 had [2], L1 had [3]. After deleting 2, L0 empty. L0 merges L1. L1 had [3].
-                                                 // Merged leaf has [3].
+             assert_eq!(keys, vec![k("3")]);
             }
             _ => panic!("Root should be leaf at the end"),
         }
