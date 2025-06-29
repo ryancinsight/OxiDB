@@ -3,25 +3,26 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use crate::core::common::OxidbError;
-use crate::core::indexing::btree::BPlusTreeIndex; // Import BPlusTreeIndex
+use crate::core::indexing::btree::BPlusTreeIndex;
 use crate::core::indexing::hash_index::HashIndex;
-use crate::core::indexing::traits::Index; // Assumes Index trait uses common::OxidbError
+use crate::core::indexing::traits::Index;
+use crate::core::indexing::vector::{VectorIndex, kdtree::KdTreeIndex}; // Import VectorIndex and KdTreeIndex
 use crate::core::query::commands::{Key as PrimaryKey, Value};
+use crate::core::types::VectorData; // For VectorIndex operations
 
-/// A type alias for a shared, thread-safe index.
-/// It uses `Arc` for shared ownership and `RwLock` for interior mutability,
-/// allowing multiple threads to read or one thread to write to the index.
-/// The `dyn Index + Send + Sync` part means it's a trait object that can be
-/// sent between threads and accessed from multiple threads safely.
-type SharedIndex = Arc<RwLock<dyn Index + Send + Sync>>;
+/// A type alias for a shared, thread-safe scalar index.
+type SharedScalarIndex = Arc<RwLock<dyn Index + Send + Sync>>;
+
+/// A type alias for a shared, thread-safe vector index.
+type SharedVectorIndex = Arc<RwLock<dyn VectorIndex + Send + Sync>>;
 
 /// Manages all indexes within the database system.
-/// It handles creation, retrieval, and data manipulation (insert, delete, update, find)
-/// for various index types.
 #[derive(Debug)]
 pub struct IndexManager {
-    /// A map storing the actual index instances, keyed by index name.
-    indexes: HashMap<String, SharedIndex>,
+    /// A map storing scalar index instances (hash, btree), keyed by index name.
+    scalar_indexes: HashMap<String, SharedScalarIndex>,
+    /// A map storing vector index instances (kdtree), keyed by index name.
+    vector_indexes: HashMap<String, SharedVectorIndex>,
     /// The base file system path where index data is stored.
     base_path: PathBuf,
 }
@@ -36,11 +37,16 @@ impl IndexManager {
                 "Base path for indexes must be a directory.",
             )));
         }
-        Ok(IndexManager { indexes: HashMap::new(), base_path })
+        Ok(IndexManager {
+            scalar_indexes: HashMap::new(),
+            vector_indexes: HashMap::new(),
+            base_path,
+        })
     }
 
-    pub fn create_index(&mut self, index_name: String, index_type: &str) -> Result<(), OxidbError> {
-        if self.indexes.contains_key(&index_name) {
+    /// Creates a scalar index (e.g., "hash", "btree").
+    pub fn create_scalar_index(&mut self, index_name: String, index_type: &str) -> Result<(), OxidbError> {
+        if self.scalar_indexes.contains_key(&index_name) || self.vector_indexes.contains_key(&index_name) {
             return Err(OxidbError::Index(format!(
                 "Index with name '{}' already exists.",
                 index_name
@@ -49,162 +55,293 @@ impl IndexManager {
 
         let index_path = self.base_path.join(format!("{}.{}", index_name, index_type));
 
-        let index: SharedIndex = match index_type {
+        let index: SharedScalarIndex = match index_type {
             "hash" => {
-                // HashIndex::new expects base_path, not full file path. It forms filename inside.
                 let hash_index = HashIndex::new(index_name.clone(), &self.base_path)?;
                 Arc::new(RwLock::new(hash_index))
             }
             "btree" => {
                 const DEFAULT_BTREE_ORDER: usize = 5;
-                // BPlusTreeIndex::new expects the full path to its file.
                 let btree_index = BPlusTreeIndex::new(
                     index_name.clone(),
-                    index_path, // Pass the constructed path
+                    index_path,
                     DEFAULT_BTREE_ORDER,
                 )
-                .map_err(|e| OxidbError::Index(format!("BTree creation error: {:?}", e)))?; // Map btree::OxidbError
+                .map_err(|e| OxidbError::Index(format!("BTree creation error: {:?}", e)))?;
                 Arc::new(RwLock::new(btree_index))
             }
             _ => {
-                return Err(OxidbError::Index(format!("Unsupported index type: {}", index_type)));
+                return Err(OxidbError::Index(format!("Unsupported scalar index type: {}", index_type)));
             }
         };
 
-        self.indexes.insert(index_name, index);
+        self.scalar_indexes.insert(index_name, index);
         Ok(())
     }
 
-    pub fn get_index(&self, index_name: &str) -> Option<SharedIndex> {
-        self.indexes.get(index_name).cloned()
+    /// Creates a vector index (e.g., "kdtree").
+    pub fn create_vector_index(&mut self, index_name: String, index_type: &str, dimension: u32) -> Result<(), OxidbError> {
+        if self.scalar_indexes.contains_key(&index_name) || self.vector_indexes.contains_key(&index_name) {
+            return Err(OxidbError::Index(format!(
+                "Index with name '{}' already exists.",
+                index_name
+            )));
+        }
+
+        let index: SharedVectorIndex = match index_type {
+            "kdtree" => {
+                // KdTreeIndex::new expects base_path for its file construction.
+                let kd_tree_index = KdTreeIndex::new(index_name.clone(), dimension, &self.base_path)?;
+                Arc::new(RwLock::new(kd_tree_index))
+            }
+            _ => {
+                return Err(OxidbError::Index(format!("Unsupported vector index type: {}", index_type)));
+            }
+        };
+
+        self.vector_indexes.insert(index_name, index);
+        Ok(())
+    }
+
+    // Renamed original create_index to create_scalar_index.
+    // For backward compatibility or generic DDL, a dispatcher could be made.
+    // pub fn create_index(&mut self, index_name: String, index_type: &str, options: IndexOptions) -> Result<(), OxidbError>
+    // where IndexOptions could specify dimension for vector indexes etc.
+
+    pub fn get_scalar_index(&self, index_name: &str) -> Option<SharedScalarIndex> {
+        self.scalar_indexes.get(index_name).cloned()
+    }
+
+    pub fn get_vector_index(&self, index_name: &str) -> Option<SharedVectorIndex> {
+        self.vector_indexes.get(index_name).cloned()
     }
 
     pub fn base_path(&self) -> PathBuf {
         self.base_path.clone()
     }
 
-    // ... (other methods: insert_into_index, on_insert_data, delete_from_index, on_delete_data, on_update_data, find_by_index)
-    // These methods should work fine if the Index trait methods correctly map their errors to common::OxidbError.
-
-    pub fn insert_into_index(
+    pub fn insert_into_scalar_index(
         &self,
         index_name: &str,
         value: &Value,
         primary_key: &PrimaryKey,
     ) -> Result<(), OxidbError> {
-        match self.indexes.get(index_name) {
+        match self.scalar_indexes.get(index_name) {
             Some(index_arc) => {
                 let mut index = index_arc.write().map_err(|_| {
-                    OxidbError::Lock("Failed to acquire write lock on index".to_string())
+                    OxidbError::Lock(format!("Failed to acquire write lock on scalar index '{}'", index_name))
                 })?;
-                index.insert(value, primary_key) // This now expects Result<(), common::OxidbError>
+                index.insert(value, primary_key)
             }
             None => {
-                Err(OxidbError::Index(format!("Index '{}' not found for insertion.", index_name)))
+                Err(OxidbError::Index(format!("Scalar index '{}' not found for insertion.", index_name)))
             }
         }
     }
+
+    /// Inserts a (vector, primary_key) pair into a named vector index.
+    /// Note: This is for direct insertion. Vector indexes like KD-Tree often benefit from bulk `build`.
+    pub fn insert_into_vector_index(
+        &self,
+        index_name: &str,
+        vector: &VectorData,
+        primary_key: &PrimaryKey,
+    ) -> Result<(), OxidbError> {
+        match self.vector_indexes.get(index_name) {
+            Some(index_arc) => {
+                let mut index = index_arc.write().map_err(|_| {
+                    OxidbError::Lock(format!("Failed to acquire write lock on vector index '{}'", index_name))
+                })?;
+                index.insert(vector, primary_key)
+            }
+            None => Err(OxidbError::Index(format!(
+                "Vector index '{}' not found for insertion.",
+                index_name
+            ))),
+        }
+    }
+
 
     pub fn on_insert_data(
         &self,
-        indexed_values: &HashMap<String, Value>,
+        indexed_values: &HashMap<String, Value>, // For scalar indexes
+        // indexed_vectors: &HashMap<String, VectorData>, // TODO: For vector indexes
         primary_key: &PrimaryKey,
     ) -> Result<(), OxidbError> {
         for (index_name, value) in indexed_values {
-            if let Some(index_arc) = self.indexes.get(index_name) {
+            if let Some(index_arc) = self.scalar_indexes.get(index_name) {
                 let mut index = index_arc.write().map_err(|_| {
-                    OxidbError::Lock("Failed to acquire write lock on index".to_string())
+                    OxidbError::Lock(format!("Failed to acquire write lock on scalar index '{}'", index_name))
                 })?;
                 index.insert(value, primary_key)?;
             } else {
-                eprintln!("Warning: Index '{}' not found during data insertion.", index_name);
+                // Consider if it could be a vector index name; current indexed_values is Value not VectorData
+                eprintln!("Warning: Scalar index '{}' not found during data insertion for PK {:?}.", index_name, primary_key);
             }
         }
+        // TODO: Handle indexed_vectors for vector indexes similarly
         Ok(())
     }
 
-    pub fn delete_from_index(
+    pub fn delete_from_scalar_index(
         &self,
         index_name: &str,
         value: &Value,
         primary_key: Option<&PrimaryKey>,
     ) -> Result<(), OxidbError> {
-        match self.indexes.get(index_name) {
+        match self.scalar_indexes.get(index_name) {
             Some(index_arc) => {
                 let mut index = index_arc.write().map_err(|_| {
-                    OxidbError::Lock("Failed to acquire write lock on index".to_string())
+                    OxidbError::Lock(format!("Failed to acquire write lock on scalar index '{}'", index_name))
                 })?;
                 index.delete(value, primary_key)
             }
             None => {
-                Err(OxidbError::Index(format!("Index '{}' not found for deletion.", index_name)))
+                Err(OxidbError::Index(format!("Scalar index '{}' not found for deletion.", index_name)))
             }
         }
     }
 
+    /// Deletes an entry from a named vector index using its primary key.
+    pub fn delete_from_vector_index(
+        &self,
+        index_name: &str,
+        primary_key: &PrimaryKey,
+    ) -> Result<(), OxidbError> {
+        match self.vector_indexes.get(index_name) {
+            Some(index_arc) => {
+                let mut index = index_arc.write().map_err(|_| {
+                    OxidbError::Lock(format!("Failed to acquire write lock on vector index '{}'", index_name))
+                })?;
+                index.delete(primary_key)
+            }
+            None => Err(OxidbError::Index(format!(
+                "Vector index '{}' not found for deletion.",
+                index_name
+            ))),
+        }
+    }
+
+
     pub fn on_delete_data(
         &self,
-        indexed_values: &HashMap<String, Value>,
+        indexed_values: &HashMap<String, Value>, // For scalar indexes
+        // indexed_vectors: &HashMap<String, VectorData>, // TODO: For vector indexes
         primary_key: &PrimaryKey,
     ) -> Result<(), OxidbError> {
         for (index_name, value) in indexed_values {
-            if let Some(index_arc) = self.indexes.get(index_name) {
+            if let Some(index_arc) = self.scalar_indexes.get(index_name) {
                 let mut index = index_arc.write().map_err(|_| {
-                    OxidbError::Lock("Failed to acquire write lock on index".to_string())
+                    OxidbError::Lock(format!("Failed to acquire write lock on scalar index '{}'", index_name))
                 })?;
                 index.delete(value, Some(primary_key))?;
             } else {
-                eprintln!("Warning: Index '{}' not found during data deletion.", index_name);
+                eprintln!("Warning: Scalar index '{}' not found during data deletion for PK {:?}.", index_name, primary_key);
             }
         }
+        // TODO: Handle indexed_vectors for vector indexes
         Ok(())
     }
 
     pub fn on_update_data(
         &self,
-        old_values_map: &HashMap<String, Value>,
-        new_values_map: &HashMap<String, Value>,
+        old_values_map: &HashMap<String, Value>, // For scalar indexes
+        new_values_map: &HashMap<String, Value>, // For scalar indexes
+        // old_vectors_map: &HashMap<String, VectorData>, // TODO
+        // new_vectors_map: &HashMap<String, VectorData>, // TODO
         primary_key: &PrimaryKey,
     ) -> Result<(), OxidbError> {
-        for (index_name, index_arc) in &self.indexes {
+        for (index_name, index_arc) in &self.scalar_indexes {
             if let (Some(old_value), Some(new_value)) =
                 (old_values_map.get(index_name), new_values_map.get(index_name))
             {
                 let mut index = index_arc.write().map_err(|_| {
                     OxidbError::Lock(format!(
-                        "Failed to acquire write lock on index '{}' for update.",
+                        "Failed to acquire write lock on scalar index '{}' for update.",
                         index_name
                     ))
                 })?;
                 index.update(old_value, new_value, primary_key)?;
             }
         }
+        // TODO: Handle vector index updates. This is more complex as it usually involves delete + insert + rebuild.
         Ok(())
     }
 
-    pub fn find_by_index(
+    pub fn find_by_scalar_index(
         &self,
         index_name: &str,
         value: &Value,
     ) -> Result<Option<Vec<PrimaryKey>>, OxidbError> {
-        match self.indexes.get(index_name) {
+        match self.scalar_indexes.get(index_name) {
             Some(index_arc) => {
                 let index = index_arc.read().map_err(|_| {
-                    OxidbError::Lock("Failed to acquire read lock on index".to_string())
+                    OxidbError::Lock(format!("Failed to acquire read lock on scalar index '{}'", index_name))
                 })?;
                 index.find(value)
             }
             None => Err(OxidbError::Index(format!(
-                "Index '{}' not found for find operation.",
+                "Scalar index '{}' not found for find operation.",
                 index_name
             ))),
         }
     }
 
+    /// Performs a K-Nearest Neighbor search on a named vector index.
+    pub fn search_vector_index(
+        &self,
+        index_name: &str,
+        query_vector: &VectorData,
+        k: usize,
+    ) -> Result<Vec<(PrimaryKey, f32)>, OxidbError> {
+        match self.vector_indexes.get(index_name) {
+            Some(index_arc) => {
+                let index = index_arc.read().map_err(|_| {
+                    OxidbError::Lock(format!("Failed to acquire read lock on vector index '{}'", index_name))
+                })?;
+                // Ensure index is built before search if necessary. Some VDBs do this implicitly.
+                // Our current KdTreeIndex needs explicit build. The caller (e.g. query executor)
+                // must ensure `build_vector_index` was called.
+                index.search_knn(query_vector, k)
+            }
+            None => Err(OxidbError::Index(format!(
+                "Vector index '{}' not found for KNN search.",
+                index_name
+            ))),
+        }
+    }
+
+    /// Builds or rebuilds a named vector index with the provided data.
+    pub fn build_vector_index(
+        &self,
+        index_name: &str,
+        all_data: &[(PrimaryKey, VectorData)],
+    ) -> Result<(), OxidbError> {
+        match self.vector_indexes.get(index_name) {
+            Some(index_arc) => {
+                let mut index = index_arc.write().map_err(|_| {
+                    OxidbError::Lock(format!("Failed to acquire write lock for building vector index '{}'", index_name))
+                })?;
+                index.build(all_data)
+            }
+            None => Err(OxidbError::Index(format!(
+                "Vector index '{}' not found for building.",
+                index_name
+            ))),
+        }
+    }
+
+
     pub fn save_all_indexes(&self) -> Result<(), OxidbError> {
-        for index_arc in self.indexes.values() {
+        for index_arc in self.scalar_indexes.values() {
             let index = index_arc.read().map_err(|_| {
-                OxidbError::Lock("Failed to acquire read lock for saving index".to_string())
+                OxidbError::Lock("Failed to acquire read lock for saving scalar index".to_string())
+            })?;
+            index.save()?;
+        }
+        for index_arc in self.vector_indexes.values() {
+            let index = index_arc.read().map_err(|_| {
+                OxidbError::Lock("Failed to acquire read lock for saving vector index".to_string())
             })?;
             index.save()?;
         }
@@ -212,13 +349,30 @@ impl IndexManager {
     }
 
     pub fn load_all_indexes(&mut self) -> Result<(), OxidbError> {
-        for (name, index_arc) in &self.indexes {
+        // Loading is typically handled at creation time by the index itself if its file exists.
+        // This method could force a reload or be used if indexes are not loaded at creation.
+        // For now, let's assume individual index `load` methods are called appropriately
+        // (e.g. during `create_scalar_index` or `create_vector_index` if file exists).
+        // This explicit `load_all_indexes` can be used to ensure all known indexes attempt to load.
+
+        for (name, index_arc) in &self.scalar_indexes {
             let mut index = index_arc.write().map_err(|_| {
-                OxidbError::Lock(format!("Failed to lock index {} for loading", name))
+                OxidbError::Lock(format!("Failed to lock scalar index {} for loading", name))
             })?;
             index
                 .load()
-                .map_err(|e| OxidbError::Index(format!("Error loading index {}: {}", name, e)))?;
+                .map_err(|e| OxidbError::Index(format!("Error loading scalar index {}: {}", name, e)))?;
+        }
+        for (name, index_arc) in &self.vector_indexes {
+            let mut index = index_arc.write().map_err(|_| {
+                OxidbError::Lock(format!("Failed to lock vector index {} for loading", name))
+            })?;
+            index
+                .load()
+                .map_err(|e| OxidbError::Index(format!("Error loading vector index {}: {}", name, e)))?;
+            // After loading a vector index, it might need to be rebuilt.
+            // The IndexManager or system needs a policy for this.
+            // For now, loading just loads the data; `build_vector_index` is separate.
         }
         Ok(())
     }

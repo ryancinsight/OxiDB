@@ -123,6 +123,7 @@ pub enum Statement {
     Insert(InsertStatement),
     Delete(DeleteStatement),
     DropTable(DropTableStatement),
+    CreateIndex(CreateIndexStatement), // Added
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -130,3 +131,23 @@ pub struct DropTableStatement {
     pub table_name: String,
     pub if_exists: bool, // Support IF EXISTS
 }
+
+// --- Added for CREATE INDEX ---
+#[derive(Debug, PartialEq, Clone)]
+pub enum IndexType {
+    BTree,
+    Hash,
+    KdTree,
+    // Other future vector index types e.g., IvfPq
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct CreateIndexStatement {
+    pub index_name: String,
+    pub table_name: String,
+    pub column_name: String, // For now, single column. Could be Vec<String> for composite keys.
+    pub index_type: IndexType,
+    pub is_vector_index: bool, // True if CREATE VECTOR INDEX syntax was used
+    pub if_not_exists: bool,
+}
+// --- End Added for CREATE INDEX ---

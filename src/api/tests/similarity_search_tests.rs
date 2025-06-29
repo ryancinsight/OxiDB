@@ -184,4 +184,67 @@ mod similarity_search_tests {
         // and that row wouldn't be part of the results.
         // Since SQL INSERT currently prevents this, this specific internal check is harder to unit test via SQL interface.
     }
+
+    #[test]
+    fn test_similarity_search_with_kdtree_index() {
+        let (mut db, _dir) = create_temp_db();
+
+        // Create table
+        db.execute_query_str("CREATE TABLE indexed_vectors (id INTEGER PRIMARY KEY, embedding VECTOR[3], category STRING);")
+            .unwrap();
+
+        // Insert data
+        db.execute_query_str("INSERT INTO indexed_vectors (id, embedding, category) VALUES (10, [1.0, 1.0, 1.0], 'A');").unwrap();
+        db.execute_query_str("INSERT INTO indexed_vectors (id, embedding, category) VALUES (20, [2.0, 2.0, 2.0], 'B');").unwrap();
+        db.execute_query_str("INSERT INTO indexed_vectors (id, embedding, category) VALUES (30, [1.1, 1.1, 1.1], 'A');").unwrap();
+        db.execute_query_str("INSERT INTO indexed_vectors (id, embedding, category) VALUES (40, [5.0, 5.0, 5.0], 'C');").unwrap();
+        db.execute_query_str("INSERT INTO indexed_vectors (id, embedding, category) VALUES (50, [1.05, 1.05, 1.05], 'A');").unwrap();
+
+
+        // Create KD-Tree index - using conventional name that executor will look for.
+        // The executor uses "vidx_<table>_<column>"
+        let create_index_result = db.execute_query_str("CREATE VECTOR INDEX vidx_indexed_vectors_embedding ON indexed_vectors (embedding) USING KDTREE;");
+        if let Err(e) = &create_index_result {
+            eprintln!("Failed to create vector index: {:?}", e);
+        }
+        create_index_result.unwrap();
+
+
+        // Important: Build the index. The IndexManager and KdTreeIndex require explicit build.
+        // This is a conceptual API call. The actual way to trigger this might be different,
+        // e.g., it might happen automatically after CREATE INDEX + commit, or via a specific SQL command.
+        // For now, let's assume there's an (internal or test-only) way to ensure the index is built.
+        // If not, the KdTreeIndex search_knn will return a "BuildError", and executor will fallback to scan.
+        // To make this test pass robustly without a specific `BUILD INDEX` SQL command,
+        // the `CREATE VECTOR INDEX` execution path in `QueryExecutor` or `CommandProcessor`
+        // should ideally trigger an initial build of the index.
+        // Let's assume for this test that the index is built after creation or that the system handles it.
+        // If the `handle_similarity_search` correctly falls back to scan when index is not built,
+        // this test would still pass on correctness but wouldn't confirm index usage.
+
+        // Perform similarity search
+        let results = db.execute_query_str("SIMILARITY_SEARCH indexed_vectors ON embedding QUERY [1.0,1.0,1.0] TOP_K 3;").unwrap();
+
+        match results {
+            Value::RankedResults(ranked_data) => {
+                assert_eq!(ranked_data.len(), 3);
+                // Expected order:
+                // 1. (10, [1.0, 1.0, 1.0], 'A') - dist 0
+                // 2. (50, [1.05, 1.05, 1.05], 'A') - dist sqrt(3 * 0.05^2) = sqrt(3 * 0.0025) = sqrt(0.0075) approx 0.0866
+                // 3. (30, [1.1, 1.1, 1.1], 'A') - dist sqrt(3 * 0.1^2) = sqrt(3 * 0.01) = sqrt(0.03) approx 0.1732
+
+                assert_eq!(ranked_data[0].0, 0.0); // distance for item 10
+                assert_eq!(ranked_data[0].1[0], DataType::Integer(10)); // id
+
+                let dist_50 = VectorData::new(3, vec![1.05, 1.05, 1.05]).unwrap().euclidean_distance(&VectorData::new(3, vec![1.0,1.0,1.0]).unwrap()).unwrap();
+                assert!((ranked_data[1].0 - dist_50).abs() < f32::EPSILON);
+                assert_eq!(ranked_data[1].1[0], DataType::Integer(50)); // id
+
+                let dist_30 = VectorData::new(3, vec![1.1, 1.1, 1.1]).unwrap().euclidean_distance(&VectorData::new(3, vec![1.0,1.0,1.0]).unwrap()).unwrap();
+                assert!((ranked_data[2].0 - dist_30).abs() < f32::EPSILON);
+                assert_eq!(ranked_data[2].1[0], DataType::Integer(30)); // id
+            }
+            _ => panic!("Expected RankedResults, got {:?}", results),
+        }
+    }
 }

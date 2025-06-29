@@ -99,6 +99,19 @@ This ledger tracks the status of major features and components of the Oxidb cath
             *   [x] `manager.rs` (IndexManager for managing multiple indexes implemented)
             *   [x] `btree/` (B+-Tree implementation using fixed-size pages, supporting insert, find, delete with rebalancing)
             *   [x] ADR for indexing strategies (See ADR-002 for B+-Tree)
+    *   **Vector Indexing** (`src/core/indexing/vector/`)
+        *   Status: Initial Implementation (KD-Tree)
+        *   Checklist:
+            *   [x] `vector/mod.rs`: Defines `VectorIndex` trait and `VectorIndexError`.
+            *   [x] `vector/kdtree/mod.rs`: Defines `KdTreeIndex` struct implementing `VectorIndex`.
+            *   [x] `vector/kdtree/tree.rs`: Core `KdNode` and `KdTree` structures.
+            *   [x] `vector/kdtree/builder.rs`: Logic to build `KdTree` from vector data.
+            *   [x] `vector/kdtree/search.rs`: KNN search logic for `KdTree`.
+            *   [x] `vector/kdtree/error.rs`: `KdTreeError` definitions.
+            *   [x] `IndexManager` updated to support `VectorIndex` types (e.g., "kdtree").
+            *   [x] SQL Parser updated for `CREATE [VECTOR] INDEX ... USING KDTREE`.
+            *   [x] `SIMILARITY_SEARCH` executor logic updated to attempt using vector indexes.
+            *   [ ] ADR for chosen vector indexing strategy (e.g., why KD-Tree first).
 
 ### Common Utilities (`src/core/common`)
 *   Status: Substantially Implemented
@@ -170,3 +183,22 @@ This ledger will be updated as work progresses on each component. "Required Comp
     *   Added `VECTOR[N]` data type support in `CREATE TABLE` SQL syntax and schema translation.
     *   Added documentation for `SIMILARITY_SEARCH` in `docs/sql_support.md`.
 *   **Test Suite**: All relevant API and similarity search tests are passing. Some pre-existing B-Tree and WAL test failures are being tracked separately.
+
+## Recent Updates - YYYY-MM-DD (RAG Phase 2 - KDTree Vector Index)
+*   **Vector Indexing (KD-Tree):**
+    *   Implemented `VectorIndex` trait in `core/indexing/vector/mod.rs`.
+    *   Implemented `KdTreeIndex` in `core/indexing/vector/kdtree/` including builder and KNN search logic.
+    *   Updated `IndexManager` to manage `VectorIndex` instances, separating them from scalar indexes. Added methods like `create_vector_index`, `build_vector_index`, `search_vector_index`.
+    *   Extended SQL parser (`core/query/sql/`) to support `CREATE [VECTOR] INDEX index_name ON table (column) [USING KDTREE|BTREE|HASH]`.
+        *   AST updated with `CreateIndexStatement` and `IndexType`.
+        *   Parser logic added to handle the new DDL syntax and infer/validate index types.
+    *   Modified `SIMILARITY_SEARCH` execution in `QueryExecutor` to:
+        *   Attempt to use a vector index (conventionally named `vidx_<table>_<column>`).
+        *   Fall back to brute-force scan if index is not found, not built, or incompatible.
+    *   Added initial unit tests for KD-Tree builder and search.
+    *   Added integration tests for `CREATE VECTOR INDEX` DDL and for `SIMILARITY_SEARCH` with an index.
+*   **Documentation:**
+    *   Updated `docs/sql_support.md` with `CREATE INDEX` / `CREATE VECTOR INDEX` syntax and noted index usage for `SIMILARITY_SEARCH`.
+    *   Updated this `progress_ledger.md` for vector indexing.
+    *   Updated `CHECKLIST.md` for vector indexing progress.
+*   **Note**: Implementation of the command execution logic for `CreateIndexStatement` (i.e., making `QueryExecutor` or `CommandProcessor` call `IndexManager.create_vector_index` and `IndexManager.build_vector_index` based on the parsed DDL) is pending and essential for the DDL to be fully functional. Test failures related to this are expected until that part is complete.

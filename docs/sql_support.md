@@ -110,8 +110,9 @@ A significant issue observed across multiple tests is that data written using `I
     *   Each tuple in the outer vector contains:
         *   `f32`: The calculated Euclidean distance.
         *   `Vec<DataType>`: The full row data for the matching record, with columns in schema order.
-*   **Limitations:**
-    *   Performs a full table scan; no specialized vector indexing is used yet.
+*   **Limitations & Index Usage:**
+    *   If a compatible vector index (e.g., a KD-Tree created via `CREATE VECTOR INDEX`) exists on the `vector_column_name` and is built, the system will attempt to use it for faster search.
+    *   If no suitable index is found, or if the index is not built or incompatible (e.g., dimension mismatch), the command falls back to a full table scan.
     *   Only Euclidean distance is supported.
     *   Error handling for type mismatches (e.g., non-vector column specified) is present.
 
@@ -196,9 +197,37 @@ This is not an exhaustive list, but highlights major components generally expect
 *   **Window Functions**.
 *   **Common Table Expressions (CTEs)**.
 
+### `CREATE INDEX` / `CREATE VECTOR INDEX`
+*   **Syntax Overview (Scalar Index):**
+    ```sql
+    CREATE [UNIQUE] INDEX [IF NOT EXISTS] index_name
+    ON table_name (column_name) [USING BTREE | HASH];
+    ```
+*   **Syntax Overview (Vector Index):**
+    ```sql
+    CREATE VECTOR INDEX [IF NOT EXISTS] index_name
+    ON table_name (vector_column_name) [USING KDTREE];
+    ```
+*   **Supported Features:**
+    *   Creation of scalar indexes (BTree, Hash) on single columns.
+        *   `USING BTREE` is the default if `USING` clause is omitted for `CREATE INDEX`.
+    *   Creation of vector indexes (KD-Tree) on `VECTOR` type columns.
+        *   `USING KDTREE` is the default if `USING` clause is omitted for `CREATE VECTOR INDEX`.
+    *   `IF NOT EXISTS` clause is supported to prevent errors if the index already exists.
+*   **Limitations & Notes:**
+    *   **Index Building**: For vector indexes like KD-Tree, the index is created but might require a separate mechanism or command (e.g., `BUILD INDEX index_name`) to be populated with data before it's effectively used by queries. The `CREATE VECTOR INDEX` command itself might not automatically build the index with existing table data. (Current implementation detail: `KdTreeIndex` requires an explicit `build` call; the DDL handler for `CREATE VECTOR INDEX` should ideally trigger this).
+    *   **UNIQUE**: The `UNIQUE` keyword is parsed for scalar indexes but its enforcement relies on the underlying index implementation and data modification logic. `UNIQUE` is not applicable to vector indexes like KD-Tree.
+    *   **Composite Indexes**: Only single-column indexes are currently supported.
+    *   **Index Usage**: The query planner/optimizer must be aware of these indexes to use them. `SIMILARITY_SEARCH` has been updated to attempt to use compatible vector indexes. Scalar index usage by `SELECT` queries depends on optimizer capabilities not yet detailed.
+    *   **Column Type Compatibility**:
+        *   Vector indexes (e.g., KDTREE) can only be created on columns of type `VECTOR`.
+        *   Scalar indexes (e.g., BTREE, HASH) cannot be created on `VECTOR` type columns.
+        *   Attempting to create incompatible index types will result in an error.
+*   **Dropped Indexes**: `DROP INDEX` is not yet supported.
+
 ## Conclusion
 
-Oxidb currently supports a very basic subset of SQL, primarily focused on `CREATE TABLE` (with non-enforced constraints), `INSERT`, `SELECT *` with simple `WHERE`, and `UPDATE`/`DELETE` with simple `WHERE`.
+Oxidb currently supports a very basic subset of SQL, primarily focused on `CREATE TABLE` (with non-enforced constraints), `INSERT`, `SELECT *` with simple `WHERE`, and `UPDATE`/`DELETE` with simple `WHERE`. Basic DDL for `CREATE INDEX` (scalar and vector) has been added.
 
 Key areas for future development from a SQL perspective would be:
 1.  **Reliable Data Visibility**: Ensuring data written is immediately queryable.

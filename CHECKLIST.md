@@ -219,8 +219,16 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
     *   [ ] (Optional) Implement other index types (e.g., Hash Index, GiST).
         *   [ ] Subtask: Design and implement the chosen index structure.
         *   [ ] Subtask: Write unit tests for the new index type.
+    *   [x] Implement Vector Index (KD-Tree).
+        *   [x] Subtask: Design KD-Tree node structure and core operations.
+        *   [x] Subtask: Implement KD-Tree builder logic.
+        *   [x] Subtask: Implement KD-Tree KNN search logic.
+        *   [x] Subtask: Define `VectorIndex` trait and `KdTreeIndex` wrapper.
+        *   [x] Subtask: Implement serialization/deserialization for `KdTreeIndex` (persisting points list).
+        *   [x] Subtask: Write unit tests for KD-Tree operations.
     *   [ ] Integrate indexing with the query executor (IndexScan operator).
-        *   [ ] Subtask: Modify the query optimizer to consider using indexes.
+        *   [x] Subtask: Integrate KD-Tree with `SIMILARITY_SEARCH` command execution.
+        *   [ ] Subtask: Modify the query optimizer to consider using scalar indexes.
             *   [ ] Sub-subtask: Add logic to identify query predicates that can be satisfied by an index.
             *   [ ] Sub-subtask: Estimate costs for table scan vs. index scan.
         *   [ ] Subtask: Implement the IndexScan physical operator.

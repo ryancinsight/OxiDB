@@ -748,50 +748,99 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             OxidbError::Execution(format!("Vector column '{}' not found in table '{}'.", vector_column_name, table_name))
         })?;
 
-        // Check if the column is actually a vector type
-        if !matches!(vector_col_def.data_type, crate::core::types::DataType::Vector { .. }) {
-            return Err(OxidbError::Execution(format!("Column '{}' in table '{}' is not of type VECTOR.", vector_column_name, table_name)));
+        // Check if the column is actually a vector type and get its defined dimension
+        let _column_vector_dimension = match &vector_col_def.data_type {
+            crate::core::types::DataType::Vector { dimension } => *dimension,
+            _ => return Err(OxidbError::Execution(format!("Column '{}' in table '{}' is not of type VECTOR.", vector_column_name, table_name))),
+        };
+
+        // Attempt to use a vector index
+        let conventional_index_name = format!("vidx_{}_{}", table_name, vector_column_name);
+        let index_manager_locked = self.index_manager.read().map_err(|_| OxidbError::Lock("Failed to lock IndexManager for read".to_string()))?;
+
+        if let Some(vector_index_arc) = index_manager_locked.get_vector_index(&conventional_index_name) {
+            let vector_index = vector_index_arc.read().map_err(|_| OxidbError::Lock(format!("Failed to lock vector index '{}' for read", conventional_index_name)))?;
+
+            if vector_index.dimension() != query_vector.dimension {
+                eprintln!(
+                    "Dimension mismatch between query vector ({}) and index '{}' ({}). Falling back to scan.",
+                    query_vector.dimension, conventional_index_name, vector_index.dimension()
+                );
+                // Fall through to brute-force scan if dimensions don't match for some reason
+                // (though ideally index creation would align with column def)
+            } else {
+                // Use the index
+                // Note: search_knn might return an error if index is not built.
+                // The command processor/user should ensure `BUILD VECTOR INDEX` is called.
+                match vector_index.search_knn(&query_vector, top_k) {
+                    Ok(pk_dist_pairs) => {
+                        let mut ranked_results: Vec<(f32, Vec<DataType>)> = Vec::with_capacity(pk_dist_pairs.len());
+                        let current_tx_id_opt = self.transaction_manager.current_active_transaction_id();
+                        let snapshot_id = current_tx_id_opt.unwrap_or(TransactionId(0));
+                        let committed_ids_set: HashSet<u64> = self
+                            .transaction_manager
+                            .get_committed_tx_ids_snapshot()
+                            .into_iter()
+                            .map(|tx_id| tx_id.0)
+                            .collect();
+
+                        for (pk_bytes, distance) in pk_dist_pairs {
+                            match self.store.read().unwrap().get(&pk_bytes, snapshot_id.0, &committed_ids_set)? {
+                                Some(row_value_bytes) => {
+                                    match crate::core::common::serialization::deserialize_data_type(&row_value_bytes) {
+                                        Ok(DataType::Map(row_map_data_holder)) => {
+                                            let row_map_data = row_map_data_holder.0;
+                                            let mut result_row_vec: Vec<DataType> = Vec::with_capacity(schema.columns.len());
+                                            for col_def in &schema.columns {
+                                                result_row_vec.push(row_map_data.get(col_def.name.as_bytes()).cloned().unwrap_or(DataType::Null));
+                                            }
+                                            ranked_results.push((distance, result_row_vec));
+                                        }
+                                        Ok(_) => { /* Row data not a map, skip */ }
+                                        Err(e) => {
+                                            eprintln!("Failed to deserialize row data for PK {:?} during indexed similarity search: {}", pk_bytes, e);
+                                        }
+                                    }
+                                }
+                                None => { /* PK from index not found in store, might be a consistency issue or stale index */ }
+                            }
+                        }
+                        // Results from search_knn should already be sorted by distance by the index implementation.
+                        // If not, sort here: ranked_results.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+                        // KdTreeIndex::find_knn is expected to return sorted results.
+                        return Ok(ExecutionResult::RankedResults(ranked_results));
+                    }
+                    Err(OxidbError::VectorIndex(boxed_err)) if matches!(*boxed_err, crate::core::indexing::vector::VectorIndexError::BuildError(_)) => {
+                        eprintln!("Vector index '{}' is not built. Falling back to full table scan.", conventional_index_name);
+                        // Fall through to brute-force scan
+                    }
+                    Err(e) => {
+                        // Some other error using the index
+                        eprintln!("Error using vector index '{}': {}. Falling back to full table scan.", conventional_index_name, e);
+                        // Fall through to brute-force scan
+                    }
+                }
+            }
+        } else {
+            eprintln!("No vector index found by convention '{}'. Performing full table scan.", conventional_index_name);
         }
 
-
-        // For a brute-force scan, we need to iterate over all rows.
-        // This requires a way to get all KVs for a "table".
-        // SimpleFileKvStore doesn't inherently group by table, KVs are flat.
-        // We assume table data is stored with keys prefixed by table_name, or schemas define how to find table data.
-        // For now, we'll assume a full scan of the store and filter by a prefix convention if one exists,
-        // or rely on a future `scan_table` method.
-        // Let's use a placeholder for fetching all rows of a table.
-        // This will be very inefficient and needs a proper table scan operator.
-
-        // --- Placeholder for fetching all rows of a table ---
-        // This part needs a proper implementation, e.g., using a ScanOperator
-        // or a method on the store that can iterate over all KVs and deserialize them.
-        // For now, let's assume we can get all KVs and then filter.
-        // This is highly inefficient and not how it should be done in a real DB.
-
+        // Fallback: Brute-force scan (existing logic)
         let all_kvs = self.store.read().map_err(|e| OxidbError::Lock(format!("Failed to acquire read lock on store for scan: {}", e)))?.scan()?;
         let mut scored_rows: Vec<(f32, Vec<DataType>)> = Vec::new();
-
         let vector_column_name_bytes = vector_column_name.as_bytes();
 
         for (_key, value_bytes) in all_kvs {
-            // TODO: Filter KVs that actually belong to the `table_name`.
-            // This requires a convention for how table data is stored (e.g., key prefixes).
-            // For now, we assume all scanned KVs are rows of *some* table and try to deserialize.
-
             match crate::core::common::serialization::deserialize_data_type(&value_bytes) {
                 Ok(DataType::Map(row_map_data_holder)) => {
-                    let row_map_data = row_map_data_holder.0; // Get the inner HashMap
+                    let row_map_data = row_map_data_holder.0;
                     if let Some(DataType::Vector(row_vector)) = row_map_data.get(vector_column_name_bytes) {
                         if row_vector.dimension != query_vector.dimension {
-                            // Log or handle dimension mismatch for this row
-                            eprintln!("Skipping row due to dimension mismatch: table {} ({}), query ({})",
-                                row_vector.dimension, query_vector.dimension, table_name);
+                            eprintln!("Skipping row (scan) due to dimension mismatch: table dim {}, query dim {}",
+                                row_vector.dimension, query_vector.dimension);
                             continue;
                         }
                         if let Some(distance) = row_vector.euclidean_distance(&query_vector) {
-                            // Convert the row_map_data (HashMap<Vec<u8>, DataType>) into Vec<DataType>
-                            // in the order of the schema columns for the ExecutionResult.
                             let mut result_row: Vec<DataType> = Vec::with_capacity(schema.columns.len());
                             for col_def in &schema.columns {
                                 result_row.push(row_map_data.get(col_def.name.as_bytes()).cloned().unwrap_or(DataType::Null));
@@ -800,20 +849,15 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                         }
                     }
                 }
-                Ok(_) => { /* Not a map, so not a valid row for this table structure, skip */ }
+                Ok(_) => { /* Not a map, skip */ }
                 Err(e) => {
-                    // Log deserialization error for this specific row and continue
-                    eprintln!("Failed to deserialize row data during similarity search: {:?}, error: {}", value_bytes, e);
+                    eprintln!("Failed to deserialize row data during brute-force similarity search: {:?}, error: {}", value_bytes, e);
                 }
             }
         }
 
-        // Sort by distance (ascending)
         scored_rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
-
-        // Take top_k
         scored_rows.truncate(top_k);
-
         Ok(ExecutionResult::RankedResults(scored_rows))
     }
 }

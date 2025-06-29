@@ -131,10 +131,46 @@ impl SqlParser {
         let statement = match self.peek() {
             Some(Token::Select) => self.parse_select_statement(),
             Some(Token::Update) => self.parse_update_statement(),
-            Some(Token::Create) => self.parse_create_table_statement(),
+            Some(Token::Create) => {
+                // Need to peek further to distinguish CREATE TABLE from CREATE INDEX
+                let mut temp_lexer = self.tokens[self.current_position..].iter().peekable();
+                temp_lexer.next(); // Consume CREATE
+                match temp_lexer.peek() {
+                    Some(Token::Table) => self.parse_create_table_statement(),
+                    Some(Token::Index) => self.parse_create_index_statement(false), // is_vector_index = false
+                    Some(Token::Identifier(s)) if s.eq_ignore_ascii_case("VECTOR") => {
+                        temp_lexer.next(); // Consume VECTOR
+                        if matches!(temp_lexer.peek(), Some(Token::Index)) {
+                            self.parse_create_index_statement(true) // is_vector_index = true
+                        } else {
+                            return Err(SqlParseError::UnexpectedToken {
+                                expected: "INDEX after CREATE VECTOR".to_string(),
+                                found: format!("{:?}", temp_lexer.peek()),
+                                position: self.current_token_pos() + 2, // Approx position
+                            });
+                        }
+                    }
+                    Some(Token::Unique) => { // CREATE UNIQUE INDEX ...
+                        temp_lexer.next(); // Consume UNIQUE
+                        if matches!(temp_lexer.peek(), Some(Token::Index)) {
+                            // For now, UNIQUE is not directly handled by CreateIndexStatement fields,
+                            // but parser should accept it. It's more a property of scalar indexes.
+                            // We'll treat it as a standard index creation for now.
+                            self.parse_create_index_statement(false)
+                        } else {
+                             return Err(SqlParseError::UnexpectedToken {
+                                expected: "INDEX after CREATE UNIQUE".to_string(),
+                                found: format!("{:?}", temp_lexer.peek()),
+                                position: self.current_token_pos() + 2, // Approx position
+                            });
+                        }
+                    }
+                    _ => self.parse_create_table_statement(), // Default or error out
+                }
+            }
             Some(Token::Insert) => self.parse_insert_statement(),
-            Some(Token::Delete) => self.parse_delete_statement(), // Added
-            Some(Token::Drop) => self.parse_drop_table_statement(), // Added
+            Some(Token::Delete) => self.parse_delete_statement(),
+            Some(Token::Drop) => self.parse_drop_table_statement(),
             Some(_other_token) => {
                 return Err(SqlParseError::UnknownStatementType(self.current_token_pos()))
             }
@@ -462,6 +498,101 @@ impl SqlParser {
         Ok(Statement::DropTable(DropTableStatement {
             table_name,
             if_exists,
+        }))
+    }
+
+    fn parse_create_index_statement(&mut self, is_vector_token_present: bool) -> Result<Statement, SqlParseError> {
+        self.consume(Token::Create)?; // Consume CREATE
+
+        let mut is_unique = false; // Not directly used in AST yet, but parse it.
+        if self.peek_is_identifier_str("UNIQUE") {
+            self.consume_any(); // Consume UNIQUE
+            is_unique = true;
+        }
+
+        if is_vector_token_present {
+            self.expect_specific_identifier("VECTOR", "Expected VECTOR after CREATE")?;
+        }
+        self.expect_specific_identifier("INDEX", "Expected INDEX after CREATE [VECTOR]")?;
+
+        let mut if_not_exists = false;
+        if self.peek_is_identifier_str("IF") {
+            self.consume_any(); // Consume IF
+            self.expect_specific_identifier("NOT", "Expected NOT after IF")?;
+            self.expect_specific_identifier("EXISTS", "Expected EXISTS after IF NOT")?;
+            if_not_exists = true;
+        }
+
+        let index_name = self.expect_identifier("Expected index name")?;
+        self.expect_specific_identifier("ON", "Expected ON after index name")?;
+        let table_name = self.expect_identifier("Expected table name after ON")?;
+
+        self.consume(Token::LParen)?;
+        // For now, only support single column index.
+        // TODO: Extend to support multiple columns: (col1, col2, ...)
+        let column_name = self.expect_identifier("Expected column name in parentheses")?;
+        self.consume(Token::RParen)?;
+
+        let mut index_type_specified = ast::IndexType::BTree; // Default for scalar, or infer for vector
+        let mut explicit_using = false;
+
+        if self.peek_is_identifier_str("USING") {
+            self.consume_any()?; // Consume USING
+            explicit_using = true;
+            let method_name_token_pos = self.current_token_pos();
+            let method_name = self.expect_identifier("Expected index method (e.g., BTREE, HASH, KDTREE)")?;
+            match method_name.to_uppercase().as_str() {
+                "BTREE" => index_type_specified = ast::IndexType::BTree,
+                "HASH" => index_type_specified = ast::IndexType::Hash,
+                "KDTREE" => index_type_specified = ast::IndexType::KdTree,
+                _ => return Err(SqlParseError::UnknownIndexType(method_name, method_name_token_pos)),
+            }
+        }
+
+        // Infer or validate index type based on VECTOR keyword and USING clause
+        let final_index_type;
+        if is_vector_token_present { // CREATE VECTOR INDEX ...
+            if explicit_using {
+                if index_type_specified == ast::IndexType::KdTree { // Or other future vector types
+                    final_index_type = index_type_specified;
+                } else {
+                    return Err(SqlParseError::CustomError(format!(
+                        "CREATE VECTOR INDEX specified with incompatible type {:?} using USING clause. Expected a vector index type like KDTREE.",
+                        index_type_specified
+                    ), self.current_token_pos()));
+                }
+            } else {
+                final_index_type = ast::IndexType::KdTree; // Default for CREATE VECTOR INDEX
+            }
+        } else { // CREATE INDEX ... (no VECTOR keyword)
+            if explicit_using {
+                if index_type_specified == ast::IndexType::KdTree {
+                     return Err(SqlParseError::CustomError(format!(
+                        "Scalar CREATE INDEX cannot use vector index type KDTREE without VECTOR keyword."
+                    ), self.current_token_pos()));
+                }
+                final_index_type = index_type_specified; // BTREE or HASH
+            } else {
+                // Default for CREATE INDEX (scalar) is BTree
+                final_index_type = ast::IndexType::BTree;
+            }
+        }
+
+        if is_unique && final_index_type == ast::IndexType::KdTree {
+            return Err(SqlParseError::CustomError(
+                "UNIQUE constraint is not applicable to KDTREE vector indexes.".to_string(),
+                 self.current_token_pos() // Approximate position
+            ));
+        }
+
+
+        Ok(Statement::CreateIndex(ast::CreateIndexStatement {
+            index_name,
+            table_name,
+            column_name,
+            index_type: final_index_type,
+            is_vector_index: is_vector_token_present || final_index_type == ast::IndexType::KdTree, // Mark if it resolved to a vector type
+            if_not_exists,
         }))
     }
 }

@@ -35,6 +35,161 @@ fn test_oxidb_insert_and_get() {
     }
 }
 
+// --- Tests for CREATE VECTOR INDEX ---
+#[test]
+fn test_create_vector_index_kdtree_ok() {
+    let db_path = get_temp_db_path();
+    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb for vector index test");
+
+    db.execute_query_str("CREATE TABLE vec_table (id INTEGER PRIMARY KEY, embedding VECTOR[3]);").unwrap();
+
+    let result = db.execute_query_str("CREATE VECTOR INDEX vidx_embedding ON vec_table (embedding) USING KDTREE;");
+    assert!(result.is_ok(), "CREATE VECTOR INDEX KDTREE failed: {:?}", result.err());
+    match result.unwrap() {
+        ApiValue::Success => {}, // Expected
+        other => panic!("Expected ApiValue::Success for CREATE VECTOR INDEX, got {:?}", other),
+    }
+
+    // TODO: How to verify the index was actually created and is of type KDTREE?
+    // This would require an internal API or a command to list/describe indexes.
+    // For now, successful execution is the main check.
+    // We can also check if the index file is created if we know the naming convention.
+    // IndexManager creates `vidx_embedding.kdtree` in base_path/`vidx_embedding.kdtidx` for KdTreeIndex.
+    // The path for KdTreeIndex is `base_path/index_name.kdtidx`.
+    // So, `db.get_index_manager_base_path()/vidx_embedding.kdtidx`
+    // The IndexManager path is not directly exposed via Oxidb API.
+    // We assume the QueryExecutor correctly calls IndexManager.
+}
+
+#[test]
+fn test_create_vector_index_default_type() { // Defaults to KDTREE
+    let db_path = get_temp_db_path();
+    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb for vector index test");
+
+    db.execute_query_str("CREATE TABLE vec_table_def (id INTEGER PRIMARY KEY, embedding VECTOR[4]);").unwrap();
+
+    let result = db.execute_query_str("CREATE VECTOR INDEX vidx_def_embedding ON vec_table_def (embedding);");
+     assert!(result.is_ok(), "CREATE VECTOR INDEX (default type) failed: {:?}", result.err());
+    match result.unwrap() {
+        ApiValue::Success => {}, // Expected
+        other => panic!("Expected ApiValue::Success for CREATE VECTOR INDEX (default type), got {:?}", other),
+    }
+}
+
+#[test]
+fn test_create_scalar_index_via_parser() {
+    let db_path = get_temp_db_path();
+    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb for scalar index test");
+
+    db.execute_query_str("CREATE TABLE scalar_table (id INTEGER PRIMARY KEY, name TEXT, age INTEGER);").unwrap();
+
+    let result_btree = db.execute_query_str("CREATE INDEX idx_name ON scalar_table (name) USING BTREE;");
+    assert!(result_btree.is_ok(), "CREATE INDEX BTREE failed: {:?}", result_btree.err());
+
+    let result_hash = db.execute_query_str("CREATE INDEX idx_age ON scalar_table (age) USING HASH;");
+    assert!(result_hash.is_ok(), "CREATE INDEX HASH failed: {:?}", result_hash.err());
+
+    let result_default_btree = db.execute_query_str("CREATE INDEX idx_id ON scalar_table (id);"); // Defaults to BTREE
+    assert!(result_default_btree.is_ok(), "CREATE INDEX (default BTREE) failed: {:?}", result_default_btree.err());
+}
+
+#[test]
+fn test_create_index_if_not_exists() {
+    let db_path = get_temp_db_path();
+    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb for IF NOT EXISTS test");
+    db.execute_query_str("CREATE TABLE test_tbl_ine (id INTEGER PRIMARY KEY, data TEXT);").unwrap();
+
+    let query = "CREATE INDEX idx_data_ine ON test_tbl_ine (data);";
+    assert!(db.execute_query_str(query).is_ok(), "First CREATE INDEX failed.");
+
+    // Try creating again without IF NOT EXISTS (should fail)
+    let result_fail = db.execute_query_str(query);
+    assert!(result_fail.is_err(), "Second CREATE INDEX without IF NOT EXISTS should fail.");
+    match result_fail.err().unwrap() {
+        ApiError::CoreError(OxidbError::Index(msg)) => assert!(msg.contains("already exists")),
+        other => panic!("Expected Index already exists error, got {:?}", other),
+    }
+
+    // Try creating again with IF NOT EXISTS (should succeed silently)
+    let query_ine = "CREATE INDEX IF NOT EXISTS idx_data_ine ON test_tbl_ine (data);";
+    let result_ok = db.execute_query_str(query_ine);
+     assert!(result_ok.is_ok(), "CREATE INDEX IF NOT EXISTS failed when index exists: {:?}", result_ok.err());
+    match result_ok.unwrap() {
+        ApiValue::Success => {}, // Expected
+        other => panic!("Expected ApiValue::Success for CREATE INDEX IF NOT EXISTS, got {:?}", other),
+    }
+}
+
+
+#[test]
+fn test_create_vector_index_on_non_vector_column_error() {
+    let db_path = get_temp_db_path();
+    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb");
+    db.execute_query_str("CREATE TABLE non_vec_table (id INTEGER, name TEXT);").unwrap();
+
+    let result = db.execute_query_str("CREATE VECTOR INDEX vidx_name_err ON non_vec_table (name) USING KDTREE;");
+    assert!(result.is_err());
+    // Expected error: Something like "Cannot create vector index on non-vector column"
+    // This error would come from the Command::CreateIndex handler in QueryExecutor after schema lookup.
+    // For now, we check if it's a CoreError. Specific message depends on implementation.
+    match result.err().unwrap() {
+        ApiError::CoreError(OxidbError::Execution(msg)) | ApiError::CoreError(OxidbError::SqlValidation(msg)) => {
+            assert!(msg.to_lowercase().contains("cannot create vector index") && msg.to_lowercase().contains("non-vector column"));
+        }
+        other => panic!("Expected Execution or SqlValidation error for vector index on non-vector column, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_create_scalar_index_on_vector_column_error() {
+    let db_path = get_temp_db_path();
+    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb");
+    db.execute_query_str("CREATE TABLE vec_table_scalar_idx_err (id INTEGER, embedding VECTOR[3]);").unwrap();
+
+    let result = db.execute_query_str("CREATE INDEX idx_embed_scalar_err ON vec_table_scalar_idx_err (embedding) USING BTREE;");
+    assert!(result.is_err());
+    // Expected error: "Cannot create scalar index (BTREE/HASH) on VECTOR column"
+    match result.err().unwrap() {
+         ApiError::CoreError(OxidbError::Execution(msg)) | ApiError::CoreError(OxidbError::SqlValidation(msg)) => {
+            assert!(msg.to_lowercase().contains("cannot create scalar index") && msg.to_lowercase().contains("vector column"));
+        }
+        other => panic!("Expected Execution or SqlValidation error for scalar index on vector column, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_create_vector_index_conflicting_type_error() {
+    let db_path = get_temp_db_path();
+    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb");
+    db.execute_query_str("CREATE TABLE vec_table_conflict (id INTEGER, embedding VECTOR[3]);").unwrap();
+
+    // CREATE VECTOR INDEX ... USING BTREE (Mismatch)
+    let result = db.execute_query_str("CREATE VECTOR INDEX vidx_conflict ON vec_table_conflict (embedding) USING BTREE;");
+    assert!(result.is_err());
+    match result.err().unwrap() {
+        ApiError::CoreError(OxidbError::SqlParsing(msg)) => { // Parser should catch this
+            assert!(msg.to_lowercase().contains("incompatible type") && msg.to_lowercase().contains("vector index"));
+        }
+        other => panic!("Expected SqlParsing error for CREATE VECTOR INDEX with non-vector type, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_create_index_unique_on_vector_error() {
+    let db_path = get_temp_db_path();
+    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb");
+    db.execute_query_str("CREATE TABLE vec_table_unique_err (id INTEGER, embedding VECTOR[3]);").unwrap();
+
+    let result = db.execute_query_str("CREATE UNIQUE VECTOR INDEX vidx_uniq_vec_err ON vec_table_unique_err (embedding) USING KDTREE;");
+    assert!(result.is_err());
+     match result.err().unwrap() {
+        ApiError::CoreError(OxidbError::SqlParsing(msg)) => { // Parser should catch this
+            assert!(msg.to_lowercase().contains("unique constraint is not applicable") && msg.to_lowercase().contains("vector indexes"));
+        }
+        other => panic!("Expected SqlParsing error for UNIQUE on KDTREE, got {:?}", other),
+    }
+}
+
 #[test]
 fn test_oxidb_get_non_existent() {
     let db_path = get_temp_db_path();
