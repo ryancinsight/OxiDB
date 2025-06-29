@@ -5,13 +5,13 @@
 //! It exposes the `Oxidb` struct, which is the main entry point for database operations.
 
 // pub mod db; // Removed
-pub mod types;
-pub mod traits;
-pub mod errors;
 pub mod api_impl;
+pub mod errors;
+pub mod traits;
+pub mod types;
 
-pub use self::types::Oxidb; // Changed from db::Oxidb
-pub use self::errors::ApiError; // Added as per plan
+pub use self::errors::ApiError;
+pub use self::types::Oxidb; // Changed from db::Oxidb // Added as per plan
 
 // Re-export key types/traits for easier use by external crates, if desired.
 // For example:

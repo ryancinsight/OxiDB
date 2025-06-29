@@ -16,7 +16,7 @@ pub enum BPlusTreeNode {
         parent_page_id: Option<PageId>,
         keys: Vec<KeyType>,
         values: Vec<Vec<PrimaryKey>>, // For leaf nodes, values are lists of PKs
-        next_leaf: Option<PageId>,   // Pointer to the next leaf node
+        next_leaf: Option<PageId>,    // Pointer to the next leaf node
     },
 }
 
@@ -67,10 +67,10 @@ impl BPlusTreeNode {
         matches!(self, BPlusTreeNode::Leaf { .. })
     }
 
-    pub fn get_children(&self) -> Result<&Vec<PageId>, &'static str> {
+    pub fn get_children(&self) -> Result<&Vec<PageId>, super::OxidbError> { // Changed error type path
         match self {
             BPlusTreeNode::Internal { children, .. } => Ok(children),
-            BPlusTreeNode::Leaf { .. } => Err("Leaf nodes do not have children."),
+            BPlusTreeNode::Leaf { .. } => Err(super::OxidbError::TreeLogicError("Leaf nodes do not have children.".to_string())), // Changed error type path
         }
     }
 
@@ -83,12 +83,11 @@ impl BPlusTreeNode {
 
     pub fn can_lend_or_merge(&self, order: usize) -> bool {
         let min_keys = order.saturating_sub(1) / 2;
-         match self {
+        match self {
             BPlusTreeNode::Internal { keys, .. } => keys.len() > min_keys,
             BPlusTreeNode::Leaf { keys, .. } => keys.len() > min_keys,
         }
     }
-
 
     // --- Operations ---
 
@@ -112,36 +111,11 @@ impl BPlusTreeNode {
                 // - If `key >= keys[len-1]`: `k_i <= key` is true for all `i`. Returns `keys.len()`.
                 Ok(keys.partition_point(|k_partition| k_partition.as_slice() <= key.as_slice()))
             }
-            BPlusTreeNode::Leaf { .. } => Err("find_child_index is only applicable to Internal nodes"),
+            BPlusTreeNode::Leaf { .. } => {
+                Err("find_child_index is only applicable to Internal nodes")
+            }
         }
     }
-
-    /// Inserts a key and a child page ID into an internal node.
-    /// Assumes the node is not full and the key should be inserted at the given index.
-    // fn checked_insert_internal(&mut self, key: KeyType, child_page_id: PageId, index: usize) -> Result<(), &'static str>{
-    //      match self {
-    //         BPlusTreeNode::Internal { keys, children, .. } => {
-    //             keys.insert(index, key);
-    //             children.insert(index.saturating_add(1), child_page_id);
-    //             Ok(())
-    //         }
-    //         BPlusTreeNode::Leaf { .. } => Err("Cannot insert child PageId into a Leaf node."),
-    //     }
-    // }
-
-    // /// Inserts a key-value pair into a leaf node.
-    // /// Assumes the node is not full and the key should be inserted at the given index.
-    // fn checked_insert_leaf(&mut self, key: KeyType, value: Vec<PrimaryKey>, index: usize) -> Result<(), &'static str> {
-    //     match self {
-    //         BPlusTreeNode::Leaf { keys, values, .. } => {
-    //             keys.insert(index, key);
-    //             values.insert(index, value);
-    //             Ok(())
-    //         }
-    //         BPlusTreeNode::Internal { .. } => Err("Cannot insert PK value into an Internal node."),
-    //     }
-    // }
-
 
     /// Inserts a key and corresponding value (PageId for Internal, Vec<PrimaryKey> for Leaf)
     /// into the node, maintaining sorted order of keys. This is a simplified version
@@ -155,7 +129,7 @@ impl BPlusTreeNode {
         &mut self,
         key: KeyType,
         value: InsertValue, // Enum to hold either PageId or Vec<PrimaryKey>
-        order: usize, // Max number of children for internal, or items for leaf
+        order: usize,       // Max number of children for internal, or items for leaf
     ) -> Result<(), &'static str> {
         if self.is_full(order) {
             return Err("Node is full. Split required before insertion.");
@@ -197,7 +171,6 @@ impl BPlusTreeNode {
         }
     }
 
-
     /// Splits a full node.
     /// Returns the median key (to be promoted for internal, copied for leaf) and the new sibling node.
     /// The original node (self) becomes the left node and is modified in place.
@@ -205,7 +178,11 @@ impl BPlusTreeNode {
     /// `order` is the maximum number of children for an internal node, or max items for a leaf.
     /// Max keys for an internal node = order - 1
     /// Max keys for a leaf node = order - 1 (can be different in some designs)
-    pub fn split(&mut self, order: usize, new_page_id: PageId) -> Result<(KeyType, BPlusTreeNode), &'static str> {
+    pub fn split(
+        &mut self,
+        order: usize,
+        new_page_id: PageId,
+    ) -> Result<(KeyType, BPlusTreeNode), &'static str> {
         if !self.is_full(order) {
             // Technically, splits can happen before "full" in some strategies (e.g. to maintain a minimum fill factor proactively)
             // but for a basic implementation, we usually split when it's strictly full.
@@ -223,13 +200,16 @@ impl BPlusTreeNode {
                 // Current tree.rs insert logic makes the node overfull, then calls split.
                 // So, keys.len() here should be == order.
                 if keys.len() < order {
-                     return Err("Internal node not overfull enough to split (requires 'order' keys).");
+                    return Err(
+                        "Internal node not overfull enough to split (requires 'order' keys).",
+                    );
                 }
 
                 let median_key = keys.remove(mid_point); // This key moves up to the parent
 
                 let new_keys = keys.drain(mid_point..).collect::<Vec<KeyType>>();
-                let new_children = children.drain(mid_point.saturating_add(1)..).collect::<Vec<PageId>>(); // Children after median
+                let new_children =
+                    children.drain(mid_point.saturating_add(1)..).collect::<Vec<PageId>>(); // Children after median
 
                 let new_internal_node = BPlusTreeNode::Internal {
                     page_id: new_page_id,
@@ -241,9 +221,9 @@ impl BPlusTreeNode {
                 Ok((median_key, new_internal_node))
             }
             BPlusTreeNode::Leaf { page_id: _page_id, parent_page_id, keys, values, next_leaf } => {
-                 // Similar to internal nodes, a leaf is split when it has 'order' keys/values.
+                // Similar to internal nodes, a leaf is split when it has 'order' keys/values.
                 if keys.len() < order {
-                     return Err("Leaf node not overfull enough to split (requires 'order' key-value pairs).");
+                    return Err("Leaf node not overfull enough to split (requires 'order' key-value pairs).");
                 }
                 // For leaf nodes, the median key is *copied* to the parent, not removed from a leaf.
                 // It also becomes the first key in the new right sibling.
@@ -281,12 +261,31 @@ impl BPlusTreeNode {
                     bytes.extend_from_slice(&pid.to_be_bytes());
                 }
 
-                bytes.extend_from_slice(&(u32::try_from(keys.len()).map_err(|_| SerializationError::InvalidFormat("keys.len too large for u32".to_string()))?).to_be_bytes());
+                bytes.extend_from_slice(
+                    &(u32::try_from(keys.len()).map_err(|_| {
+                        SerializationError::InvalidFormat("keys.len too large for u32".to_string())
+                    })?)
+                    .to_be_bytes(),
+                );
                 for key in keys {
-                    bytes.extend_from_slice(&(u32::try_from(key.len()).map_err(|_| SerializationError::InvalidFormat("key.len too large for u32".to_string()))?).to_be_bytes());
+                    bytes.extend_from_slice(
+                        &(u32::try_from(key.len()).map_err(|_| {
+                            SerializationError::InvalidFormat(
+                                "key.len too large for u32".to_string(),
+                            )
+                        })?)
+                        .to_be_bytes(),
+                    );
                     bytes.extend_from_slice(key);
                 }
-                bytes.extend_from_slice(&(u32::try_from(children.len()).map_err(|_| SerializationError::InvalidFormat("children.len too large for u32".to_string()))?).to_be_bytes());
+                bytes.extend_from_slice(
+                    &(u32::try_from(children.len()).map_err(|_| {
+                        SerializationError::InvalidFormat(
+                            "children.len too large for u32".to_string(),
+                        )
+                    })?)
+                    .to_be_bytes(),
+                );
                 for child_id in children {
                     bytes.extend_from_slice(&child_id.to_be_bytes());
                 }
@@ -299,16 +298,49 @@ impl BPlusTreeNode {
                     bytes.extend_from_slice(&pid.to_be_bytes());
                 }
 
-                bytes.extend_from_slice(&(u32::try_from(keys.len()).map_err(|_| SerializationError::InvalidFormat("keys.len too large for u32".to_string()))?).to_be_bytes());
+                bytes.extend_from_slice(
+                    &(u32::try_from(keys.len()).map_err(|_| {
+                        SerializationError::InvalidFormat("keys.len too large for u32".to_string())
+                    })?)
+                    .to_be_bytes(),
+                );
                 for key in keys {
-                    bytes.extend_from_slice(&(u32::try_from(key.len()).map_err(|_| SerializationError::InvalidFormat("key.len too large for u32".to_string()))?).to_be_bytes());
+                    bytes.extend_from_slice(
+                        &(u32::try_from(key.len()).map_err(|_| {
+                            SerializationError::InvalidFormat(
+                                "key.len too large for u32".to_string(),
+                            )
+                        })?)
+                        .to_be_bytes(),
+                    );
                     bytes.extend_from_slice(key);
                 }
-                bytes.extend_from_slice(&(u32::try_from(values.len()).map_err(|_| SerializationError::InvalidFormat("values.len too large for u32".to_string()))?).to_be_bytes());
+                bytes.extend_from_slice(
+                    &(u32::try_from(values.len()).map_err(|_| {
+                        SerializationError::InvalidFormat(
+                            "values.len too large for u32".to_string(),
+                        )
+                    })?)
+                    .to_be_bytes(),
+                );
                 for pks in values {
-                    bytes.extend_from_slice(&(u32::try_from(pks.len()).map_err(|_| SerializationError::InvalidFormat("pks.len too large for u32".to_string()))?).to_be_bytes()); // Number of PKs for this key
+                    bytes.extend_from_slice(
+                        &(u32::try_from(pks.len()).map_err(|_| {
+                            SerializationError::InvalidFormat(
+                                "pks.len too large for u32".to_string(),
+                            )
+                        })?)
+                        .to_be_bytes(),
+                    ); // Number of PKs for this key
                     for pk in pks {
-                        bytes.extend_from_slice(&(u32::try_from(pk.len()).map_err(|_| SerializationError::InvalidFormat("pk.len too large for u32".to_string()))?).to_be_bytes());
+                        bytes.extend_from_slice(
+                            &(u32::try_from(pk.len()).map_err(|_| {
+                                SerializationError::InvalidFormat(
+                                    "pk.len too large for u32".to_string(),
+                                )
+                            })?)
+                            .to_be_bytes(),
+                        );
                         bytes.extend_from_slice(pk);
                     }
                 }
@@ -330,9 +362,9 @@ impl BPlusTreeNode {
         let has_parent_page_id = read_bool(&mut cursor)?;
         let parent_page_id = if has_parent_page_id { Some(read_u64(&mut cursor)?) } else { None };
 
-
         match node_type {
-            0 => { // Internal Node
+            0 => {
+                // Internal Node
                 let num_keys = read_u32(&mut cursor)? as usize;
                 let mut keys = Vec::with_capacity(num_keys);
                 for _ in 0..num_keys {
@@ -346,7 +378,8 @@ impl BPlusTreeNode {
                 }
                 Ok(BPlusTreeNode::Internal { page_id, parent_page_id, keys, children })
             }
-            1 => { // Leaf Node
+            1 => {
+                // Leaf Node
                 let num_keys = read_u32(&mut cursor)? as usize;
                 let mut keys = Vec::with_capacity(num_keys);
                 for _ in 0..num_keys {
@@ -359,8 +392,8 @@ impl BPlusTreeNode {
                     let num_pks_for_key = read_u32(&mut cursor)? as usize;
                     let mut pks_for_key = Vec::with_capacity(num_pks_for_key);
                     for _ in 0..num_pks_for_key {
-                         let pk_len = read_u32(&mut cursor)? as usize;
-                         pks_for_key.push(read_vec_u8(&mut cursor, pk_len)?);
+                        let pk_len = read_u32(&mut cursor)? as usize;
+                        pks_for_key.push(read_vec_u8(&mut cursor, pk_len)?);
                     }
                     values.push(pks_for_key);
                 }
@@ -379,7 +412,6 @@ pub enum InsertValue {
     Page(PageId),
     PrimaryKeys(Vec<PrimaryKey>),
 }
-
 
 // --- Serialization Helper Functions ---
 /// Reads a single u8 from the cursor.
@@ -410,12 +442,14 @@ fn read_bool(cursor: &mut std::io::Cursor<&[u8]>) -> Result<bool, SerializationE
 }
 
 /// Reads a Vec<u8> of specified length from the cursor.
-fn read_vec_u8(cursor: &mut std::io::Cursor<&[u8]>, len: usize) -> Result<Vec<u8>, SerializationError> {
+fn read_vec_u8(
+    cursor: &mut std::io::Cursor<&[u8]>,
+    len: usize,
+) -> Result<Vec<u8>, SerializationError> {
     let mut vec = vec![0u8; len];
     std::io::Read::read_exact(cursor, &mut vec)?;
     Ok(vec)
 }
-
 
 // --- Unit Tests ---
 #[cfg(test)]
@@ -427,8 +461,12 @@ mod tests {
     const TEST_NEW_PAGE_ID: PageId = 101;
     const TEST_PARENT_PAGE_ID: Option<PageId> = Some(99);
 
-    fn k(s: &str) -> KeyType { s.as_bytes().to_vec() }
-    fn pk(s: &str) -> PrimaryKey { s.as_bytes().to_vec() }
+    fn k(s: &str) -> KeyType {
+        s.as_bytes().to_vec()
+    }
+    fn pk(s: &str) -> PrimaryKey {
+        s.as_bytes().to_vec()
+    }
 
     #[test]
     fn test_internal_node_creation_and_props() {
@@ -467,10 +505,17 @@ mod tests {
     #[test]
     fn test_node_is_full() {
         let mut internal_node = BPlusTreeNode::Internal {
-            page_id: 1, parent_page_id: None, keys: vec![], children: vec![0]
+            page_id: 1,
+            parent_page_id: None,
+            keys: vec![],
+            children: vec![0],
         };
         let mut leaf_node = BPlusTreeNode::Leaf {
-            page_id: 2, parent_page_id: None, keys: vec![], values: vec![], next_leaf: None
+            page_id: 2,
+            parent_page_id: None,
+            keys: vec![],
+            values: vec![],
+            next_leaf: None,
         };
 
         // Order = 4, so max keys = 3
@@ -483,13 +528,18 @@ mod tests {
         internal_node.insert_key_value(k("b"), InsertValue::Page(11), TEST_ORDER).unwrap();
         assert!(internal_node.is_full(TEST_ORDER)); // 3 keys
 
-        leaf_node.insert_key_value(k("a"), InsertValue::PrimaryKeys(vec![pk("1")]), TEST_ORDER).unwrap();
-        leaf_node.insert_key_value(k("c"), InsertValue::PrimaryKeys(vec![pk("3")]), TEST_ORDER).unwrap();
+        leaf_node
+            .insert_key_value(k("a"), InsertValue::PrimaryKeys(vec![pk("1")]), TEST_ORDER)
+            .unwrap();
+        leaf_node
+            .insert_key_value(k("c"), InsertValue::PrimaryKeys(vec![pk("3")]), TEST_ORDER)
+            .unwrap();
         assert!(!leaf_node.is_full(TEST_ORDER)); // 2 keys
-        leaf_node.insert_key_value(k("b"), InsertValue::PrimaryKeys(vec![pk("2")]), TEST_ORDER).unwrap();
+        leaf_node
+            .insert_key_value(k("b"), InsertValue::PrimaryKeys(vec![pk("2")]), TEST_ORDER)
+            .unwrap();
         assert!(leaf_node.is_full(TEST_ORDER)); // 3 keys
     }
-
 
     #[test]
     fn test_find_child_index_internal_node() {
@@ -522,19 +572,25 @@ mod tests {
         assert_eq!(node.get_keys(), &vec![k("mango")]);
         if let BPlusTreeNode::Internal { children, .. } = &node {
             assert_eq!(children, &vec![0, 1]);
-        } else { panic!("Expected Internal node"); }
+        } else {
+            panic!("Expected Internal node");
+        }
 
         node.insert_key_value(k("apple"), InsertValue::Page(2), TEST_ORDER).unwrap();
         assert_eq!(node.get_keys(), &vec![k("apple"), k("mango")]);
         if let BPlusTreeNode::Internal { children, .. } = &node {
             assert_eq!(children, &vec![0, 2, 1]); // apple child | mango child
-        } else { panic!("Expected Internal node"); }
+        } else {
+            panic!("Expected Internal node");
+        }
 
         node.insert_key_value(k("banana"), InsertValue::Page(3), TEST_ORDER).unwrap();
         assert_eq!(node.get_keys(), &vec![k("apple"), k("banana"), k("mango")]);
         if let BPlusTreeNode::Internal { children, .. } = &node {
             assert_eq!(children, &vec![0, 2, 3, 1]); // apple child | banana child | mango child
-        } else { panic!("Expected Internal node"); }
+        } else {
+            panic!("Expected Internal node");
+        }
 
         assert!(node.is_full(TEST_ORDER));
         assert!(node.insert_key_value(k("orange"), InsertValue::Page(4), TEST_ORDER).is_err());
@@ -550,26 +606,56 @@ mod tests {
             next_leaf: None,
         };
         // Order is 4, max key-value pairs = 3
-        node.insert_key_value(k("mango"), InsertValue::PrimaryKeys(vec![pk("pk_mango")]), TEST_ORDER).unwrap();
+        node.insert_key_value(
+            k("mango"),
+            InsertValue::PrimaryKeys(vec![pk("pk_mango")]),
+            TEST_ORDER,
+        )
+        .unwrap();
         assert_eq!(node.get_keys(), &vec![k("mango")]);
         if let BPlusTreeNode::Leaf { values, .. } = &node {
             assert_eq!(values, &vec![vec![pk("pk_mango")]]);
-        } else { panic!("Expected Leaf node"); }
+        } else {
+            panic!("Expected Leaf node");
+        }
 
-        node.insert_key_value(k("apple"), InsertValue::PrimaryKeys(vec![pk("pk_apple")]), TEST_ORDER).unwrap();
+        node.insert_key_value(
+            k("apple"),
+            InsertValue::PrimaryKeys(vec![pk("pk_apple")]),
+            TEST_ORDER,
+        )
+        .unwrap();
         assert_eq!(node.get_keys(), &vec![k("apple"), k("mango")]);
         if let BPlusTreeNode::Leaf { values, .. } = &node {
             assert_eq!(values, &vec![vec![pk("pk_apple")], vec![pk("pk_mango")]]);
-        } else { panic!("Expected Leaf node"); }
+        } else {
+            panic!("Expected Leaf node");
+        }
 
-        node.insert_key_value(k("banana"), InsertValue::PrimaryKeys(vec![pk("pk_banana")]), TEST_ORDER).unwrap();
+        node.insert_key_value(
+            k("banana"),
+            InsertValue::PrimaryKeys(vec![pk("pk_banana")]),
+            TEST_ORDER,
+        )
+        .unwrap();
         assert_eq!(node.get_keys(), &vec![k("apple"), k("banana"), k("mango")]);
         if let BPlusTreeNode::Leaf { values, .. } = &node {
-            assert_eq!(values, &vec![vec![pk("pk_apple")], vec![pk("pk_banana")], vec![pk("pk_mango")]]);
-        } else { panic!("Expected Leaf node"); }
+            assert_eq!(
+                values,
+                &vec![vec![pk("pk_apple")], vec![pk("pk_banana")], vec![pk("pk_mango")]]
+            );
+        } else {
+            panic!("Expected Leaf node");
+        }
 
         assert!(node.is_full(TEST_ORDER));
-        assert!(node.insert_key_value(k("orange"), InsertValue::PrimaryKeys(vec![pk("pk_orange")]), TEST_ORDER).is_err());
+        assert!(node
+            .insert_key_value(
+                k("orange"),
+                InsertValue::PrimaryKeys(vec![pk("pk_orange")]),
+                TEST_ORDER
+            )
+            .is_err());
     }
 
     #[test]
@@ -608,7 +694,9 @@ mod tests {
         assert_eq!(node.get_keys(), &vec![k("apple")]); // k0
         if let BPlusTreeNode::Internal { children, .. } = &node {
             assert_eq!(children, &vec![10, 20]); // c0, c1
-        } else { panic!("Node should be Internal"); }
+        } else {
+            panic!("Node should be Internal");
+        }
 
         // Check new (right) node
         assert_eq!(new_node.get_page_id(), TEST_NEW_PAGE_ID);
@@ -616,7 +704,9 @@ mod tests {
         assert_eq!(new_node.get_keys(), &vec![k("grape"), k("kiwi")]); // k2, k3
         if let BPlusTreeNode::Internal { children, .. } = &new_node {
             assert_eq!(children, &vec![30, 40, 50]); // c2, c3, c4
-        } else { panic!("New node should be Internal"); }
+        } else {
+            panic!("New node should be Internal");
+        }
     }
 
     #[test]
@@ -638,7 +728,12 @@ mod tests {
             parent_page_id: TEST_PARENT_PAGE_ID,
             // Node is made "overfull" with `order` key-value pairs (4 for order 4)
             keys: vec![k("apple"), k("banana"), k("cherry"), k("date")],
-            values: vec![vec![pk("v_apple")], vec![pk("v_banana")], vec![pk("v_cherry")], vec![pk("v_date")]],
+            values: vec![
+                vec![pk("v_apple")],
+                vec![pk("v_banana")],
+                vec![pk("v_cherry")],
+                vec![pk("v_date")],
+            ],
             next_leaf: original_next_leaf_id,
         };
         // is_full is true if keys.len() >= order - 1. Here 4 >= 3 is true.
@@ -656,7 +751,9 @@ mod tests {
         if let BPlusTreeNode::Leaf { values, next_leaf, .. } = &node {
             assert_eq!(values, &vec![vec![pk("v_apple")]]); // v0
             assert_eq!(*next_leaf, Some(TEST_NEW_PAGE_ID)); // Points to new right sibling
-        } else { panic!("Node should be Leaf"); }
+        } else {
+            panic!("Node should be Leaf");
+        }
 
         // Check new (right) node
         assert_eq!(new_node.get_page_id(), TEST_NEW_PAGE_ID);
@@ -664,9 +761,14 @@ mod tests {
         // Median key (k1) is first key in new right leaf, followed by k2, k3
         assert_eq!(new_node.get_keys(), &vec![k("banana"), k("cherry"), k("date")]);
         if let BPlusTreeNode::Leaf { values, next_leaf, .. } = &new_node {
-            assert_eq!(values, &vec![vec![pk("v_banana")], vec![pk("v_cherry")], vec![pk("v_date")]]); // v1, v2, v3
+            assert_eq!(
+                values,
+                &vec![vec![pk("v_banana")], vec![pk("v_cherry")], vec![pk("v_date")]]
+            ); // v1, v2, v3
             assert_eq!(*next_leaf, original_next_leaf_id); // New node inherits original next_leaf
-        } else { panic!("New node should be Leaf"); }
+        } else {
+            panic!("New node should be Leaf");
+        }
     }
 
     #[test]
@@ -694,13 +796,17 @@ mod tests {
         assert_eq!(node.get_keys(), &vec![k("a"), k("b")]); // k0, k1
         if let BPlusTreeNode::Internal { children, .. } = &node {
             assert_eq!(children, &vec![1, 2, 3]); // c0, c1, c2
-        } else { panic!("Node should be Internal"); }
+        } else {
+            panic!("Node should be Internal");
+        }
 
         // Right node
         assert_eq!(new_node.get_keys(), &vec![k("d"), k("e")]); // k3, k4
-         if let BPlusTreeNode::Internal { children, .. } = &new_node {
+        if let BPlusTreeNode::Internal { children, .. } = &new_node {
             assert_eq!(children, &vec![4, 5, 6]); // c3, c4, c5
-        } else { panic!("New node should be Internal"); }
+        } else {
+            panic!("New node should be Internal");
+        }
     }
 
     #[test]
@@ -716,7 +822,13 @@ mod tests {
             parent_page_id: TEST_PARENT_PAGE_ID,
             // Overfull node with `order` key-value pairs (5 for order 5)
             keys: vec![k("a"), k("b"), k("c"), k("d"), k("e")],
-            values: vec![vec![pk("v_a")], vec![pk("v_b")], vec![pk("v_c")], vec![pk("v_d")], vec![pk("v_e")]],
+            values: vec![
+                vec![pk("v_a")],
+                vec![pk("v_b")],
+                vec![pk("v_c")],
+                vec![pk("v_d")],
+                vec![pk("v_e")],
+            ],
             next_leaf: None,
         };
         // is_full: 5 >= 5-1 (true). split check: 5 < 5 (false) -> proceeds.
@@ -729,16 +841,19 @@ mod tests {
         if let BPlusTreeNode::Leaf { values, next_leaf, .. } = &node {
             assert_eq!(values, &vec![vec![pk("v_a")], vec![pk("v_b")]]); // v0, v1
             assert_eq!(*next_leaf, Some(TEST_NEW_PAGE_ID));
-        } else { panic!("Node should be Leaf"); }
+        } else {
+            panic!("Node should be Leaf");
+        }
 
         // Right node
         assert_eq!(new_node.get_keys(), &vec![k("c"), k("d"), k("e")]); // k2, k3, k4
         if let BPlusTreeNode::Leaf { values, next_leaf, .. } = &new_node {
             assert_eq!(values, &vec![vec![pk("v_c")], vec![pk("v_d")], vec![pk("v_e")]]); // v2, v3, v4
             assert_eq!(*next_leaf, None);
-        } else { panic!("New node should be Leaf"); }
+        } else {
+            panic!("New node should be Leaf");
+        }
     }
-
 
     #[test]
     fn test_serialization_deserialization_internal_node() {
@@ -797,7 +912,10 @@ mod tests {
     #[test]
     fn test_serialization_empty_internal_node() {
         let node = BPlusTreeNode::Internal {
-            page_id: 1, parent_page_id: None, keys: vec![], children: vec![10] // Must have at least one child
+            page_id: 1,
+            parent_page_id: None,
+            keys: vec![],
+            children: vec![10], // Must have at least one child
         };
         let bytes = node.to_bytes().unwrap();
         let deserialized_node = BPlusTreeNode::from_bytes(&bytes).unwrap();
@@ -807,7 +925,11 @@ mod tests {
     #[test]
     fn test_serialization_empty_leaf_node() {
         let node = BPlusTreeNode::Leaf {
-            page_id: 1, parent_page_id: None, keys: vec![], values: vec![], next_leaf: None
+            page_id: 1,
+            parent_page_id: None,
+            keys: vec![],
+            values: vec![],
+            next_leaf: None,
         };
         let bytes = node.to_bytes().unwrap();
         let deserialized_node = BPlusTreeNode::from_bytes(&bytes).unwrap();

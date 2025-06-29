@@ -1,5 +1,5 @@
 use crate::core::common::types::TransactionId as CommonTransactionId;
-use crate::core::transaction::transaction::{Transaction, TransactionState}; // Removed INVALID_LSN
+use crate::core::transaction::{Transaction, TransactionState}; // Removed INVALID_LSN, adjusted path
 use crate::core::wal::log_manager::LogManager;
 use crate::core::wal::log_record::LogRecord;
 use crate::core::wal::writer::WalWriter;
@@ -70,6 +70,53 @@ impl TransactionManager {
 
         self.active_transactions.insert(id, transaction.clone());
         self.current_active_transaction_id = Some(id);
+        Ok(transaction)
+    }
+
+    // Method to begin a transaction with a specific ID, e.g., for Tx0 auto-commit
+    pub fn begin_transaction_with_id(
+        &mut self,
+        tx_id: CommonTransactionId,
+    ) -> Result<Transaction, IoError> {
+        if self.active_transactions.contains_key(&tx_id)
+            || self.current_active_transaction_id.is_some()
+        {
+            // Or handle more gracefully depending on desired behavior for nested/overlapping auto-commits
+            return Err(IoError::new(
+                std::io::ErrorKind::Other,
+                "Cannot begin specific transaction; another is active or ID exists.",
+            ));
+        }
+
+        let mut transaction = Transaction::new(tx_id);
+
+        if tx_id != CommonTransactionId(0) {
+            // Only log BeginTransaction for non-Tx0
+            let lsn = self.log_manager.next_lsn();
+            let begin_log_record = LogRecord::BeginTransaction { lsn, tx_id: transaction.id };
+            transaction.prev_lsn = lsn;
+            self.wal_writer.add_record(begin_log_record)?;
+        } else {
+            // For Tx0 (auto-commit), its conceptual "begin" doesn't need a log record in TM's WAL.
+            // Its operations will be logged, then a Commit/Rollback for Tx0.
+            // prev_lsn for Tx0 will be set by its first actual operation's LSN.
+            // Or, more consistently, QueryExecutor::handle_commit_transaction for Tx0
+            // should use the LSN of the *last data operation* as prev_lsn for the physical commit WAL entry.
+            // For now, let's ensure prev_lsn for Tx0 is handled by its first data op,
+            // or correctly set by QueryExecutor::handle_commit_transaction.
+            // The current handle_commit_transaction uses active_tx.prev_lsn, which for Tx0
+            // would be 0 if not set by a data op, or the LSN of the Begin Tx0 if it was logged.
+            // Let's ensure prev_lsn is 0 for a fresh Tx0.
+            transaction.prev_lsn = self.log_manager.current_lsn(); // Or a more specific initial LSN for Tx0
+        }
+
+        // For Tx0 auto-commit, immediate flush might be debated, but for safety/testing:
+        // if tx_id == CommonTransactionId(0) { // Flushing moved to execute_command logic if needed
+        //     self.wal_writer.flush()?;
+        // }
+
+        self.active_transactions.insert(tx_id, transaction.clone());
+        self.current_active_transaction_id = Some(tx_id);
         Ok(transaction)
     }
 
@@ -381,7 +428,7 @@ mod tests {
         fs::create_dir_all(&test_specific_dir).expect("Should create dir to cause WAL write fail");
 
         let wal_config = crate::core::wal::writer::WalWriterConfig {
-            max_buffer_size: 1, // Small buffer to force flush
+            max_buffer_size: 1,      // Small buffer to force flush
             flush_interval_ms: None, // Disable periodic to isolate failure
         };
         let wal_writer = WalWriter::new(test_specific_dir.clone(), wal_config); // WalWriter will try to open this directory as a file

@@ -1,7 +1,7 @@
 use super::ast;
 use crate::core::common::OxidbError; // Changed
 use crate::core::query::commands::{self, Command};
-use crate::core::types::DataType;
+use crate::core::types::{DataType, VectorData}; // Added VectorData
 
 pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command, OxidbError> {
     // Changed
@@ -9,13 +9,46 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
         ast::Statement::Select(select_ast) => {
             let columns_spec = translate_select_columns(select_ast.columns);
             let condition_cmd = match select_ast.condition {
-                Some(cond_ast) => Some(translate_condition_to_sql_condition(&cond_ast)?),
+                Some(cond_tree_ast) => {
+                    Some(translate_condition_tree_to_sql_condition_tree(&cond_tree_ast)?)
+                }
                 None => None,
             };
+            let order_by_cmd = match select_ast.order_by {
+                Some(order_by_ast_list) => {
+                    let mut translated_list = Vec::new();
+                    for order_expr_ast in order_by_ast_list {
+                        translated_list.push(translate_order_by_expr(&order_expr_ast)?);
+                    }
+                    Some(translated_list)
+                }
+                None => None,
+            };
+
+            let limit_cmd = match select_ast.limit {
+                Some(ast::AstLiteralValue::Number(n_str)) => {
+                    n_str.parse::<u64>().map(Some).map_err(|_| {
+                        OxidbError::SqlParsing(format!(
+                            "Invalid numeric literal '{}' for LIMIT clause",
+                            n_str
+                        ))
+                    })?
+                }
+                Some(other_literal) => {
+                    return Err(OxidbError::SqlParsing(format!(
+                        "LIMIT clause expects a numeric literal, found {:?}",
+                        other_literal
+                    )));
+                }
+                None => None,
+            };
+
             Ok(Command::Select {
                 columns: columns_spec,
                 source: select_ast.source,
                 condition: condition_cmd,
+                order_by: order_by_cmd,
+                limit: limit_cmd,
             })
         }
         ast::Statement::Update(update_ast) => {
@@ -25,7 +58,9 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
                 .map(translate_assignment_to_sql_assignment)
                 .collect::<Result<Vec<_>, _>>()?;
             let condition_cmd = match update_ast.condition {
-                Some(cond_ast) => Some(translate_condition_to_sql_condition(&cond_ast)?),
+                Some(cond_tree_ast) => {
+                    Some(translate_condition_tree_to_sql_condition_tree(&cond_tree_ast)?)
+                }
                 None => None,
             };
             Ok(Command::Update {
@@ -37,39 +72,59 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
         ast::Statement::CreateTable(create_ast) => {
             let mut command_columns = Vec::new();
             for ast_col_def in create_ast.columns {
-                // Basic type mapping, can be expanded
-                // This mapping should align with types supported by DataType and schema system
-                let uppercase_type_str = ast_col_def.data_type.to_uppercase();
-                let data_type = if uppercase_type_str.starts_with("INTEGER")
-                    || uppercase_type_str.starts_with("INT")
-                {
-                    DataType::Integer(0)
-                } else if uppercase_type_str.starts_with("TEXT")
-                    || uppercase_type_str.starts_with("STRING")
-                    || uppercase_type_str.starts_with("VARCHAR")
-                {
-                    DataType::String("".to_string())
-                } else if uppercase_type_str.starts_with("BOOLEAN")
-                    || uppercase_type_str.starts_with("BOOL")
-                {
-                    DataType::Boolean(false)
-                } else if uppercase_type_str.starts_with("FLOAT")
-                    || uppercase_type_str.starts_with("REAL")
-                    || uppercase_type_str.starts_with("DOUBLE")
-                {
-                    DataType::Float(0.0)
-                } else {
-                    return Err(OxidbError::SqlParsing(format!(
-                        "Unsupported column type during CREATE TABLE translation: {}",
-                        ast_col_def.data_type
-                    )));
+                let data_type = match ast_col_def.data_type {
+                    ast::AstDataType::Integer => DataType::Integer(0), // Default value for schema
+                    ast::AstDataType::Text => DataType::String("".to_string()),
+                    ast::AstDataType::Boolean => DataType::Boolean(false),
+                    ast::AstDataType::Float => DataType::Float(0.0),
+                    ast::AstDataType::Blob => DataType::RawBytes(Vec::new()), // Assuming RawBytes is the engine type for Blob
+                    ast::AstDataType::Vector { dimension } => {
+                        // For schema definition, data is empty. Dimension is key.
+                        crate::core::types::VectorData::new(dimension, vec![])
+                            .map(DataType::Vector)
+                            .ok_or_else(|| OxidbError::SqlParsing(format!(
+                                "Invalid dimension {} for VECTOR type in CREATE TABLE (should not happen if parser validated > 0)",
+                                dimension
+                            )))?
+                    }
+                    // Potentially other AstDataTypes if added
+                    // _ => return Err(OxidbError::SqlParsing(format!(
+                    //    "Unsupported AST column type during CREATE TABLE translation: {:?}",
+                    //    ast_col_def.data_type
+                    // ))),
                 };
+
+                let mut is_primary_key = false;
+                let mut is_unique = false;
+                let mut is_nullable = true; // Default to nullable
+
+                for constraint in ast_col_def.constraints {
+                    match constraint {
+                        ast::AstColumnConstraint::PrimaryKey => {
+                            is_primary_key = true;
+                            is_unique = true; // Primary key implies unique
+                            is_nullable = false; // Primary key implies not nullable
+                        }
+                        ast::AstColumnConstraint::Unique => {
+                            is_unique = true;
+                        }
+                        ast::AstColumnConstraint::NotNull => {
+                            is_nullable = false;
+                        }
+                    }
+                }
+
+                // If PrimaryKey was set, it already set is_nullable to false and is_unique to true.
+                // If NotNull was set explicitly, is_nullable is false.
+                // If Unique was set explicitly, is_unique is true.
+                // This order of processing within the loop and then using the flags should be fine.
+
                 command_columns.push(crate::core::types::schema::ColumnDef {
-                    // Path was already correct here, re-affirming
                     name: ast_col_def.name,
                     data_type,
-                    // Constraints like primary_key, nullable, etc., would be handled here
-                    // For now, they are not part of ast::ColumnDef or schema::ColumnDef
+                    is_primary_key,
+                    is_unique,
+                    is_nullable,
                 });
             }
             Ok(Command::CreateTable { table_name: create_ast.table_name, columns: command_columns })
@@ -91,15 +146,32 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
         }
         ast::Statement::Delete(delete_stmt) => {
             let condition_cmd = match delete_stmt.condition {
-                Some(cond_ast) => Some(translate_condition_to_sql_condition(&cond_ast)?),
+                Some(cond_tree_ast) => {
+                    Some(translate_condition_tree_to_sql_condition_tree(&cond_tree_ast)?)
+                }
                 None => None,
             };
-            Ok(Command::SqlDelete {
-                table_name: delete_stmt.table_name,
-                condition: condition_cmd,
-            })
+            Ok(Command::SqlDelete { table_name: delete_stmt.table_name, condition: condition_cmd })
         }
+        ast::Statement::DropTable(drop_stmt) => Ok(Command::DropTable {
+            table_name: drop_stmt.table_name,
+            if_exists: drop_stmt.if_exists,
+        }),
     }
+}
+
+fn translate_order_by_expr(
+    ast_expr: &ast::OrderByExpr,
+) -> Result<commands::SqlOrderByExpr, OxidbError> {
+    let direction = match ast_expr.direction {
+        Some(ast::OrderDirection::Asc) => Some(commands::SqlOrderDirection::Asc),
+        Some(ast::OrderDirection::Desc) => Some(commands::SqlOrderDirection::Desc),
+        None => None,
+    };
+    Ok(commands::SqlOrderByExpr {
+        expression: ast_expr.expression.clone(), // Assuming expression is a String (column name for now)
+        direction,
+    })
 }
 
 // Helper function to convert DataType back to AstLiteralValue (subset)
@@ -113,9 +185,11 @@ pub fn translate_datatype_to_ast_literal(
         DataType::Float(f) => Ok(ast::AstLiteralValue::Number(f.to_string())),
         DataType::Boolean(b) => Ok(ast::AstLiteralValue::Boolean(*b)),
         DataType::Null => Ok(ast::AstLiteralValue::Null),
+        DataType::RawBytes(bytes) => Ok(ast::AstLiteralValue::String(hex::encode(bytes))),
         DataType::Map(_) | DataType::JsonBlob(_) => Err(OxidbError::SqlParsing(
             "Cannot translate complex DataType (Map/JsonBlob) to simple AST literal for conditions.".to_string(),
         )),
+        DataType::Vector(_) => todo!("Handle DataType::Vector in translate_datatype_to_ast_literal"),
     }
 }
 
@@ -135,19 +209,74 @@ fn translate_literal(literal: &ast::AstLiteralValue) -> Result<DataType, OxidbEr
         }
         ast::AstLiteralValue::Boolean(b) => Ok(DataType::Boolean(*b)),
         ast::AstLiteralValue::Null => Ok(DataType::Null),
+        ast::AstLiteralValue::Vector(elements_ast) => {
+            let mut float_elements = Vec::with_capacity(elements_ast.len());
+            for el_ast in elements_ast {
+                match translate_literal(el_ast)? {
+                    DataType::Integer(i) => float_elements.push(i as f32),
+                    DataType::Float(f) => float_elements.push(f as f32),
+                    // DataType::Number(s) => { // If translate_literal returned Number variant
+                    //    match s.parse::<f32>() {
+                    //        Ok(f) => float_elements.push(f),
+                    //        Err(_) => return Err(OxidbError::SqlParsing(format!(
+                    //            "Invalid numeric string '{}' in vector literal", s
+                    //        ))),
+                    //    }
+                    // }
+                    other_type => return Err(OxidbError::SqlParsing(format!(
+                        "Vector literal elements must be numbers, found type {:?} (value: {:?})",
+                        other_type.type_name(), other_type
+                    ))),
+                }
+            }
+            let dimension = float_elements.len() as u32;
+            // VectorData::new performs validation if dimension matches data length,
+            // which it will by construction here.
+            VectorData::new(dimension, float_elements)
+                .map(DataType::Vector)
+                .ok_or_else(|| OxidbError::SqlParsing(
+                    "Failed to create VectorData from parsed elements (dimension mismatch, should not happen here)".to_string()
+                ))
+        }
     }
 }
 
-fn translate_condition_to_sql_condition(
-    ast_condition: &ast::Condition,
-) -> Result<commands::SqlCondition, OxidbError> {
-    // Changed
-    let value = translate_literal(&ast_condition.value)?;
-    Ok(commands::SqlCondition {
-        column: ast_condition.column.clone(),
-        operator: ast_condition.operator.clone(),
-        value,
-    })
+// Renamed and updated to translate ConditionTree
+fn translate_condition_tree_to_sql_condition_tree(
+    ast_tree: &ast::ConditionTree,
+) -> Result<commands::SqlConditionTree, OxidbError> {
+    match ast_tree {
+        ast::ConditionTree::Comparison(ast_cond) => {
+            let value = translate_literal(&ast_cond.value)?;
+            Ok(commands::SqlConditionTree::Comparison(
+                commands::SqlSimpleCondition {
+                    column: ast_cond.column.clone(),
+                    operator: ast_cond.operator.clone(),
+                    value,
+                },
+            ))
+        }
+        ast::ConditionTree::And(left_ast, right_ast) => {
+            let left_sql = translate_condition_tree_to_sql_condition_tree(left_ast)?;
+            let right_sql = translate_condition_tree_to_sql_condition_tree(right_ast)?;
+            Ok(commands::SqlConditionTree::And(
+                Box::new(left_sql),
+                Box::new(right_sql),
+            ))
+        }
+        ast::ConditionTree::Or(left_ast, right_ast) => {
+            let left_sql = translate_condition_tree_to_sql_condition_tree(left_ast)?;
+            let right_sql = translate_condition_tree_to_sql_condition_tree(right_ast)?;
+            Ok(commands::SqlConditionTree::Or(
+                Box::new(left_sql),
+                Box::new(right_sql),
+            ))
+        }
+        ast::ConditionTree::Not(ast_cond) => {
+            let sql_cond = translate_condition_tree_to_sql_condition_tree(ast_cond)?;
+            Ok(commands::SqlConditionTree::Not(Box::new(sql_cond)))
+        }
+    }
 }
 
 fn translate_assignment_to_sql_assignment(
@@ -269,38 +398,40 @@ mod tests {
 
     #[test]
     fn test_translate_condition_simple_equals() {
-        let ast_cond = TestCondition {
-            // Using aliased TestCondition
+        let ast_cond_tree = ast::ConditionTree::Comparison(TestCondition {
             column: "name".to_string(),
             operator: "=".to_string(),
             value: TestAstLiteralValue::String("test_user".to_string()),
-        };
-        let expected_sql_cond = commands::SqlCondition {
-            column: "name".to_string(),
-            operator: "=".to_string(),
-            value: DataType::String("test_user".to_string()),
-        };
-        assert!(
-            matches!(translate_condition_to_sql_condition(&ast_cond), Ok(ref res_cond) if *res_cond == expected_sql_cond)
-        );
+        });
+        let expected_sql_cond_tree =
+            commands::SqlConditionTree::Comparison(commands::SqlSimpleCondition {
+                column: "name".to_string(),
+                operator: "=".to_string(),
+                value: DataType::String("test_user".to_string()),
+            });
+        match translate_condition_tree_to_sql_condition_tree(&ast_cond_tree) {
+            Ok(res_cond_tree) => assert_eq!(res_cond_tree, expected_sql_cond_tree),
+            Err(e) => panic!("Translation failed: {:?}", e),
+        }
     }
 
     #[test]
     fn test_translate_condition_with_numeric_value() {
-        let ast_cond = TestCondition {
-            // Using aliased TestCondition
+        let ast_cond_tree = ast::ConditionTree::Comparison(TestCondition {
             column: "age".to_string(),
             operator: ">".to_string(),
             value: TestAstLiteralValue::Number("30".to_string()),
-        };
-        let expected_sql_cond = commands::SqlCondition {
-            column: "age".to_string(),
-            operator: ">".to_string(),
-            value: DataType::Integer(30),
-        };
-        assert!(
-            matches!(translate_condition_to_sql_condition(&ast_cond), Ok(ref res_cond) if *res_cond == expected_sql_cond)
-        );
+        });
+        let expected_sql_cond_tree =
+            commands::SqlConditionTree::Comparison(commands::SqlSimpleCondition {
+                column: "age".to_string(),
+                operator: ">".to_string(),
+                value: DataType::Integer(30),
+            });
+        match translate_condition_tree_to_sql_condition_tree(&ast_cond_tree) {
+            Ok(res_cond_tree) => assert_eq!(res_cond_tree, expected_sql_cond_tree),
+            Err(e) => panic!("Translation failed: {:?}", e),
+        }
     }
 
     #[test]
@@ -376,13 +507,17 @@ mod tests {
             columns: vec![TestSelectColumn::Asterisk],
             source: "users".to_string(),
             condition: None,
+            order_by: None, // Added
+            limit: None,    // Added
         });
         let command = translate_ast_to_command(ast_stmt).unwrap();
         match command {
-            Command::Select { columns, source, condition } => {
+            Command::Select { columns, source, condition, order_by, limit } => { // Added
                 assert_eq!(columns, commands::SelectColumnSpec::All);
                 assert_eq!(source, "users");
                 assert!(condition.is_none());
+                assert!(order_by.is_none()); // Added
+                assert!(limit.is_none());    // Added
             }
             _ => panic!("Expected Command::Select"),
         }
@@ -393,25 +528,32 @@ mod tests {
         let ast_stmt = TestStatement::Select(TestSelectStatement {
             columns: vec![TestSelectColumn::ColumnName("email".to_string())],
             source: "customers".to_string(),
-            condition: Some(TestCondition {
+            condition: Some(ast::ConditionTree::Comparison(TestCondition {
                 column: "id".to_string(),
                 operator: "=".to_string(),
                 value: TestAstLiteralValue::Number("101".to_string()),
-            }),
+            })),
+            order_by: None, // Added for new fields
+            limit: None,    // Added for new fields
         });
         let command = translate_ast_to_command(ast_stmt).unwrap();
         match command {
-            Command::Select { columns, source, condition } => {
+            Command::Select { columns, source, condition, order_by, limit } => {
                 assert_eq!(
                     columns,
                     commands::SelectColumnSpec::Specific(vec!["email".to_string()])
                 );
                 assert_eq!(source, "customers");
                 assert!(condition.is_some());
-                let cond_val = condition.unwrap();
-                assert_eq!(cond_val.column, "id");
-                assert_eq!(cond_val.operator, "=");
-                assert_eq!(cond_val.value, DataType::Integer(101));
+                if let Some(commands::SqlConditionTree::Comparison(simple_cond)) = condition {
+                    assert_eq!(simple_cond.column, "id");
+                    assert_eq!(simple_cond.operator, "=");
+                    assert_eq!(simple_cond.value, DataType::Integer(101));
+                } else {
+                    panic!("Expected Comparison condition tree variant");
+                }
+                assert!(order_by.is_none());
+                assert!(limit.is_none());
             }
             _ => panic!("Expected Command::Select"),
         }
@@ -425,11 +567,11 @@ mod tests {
                 column: "price".to_string(),
                 value: TestAstLiteralValue::Number("19.99".to_string()),
             }],
-            condition: Some(TestCondition {
+            condition: Some(ast::ConditionTree::Comparison(TestCondition {
                 column: "product_id".to_string(),
                 operator: "=".to_string(),
                 value: TestAstLiteralValue::String("XYZ123".to_string()),
-            }),
+            })),
         });
         let command = translate_ast_to_command(ast_stmt).unwrap();
         match command {
@@ -439,9 +581,12 @@ mod tests {
                 assert_eq!(assignments[0].column, "price");
                 assert_eq!(assignments[0].value, DataType::Float(19.99));
                 assert!(condition.is_some());
-                let cond_val = condition.unwrap();
-                assert_eq!(cond_val.column, "product_id");
-                assert_eq!(cond_val.value, DataType::String("XYZ123".to_string()));
+                if let Some(commands::SqlConditionTree::Comparison(simple_cond)) = condition {
+                    assert_eq!(simple_cond.column, "product_id");
+                    assert_eq!(simple_cond.value, DataType::String("XYZ123".to_string()));
+                } else {
+                    panic!("Expected Comparison condition tree variant for Update");
+                }
             }
             _ => panic!("Expected Command::Update"),
         }

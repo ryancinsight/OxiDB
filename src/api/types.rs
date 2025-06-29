@@ -22,8 +22,8 @@ pub struct Oxidb {
 /// Placeholder: This will be expanded with more detailed variants.
 #[derive(Debug)]
 pub enum QueryResult {
-    Success, // Placeholder for successful operations that don't return data
-    Data(String), // Placeholder for operations that return data (e.g., SELECT)
+    Success,             // Placeholder for successful operations that don't return data
+    Data(String),        // Placeholder for operations that return data (e.g., SELECT)
     RowsAffected(usize), // For INSERT, UPDATE, DELETE
 }
 

@@ -279,7 +279,11 @@ fn test_scan_item_with_all_versions_expired() {
     let dummy_lsn = 0; // LSN for test
 
     store.put(key1.clone(), val1_v1.clone(), &tx(1), dummy_lsn).unwrap();
-    store.delete(&key1, &tx(2), dummy_lsn).unwrap();
+    let mut committed_ids_for_delete1 = HashSet::new();
+    committed_ids_for_delete1.insert(0); // Assuming primordial is always committed
+    committed_ids_for_delete1.insert(1); // Previous put
+    committed_ids_for_delete1.insert(2); // The deleting transaction itself
+    store.delete(&key1, &tx(2), dummy_lsn, &committed_ids_for_delete1).unwrap();
 
     let result = store.scan().unwrap();
     assert!(result.is_empty(), "Scan should be empty if the only item's versions are all expired.");
@@ -324,7 +328,12 @@ fn test_scan_mixed_expired_and_active_keys() {
     let key2 = b"key2_expired".to_vec();
     let val2 = b"val2".to_vec();
     store.put(key2.clone(), val2.clone(), &tx(2), dummy_lsn).unwrap();
-    store.delete(&key2, &tx(3), dummy_lsn).unwrap();
+    let mut committed_ids_for_delete2 = HashSet::new();
+    committed_ids_for_delete2.insert(0);
+    committed_ids_for_delete2.insert(1); // For key1's put
+    committed_ids_for_delete2.insert(2); // For key2's put
+    committed_ids_for_delete2.insert(3); // The deleting transaction itself
+    store.delete(&key2, &tx(3), dummy_lsn, &committed_ids_for_delete2).unwrap();
 
     let key3 = b"key3_active_multi_ver".to_vec();
     let val3_v1 = b"val3_v1".to_vec();

@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 pub struct ColumnDef {
     pub name: String,
     pub data_type: DataType,
-    // Add other constraints like nullable, primary_key, unique, default_value later
+    pub is_primary_key: bool,
+    pub is_unique: bool,
+    pub is_nullable: bool,
+    // Add other constraints like default_value later
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -18,6 +21,19 @@ pub struct Schema {
 impl Schema {
     pub fn new(columns: Vec<ColumnDef>) -> Self {
         Schema { columns }
+    }
+
+    // Helper constructor for ColumnDef, assuming default constraints initially
+    // This might be useful if creating ColumnDefs programmatically outside of parsing.
+    // For parsing, these will be set explicitly.
+    pub fn new_column_def(name: String, data_type: DataType) -> ColumnDef {
+        ColumnDef {
+            name,
+            data_type,
+            is_primary_key: false,
+            is_unique: false,
+            is_nullable: true, // Default to nullable
+        }
     }
 
     pub fn get_column_index(&self, column_name: &str) -> Option<usize> {

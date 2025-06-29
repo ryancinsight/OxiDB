@@ -20,6 +20,14 @@ impl SqlParser {
         self.tokens.get(self.current)
     }
 
+    // Helper to check if the current token is an Identifier with a specific string value (case-insensitive)
+    pub(super) fn peek_is_identifier_str(&self, expected_str: &str) -> bool {
+        match self.peek() {
+            Some(Token::Identifier(ident)) => ident.eq_ignore_ascii_case(expected_str),
+            _ => false,
+        }
+    }
+
     pub(super) fn previous(&self) -> Option<&Token> {
         if self.current == 0 {
             None
@@ -38,12 +46,18 @@ impl SqlParser {
                 self.current += 1;
                 Ok(self.previous().unwrap())
             }
-            Some(found_token) => Err(SqlParseError::UnexpectedToken {
-                expected: format!("{:?}", expected_token),
-                found: format!("{:?}", found_token.clone()),
-                position: self.current_token_pos(),
-            }),
-            None => Err(SqlParseError::UnexpectedEOF),
+            Some(found_token) => {
+                if *found_token == Token::EOF { // If we found EOF but expected something else
+                    Err(SqlParseError::UnexpectedEOF)
+                } else {
+                    Err(SqlParseError::UnexpectedToken {
+                        expected: format!("{:?}", expected_token),
+                        found: format!("{:?}", found_token.clone()),
+                        position: self.current_token_pos(),
+                    })
+                }
+            }
+            None => Err(SqlParseError::UnexpectedEOF), // This case means tokens array is exhausted
         }
     }
 

@@ -3,17 +3,16 @@
 // This file serves as the "Immune System" for the event handler,
 // ensuring its components function correctly and maintain integrity.
 
-#[cfg(test)]
-mod tests {
-    use super::super::types::Event; // Event types
-    use super::super::processors::{
-        UserCreatedProcessor,
-        OrderPlacedProcessor,
+// Removed outer #[cfg(test)] and mod tests { ... } wrapper
+use super::core::process_event;
+use super::processors::{
+    DataUpdatedProcessor,
         NotificationSentProcessor,
-        DataUpdatedProcessor,
+        OrderPlacedProcessor,
         Processor, // The trait
+        UserCreatedProcessor,
     };
-    use super::super::core::process_event; // The refactored process_event function
+    use super::types::Event; // Event types // The refactored process_event function
 
     // Helper to create a UserCreated event
     fn user_created_event_sample() -> Event {
@@ -25,18 +24,12 @@ mod tests {
 
     // Helper to create an OrderPlaced event
     fn order_placed_event_sample() -> Event {
-        Event::OrderPlaced {
-            order_id: "order456".to_string(),
-            amount: 750,
-        }
+        Event::OrderPlaced { order_id: "order456".to_string(), amount: 750 }
     }
 
     // Helper to create an OrderPlaced event with large amount
     fn order_placed_event_large_amount_sample() -> Event {
-        Event::OrderPlaced {
-            order_id: "order789-special".to_string(),
-            amount: 1500,
-        }
+        Event::OrderPlaced { order_id: "order789-special".to_string(), amount: 1500 }
     }
 
     // Helper to create a NotificationSent event
@@ -57,7 +50,6 @@ mod tests {
             changed_by: "admin".to_string(),
         }
     }
-
 
     // --- Tests for Individual Processors ---
 
@@ -129,7 +121,11 @@ mod tests {
     fn test_process_event_dispatches_to_order_placed_large_amount() {
         let event = order_placed_event_large_amount_sample();
         let result = process_event(&event);
-        assert!(result.is_ok(), "process_event failed for OrderPlaced (large amount): {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "process_event failed for OrderPlaced (large amount): {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -145,4 +141,4 @@ mod tests {
         let result = process_event(&event);
         assert!(result.is_ok(), "process_event failed for DataUpdated: {:?}", result.err());
     }
-}
+// Removed outer }

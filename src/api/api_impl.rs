@@ -29,29 +29,27 @@ impl Oxidb {
     /// # Errors
     /// Returns `OxidbError` if the store cannot be initialized or the executor cannot be created.
     pub fn new_with_config(config: Config) -> Result<Self, OxidbError> {
-        let store = SimpleFileKvStore::new(config.database_path())?;
-        let wal_config = crate::core::wal::writer::WalWriterConfig::default(); // Use default config
+        let store_path = config.database_path(); // Path for SFKS data file
+        let store = SimpleFileKvStore::new(store_path.clone())?; // SFKS derives its physical WAL from store_path
 
-        // Derive WAL path from the database file path to match SimpleFileKvStore's likely internal WAL path.
-        let db_file_path_as_path = config.database_path(); // This is already a PathBuf from Config
-        let mut derived_wal_path = db_file_path_as_path.clone();
+        let wal_writer_config = crate::core::wal::writer::WalWriterConfig::default();
 
-        // Reconstruct filename with .wal appended, e.g., "filename.ext.wal" or "filename.wal"
-        let original_filename_stem = derived_wal_path.file_stem().unwrap_or_default().to_str().unwrap_or_default();
-        let original_extension = derived_wal_path.extension().unwrap_or_default().to_str().unwrap_or_default();
+        // Use the wal_file_path from the config for the TransactionManager's WalWriter.
+        // This path is distinct from the one SimpleFileKvStore derives for its physical data WAL.
+        let tm_wal_path = config.wal_path(); // This is typically "<cwd>/oxidb.wal" or user-defined.
+                                             // SimpleFileKvStore derives its WAL as "<store_path>.wal" or "<store_path>.<ext>.wal"
 
-        let new_wal_filename = if original_extension.is_empty() {
-            format!("{}.wal", original_filename_stem)
-        } else {
-            format!("{}.{}.wal", original_filename_stem, original_extension)
-        };
-        derived_wal_path.set_file_name(new_wal_filename);
+        eprintln!("[Oxidb::new_with_config] SFKS main DB path: {:?}", store_path);
+        // Actual SFKS WAL path is derived internally by SFKS, e.g. store_path.with_extension(...)
+        eprintln!(
+            "[Oxidb::new_with_config] Using TM WAL path for QueryExecutor: {:?}",
+            tm_wal_path
+        );
 
-        let wal_writer = WalWriter::new(derived_wal_path.clone(), wal_config);
-        eprintln!("[Oxidb::new_with_config] Using WAL path for QueryExecutor: {:?}", derived_wal_path);
+        let tm_wal_writer = WalWriter::new(tm_wal_path, wal_writer_config);
 
         let log_manager = Arc::new(LogManager::new());
-        let executor = QueryExecutor::new(store, config.index_path(), wal_writer, log_manager)?;
+        let executor = QueryExecutor::new(store, config.index_path(), tm_wal_writer, log_manager)?;
         Ok(Self { executor })
     }
 
@@ -65,15 +63,17 @@ impl Oxidb {
     /// # Errors
     /// Returns `OxidbError` if the store cannot be initialized or the executor cannot be created.
     pub fn new(db_path: impl AsRef<Path>) -> Result<Self, OxidbError> {
-        let mut config = Config { // made mutable
+        let mut config = Config {
+            // made mutable
             database_file_path: db_path.as_ref().to_string_lossy().into_owned(),
             ..Default::default()
         };
         // Make index_base_path relative to db_path's parent if default or empty
         if let Some(parent) = db_path.as_ref().parent() {
-           if config.index_base_path.is_empty() || config.index_base_path == "oxidb_indexes/" {
-               config.index_base_path = parent.join("oxidb_indexes/").to_string_lossy().into_owned();
-           }
+            if config.index_base_path.is_empty() || config.index_base_path == "oxidb_indexes/" {
+                config.index_base_path =
+                    parent.join("oxidb_indexes/").to_string_lossy().into_owned();
+            }
         }
         Self::new_with_config(config)
     }
@@ -156,6 +156,8 @@ impl Oxidb {
                     }
                     DataType::JsonBlob(json_val) => serde_json::to_string(&json_val)
                         .unwrap_or_else(|e| format!("Error serializing JsonBlob: {}", e)),
+                    DataType::RawBytes(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+                    DataType::Vector(_) => todo!("Handle DataType::Vector in Oxidb::get"),
                 }))
             }
             Ok(unexpected_result) => Err(OxidbError::Internal(format!(
@@ -259,17 +261,24 @@ impl Oxidb {
     ///   represents a primary key or a full record, depending on index implementation.
     /// * `Ok(None)` if no values are found for the given indexed value.
     /// * `Err(OxidbError)` if any error occurs.
-    pub fn find_by_index(&mut self, index_name: String, value_to_find: DataType) -> Result<Option<Vec<DataType>>, OxidbError> {
+    pub fn find_by_index(
+        &mut self,
+        index_name: String,
+        value_to_find: DataType,
+    ) -> Result<Option<Vec<DataType>>, OxidbError> {
         // Serialize the DataType to Vec<u8> for the command
-        let serialized_value = match crate::core::common::serialization::serialize_data_type(&value_to_find) {
-            Ok(val) => val,
-            Err(e) => return Err(OxidbError::Serialization(format!("Failed to serialize value for index lookup: {}", e))),
-        };
+        let serialized_value =
+            match crate::core::common::serialization::serialize_data_type(&value_to_find) {
+                Ok(val) => val,
+                Err(e) => {
+                    return Err(OxidbError::Serialization(format!(
+                        "Failed to serialize value for index lookup: {}",
+                        e
+                    )))
+                }
+            };
 
-        let command = Command::FindByIndex {
-            index_name,
-            value: serialized_value,
-        };
+        let command = Command::FindByIndex { index_name, value: serialized_value };
 
         match self.executor.execute_command(command) {
             Ok(ExecutionResult::Values(values_vec)) => {

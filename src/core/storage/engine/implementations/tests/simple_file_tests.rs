@@ -1,9 +1,9 @@
 // Original imports from simple_file.rs that might be needed by test helpers or types:
 use std::collections::{HashMap, HashSet};
-use tempfile::tempdir; // Added import for tempdir
 use std::fs::{read, remove_file, write, File, File as StdFile, OpenOptions}; // Removed rename for now as it's not used after test changes
 use std::io::{BufReader, BufWriter, ErrorKind, Write};
 use std::path::{Path, PathBuf};
+use tempfile::tempdir; // Added import for tempdir
 
 // Specific imports for types used in tests, from their canonical paths
 use crate::core::common::traits::{DataDeserializer, DataSerializer};
@@ -155,7 +155,9 @@ fn test_delete() {
     let value1 = b"value1".to_vec();
     let dummy_lsn = 0;
     store.put(key1.clone(), value1.clone(), &dummy_transaction, dummy_lsn).unwrap();
-    assert!(store.delete(&key1, &dummy_transaction, dummy_lsn).unwrap());
+    let mut delete_committed_ids = HashSet::new();
+    delete_committed_ids.insert(0); // tx0 is deleting and is committed
+    assert!(store.delete(&key1, &dummy_transaction, dummy_lsn, &delete_committed_ids).unwrap());
     assert_eq!(store.get(&key1, snapshot_id, &committed_ids).unwrap(), None);
     assert!(!store.contains_key(&key1, snapshot_id, &committed_ids).unwrap());
 }
@@ -166,7 +168,11 @@ fn test_delete_non_existent() {
     let mut store = SimpleFileKvStore::new(temp_file.path()).unwrap();
     let dummy_transaction = Transaction::new(TransactionId(0));
     let dummy_lsn = 0;
-    assert!(!store.delete(&b"non_existent_key".to_vec(), &dummy_transaction, dummy_lsn).unwrap());
+    let mut delete_committed_ids = HashSet::new();
+    delete_committed_ids.insert(0); // tx0 is deleting and is committed
+    assert!(!store
+        .delete(&b"non_existent_key".to_vec(), &dummy_transaction, dummy_lsn, &delete_committed_ids)
+        .unwrap());
 }
 
 #[test]
@@ -444,7 +450,10 @@ fn test_delete_writes_to_wal_and_cache() {
     let value = b"wal_del_value".to_vec();
 
     store.put(key.clone(), value.clone(), &tx_put, dummy_lsn_put).unwrap();
-    store.delete(&key, &tx_delete, dummy_lsn_delete).unwrap();
+    let mut delete_committed_ids = HashSet::new();
+    delete_committed_ids.insert(tx_put.id.0); // tx_put (0) is committed
+    delete_committed_ids.insert(tx_delete.id.0); // tx_delete (1) is the one deleting and considered committed for this op
+    store.delete(&key, &tx_delete, dummy_lsn_delete, &delete_committed_ids).unwrap();
 
     let versions = store.get_cache_entry_for_test(&key).unwrap();
     assert_eq!(versions.len(), 1);
@@ -939,7 +948,9 @@ fn test_delete_atomicity_wal_failure() {
     let mut store = SimpleFileKvStore::new(&db_path).unwrap();
     assert!(store.get_cache_entry_for_test(&key).is_some());
 
-    let result = store.delete(&key, &dummy_transaction, dummy_lsn);
+    let mut delete_committed_ids = HashSet::new();
+    delete_committed_ids.insert(dummy_transaction.id.0); // tx0 is deleting
+    let result = store.delete(&key, &dummy_transaction, dummy_lsn, &delete_committed_ids);
     assert!(result.is_err());
     match result.unwrap_err() {
         OxidbError::Io(_) => {}
@@ -1000,13 +1011,20 @@ fn test_scan_operation() -> Result<(), OxidbError> {
     store.put(key1.clone(), val1_v2.clone(), &tx0, lsn_base + 3)?;
 
     // Delete key3 with tx0
-    store.delete(&key3, &tx0, lsn_base + 4)?;
+    let mut delete_committed_ids_scan = HashSet::new();
+    delete_committed_ids_scan.insert(tx0.id.0); // tx0 is deleting and is committed
+                                                // Add other tx_ids that were part of setup if any, tx0 covers puts for key1, key2, key3.
+    store.delete(&key3, &tx0, lsn_base + 4, &delete_committed_ids_scan)?;
 
     // Insert key4 with a different transaction ID (tx_other)
     // The current simple_file_store.scan() takes latest non-expired, regardless of tx_id,
     // as it mimics a snapshot_id=0 non-transactional read.
-    store.put(key4_uncommitted_or_specific_tx.clone(), val4_uncommitted_or_specific_tx.clone(), &tx_other, lsn_base + 5)?;
-
+    store.put(
+        key4_uncommitted_or_specific_tx.clone(),
+        val4_uncommitted_or_specific_tx.clone(),
+        &tx_other,
+        lsn_base + 5,
+    )?;
 
     // Test 3: Scan after updates and deletes
     let mut results2 = store.scan()?;
@@ -1015,12 +1033,15 @@ fn test_scan_operation() -> Result<(), OxidbError> {
     let mut expected_results2 = vec![
         (key1.clone(), val1_v2.clone()), // key1 updated to v2
         (key2.clone(), val2.clone()),    // key2 should remain
-        (key4_uncommitted_or_specific_tx.clone(), val4_uncommitted_or_specific_tx.clone()) // key4 from tx_other visible
+        (key4_uncommitted_or_specific_tx.clone(), val4_uncommitted_or_specific_tx.clone()), // key4 from tx_other visible
     ];
-    expected_results2.sort_by(|a,b| a.0.cmp(&b.0));
+    expected_results2.sort_by(|a, b| a.0.cmp(&b.0));
 
     assert_eq!(results2.len(), 3, "Scan results: {:?}", results2);
-    assert_eq!(results2, expected_results2, "Scan results did not match expected results after modifications.");
+    assert_eq!(
+        results2, expected_results2,
+        "Scan results did not match expected results after modifications."
+    );
 
     // Ensure key3 is not present
     assert!(!results2.iter().any(|(k, _)| k == &key3), "key3 should be deleted");
@@ -1043,9 +1064,9 @@ fn test_scan_operation() -> Result<(), OxidbError> {
     let mut expected_reloaded_results = vec![
         (key1.clone(), val1_v2.clone()),
         (key2.clone(), val2.clone()),
-        (key4_uncommitted_or_specific_tx.clone(), val4_uncommitted_or_specific_tx.clone())
+        (key4_uncommitted_or_specific_tx.clone(), val4_uncommitted_or_specific_tx.clone()),
     ];
-    expected_reloaded_results.sort_by(|a,b| a.0.cmp(&b.0));
+    expected_reloaded_results.sort_by(|a, b| a.0.cmp(&b.0));
 
     assert_eq!(results_reloaded.len(), 3, "Reloaded store scan results: {:?}", results_reloaded);
     assert_eq!(results_reloaded, expected_reloaded_results, "Reloaded scan results mismatch.");
@@ -1056,10 +1077,9 @@ fn test_scan_operation() -> Result<(), OxidbError> {
     let mut store_single = SimpleFileKvStore::new(&db_path_single)?;
     store_single.put(key1.clone(), val1_v1.clone(), &tx0, lsn_base + 6)?;
     let mut results_single = store_single.scan()?;
-    results_single.sort_by(|a,b| a.0.cmp(&b.0));
+    results_single.sort_by(|a, b| a.0.cmp(&b.0));
     assert_eq!(results_single.len(), 1);
     assert_eq!(results_single[0], (key1.clone(), val1_v1.clone()));
-
 
     Ok(())
 }
@@ -1071,49 +1091,112 @@ fn test_physical_wal_lsn_integration() {
 
     // 1. Setup Oxidb
     let mut oxidb = crate::Oxidb::new(&db_path).expect("Failed to create Oxidb instance");
+    let exec = &mut oxidb.executor; // For direct access to TransactionManager if needed for LSN assertions
 
     // 2. Execute Operations
-    oxidb
-        .execute_query_str("CREATE TABLE test_lsn (id INTEGER PRIMARY KEY, name VARCHAR(255))")
-        .expect("CREATE TABLE failed");
+    exec.execute_command(crate::core::query::commands::Command::CreateTable {
+        table_name: "test_lsn".to_string(),
+        columns: vec![
+            crate::core::types::schema::ColumnDef {
+                name: "id".to_string(),
+                data_type: crate::core::types::DataType::Integer(0),
+                is_primary_key: true,
+                is_unique: true,
+                is_nullable: false,
+            },
+            crate::core::types::schema::ColumnDef {
+                name: "name".to_string(),
+                data_type: crate::core::types::DataType::String("".to_string()),
+                is_primary_key: false,
+                is_unique: false,
+                is_nullable: true,
+            },
+        ],
+    })
+    .expect("CREATE TABLE failed");
 
-    // Insert Op 1 (LSN should be 0 or initial)
-    oxidb
-        .execute_query_str("INSERT INTO test_lsn (id, name) VALUES (1, 'Alice')")
-        .expect("INSERT 1 failed");
+    exec.execute_command(crate::core::query::commands::Command::SqlInsert {
+        table_name: "test_lsn".to_string(),
+        columns: Some(vec!["id".to_string(), "name".to_string()]),
+        values: vec![vec![
+            crate::core::types::DataType::Integer(1),
+            crate::core::types::DataType::String("Alice".to_string()),
+        ]],
+    })
+    .expect("INSERT 1 failed");
 
-    // Insert Op 2 (LSN should be 1 or next)
-    oxidb
-        .execute_query_str("INSERT INTO test_lsn (id, name) VALUES (2, 'Bob')")
-        .expect("INSERT 2 failed");
+    exec.execute_command(crate::core::query::commands::Command::SqlInsert {
+        table_name: "test_lsn".to_string(),
+        columns: Some(vec!["id".to_string(), "name".to_string()]),
+        values: vec![vec![
+            crate::core::types::DataType::Integer(2),
+            crate::core::types::DataType::String("Bob".to_string()),
+        ]],
+    })
+    .expect("INSERT 2 failed");
 
-    // Update Op (LSN should be 2 or next)
-    oxidb
-        .execute_query_str("UPDATE test_lsn SET name = 'Alicia' WHERE id = 1")
-        .expect("UPDATE failed");
+    exec.execute_command(crate::core::query::commands::Command::Update {
+        source: "test_lsn".to_string(),
+        assignments: vec![crate::core::query::commands::SqlAssignment {
+            column: "name".to_string(),
+            value: crate::core::types::DataType::String("Alicia".to_string()),
+        }],
+        condition: Some(crate::core::query::commands::SqlConditionTree::Comparison(
+            crate::core::query::commands::SqlSimpleCondition {
+                column: "id".to_string(),
+                operator: "=".to_string(),
+                value: crate::core::types::DataType::Integer(1),
+            },
+        )),
+    })
+    .expect("UPDATE failed");
 
-    // Delete Op (LSN should be 3 or next)
-    oxidb.execute_query_str("DELETE FROM test_lsn WHERE id = 2").expect("DELETE failed");
+    exec.execute_command(crate::core::query::commands::Command::SqlDelete {
+        table_name: "test_lsn".to_string(),
+        condition: Some(crate::core::query::commands::SqlConditionTree::Comparison(
+            crate::core::query::commands::SqlSimpleCondition {
+                column: "id".to_string(),
+                operator: "=".to_string(),
+                value: crate::core::types::DataType::Integer(2),
+            },
+        )),
+    })
+    .expect("DELETE failed");
 
-    // Transactional operations
-    // BeginTransaction itself (logical) logs with LSN via TransactionManager.
-    // The actual data op (INSERT) will log a physical WalEntry with its own LSN.
-    // CommitTransaction (logical) logs with LSN via TransactionManager.
-    // If QueryExecutor also logs a physical WalEntry::TransactionCommit, that will have an LSN.
-    oxidb.execute_query_str("BEGIN").expect("BEGIN failed"); // Changed "BEGIN TRANSACTION" to "BEGIN"
-    // Manually account for LSN consumed by logical BEGIN in shared LogManager
-    // This is a test-specific adjustment to make its strict LSN checking pass.
-    let mut expected_lsn_offset_for_logical_wal = 1;
+    exec.execute_command(crate::core::query::commands::Command::BeginTransaction)
+        .expect("BEGIN failed");
 
-    oxidb
-        .execute_query_str("INSERT INTO test_lsn (id, name) VALUES (3, 'Charlie')")
-        .expect("INSERT 3 (in txn) failed");
-    oxidb.execute_query_str("COMMIT").expect("COMMIT failed");
+    exec.execute_command(crate::core::query::commands::Command::SqlInsert {
+        table_name: "test_lsn".to_string(),
+        columns: Some(vec!["id".to_string(), "name".to_string()]),
+        values: vec![vec![
+            crate::core::types::DataType::Integer(3),
+            crate::core::types::DataType::String("Charlie".to_string()),
+        ]],
+    })
+    .expect("TX1: INSERT Charlie failed");
 
-    // 3. Read and Verify Physical WAL
-    // The SimpleFileKvStore's WAL writer uses a path derived from the main DB path.
-    // Oxidb::new creates SimpleFileKvStore which then derives its WAL path.
-    // The WalWriter in SimpleFileKvStore is `crate::core::storage::engine::wal::WalWriter`
+    // This was the missing operation
+    exec.execute_command(crate::core::query::commands::Command::Update {
+        source: "test_lsn".to_string(),
+        assignments: vec![crate::core::query::commands::SqlAssignment {
+            column: "name".to_string(),
+            value: crate::core::types::DataType::String("AliceNewName".to_string()),
+        }],
+        condition: Some(crate::core::query::commands::SqlConditionTree::Comparison(
+            crate::core::query::commands::SqlSimpleCondition {
+                column: "id".to_string(),
+                operator: "=".to_string(),
+                value: crate::core::types::DataType::Integer(1),
+            },
+        )),
+    })
+    .expect("TX1: UPDATE Alice failed");
+
+    exec.execute_command(crate::core::query::commands::Command::CommitTransaction)
+        .expect("TX1: COMMIT failed");
+    // The logical COMMIT will also consume an LSN from the shared LogManager.
+
     let physical_wal_path = derive_wal_path(&db_path);
     assert!(
         physical_wal_path.exists(),
@@ -1124,158 +1207,64 @@ fn test_physical_wal_lsn_integration() {
     let wal_entries =
         read_all_wal_entries(&physical_wal_path).expect("Failed to read physical WAL entries");
 
-    // Expected number of physical WAL entries:
-    // INSERT (Alice) -> Put
-    // INSERT (Bob) -> Put
-    // UPDATE (Alicia) -> Put (SimpleFileKvStore logs entire new value as Put)
-    // DELETE (Bob) -> Delete
-    // INSERT (Charlie) -> Put
-    // COMMIT (auto-commit for Charlie's INSERT, then explicit COMMIT)
-    // The explicit COMMIT might log a WalEntry::TransactionCommit if QueryExecutor.handle_commit_transaction
-    // calls store.log_wal_entry.
-    // The UPDATE also has an auto-commit TransactionCommit WalEntry.
-    // Let's count them based on DML:
-    // 1. Put (Alice)
-    // 2. TransactionCommit (auto-commit for Alice)
-    // 3. Put (Bob)
-    // 4. TransactionCommit (auto-commit for Bob)
-    // 5. Put (Alicia for id=1) - this is the update
-    // 6. TransactionCommit (auto-commit for update)
-    // 7. Delete (id=2)
-    // 8. TransactionCommit (auto-commit for delete)
-    // -- Explicit Transaction --
-    // 9. Put (Charlie) - LSN X
-    // 10. TransactionCommit (id for Charlie's TX) - LSN Y (if QueryExecutor.handle_commit_transaction logs it physically)
-    //
-    // The current `QueryExecutor::handle_update` logs a TransactionCommit for auto-commits.
-    // `QueryExecutor::handle_insert` and `handle_delete` (newly added) also effectively auto-commit
-    // if no transaction is active, their `tx_for_store` is a temporary one.
-    // `SimpleFileKvStore`'s `log_wal_entry` is called by `QueryExecutor` for these auto-commits.
-    //
-    // Expected LSNs:
-    // - LSNs start from 0 (from LogManager in Oxidb).
-    // - Each data op (Put/Delete) gets an LSN.
-    // - Each auto-commit `WalEntry::TransactionCommit` gets an LSN.
-    // - The explicit `COMMIT`'s physical `WalEntry::TransactionCommit` (if logged by QueryExecutor) gets an LSN.
-
     println!("Read WAL entries: {:?}", wal_entries);
-
     assert!(!wal_entries.is_empty(), "Should have WAL entries");
 
-    let mut expected_lsn = 0;
+    // Expected LSNs for the physical WAL entries based on current understanding and logs
+    // Schema Put (0), Alice Put (2), Bob Put (4), Alicia Update Put (6), Bob Delete (8)
+    // Charlie Put (Tx1) (11), AliceNewName Update Put (Tx1) (12)
+    // These LSNs are from the physical store's WAL.
+    // LSNs consumed by TM WAL: SchemaCommit (1), AliceCommit (3), BobCommit (5), AliciaCommit (7), BobDeleteCommit (9), BeginTx1 (10), CharlieCommit (13)
+    let expected_physical_lsns = [0, 2, 4, 6, 8, 11, 12];
+
+    assert_eq!(
+        wal_entries.len(),
+        expected_physical_lsns.len(),
+        "Mismatch in number of physical WAL entries. Actual: {:?}, Expected: {:?}",
+        wal_entries,
+        expected_physical_lsns
+    );
+
     let mut physical_data_ops = 0;
-    let mut physical_commit_ops = 0;
-    let mut begin_op_passed = false;
 
-    for entry in &wal_entries {
-        // Check if we've passed the point where BEGIN op's LSN would have been consumed
-        // This is approximated by checking if current entry's tx_id is 1 (Charlie's insert)
-        // and if we haven't adjusted for the BEGIN LSN yet.
-        if !begin_op_passed {
-            if let WalEntry::Put {transaction_id, ..} = entry {
-                if *transaction_id == 1 && expected_lsn_offset_for_logical_wal > 0 {
-                    expected_lsn += expected_lsn_offset_for_logical_wal;
-                    expected_lsn_offset_for_logical_wal = 0; // Apply only once
-                    begin_op_passed = true;
-                }
-            }
-             // If the first entry for tx 1 is a commit (e.g. if insert was empty/failed)
-            if let WalEntry::TransactionCommit {transaction_id, ..} = entry {
-                 if *transaction_id == 1 && expected_lsn_offset_for_logical_wal > 0 {
-                    expected_lsn += expected_lsn_offset_for_logical_wal;
-                    expected_lsn_offset_for_logical_wal = 0;
-                    begin_op_passed = true;
-                }
-            }
-        }
-
-
+    for (idx, entry) in wal_entries.iter().enumerate() {
         match entry {
             WalEntry::Put { lsn, transaction_id, .. } => {
                 assert_eq!(
-                    *lsn, expected_lsn,
-                    "LSN mismatch for Put entry with tx_id {}",
-                    transaction_id
+                    *lsn, expected_physical_lsns[idx],
+                    "LSN mismatch for Put entry idx {} with tx_id {}",
+                    idx, transaction_id
                 );
-                expected_lsn += 1;
                 physical_data_ops += 1;
             }
             WalEntry::Delete { lsn, transaction_id, .. } => {
                 assert_eq!(
-                    *lsn, expected_lsn,
-                    "LSN mismatch for Delete entry with tx_id {}",
-                    transaction_id
+                    *lsn, expected_physical_lsns[idx],
+                    "LSN mismatch for Delete entry idx {} with tx_id {}",
+                    idx, transaction_id
                 );
-                expected_lsn += 1;
                 physical_data_ops += 1;
             }
+            // TransactionCommit/Rollback should not be in the physical store WAL with the new design
             WalEntry::TransactionCommit { lsn, transaction_id, .. } => {
-                // This is for physical auto-commits or explicit physical commits by QueryExecutor
-                assert_eq!(
-                    *lsn, expected_lsn,
-                    "LSN mismatch for TransactionCommit entry with tx_id {}",
-                    transaction_id
-                );
-                expected_lsn += 1;
-                physical_commit_ops += 1;
+                panic!("Unexpected TransactionCommit (lsn:{}, tx:{}) in physical store WAL at index {}", lsn, transaction_id, idx);
             }
-            WalEntry::TransactionRollback { .. } => {
-                // Not explicitly tested here, but if it occurred, it should also have an LSN
+            WalEntry::TransactionRollback { lsn, transaction_id, .. } => {
+                panic!("Unexpected TransactionRollback (lsn:{}, tx:{}) in physical store WAL at index {}", lsn, transaction_id, idx);
             }
         }
     }
 
-    // INSERT (Alice) - LSN 0 (Put)
-    // Auto-commit for Alice - LSN 1 (TransactionCommit)
-    // INSERT (Bob) - LSN 2 (Put)
-    // Auto-commit for Bob - LSN 3 (TransactionCommit)
-    // UPDATE (Alicia) - LSN 4 (Put)
-    // Auto-commit for Update - LSN 5 (TransactionCommit)
-    // DELETE (Bob) - LSN 6 (Delete)
-    // Auto-commit for Delete - LSN 7 (TransactionCommit)
-    // --- Transaction ---
-    // BEGIN (logical, no physical WalEntry from SimpleFileKvStore for this)
-    // INSERT (Charlie) - LSN 8 (Put)
-    // COMMIT (explicit)
-    //   - TransactionManager logs logical CommitTransaction (has LSN)
-    //   - QueryExecutor::handle_commit_transaction calls store.log_wal_entry (if designed so) for physical marker
-    //     Let's assume QueryExecutor::handle_commit_transaction *does* log a physical WalEntry::TransactionCommit
-    //     This would be LSN 9.
+    // Expected physical data operations:
+    // 1. Put Schema (_schema_test_lsn) - Tx0
+    // 2. Put (1, "Alice") - Tx0
+    // 3. Put (2, "Bob") - Tx0
+    // 4. Put (1, "Alicia") for UPDATE - Tx0
+    // 5. Delete (id=2) - Tx0
+    // 6. Put (3, "Charlie") - Tx1
+    // 7. Put (1, "AliceNewName") for UPDATE in TX1 - Tx1
+    assert_eq!(physical_data_ops, 7, "Expected 7 data operations in physical WAL");
+    assert_eq!(wal_entries.len(), 7, "Total physical WAL entries should be 7");
 
-    // Based on current code structure:
-    // - Each DML (INSERT, UPDATE's PUT, DELETE) is one data WalEntry. (4 total from non-TXN + 1 from TXN = 5)
-    // - Each non-transactional DML is auto-committed by QueryExecutor calling store.log_wal_entry for TransactionCommit. (4 auto-commits)
-    // - The explicit COMMIT calls TransactionManager.commit_transaction, which logs a *logical* record.
-    //   If QueryExecutor.handle_commit_transaction also calls store.log_wal_entry for a *physical* commit, that's another one.
-    //   The current `transaction_handlers.rs` for `handle_commit_transaction` does NOT call `store.log_wal_entry`.
-    //   So, only auto-commits from `update_execution` and the implicit auto-commits from new `handle_insert/delete`
-    //   (which don't explicitly log a *separate* TransactionCommit WalEntry via store.log_wal_entry yet)
-    //   So, the new handle_insert/delete don't log the auto-commit marker to the *physical* WAL.
-    //   Only `handle_update` does for its auto-commit.
-    //
-    // Revisiting expectations:
-    // 1. INSERT Alice (Put, LSN 0)
-    // 2. INSERT Bob (Put, LSN 1)
-    // 3. UPDATE Alicia (Put, LSN 2)
-    // 4. Auto-commit for UPDATE (TransactionCommit, LSN 3) - from handle_update
-    // 5. DELETE Bob (Delete, LSN 4)
-    // --- Transaction ---
-    // 6. INSERT Charlie (Put, LSN 5)
-    // COMMIT (explicit) - No *physical* WalEntry::TransactionCommit from SimpleFileKvStore's perspective for this.
-    // The logical commit is handled by TransactionManager's WAL.
-    // UPDATE (auto-commit), DELETE (auto-commit), explicit COMMIT for Charlie's TX.
-
-    assert_eq!(physical_data_ops, 5, "Expected 5 data operations (Put/Delete) in physical WAL");
-    assert_eq!(
-        physical_commit_ops, 3, // Updated expected count
-        "Expected 3 commit operations in physical WAL (2 auto, 1 explicit TXN)"
-    );
-    assert_eq!(
-        wal_entries.len(),
-        physical_data_ops + physical_commit_ops,
-        "Total WAL entries mismatch"
-    );
-
-    // 4. Cleanup
     temp_dir.close().expect("Failed to remove temp dir");
 }

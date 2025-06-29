@@ -148,7 +148,7 @@ fn list_items(db: &mut Oxidb) -> Result<(), Box<dyn Error>> {
                     _ => {
                         return Err(Box::new(OxidbError::Internal(
                             "Expected item data to be a Map".into(),
-                        )))
+                        )));
                     }
                 };
 
@@ -162,7 +162,7 @@ fn list_items(db: &mut Oxidb) -> Result<(), Box<dyn Error>> {
                     _ => {
                         return Err(Box::new(OxidbError::Internal(
                             "Map missing 'id' or not an integer".into(),
-                        )))
+                        )));
                     }
                 };
                 let description = match item_map.get(&description_key) {
@@ -170,7 +170,7 @@ fn list_items(db: &mut Oxidb) -> Result<(), Box<dyn Error>> {
                     _ => {
                         return Err(Box::new(OxidbError::Internal(
                             "Map missing 'description' or not a string".into(),
-                        )))
+                        )));
                     }
                 };
                 let done = match item_map.get(&done_key) {
@@ -178,7 +178,7 @@ fn list_items(db: &mut Oxidb) -> Result<(), Box<dyn Error>> {
                     _ => {
                         return Err(Box::new(OxidbError::Internal(
                             "Map missing 'done' or not a boolean".into(),
-                        )))
+                        )));
                     }
                 };
                 items.push(TodoItem { id, description, done });

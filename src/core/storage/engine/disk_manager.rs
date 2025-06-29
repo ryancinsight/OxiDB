@@ -32,7 +32,8 @@ impl DiskManager {
                 )))
             })?;
 
-        let next_page_id = if is_new_db || db_file.metadata()?.len() == 0 { // Also treat empty existing file as new for page counting
+        let next_page_id = if is_new_db || db_file.metadata()?.len() == 0 {
+            // Also treat empty existing file as new for page counting
             PageId(0)
         } else {
             let metadata = db_file.metadata().map_err(|e| {
@@ -77,10 +78,7 @@ impl DiskManager {
         })?;
 
         self.db_file.write_all(page_data).map_err(|e| {
-            OxidbError::Io(IoError::other(format!(
-                "Failed to write page {}: {}",
-                page_id.0, e
-            )))
+            OxidbError::Io(IoError::other(format!("Failed to write page {}: {}", page_id.0, e)))
         })?;
 
         Ok(())
@@ -172,7 +170,8 @@ mod tests {
         assert_eq!(dm.next_page_id, PageId(0));
         // Verify file exists after open
         assert!(db_path.exists());
-        std::fs::remove_file(db_path).expect("Failed to clean up test_open_new_db file"); // Clean up
+        std::fs::remove_file(db_path).expect("Failed to clean up test_open_new_db file");
+        // Clean up
     }
 
     #[test]
@@ -182,13 +181,19 @@ mod tests {
 
         // Pre-populate the file to simulate existing pages
         {
-            let file = OpenOptions::new().write(true).create(true).open(&db_path).expect("Failed to open for pre-population");
-            file.set_len((PAGE_SIZE * 3) as u64).expect("Failed to set file length"); // Simulate 3 pages
+            let file = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .open(&db_path)
+                .expect("Failed to open for pre-population");
+            file.set_len((PAGE_SIZE * 3) as u64).expect("Failed to set file length");
+            // Simulate 3 pages
         } // drop file to release lock before DiskManager::open
 
         let dm = DiskManager::open(db_path.clone()).expect("Failed to open existing DiskManager");
         assert_eq!(dm.next_page_id, PageId(3));
-        std::fs::remove_file(db_path).expect("Failed to clean up test_open_existing_db file"); // Clean up
+        std::fs::remove_file(db_path).expect("Failed to clean up test_open_existing_db file");
+        // Clean up
     }
 
     #[test]
@@ -197,7 +202,8 @@ mod tests {
         let db_path = temp_file.path().to_path_buf();
         drop(temp_file);
 
-        let mut dm = DiskManager::open(db_path.clone()).expect("Failed to open DiskManager for read/write test");
+        let mut dm = DiskManager::open(db_path.clone())
+            .expect("Failed to open DiskManager for read/write test");
 
         // Allocate first page
         let page_id0 = dm.allocate_page().expect("Failed to allocate page_id0");
@@ -237,7 +243,9 @@ mod tests {
         let metadata = dm.db_file.metadata().expect("Failed to get metadata");
         assert_eq!(metadata.len(), (PAGE_SIZE.saturating_mul(2)) as u64);
 
-        std::fs::remove_file(db_path).expect("Failed to clean up test_allocate_and_write_read_page file"); // Clean up
+        std::fs::remove_file(db_path)
+            .expect("Failed to clean up test_allocate_and_write_read_page file");
+        // Clean up
     }
 
     #[test]
@@ -246,14 +254,21 @@ mod tests {
         let db_path = temp_file.path().to_path_buf();
         drop(temp_file);
 
-        let mut dm = DiskManager::open(db_path.clone()).expect("Failed to open DiskManager for out-of-bounds test");
+        let mut dm = DiskManager::open(db_path.clone())
+            .expect("Failed to open DiskManager for out-of-bounds test");
         let mut read_buf = vec![0u8; PAGE_SIZE];
 
         // Try to read page 0 before allocation
         let result = dm.read_page(PageId(0), &mut read_buf);
-        assert!(matches!(result, Err(OxidbError::Io(_))), "Expected IO error for reading unallocated page");
+        assert!(
+            matches!(result, Err(OxidbError::Io(_))),
+            "Expected IO error for reading unallocated page"
+        );
         if let Err(OxidbError::Io(err)) = result {
-            assert!(err.to_string().contains("out of bounds"), "Error message should indicate out of bounds");
+            assert!(
+                err.to_string().contains("out of bounds"),
+                "Error message should indicate out of bounds"
+            );
         } else {
             panic!("Expected IO error for out of bounds read, got {:?}", result);
         }
@@ -263,13 +278,23 @@ mod tests {
 
         // Try to read PageId(1) which is not yet allocated but next_page_id is 1
         let result_next = dm.read_page(PageId(1), &mut read_buf);
-        assert!(matches!(result_next, Err(OxidbError::Io(_))), "Expected IO error for reading page at next_page_id");
+        assert!(
+            matches!(result_next, Err(OxidbError::Io(_))),
+            "Expected IO error for reading page at next_page_id"
+        );
         if let Err(OxidbError::Io(err)) = result_next {
-            assert!(err.to_string().contains("out of bounds"), "Error message for next_page_id read should indicate out of bounds");
+            assert!(
+                err.to_string().contains("out of bounds"),
+                "Error message for next_page_id read should indicate out of bounds"
+            );
         } else {
-            panic!("Expected IO error for out of bounds read of next_page_id, got {:?}", result_next);
+            panic!(
+                "Expected IO error for out of bounds read of next_page_id, got {:?}",
+                result_next
+            );
         }
-        std::fs::remove_file(db_path).expect("Failed to clean up test_read_out_of_bounds_page file"); // Clean up
+        std::fs::remove_file(db_path)
+            .expect("Failed to clean up test_read_out_of_bounds_page file"); // Clean up
     }
 
     #[test]
@@ -278,18 +303,28 @@ mod tests {
         let db_path = temp_file.path().to_path_buf();
         drop(temp_file);
 
-        let mut dm = DiskManager::open(db_path.clone()).expect("Failed to open DiskManager for invalid data length test");
-        let page_id = dm.allocate_page().expect("Failed to allocate page for invalid data length test");
+        let mut dm = DiskManager::open(db_path.clone())
+            .expect("Failed to open DiskManager for invalid data length test");
+        let page_id =
+            dm.allocate_page().expect("Failed to allocate page for invalid data length test");
 
         let short_data = vec![0u8; PAGE_SIZE - 1];
         let result = dm.write_page(page_id, &short_data);
-        assert!(matches!(result, Err(OxidbError::Io(_))), "Expected IO error for writing short data");
+        assert!(
+            matches!(result, Err(OxidbError::Io(_))),
+            "Expected IO error for writing short data"
+        );
         if let Err(OxidbError::Io(err)) = result {
-            assert!(err.to_string().contains("Page data length mismatch"), "Error message should indicate length mismatch");
+            assert!(
+                err.to_string().contains("Page data length mismatch"),
+                "Error message should indicate length mismatch"
+            );
         } else {
             panic!("Expected IO error for short data write, got {:?}", result);
         }
-        std::fs::remove_file(db_path).expect("Failed to clean up test_write_page_invalid_data_length file"); // Clean up
+        std::fs::remove_file(db_path)
+            .expect("Failed to clean up test_write_page_invalid_data_length file");
+        // Clean up
     }
 
     #[test]
@@ -298,17 +333,26 @@ mod tests {
         let db_path = temp_file.path().to_path_buf();
         drop(temp_file);
 
-        let mut dm = DiskManager::open(db_path.clone()).expect("Failed to open DiskManager for invalid buffer length test");
+        let mut dm = DiskManager::open(db_path.clone())
+            .expect("Failed to open DiskManager for invalid buffer length test");
         dm.allocate_page().expect("Failed to allocate page for invalid buffer length test"); // Allocate PageId(0)
 
         let mut short_buf = vec![0u8; PAGE_SIZE - 1];
         let result = dm.read_page(PageId(0), &mut short_buf);
-        assert!(matches!(result, Err(OxidbError::Io(_))), "Expected IO error for reading into short buffer");
+        assert!(
+            matches!(result, Err(OxidbError::Io(_))),
+            "Expected IO error for reading into short buffer"
+        );
         if let Err(OxidbError::Io(err)) = result {
-            assert!(err.to_string().contains("Page data buffer length mismatch"), "Error message should indicate buffer length mismatch");
+            assert!(
+                err.to_string().contains("Page data buffer length mismatch"),
+                "Error message should indicate buffer length mismatch"
+            );
         } else {
             panic!("Expected IO error for short data read buffer, got {:?}", result);
         }
-        std::fs::remove_file(db_path).expect("Failed to clean up test_read_page_invalid_buffer_length file"); // Clean up
+        std::fs::remove_file(db_path)
+            .expect("Failed to clean up test_read_page_invalid_buffer_length file");
+        // Clean up
     }
 }

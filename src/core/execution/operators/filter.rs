@@ -1,8 +1,8 @@
 use crate::core::common::OxidbError;
 use crate::core::execution::{ExecutionOperator, Tuple};
 use crate::core::optimizer::Expression;
-use std::borrow::Cow;
 use crate::core::types::DataType;
+use std::borrow::Cow;
 
 pub struct FilterOperator {
     /// The input operator that provides tuples.
@@ -109,7 +109,8 @@ impl FilterOperator {
     /// Supports Literal and Column expressions.
     /// For Column expressions, it attempts to resolve column names against a DataType::Map
     /// assumed to be the first element of the tuple.
-    fn evaluate_expression_to_datatype<'a>( // Lifetime 'a tied to tuple
+    fn evaluate_expression_to_datatype<'a>(
+        // Lifetime 'a tied to tuple
         tuple: &'a Tuple,
         expr: &Expression,
     ) -> Result<Cow<'a, DataType>, OxidbError> {
@@ -159,7 +160,9 @@ impl FilterOperator {
                 }
             }
             _ => Err(OxidbError::NotImplemented {
-                feature: "Expression type not supported for direct DataType evaluation in predicate.".to_string(),
+                feature:
+                    "Expression type not supported for direct DataType evaluation in predicate."
+                        .to_string(),
             }),
         }
     }

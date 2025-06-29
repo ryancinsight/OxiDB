@@ -3,9 +3,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use crate::core::common::OxidbError;
+use crate::core::indexing::btree::BPlusTreeIndex; // Import BPlusTreeIndex
 use crate::core::indexing::hash_index::HashIndex;
 use crate::core::indexing::traits::Index; // Assumes Index trait uses common::OxidbError
-use crate::core::indexing::btree::BPlusTreeIndex; // Import BPlusTreeIndex
 use crate::core::query::commands::{Key as PrimaryKey, Value};
 
 /// A type alias for a shared, thread-safe index.
@@ -61,8 +61,9 @@ impl IndexManager {
                 let btree_index = BPlusTreeIndex::new(
                     index_name.clone(),
                     index_path, // Pass the constructed path
-                    DEFAULT_BTREE_ORDER
-                ).map_err(|e| OxidbError::Index(format!("BTree creation error: {:?}",e)))?; // Map btree::OxidbError
+                    DEFAULT_BTREE_ORDER,
+                )
+                .map_err(|e| OxidbError::Index(format!("BTree creation error: {:?}", e)))?; // Map btree::OxidbError
                 Arc::new(RwLock::new(btree_index))
             }
             _ => {
@@ -200,7 +201,6 @@ impl IndexManager {
         }
     }
 
-
     pub fn save_all_indexes(&self) -> Result<(), OxidbError> {
         for index_arc in self.indexes.values() {
             let index = index_arc.read().map_err(|_| {
@@ -229,7 +229,7 @@ mod tests {
     use super::*;
     // use crate::core::indexing::hash_index::HashIndex; // Keep for existing tests if any
     // use crate::core::indexing::traits::Index; // Already imported
-    use std::fs::{File};
+    use std::fs::File;
     // Removed create_dir_all as it's unused in this test module's scope
     use tempfile::tempdir;
 
@@ -259,9 +259,11 @@ mod tests {
 
     #[test]
     fn test_new_index_manager_base_path_is_file() -> Result<(), OxidbError> {
-        let temp_dir = tempdir().expect("test_new_index_manager_base_path_is_file: Failed to create temp dir");
+        let temp_dir =
+            tempdir().expect("test_new_index_manager_base_path_is_file: Failed to create temp dir");
         let file_path = temp_dir.path().join("file_not_dir.txt");
-        File::create(&file_path).expect("test_new_index_manager_base_path_is_file: Failed to create test file");
+        File::create(&file_path)
+            .expect("test_new_index_manager_base_path_is_file: Failed to create test file");
 
         let result = IndexManager::new(file_path);
         assert!(result.is_err());
@@ -279,14 +281,23 @@ mod tests {
         let mut manager = IndexManager::new(temp_dir.path().to_path_buf())?;
 
         manager.create_index("idx1_hash".to_string(), "hash")?;
-        assert!(manager.indexes.contains_key("idx1_hash"), "Hash index should exist after creation");
+        assert!(
+            manager.indexes.contains_key("idx1_hash"),
+            "Hash index should exist after creation"
+        );
         assert!(manager.get_index("idx1_hash").is_some(), "Hash index should be retrievable");
 
         let result_duplicate = manager.create_index("idx1_hash".to_string(), "hash");
-        assert!(matches!(result_duplicate, Err(OxidbError::Index(_))), "Creating duplicate hash index should fail");
+        assert!(
+            matches!(result_duplicate, Err(OxidbError::Index(_))),
+            "Creating duplicate hash index should fail"
+        );
 
         let result_unsupported = manager.create_index("idx2_unsupported".to_string(), "weird_idx");
-        assert!(matches!(result_unsupported, Err(OxidbError::Index(_))), "Creating unsupported index type should fail");
+        assert!(
+            matches!(result_unsupported, Err(OxidbError::Index(_))),
+            "Creating unsupported index type should fail"
+        );
         Ok(())
     }
 
@@ -300,12 +311,19 @@ mod tests {
         let index_name = "my_btree_idx".to_string();
 
         manager.create_index(index_name.clone(), "btree")?;
-        assert!(manager.indexes.contains_key(&index_name), "BTree index should exist after creation");
+        assert!(
+            manager.indexes.contains_key(&index_name),
+            "BTree index should exist after creation"
+        );
         assert!(manager.get_index(&index_name).is_some(), "BTree index should be retrievable");
 
         // Check that the .btree file was created
         let btree_file_path = base_path.join(format!("{}.btree", index_name));
-        assert!(btree_file_path.exists(), "BTree index file should be created at {:?}", btree_file_path);
+        assert!(
+            btree_file_path.exists(),
+            "BTree index file should be created at {:?}",
+            btree_file_path
+        );
         assert!(btree_file_path.is_file(), "BTree index path should be a file");
 
         Ok(())
@@ -313,7 +331,8 @@ mod tests {
 
     #[test]
     fn test_insert_find_delete_via_manager_btree() -> Result<(), OxidbError> {
-        let temp_dir = tempdir().expect("test_insert_find_delete_via_manager_btree: Failed to create temp dir");
+        let temp_dir = tempdir()
+            .expect("test_insert_find_delete_via_manager_btree: Failed to create temp dir");
         let mut manager = IndexManager::new(temp_dir.path().to_path_buf())?;
         let index_name = "crud_btree_idx".to_string();
         manager.create_index(index_name.clone(), "btree")?;
@@ -330,35 +349,55 @@ mod tests {
         manager.insert_into_index(&index_name, &val1, &val1_pk2)?; // val1 now has two pks
 
         // Find
-        let found_val1 = manager.find_by_index(&index_name, &val1)?.expect("val1 should be found in btree index");
+        let found_val1 = manager
+            .find_by_index(&index_name, &val1)?
+            .expect("val1 should be found in btree index");
         assert_eq!(found_val1.len(), 2, "val1 should have two primary keys");
         assert!(found_val1.contains(&pk1), "val1 should contain pk1");
         assert!(found_val1.contains(&val1_pk2), "val1 should contain val1_pk2");
 
-        let found_val2 = manager.find_by_index(&index_name, &val2)?.expect("val2 should be found in btree index");
+        let found_val2 = manager
+            .find_by_index(&index_name, &val2)?
+            .expect("val2 should be found in btree index");
         assert_eq!(found_val2, vec![pk2.clone()], "val2 should have one primary key");
 
-        assert!(manager.find_by_index(&index_name, &val("cherry"))?.is_none(), "cherry should not be found in btree index");
+        assert!(
+            manager.find_by_index(&index_name, &val("cherry"))?.is_none(),
+            "cherry should not be found in btree index"
+        );
 
         // Delete specific PK
         manager.delete_from_index(&index_name, &val1, Some(&pk1))?;
-        let found_val1_after_delete_pk = manager.find_by_index(&index_name, &val1)?.expect("val1 should still be found after deleting one pk");
-        assert_eq!(found_val1_after_delete_pk, vec![val1_pk2.clone()], "val1 should only contain val1_pk2 after pk1 deletion");
+        let found_val1_after_delete_pk = manager
+            .find_by_index(&index_name, &val1)?
+            .expect("val1 should still be found after deleting one pk");
+        assert_eq!(
+            found_val1_after_delete_pk,
+            vec![val1_pk2.clone()],
+            "val1 should only contain val1_pk2 after pk1 deletion"
+        );
 
         // Delete entire key entry
         manager.delete_from_index(&index_name, &val2, None)?;
-        assert!(manager.find_by_index(&index_name, &val2)?.is_none(), "val2 should be deleted from btree index");
+        assert!(
+            manager.find_by_index(&index_name, &val2)?.is_none(),
+            "val2 should be deleted from btree index"
+        );
 
         // Delete last PK for val1
         manager.delete_from_index(&index_name, &val1, Some(&val1_pk2))?;
-        assert!(manager.find_by_index(&index_name, &val1)?.is_none(), "val1 should be fully deleted from btree index");
+        assert!(
+            manager.find_by_index(&index_name, &val1)?.is_none(),
+            "val1 should be fully deleted from btree index"
+        );
 
         Ok(())
     }
 
     #[test]
     fn test_save_load_btree_via_manager() -> Result<(), OxidbError> {
-        let temp_dir = tempdir().expect("test_save_load_btree_via_manager: Failed to create temp dir");
+        let temp_dir =
+            tempdir().expect("test_save_load_btree_via_manager: Failed to create temp dir");
         let base_path = temp_dir.path().to_path_buf();
         let index_name = "saveload_btree".to_string();
 
@@ -384,11 +423,22 @@ mod tests {
 
         // manager2.load_all_indexes()?; // This is redundant if create_index properly loads.
 
-        assert_eq!(manager2.find_by_index(&index_name, &val1)?, Some(vec![pk1.clone()]), "val1 should be found after load");
-        assert_eq!(manager2.find_by_index(&index_name, &val2)?, Some(vec![pk2.clone()]), "val2 should be found after load");
+        assert_eq!(
+            manager2.find_by_index(&index_name, &val1)?,
+            Some(vec![pk1.clone()]),
+            "val1 should be found after load"
+        );
+        assert_eq!(
+            manager2.find_by_index(&index_name, &val2)?,
+            Some(vec![pk2.clone()]),
+            "val2 should be found after load"
+        );
 
         // Test finding non-existent key
-        assert!(manager2.find_by_index(&index_name, &val("persistent_cherry"))?.is_none(), "Non-existent key should not be found after load");
+        assert!(
+            manager2.find_by_index(&index_name, &val("persistent_cherry"))?.is_none(),
+            "Non-existent key should not be found after load"
+        );
 
         Ok(())
     }
@@ -396,7 +446,8 @@ mod tests {
     // Existing hash index tests (should be kept and pass)
     #[test]
     fn test_create_index_loads_existing_hash_file() -> Result<(), OxidbError> {
-        let temp_dir = tempdir().expect("test_create_index_loads_existing_hash_file: Failed to create temp dir");
+        let temp_dir = tempdir()
+            .expect("test_create_index_loads_existing_hash_file: Failed to create temp dir");
         let index_name = "preexisting_hash_idx".to_string();
         let base_path_for_hash = temp_dir.path();
 

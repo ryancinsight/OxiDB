@@ -7,7 +7,7 @@
 
 use crate::core::common::OxidbError; // Changed
 use crate::core::query::commands::{Command, Key};
-use crate::core::types::DataType;
+use crate::core::types::{DataType, VectorData}; // Added VectorData
 
 // Imports for the new SQL parser integration
 use crate::core::query::sql::{self, parser::SqlParser, tokenizer::Tokenizer};
@@ -28,7 +28,7 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, OxidbError> {
             "Input query string is effectively empty or whitespace only.".to_string(),
         ));
     }
-    let first_word = first_word_opt.unwrap().to_uppercase();
+    let first_word = first_word_opt.expect("first_word_opt should be Some due to check above").to_uppercase();
 
     if first_word == "INSERT" {
         let second_word = words_iter.next().unwrap_or("").to_uppercase();
@@ -86,7 +86,8 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, OxidbError> {
                 parse_legacy_command_string(query_str)
             }
         }
-    } else if first_word == "SELECT" || first_word == "UPDATE" || first_word == "CREATE" { // DELETE removed from this line
+    } else if first_word == "SELECT" || first_word == "UPDATE" || first_word == "CREATE" {
+        // DELETE removed from this line
         // Other SQL commands
         let mut tokenizer = Tokenizer::new(query_str);
         match tokenizer.tokenize() {
@@ -111,7 +112,11 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, OxidbError> {
     {
         // Legacy commands (excluding INSERT and DELETE)
         parse_legacy_command_string(query_str)
-    } else { // Fallback for unknown commands, try SQL then error
+    } else if first_word == "SIMILARITY_SEARCH" {
+        parse_similarity_search_command_details(query_str)
+    }
+     else {
+        // Fallback for unknown commands, try SQL then error
         let mut tokenizer = Tokenizer::new(query_str);
         match tokenizer.tokenize() {
             Ok(tokens) => {
@@ -282,10 +287,76 @@ fn parse_legacy_command_string(query_str: &str) -> Result<Command, OxidbError> {
     }
 }
 
+// Helper function to parse vector literal string like "[1.0,2.0,3.0]"
+// Moved out of #[cfg(test)]
+fn parse_vector_literal_from_string(s: &str) -> Result<VectorData, OxidbError> {
+    if !s.starts_with('[') || !s.ends_with(']') {
+        return Err(OxidbError::SqlParsing("Vector literal must start with '[' and end with ']'".to_string()));
+    }
+    let inner = &s[1..s.len()-1];
+    if inner.trim().is_empty() { // Handle "[]"
+        return VectorData::new(0, vec![]).ok_or_else(|| OxidbError::SqlParsing("Failed to create empty VectorData".to_string()));
+    }
+    let mut data = Vec::new();
+    for part in inner.split(',') {
+        let trimmed_part = part.trim();
+        if trimmed_part.is_empty() {
+            return Err(OxidbError::SqlParsing(format!("Empty element in vector literal: '{}'", s)));
+        }
+        match trimmed_part.parse::<f32>() {
+            Ok(f) => data.push(f),
+            Err(_) => return Err(OxidbError::SqlParsing(format!("Invalid float in vector literal: '{}'", trimmed_part))),
+        }
+    }
+    let dimension = data.len() as u32;
+    VectorData::new(dimension, data).ok_or_else(|| OxidbError::SqlParsing(
+        format!("Dimension mismatch for vector literal (dim: {}, len: {})", dimension, dimension)
+    ))
+}
+
+// Moved out of #[cfg(test)]
+fn parse_similarity_search_command_details(query_str: &str) -> Result<Command, OxidbError> {
+    let mut parts = query_str.split_whitespace();
+    parts.next(); // Consume "SIMILARITY_SEARCH"
+
+    let table_name = parts.next().ok_or_else(|| OxidbError::SqlParsing("Missing table name for SIMILARITY_SEARCH".to_string()))?.to_string();
+    let on_keyword = parts.next().ok_or_else(|| OxidbError::SqlParsing("Missing ON keyword for SIMILARITY_SEARCH".to_string()))?;
+    if on_keyword.to_uppercase() != "ON" {
+        return Err(OxidbError::SqlParsing("Expected ON keyword after table name for SIMILARITY_SEARCH".to_string()));
+    }
+    let vector_column_name = parts.next().ok_or_else(|| OxidbError::SqlParsing("Missing column name for SIMILARITY_SEARCH".to_string()))?.to_string();
+    let query_keyword = parts.next().ok_or_else(|| OxidbError::SqlParsing("Missing QUERY keyword for SIMILARITY_SEARCH".to_string()))?;
+    if query_keyword.to_uppercase() != "QUERY" {
+        return Err(OxidbError::SqlParsing("Expected QUERY keyword after column name for SIMILARITY_SEARCH".to_string()));
+    }
+    let vector_literal_str = parts.next().ok_or_else(|| OxidbError::SqlParsing("Missing vector literal for SIMILARITY_SEARCH".to_string()))?;
+    let query_vector = parse_vector_literal_from_string(vector_literal_str)?;
+    let top_k_keyword = parts.next().ok_or_else(|| OxidbError::SqlParsing("Missing TOP_K keyword for SIMILARITY_SEARCH".to_string()))?;
+    if top_k_keyword.to_uppercase() != "TOP_K" {
+        return Err(OxidbError::SqlParsing("Expected TOP_K keyword after QUERY vector for SIMILARITY_SEARCH".to_string()));
+    }
+    let top_k_str = parts.next().ok_or_else(|| OxidbError::SqlParsing("Missing K value for TOP_K in SIMILARITY_SEARCH".to_string()))?;
+    let top_k = top_k_str.parse::<usize>().map_err(|_| OxidbError::SqlParsing(format!("Invalid K value for TOP_K: '{}'", top_k_str)))?;
+    if top_k == 0 {
+        return Err(OxidbError::SqlParsing("TOP_K value must be greater than 0".to_string()));
+    }
+    if parts.next().is_some() {
+        return Err(OxidbError::SqlParsing("Too many arguments for SIMILARITY_SEARCH".to_string()));
+    }
+    Ok(Command::SimilaritySearch {
+        table_name,
+        vector_column_name,
+        query_vector,
+        top_k,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::query::commands::SelectColumnSpec;
+    // VectorData is already imported at the top level of the module if parse_vector_literal_from_string is moved up.
+    // use crate::core::types::VectorData; // For tests if needed
 
     #[test]
     fn test_legacy_parse_get() {
@@ -426,7 +497,7 @@ mod tests {
     fn test_main_parse_select_simple_sql() {
         let result = parse_query_string("SELECT name FROM users;");
         match result {
-            Ok(Command::Select { columns, source, condition }) => {
+            Ok(Command::Select { columns, source, condition, order_by: _, limit: _ }) => {
                 assert_eq!(columns, SelectColumnSpec::Specific(vec!["name".to_string()]));
                 assert_eq!(source, "users");
                 assert!(condition.is_none());
@@ -440,14 +511,18 @@ mod tests {
     fn test_main_parse_select_star_sql() {
         let result = parse_query_string("SELECT * FROM products WHERE id = 10;");
         match result {
-            Ok(Command::Select { columns, source, condition }) => {
+            Ok(Command::Select { columns, source, condition, order_by: _, limit: _ }) => {
                 assert_eq!(columns, SelectColumnSpec::All);
                 assert_eq!(source, "products");
                 assert!(condition.is_some());
-                let cond = condition.unwrap();
-                assert_eq!(cond.column, "id");
-                assert_eq!(cond.operator, "=");
-                assert_eq!(cond.value, DataType::Integer(10));
+                match condition.unwrap() {
+                    crate::core::query::commands::SqlConditionTree::Comparison(cond) => {
+                        assert_eq!(cond.column, "id");
+                        assert_eq!(cond.operator, "=");
+                        assert_eq!(cond.value, DataType::Integer(10));
+                    }
+                    _ => panic!("Expected SqlConditionTree::Comparison"),
+                }
             }
             Err(e) => panic!("Expected SELECT * to parse, got error: {:?}", e),
             _ => panic!("Expected Command::Select for SQL with WHERE"),
@@ -466,9 +541,13 @@ mod tests {
                 assert_eq!(assignments[0].column, "email");
                 assert_eq!(assignments[0].value, DataType::String("new@example.com".to_string()));
                 assert!(condition.is_some());
-                let cond = condition.unwrap();
-                assert_eq!(cond.column, "name");
-                assert_eq!(cond.value, DataType::String("old name".to_string()));
+                match condition.unwrap() {
+                    crate::core::query::commands::SqlConditionTree::Comparison(cond) => {
+                        assert_eq!(cond.column, "name");
+                        assert_eq!(cond.value, DataType::String("old name".to_string()));
+                    }
+                    _ => panic!("Expected SqlConditionTree::Comparison"),
+                }
             }
             Err(e) => panic!("Expected UPDATE to parse, got error: {:?}", e),
             _ => panic!("Expected Command::Update for SQL"),

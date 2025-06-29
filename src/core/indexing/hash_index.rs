@@ -8,12 +8,16 @@ use crate::core::common::OxidbError; // Changed
 use crate::core::indexing::traits::Index;
 use crate::core::query::commands::{Key as PrimaryKey, Value}; // Value is Vec<u8>
 
+/// Default file extension for hash index files.
 const DEFAULT_INDEX_FILE_EXTENSION: &str = "idx";
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct HashIndex {
+    /// The name of the index, used for identification and file naming.
     name: String,
+    /// The in-memory store for the index, mapping indexed values to lists of primary keys.
     store: HashMap<Value, Vec<PrimaryKey>>,
+    /// The file system path where this index is persisted.
     file_path: PathBuf, // Path for persistence
 }
 

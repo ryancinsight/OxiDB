@@ -19,7 +19,10 @@ pub fn deserialize_data_type(bytes: &[u8]) -> Result<DataType, OxidbError> {
             let err_string = e.to_string();
             // Print it regardless to see what errors occur
             println!("[deserialize_data_type] Serde JSON error string: '{}'", err_string);
-            println!("[deserialize_data_type] Bytes as lossy UTF-8 for this error: '{}'", String::from_utf8_lossy(bytes));
+            println!(
+                "[deserialize_data_type] Bytes as lossy UTF-8 for this error: '{}'",
+                String::from_utf8_lossy(bytes)
+            );
 
             if err_string.contains("key must be a string") {
                 // Replaced panic with an error return

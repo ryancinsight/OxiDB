@@ -4,7 +4,7 @@ use crate::core::execution::{ExecutionOperator, Tuple};
 use crate::core::indexing::manager::IndexManager;
 use crate::core::query::commands::Key;
 use crate::core::storage::engine::traits::KeyValueStore;
-use crate::core::types::{DataType, JsonSafeMap}; // Import JsonSafeMap
+use crate::core::types::DataType; // Import JsonSafeMap
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock}; // Added RwLock
 
@@ -12,7 +12,7 @@ pub struct IndexScanOperator<S: KeyValueStore<Key, Vec<u8>>> {
     /// The underlying key-value store.
     store: Arc<RwLock<S>>, // Changed to Arc<RwLock<S>>
     /// The index manager to access indexes.
-    index_manager: Arc<IndexManager>,
+    index_manager: Arc<RwLock<IndexManager>>, // Changed to Arc<RwLock<IndexManager>>
     /// The name of the index to scan.
     index_name: String,
     /// The serialized value to scan for in the index.
@@ -27,8 +27,8 @@ pub struct IndexScanOperator<S: KeyValueStore<Key, Vec<u8>>> {
 
 impl<S: KeyValueStore<Key, Vec<u8>>> IndexScanOperator<S> {
     pub fn new(
-        store: Arc<RwLock<S>>, // Changed to Arc<RwLock<S>>
-        index_manager: Arc<IndexManager>,
+        store: Arc<RwLock<S>>,                    // Changed to Arc<RwLock<S>>
+        index_manager: Arc<RwLock<IndexManager>>, // Changed to Arc<RwLock<IndexManager>>
         index_name: String,
         scan_value: Vec<u8>,
         snapshot_id: u64,
@@ -59,9 +59,14 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for IndexScanOp
         }
         self.executed = true;
 
-        let primary_keys: std::vec::Vec<std::vec::Vec<u8>> =
-            (self.index_manager.find_by_index(&self.index_name, &self.scan_value)?)
-                .unwrap_or_default();
+        let primary_keys: std::vec::Vec<std::vec::Vec<u8>> = (self
+            .index_manager
+            .read()
+            .map_err(|e| {
+                OxidbError::Lock(format!("Failed to acquire read lock on index manager: {}", e))
+            })?
+            .find_by_index(&self.index_name, &self.scan_value)?) // Acquire read lock
+        .unwrap_or_default();
 
         if primary_keys.is_empty() {
             return Ok(Box::new(std::iter::empty()));
@@ -75,38 +80,42 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for IndexScanOp
 
         let iterator = primary_keys.into_iter().filter_map(move |pk| {
             // Acquire read lock for each get operation
-            #[allow(clippy::unwrap_used)] // Panicking on poisoned lock is acceptable here
-            let store_guard = store_arc_clone.read().unwrap();
+            let store_guard = match store_arc_clone.read() {
+                Ok(guard) => guard,
+                Err(e) => {
+                    return Some(Err(OxidbError::Lock(format!(
+                        "Failed to acquire read lock on store for PK {:?}: {}",
+                        pk, e
+                    ))))
+                }
+            };
             match store_guard.get(&pk, snapshot_id, &committed_ids_clone) {
                 Ok(Some(value_bytes)) => match deserialize_data_type(&value_bytes) {
-                    // deserialize_data_type now returns OxidbError
-                    Ok(data_type) => {
-                        let tuple = match data_type {
-                            DataType::Map(JsonSafeMap(map_data)) => { // Use JsonSafeMap
-                                map_data.values().cloned().collect::<Vec<DataType>>() // Corrected: map_data is the HashMap
-                            }
-                            DataType::JsonBlob(json_value) => {
-                                if json_value.is_object() {
-                                    #[allow(clippy::unwrap_used)]
-                                    // May panic if not an object, revisit if this is an issue
-                                    json_value
-                                        .as_object()
-                                        .unwrap()
-                                        .values()
-                                        .map(|v| DataType::String(v.to_string()))
-                                        .collect::<Vec<DataType>>()
-                                } else {
-                                    vec![DataType::JsonBlob(json_value)]
-                                }
-                            }
-                            single_val => vec![single_val],
-                        };
+                    Ok(row_data_type) => {
+                        // row_data_type is likely a DataType::Map
+                        // Prepend the actual KV store key (pk) to the tuple
+                        let key_data_type = DataType::RawBytes(pk.clone()); // Use RawBytes for keys
+
+                        // The tuple for projection should be [key, col1, col2, ...] if original row was a map
+                        // Or [key, single_value_if_not_map]
+                        // For UPDATEs/DELETEs, the projection expects just the key.
+                        // However, a general IndexScan might be used by SELECT.
+                        // The current ProjectOperator for UPDATE specifically asks for index "0".
+                        // So, the first element *must* be the key.
+                        // If row_data_type is a Map, we might want its fields too for SELECT *.
+                        // Let's form a tuple: [key_as_RawBytes, actual_row_map_or_value]
+                        // This matches TableScanOperator's output structure.
+                        let tuple = vec![key_data_type, row_data_type];
                         Some(Ok(tuple))
                     }
-                    Err(e) => Some(Err(e)), // Changed to pass through OxidbError
+                    Err(e) => Some(Err(OxidbError::Deserialization(format!(
+                        "Failed to deserialize row data for key {:?}: {}",
+                        String::from_utf8_lossy(&pk),
+                        e
+                    )))),
                 },
-                Ok(None) => None,
-                Err(e) => Some(Err(e)), // This e is already OxidbError from the store
+                Ok(None) => None, // Row pointed to by index key not found or not visible
+                Err(e) => Some(Err(e)),
             }
         });
 
