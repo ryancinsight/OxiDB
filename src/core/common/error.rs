@@ -72,29 +72,29 @@ pub enum OxidbError {
     ConstraintViolation { message: String },
 }
 
-impl From<crate::core::indexing::btree::tree::OxidbError> for OxidbError {
-    fn from(err: crate::core::indexing::btree::tree::OxidbError) -> Self {
+impl From<crate::core::indexing::btree::OxidbError> for OxidbError {
+    fn from(err: crate::core::indexing::btree::OxidbError) -> Self {
         match err {
-            crate::core::indexing::btree::tree::OxidbError::Io(e) => OxidbError::Io(e),
-            crate::core::indexing::btree::tree::OxidbError::Serialization(se) => {
+            crate::core::indexing::btree::OxidbError::Io(e) => OxidbError::Io(e),
+            crate::core::indexing::btree::OxidbError::Serialization(se) => {
                 OxidbError::Serialization(format!("BTree Node Serialization: {:?}", se))
             }
-            crate::core::indexing::btree::tree::OxidbError::NodeNotFound(page_id) => {
+            crate::core::indexing::btree::OxidbError::NodeNotFound(page_id) => {
                 OxidbError::Index(format!("BTree Node not found on page: {}", page_id))
             }
-            crate::core::indexing::btree::tree::OxidbError::PageFull(s) => {
+            crate::core::indexing::btree::OxidbError::PageFull(s) => {
                 OxidbError::Index(format!("BTree PageFull: {}", s))
             }
-            crate::core::indexing::btree::tree::OxidbError::UnexpectedNodeType => {
+            crate::core::indexing::btree::OxidbError::UnexpectedNodeType => {
                 OxidbError::Index("BTree Unexpected Node Type".to_string())
             }
-            crate::core::indexing::btree::tree::OxidbError::TreeLogicError(s) => {
+            crate::core::indexing::btree::OxidbError::TreeLogicError(s) => {
                 OxidbError::Index(format!("BTree Logic Error: {}", s))
             }
-            crate::core::indexing::btree::tree::OxidbError::BorrowError(s) => {
+            crate::core::indexing::btree::OxidbError::BorrowError(s) => {
                 OxidbError::Lock(format!("BTree Borrow Error: {}", s)) // Or a new specific variant
             }
-            crate::core::indexing::btree::tree::OxidbError::Generic(s) => {
+            crate::core::indexing::btree::OxidbError::Generic(s) => {
                 OxidbError::Internal(format!("BTree Generic Error: {}", s))
             }
         }
