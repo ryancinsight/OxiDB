@@ -10,7 +10,7 @@ use crate::core::types::DataType;
 use crate::core::types::JsonSafeMap; // Added import for JsonSafeMap
 use std::collections::{HashMap, HashSet}; // Removed AstLiteralValue
                                           // AstAssignment from sql::ast is not needed here because assignments_cmd is already SqlAssignment
-// Removed: use super::utils::datatype_to_ast_literal;
+                                          // Removed: use super::utils::datatype_to_ast_literal;
 use std::sync::Arc; // Import the helper
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S> {
@@ -55,12 +55,12 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         // Convert Option<commands::SqlConditionTree> to Option<ast::ConditionTree>
         let ast_condition_tree_opt: Option<crate::core::query::sql::ast::ConditionTree> =
             match condition_opt.as_ref() {
-                Some(sql_cond_tree) => Some(
-                    super::select_execution::command_condition_tree_to_ast_condition_tree(
+                Some(sql_cond_tree) => {
+                    Some(super::select_execution::command_condition_tree_to_ast_condition_tree(
                         sql_cond_tree,
                         self,
-                    )?,
-                ),
+                    )?)
+                }
                 None => None,
             };
 
@@ -147,14 +147,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 crate::core::transaction::lock_manager::LockType::Exclusive,
             )?;
 
-            let current_value_bytes_opt = self.store
+            let current_value_bytes_opt = self
+                .store
                 .read()
                 .expect("Failed to acquire read lock on store for update")
-                .get(
-                    &key,
-                    current_op_tx_id.0,
-                    &committed_ids_for_get_u64_set,
-            )?;
+                .get(&key, current_op_tx_id.0, &committed_ids_for_get_u64_set)?;
 
             if let Some(current_value_bytes) = current_value_bytes_opt {
                 let mut current_data_type = deserialize_data_type(&current_value_bytes)?;

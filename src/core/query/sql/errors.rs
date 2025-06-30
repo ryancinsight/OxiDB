@@ -27,5 +27,10 @@ pub enum SqlParseError {
     #[error("Unknown data type '{0}' at position {1}")]
     UnknownDataType(String, usize),
     #[error("Invalid parameter for data type '{type_name}' at position {position}: parameter '{parameter}', reason: {reason}")]
-    InvalidDataTypeParameter { type_name: String, parameter: String, position: usize, reason: String },
+    InvalidDataTypeParameter {
+        type_name: String,
+        parameter: String,
+        position: usize,
+        reason: String,
+    },
 }

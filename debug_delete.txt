@@ -1,0 +1,10 @@
+[DEBUG DELETE] Starting delete for key: [48, 48]
+[DEBUG DELETE] Initial root_page_id: 0
+[DEBUG DELETE] Path to leaf: [0, 1, 3]
+[DEBUG DELETE] Leaf page ID: 3
+[DEBUG DELETE] Looking for key in leaf node, leaf_keys=[[48, 48]]
+[DEBUG DELETE] modification_made=true, key_removed_from_structure=true, leaf_keys_len=0, min_keys=1, leaf_page_id=3, root_page_id=0
+[DEBUG DELETE] Calling handle_underflow for leaf_page_id=3
+[DEBUG] handle_underflow: current_node_pid=3, path=[0, 1, 3], root_pid=0
+[DEBUG MERGE] Before merge: left_keys=[], right_keys=[[48, 49]], parent_key_idx=0
+[DEBUG DELETE] Final root_page_id: 0

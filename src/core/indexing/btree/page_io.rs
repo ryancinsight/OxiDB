@@ -3,8 +3,8 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use crate::core::indexing::btree::node::{BPlusTreeNode, PageId, SerializationError};
 use crate::core::indexing::btree::error::OxidbError;
+use crate::core::indexing::btree::node::{BPlusTreeNode, PageId, SerializationError};
 
 // Constants previously in tree.rs
 /// The size of a page in bytes.
@@ -27,7 +27,11 @@ pub struct PageManager {
 }
 
 impl PageManager {
-    pub fn new(path: &PathBuf, order: usize, create_new_if_not_exists: bool) -> Result<Self, OxidbError> {
+    pub fn new(
+        path: &PathBuf,
+        order: usize,
+        create_new_if_not_exists: bool,
+    ) -> Result<Self, OxidbError> {
         let file_exists = path.exists();
         let mut file_obj = OpenOptions::new()
             .read(true)
@@ -58,14 +62,13 @@ impl PageManager {
             // If the file's order is 0 (e.g. uninitialized but existing file), use provided.
             let effective_order = if loaded_order == 0 { order } else { loaded_order };
             if order != 0 && effective_order != order {
-                 // This case should be handled carefully. For now, log or return error.
-                 // Let's prefer the loaded order if the file was valid.
-                 eprintln!(
+                // This case should be handled carefully. For now, log or return error.
+                // Let's prefer the loaded order if the file was valid.
+                eprintln!(
                     "Warning: Order mismatch. Provided: {}, Loaded: {}. Using loaded order.",
                     order, effective_order
                 );
             }
-
 
             Ok(Self {
                 file_handle: Mutex::new(file_obj),
@@ -76,7 +79,8 @@ impl PageManager {
             })
         } else if create_new_if_not_exists {
             // File didn't exist or was too small, and we are allowed to create/truncate.
-            if order < 3 { // Min order check
+            if order < 3 {
+                // Min order check
                 return Err(OxidbError::TreeLogicError(format!(
                     "Order {} is too small. Minimum order is 3.",
                     order
@@ -97,7 +101,7 @@ impl PageManager {
             Ok(pm)
         } else {
             // File does not exist, and create_new_if_not_exists is false
-             Err(OxidbError::Io(io::Error::new(
+            Err(OxidbError::Io(io::Error::new(
                 io::ErrorKind::NotFound,
                 format!("B+Tree file not found at {:?} and not allowed to create.", path),
             )))
@@ -106,7 +110,9 @@ impl PageManager {
 
     // Internal write_metadata, expects file lock to be already acquired or not needed (e.g. during new)
     fn write_metadata_internal(&mut self) -> Result<(), OxidbError> {
-        let mut file = self.file_handle.lock().map_err(|e| OxidbError::BorrowError(format!("Mutex lock error for write_metadata_internal: {}", e)))?;
+        let mut file = self.file_handle.lock().map_err(|e| {
+            OxidbError::BorrowError(format!("Mutex lock error for write_metadata_internal: {}", e))
+        })?;
         file.seek(SeekFrom::Start(0))?;
         file.write_all(&(self.order as u32).to_be_bytes())?; // Assuming order fits u32
         file.write_all(&self.root_page_id.to_be_bytes())?;
@@ -143,7 +149,10 @@ impl PageManager {
             new_page_id = self.free_list_head_page_id;
             // Read the first 8 bytes of this page to get the next free page ID
             let mut file = self.file_handle.lock().map_err(|e| {
-                OxidbError::BorrowError(format!("Mutex lock error for allocate (read free list): {}", e))
+                OxidbError::BorrowError(format!(
+                    "Mutex lock error for allocate (read free list): {}",
+                    e
+                ))
             })?;
             let offset = PAGE_SIZE.saturating_add(new_page_id.saturating_mul(PAGE_SIZE)); // Metadata is on page 0, actual data pages start after PAGE_SIZE offset
             file.seek(SeekFrom::Start(offset))?;
@@ -159,8 +168,11 @@ impl PageManager {
     }
 
     pub fn deallocate_page_id(&mut self, page_id_to_free: PageId) -> Result<(), OxidbError> {
-        if page_id_to_free == SENTINEL_PAGE_ID { // Should match the constant defined in this file
-            return Err(OxidbError::TreeLogicError("Cannot deallocate sentinel page ID".to_string()));
+        if page_id_to_free == SENTINEL_PAGE_ID {
+            // Should match the constant defined in this file
+            return Err(OxidbError::TreeLogicError(
+                "Cannot deallocate sentinel page ID".to_string(),
+            ));
         }
 
         let mut file = self.file_handle.lock().map_err(|e| {
@@ -176,30 +188,40 @@ impl PageManager {
     }
 
     pub fn read_node(&self, page_id: PageId) -> Result<BPlusTreeNode, OxidbError> {
-        let mut file = self.file_handle.lock().map_err(|e| OxidbError::BorrowError(format!("Mutex lock error for read_node: {}", e)))?;
+        let mut file = self.file_handle.lock().map_err(|e| {
+            OxidbError::BorrowError(format!("Mutex lock error for read_node: {}", e))
+        })?;
         let offset = PAGE_SIZE.saturating_add(page_id.saturating_mul(PAGE_SIZE));
         file.seek(SeekFrom::Start(offset))?;
 
         let page_size_usize = usize::try_from(PAGE_SIZE).map_err(|_| {
-            OxidbError::Serialization(SerializationError::InvalidFormat("PAGE_SIZE too large for usize".to_string()))
+            OxidbError::Serialization(SerializationError::InvalidFormat(
+                "PAGE_SIZE too large for usize".to_string(),
+            ))
         })?;
         let mut page_buffer = vec![0u8; page_size_usize];
 
         match file.read_exact(&mut page_buffer) {
             Ok(_) => BPlusTreeNode::from_bytes(&page_buffer).map_err(OxidbError::from),
-            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => Err(OxidbError::NodeNotFound(page_id)),
+            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
+                Err(OxidbError::NodeNotFound(page_id))
+            }
             Err(e) => Err(OxidbError::Io(e)),
         }
     }
 
     pub fn write_node(&mut self, node: &BPlusTreeNode) -> Result<(), OxidbError> {
-        let mut file = self.file_handle.lock().map_err(|e| OxidbError::BorrowError(format!("Mutex lock error for write_node: {}", e)))?;
+        let mut file = self.file_handle.lock().map_err(|e| {
+            OxidbError::BorrowError(format!("Mutex lock error for write_node: {}", e))
+        })?;
         let page_id = node.get_page_id();
         let offset = PAGE_SIZE.saturating_add(page_id.saturating_mul(PAGE_SIZE));
 
         let mut node_bytes = node.to_bytes()?;
         let page_size_usize = usize::try_from(PAGE_SIZE).map_err(|_| {
-            OxidbError::Serialization(SerializationError::InvalidFormat("PAGE_SIZE too large for usize".to_string()))
+            OxidbError::Serialization(SerializationError::InvalidFormat(
+                "PAGE_SIZE too large for usize".to_string(),
+            ))
         })?;
 
         if node_bytes.len() > page_size_usize {

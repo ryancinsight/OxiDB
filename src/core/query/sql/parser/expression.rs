@@ -12,8 +12,9 @@ impl SqlParser {
             return Ok(columns);
         }
 
-        if !matches!(self.peek(), Some(Token::Identifier(_))) && !self.match_token(Token::Asterisk) {
-             return Err(SqlParseError::UnexpectedToken {
+        if !matches!(self.peek(), Some(Token::Identifier(_))) && !self.match_token(Token::Asterisk)
+        {
+            return Err(SqlParseError::UnexpectedToken {
                 expected: "column name or '*'".to_string(),
                 found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
                 position: self.current_token_pos(),
@@ -21,9 +22,10 @@ impl SqlParser {
         }
 
         loop {
-            if self.match_token(Token::Asterisk) { // Allow '*' also in a list e.g. col1, *
-                 self.consume(Token::Asterisk)?;
-                 columns.push(SelectColumn::Asterisk);
+            if self.match_token(Token::Asterisk) {
+                // Allow '*' also in a list e.g. col1, *
+                self.consume(Token::Asterisk)?;
+                columns.push(SelectColumn::Asterisk);
             } else {
                 let col_name = self.expect_identifier("Expected column name or '*'")?;
                 columns.push(SelectColumn::ColumnName(col_name));
@@ -35,7 +37,8 @@ impl SqlParser {
             self.consume(Token::Comma)?;
             // After a comma, we must find another column name or '*'.
             match self.peek() {
-                Some(Token::Identifier(_)) | Some(Token::Asterisk) => { /* Good, loop will continue */ }
+                Some(Token::Identifier(_)) | Some(Token::Asterisk) => { /* Good, loop will continue */
+                }
                 Some(next_token) => {
                     return Err(SqlParseError::UnexpectedToken {
                         expected: "column name or '*' after comma".to_string(), // Reverted to specific message
@@ -53,7 +56,7 @@ impl SqlParser {
             }
         }
         if columns.is_empty() {
-             return Err(SqlParseError::UnexpectedToken {
+            return Err(SqlParseError::UnexpectedToken {
                 expected: "column name or '*' for select list".to_string(),
                 found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
                 position: self.current_token_pos(),
@@ -65,7 +68,7 @@ impl SqlParser {
     pub(super) fn parse_assignment_list(&mut self) -> Result<Vec<Assignment>, SqlParseError> {
         let mut assignments = Vec::new();
         if !matches!(self.peek(), Some(Token::Identifier(_))) {
-             return Err(SqlParseError::UnexpectedToken {
+            return Err(SqlParseError::UnexpectedToken {
                 expected: "column name for assignment".to_string(),
                 found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
                 position: self.current_token_pos(),
@@ -123,9 +126,8 @@ impl SqlParser {
             Ok(condition)
         } else {
             // Base case: a simple comparison or IS NULL / IS NOT NULL
-            let column = self.expect_identifier(
-                "Expected column name, 'NOT', or '(' for condition"
-            )?;
+            let column =
+                self.expect_identifier("Expected column name, 'NOT', or '(' for condition")?;
 
             // Check for IS NULL / IS NOT NULL specifically
             if self.peek_is_identifier_str("IS") {
@@ -138,7 +140,8 @@ impl SqlParser {
                 }
                 self.expect_specific_identifier("NULL", "Expected NULL after IS [NOT]")?;
 
-                let final_operator = if is_not { "IS NOT NULL".to_string() } else { "IS NULL".to_string() };
+                let final_operator =
+                    if is_not { "IS NOT NULL".to_string() } else { "IS NULL".to_string() };
                 return Ok(ast::ConditionTree::Comparison(Condition {
                     column,
                     operator: final_operator,
@@ -180,7 +183,6 @@ impl SqlParser {
         Ok(left)
     }
 
-
     pub(super) fn parse_literal_value(
         &mut self,
         error_msg_context: &str,
@@ -191,13 +193,15 @@ impl SqlParser {
         if self.peek() == Some(&Token::LBracket) {
             self.consume(Token::LBracket)?; // Consume '['
             let mut elements = Vec::new();
-            if self.peek() != Some(&Token::RBracket) { // Handle non-empty list
+            if self.peek() != Some(&Token::RBracket) {
+                // Handle non-empty list
                 loop {
                     elements.push(self.parse_literal_value("Expected value in vector literal")?);
                     if self.peek() == Some(&Token::RBracket) {
                         break;
                     }
-                    let next_token_str_for_err = format!("{:?}", self.peek().unwrap_or(&Token::EOF));
+                    let next_token_str_for_err =
+                        format!("{:?}", self.peek().unwrap_or(&Token::EOF));
                     let current_pos_for_err = self.current_token_pos();
                     self.consume(Token::Comma).map_err(|_e| SqlParseError::UnexpectedToken {
                         expected: "comma or ']' in vector literal".to_string(),
@@ -206,7 +210,7 @@ impl SqlParser {
                     })?;
                     // Handle trailing comma before RBracket
                     if self.peek() == Some(&Token::RBracket) {
-                         return Err(SqlParseError::UnexpectedToken {
+                        return Err(SqlParseError::UnexpectedToken {
                             expected: "value after comma in vector literal".to_string(),
                             found: "]".to_string(),
                             position: self.current_token_pos(),
@@ -236,15 +240,14 @@ impl SqlParser {
                             position: error_pos,
                         })
                     }
-                },
-            Some(other) => Err(SqlParseError::UnexpectedToken {
-                expected: error_msg_context.to_string(), // "literal value (string, number, boolean, or NULL)".to_string(),
-                found: format!("{:?}", other),
-                position: error_pos,
-            }),
-            None => Err(SqlParseError::UnexpectedEOF) // Comma removed if it was here, or ensure no comma for last arm expression
-        } // Closes match
-    } // Closes else block for LBracket check
-} // Closes fn parse_literal_value
-
+                }
+                Some(other) => Err(SqlParseError::UnexpectedToken {
+                    expected: error_msg_context.to_string(), // "literal value (string, number, boolean, or NULL)".to_string(),
+                    found: format!("{:?}", other),
+                    position: error_pos,
+                }),
+                None => Err(SqlParseError::UnexpectedEOF), // Comma removed if it was here, or ensure no comma for last arm expression
+            } // Closes match
+        } // Closes else block for LBracket check
+    } // Closes fn parse_literal_value
 } // Closes impl SqlParser

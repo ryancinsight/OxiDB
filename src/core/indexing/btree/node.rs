@@ -67,10 +67,13 @@ impl BPlusTreeNode {
         matches!(self, BPlusTreeNode::Leaf { .. })
     }
 
-    pub fn get_children(&self) -> Result<&Vec<PageId>, super::OxidbError> { // Changed error type path
+    pub fn get_children(&self) -> Result<&Vec<PageId>, super::OxidbError> {
+        // Changed error type path
         match self {
             BPlusTreeNode::Internal { children, .. } => Ok(children),
-            BPlusTreeNode::Leaf { .. } => Err(super::OxidbError::TreeLogicError("Leaf nodes do not have children.".to_string())), // Changed error type path
+            BPlusTreeNode::Leaf { .. } => Err(super::OxidbError::TreeLogicError(
+                "Leaf nodes do not have children.".to_string(),
+            )), // Changed error type path
         }
     }
 
@@ -98,17 +101,17 @@ impl BPlusTreeNode {
     pub fn find_child_index(&self, key: &KeyType) -> Result<usize, &'static str> {
         match self {
             BPlusTreeNode::Internal { keys, .. } => {
-                // Perform a binary search or linear scan for the appropriate child index
-                // `partition_point` returns the index of the first element `x` for which `f(x)` is true.
-                // We want to find the index `i` such that `keys[i-1] <= key < keys[i]`.
-                // The child pointer to follow is at index `i`.
-                // If `key < keys[0]`, child index is 0.
-                // If `key >= keys[len-1]`, child index is `len`.
+                // Perform a binary search for the appropriate child index
+                // In a B+ tree internal node with keys [k1, k2, ..., kn] and children [c0, c1, ..., cn]:
+                // - Child c0 contains keys < k1
+                // - Child c1 contains keys >= k1 and < k2
+                // - Child c2 contains keys >= k2 and < k3
+                // - ...
+                // - Child cn contains keys >= kn
+                //
                 // `partition_point` returns the index of the first element for which the predicate is false.
-                // We use `k_i <= key` (or `key >= k_i`).
-                // - If `key < keys[0]`: all `k_i > key`, so `k_i <= key` is false for all. Returns 0.
-                // - If `keys[j] <= key < keys[j+1]`: `k_i <= key` is true for `i <= j`, false for `i > j`. Returns `j+1`.
-                // - If `key >= keys[len-1]`: `k_i <= key` is true for all `i`. Returns `keys.len()`.
+                // We use `k_partition <= key` to find the rightmost key that is <= our search key.
+                // This gives us the correct child index to follow.
                 Ok(keys.partition_point(|k_partition| k_partition.as_slice() <= key.as_slice()))
             }
             BPlusTreeNode::Leaf { .. } => {

@@ -3,7 +3,7 @@ pub enum AstLiteralValue {
     String(String),
     Number(String), // Keep as string to preserve exact representation initially
     Boolean(bool),
-    Null, // Added Null for completeness
+    Null,                         // Added Null for completeness
     Vector(Vec<AstLiteralValue>), // Represents a list of literals, e.g., [1.0, 2.0, 3.0]
 }
 
@@ -86,7 +86,7 @@ pub enum AstDataType {
     Vector { dimension: u32 }, // Represents VECTOR[dimension]
     // Adding other known types from the engine for completeness if they can be declared in SQL
     Blob, // If blobs can be declared directly in SQL like CREATE TABLE t (b BLOB)
-    // NullType is usually implicit, not a declared column type.
+          // NullType is usually implicit, not a declared column type.
 }
 
 #[derive(Debug, PartialEq, Clone)]

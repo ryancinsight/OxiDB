@@ -942,26 +942,44 @@ fn test_delete_atomicity_wal_failure() {
     }
 
     assert!(!wal_path.exists());
-    std::fs::create_dir_all(&wal_path).unwrap();
-    assert!(wal_path.is_dir());
+    // Create a file at the WAL path to simulate a permission/access issue
+    // instead of a directory, which would cause file open failures
+    std::fs::write(&wal_path, b"dummy_content").unwrap();
+    // Make the file read-only to simulate a write permission failure
+    let mut perms = std::fs::metadata(&wal_path).unwrap().permissions();
+    perms.set_readonly(true);
+    std::fs::set_permissions(&wal_path, perms).unwrap();
+    assert!(wal_path.is_file());
 
-    let mut store = SimpleFileKvStore::new(&db_path).unwrap();
-    assert!(store.get_cache_entry_for_test(&key).is_some());
+    {
+        let mut store = SimpleFileKvStore::new(&db_path).unwrap();
+        assert!(store.get_cache_entry_for_test(&key).is_some());
 
-    let mut delete_committed_ids = HashSet::new();
-    delete_committed_ids.insert(dummy_transaction.id.0); // tx0 is deleting
-    let result = store.delete(&key, &dummy_transaction, dummy_lsn, &delete_committed_ids);
-    assert!(result.is_err());
-    match result.unwrap_err() {
-        OxidbError::Io(_) => {}
-        other_err => panic!("Expected OxidbError::Io, got {:?}", other_err),
+        let mut delete_committed_ids = HashSet::new();
+        delete_committed_ids.insert(dummy_transaction.id.0); // tx0 is deleting
+        let result = store.delete(&key, &dummy_transaction, dummy_lsn, &delete_committed_ids);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            OxidbError::Io(_) => {}
+            other_err => panic!("Expected OxidbError::Io, got {:?}", other_err),
+        }
+        assert!(store.get_cache_entry_for_test(&key).is_some());
+        assert_eq!(
+            store.get_cache_entry_for_test(&key).and_then(|v| v.last().map(|vv| vv.value.clone())),
+            Some(value.clone())
+        );
+    } // Ensure store is dropped before cleanup
+    
+    // Clean up the WAL file if it exists
+    if wal_path.exists() {
+        // Remove read-only permission before deletion
+        if let Ok(metadata) = std::fs::metadata(&wal_path) {
+            let mut perms = metadata.permissions();
+            perms.set_readonly(false);
+            let _ = std::fs::set_permissions(&wal_path, perms);
+        }
+        let _ = std::fs::remove_file(&wal_path);
     }
-    assert!(store.get_cache_entry_for_test(&key).is_some());
-    assert_eq!(
-        store.get_cache_entry_for_test(&key).and_then(|v| v.last().map(|vv| vv.value.clone())),
-        Some(value.clone())
-    );
-    let _ = std::fs::remove_dir_all(&wal_path);
 }
 
 #[test]

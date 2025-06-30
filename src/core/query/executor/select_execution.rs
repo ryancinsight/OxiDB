@@ -54,9 +54,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         // Convert Option<commands::SqlConditionTree> to Option<ast::ConditionTree>
         let ast_condition_tree_opt: Option<crate::core::query::sql::ast::ConditionTree> =
             match condition_opt {
-                Some(sql_cond_tree) => Some(
-                    command_condition_tree_to_ast_condition_tree(&sql_cond_tree, self)?,
-                ), // Pass self if needed by helper
+                Some(sql_cond_tree) => {
+                    Some(command_condition_tree_to_ast_condition_tree(&sql_cond_tree, self)?)
+                } // Pass self if needed by helper
                 None => None,
             };
 
@@ -92,7 +92,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 }
 
 // Helper function to convert commands::SqlConditionTree to ast::ConditionTree
-pub(super) fn command_condition_tree_to_ast_condition_tree<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static>(
+pub(super) fn command_condition_tree_to_ast_condition_tree<
+    S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static,
+>(
     sql_tree: &crate::core::query::commands::SqlConditionTree,
     _executor: &QueryExecutor<S>, // May be needed if type conversion requires context, e.g. schema
 ) -> Result<crate::core::query::sql::ast::ConditionTree, OxidbError> {

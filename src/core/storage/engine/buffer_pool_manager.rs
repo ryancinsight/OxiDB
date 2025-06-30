@@ -72,7 +72,9 @@ impl BufferPoolManager {
         // Iterate a number of times equal to current queue length to check each frame once
         for _ in 0..self.replacer_queue.len() {
             if let Some(frame_idx) = self.replacer_queue.pop_front() {
-                let frame_guard = self.frames[frame_idx].lock().expect("Buffer pool frame lock poisoned for victim selection");
+                let frame_guard = self.frames[frame_idx]
+                    .lock()
+                    .expect("Buffer pool frame lock poisoned for victim selection");
                 if frame_guard.pin_count == 0 {
                     // Found a victim
                     // Drop the guard before returning, though it would drop anyway

@@ -116,7 +116,6 @@ impl VectorData {
     }
 }
 
-
 // Tests module (if any specific to types/mod.rs, otherwise it's usually in individual type files)
 // #[cfg(test)]
 // mod tests; // Removed as src/core/types/tests.rs does not exist

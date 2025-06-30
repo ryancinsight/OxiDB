@@ -5,17 +5,17 @@
 //! It also provides the `Index` trait implementation for `BPlusTreeIndex`.
 
 // Module declarations
-pub mod node;
-pub mod tree;
 mod error; // Added error module
+mod internal_tests;
+pub mod node;
 mod page_io; // Added page_io module
-mod internal_tests; // Keep existing internal_tests
+pub mod tree; // Keep existing internal_tests
 
 // Re-export key structures for easier access from parent modules
-pub use node::{BPlusTreeNode, KeyType, PageId, PrimaryKey, SerializationError}; // Made these public
-pub use tree::{BPlusTreeIndex}; // SENTINEL_PAGE_ID removed from here
 pub use error::OxidbError; // Export our new OxidbError
-pub use page_io::{PageManager, SENTINEL_PAGE_ID}; // Export PageManager and SENTINEL_PAGE_ID from page_io
+pub use node::{BPlusTreeNode, KeyType, PageId, PrimaryKey, SerializationError}; // Made these public
+pub use page_io::{PageManager, SENTINEL_PAGE_ID};
+pub use tree::BPlusTreeIndex; // SENTINEL_PAGE_ID removed from here // Export PageManager and SENTINEL_PAGE_ID from page_io
 
 // Removed: use std::io::{Read, Seek, SeekFrom};
 
@@ -26,7 +26,8 @@ use crate::core::query::commands::Key as TraitPrimaryKey; // PrimaryKey type fro
 use crate::core::query::commands::Value as TraitValue; // Value type from the trait
 
 /// Helper function to map internal BTree errors to common `OxidbError` type for the `Index` trait.
-fn map_btree_error_to_common(btree_error: OxidbError) -> CommonError { // Changed to use the new OxidbError
+fn map_btree_error_to_common(btree_error: OxidbError) -> CommonError {
+    // Changed to use the new OxidbError
     match btree_error {
         OxidbError::Io(e) => CommonError::Io(e),
         OxidbError::Serialization(se) => {
@@ -39,9 +40,7 @@ fn map_btree_error_to_common(btree_error: OxidbError) -> CommonError { // Change
         OxidbError::UnexpectedNodeType => {
             CommonError::Index("BTree Unexpected Node Type".to_string())
         }
-        OxidbError::TreeLogicError(s) => {
-            CommonError::Index(format!("BTree Logic Error: {}", s))
-        }
+        OxidbError::TreeLogicError(s) => CommonError::Index(format!("BTree Logic Error: {}", s)),
         OxidbError::BorrowError(s) => CommonError::Lock(format!("BTree Borrow Error: {}", s)),
         OxidbError::Generic(s) => CommonError::Internal(format!("BTree Generic Error: {}", s)),
     }
@@ -62,8 +61,7 @@ impl Index for BPlusTreeIndex {
     }
 
     fn find(&self, value: &TraitValue) -> Result<Option<Vec<TraitPrimaryKey>>, CommonError> {
-        self.find_primary_keys(value)
-            .map_err(map_btree_error_to_common)
+        self.find_primary_keys(value).map_err(map_btree_error_to_common)
     }
 
     fn save(&self) -> Result<(), CommonError> {
@@ -84,7 +82,8 @@ impl Index for BPlusTreeIndex {
         let new_order = new_page_manager.get_order();
 
         // Check if the file was actually loadable and initialized
-        if new_order == 0 { // Heuristic: PageManager::new might return order 0 if file was invalid/empty and create=false
+        if new_order == 0 {
+            // Heuristic: PageManager::new might return order 0 if file was invalid/empty and create=false
             return Err(CommonError::Storage(format!(
                 "Failed to load B+Tree from path {:?}: file may not exist or metadata invalid.",
                 self.path
@@ -134,7 +133,6 @@ mod tests {
     // use crate::core::indexing::traits::Index;
     use crate::core::query::commands::{Key as TestKey, Value as TestValue};
 
-
     #[allow(dead_code)]
     fn trait_val(s: &str) -> TestValue {
         s.as_bytes().to_vec()
@@ -149,7 +147,8 @@ mod tests {
         s.as_bytes().to_vec()
     }
     #[allow(dead_code)]
-    fn internal_pk(s: &str) -> crate::core::indexing::btree::node::PrimaryKey { // Explicit path
+    fn internal_pk(s: &str) -> crate::core::indexing::btree::node::PrimaryKey {
+        // Explicit path
         s.as_bytes().to_vec()
     }
 }

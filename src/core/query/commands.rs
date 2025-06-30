@@ -73,7 +73,7 @@ pub enum Command {
     // SQL-like commands
     Select {
         columns: SelectColumnSpec,
-        source: String, // Table/source name
+        source: String,                      // Table/source name
         condition: Option<SqlConditionTree>, // Changed
         order_by: Option<Vec<SqlOrderByExpr>>,
         limit: Option<u64>,

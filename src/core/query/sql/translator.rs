@@ -86,12 +86,11 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
                                 "Invalid dimension {} for VECTOR type in CREATE TABLE (should not happen if parser validated > 0)",
                                 dimension
                             )))?
-                    }
-                    // Potentially other AstDataTypes if added
-                    // _ => return Err(OxidbError::SqlParsing(format!(
-                    //    "Unsupported AST column type during CREATE TABLE translation: {:?}",
-                    //    ast_col_def.data_type
-                    // ))),
+                    } // Potentially other AstDataTypes if added
+                                                                               // _ => return Err(OxidbError::SqlParsing(format!(
+                                                                               //    "Unsupported AST column type during CREATE TABLE translation: {:?}",
+                                                                               //    ast_col_def.data_type
+                                                                               // ))),
                 };
 
                 let mut is_primary_key = false;
@@ -223,10 +222,12 @@ fn translate_literal(literal: &ast::AstLiteralValue) -> Result<DataType, OxidbEr
                     //        ))),
                     //    }
                     // }
-                    other_type => return Err(OxidbError::SqlParsing(format!(
+                    other_type => {
+                        return Err(OxidbError::SqlParsing(format!(
                         "Vector literal elements must be numbers, found type {:?} (value: {:?})",
                         other_type.type_name(), other_type
-                    ))),
+                    )))
+                    }
                 }
             }
             let dimension = float_elements.len() as u32;
@@ -248,29 +249,21 @@ fn translate_condition_tree_to_sql_condition_tree(
     match ast_tree {
         ast::ConditionTree::Comparison(ast_cond) => {
             let value = translate_literal(&ast_cond.value)?;
-            Ok(commands::SqlConditionTree::Comparison(
-                commands::SqlSimpleCondition {
-                    column: ast_cond.column.clone(),
-                    operator: ast_cond.operator.clone(),
-                    value,
-                },
-            ))
+            Ok(commands::SqlConditionTree::Comparison(commands::SqlSimpleCondition {
+                column: ast_cond.column.clone(),
+                operator: ast_cond.operator.clone(),
+                value,
+            }))
         }
         ast::ConditionTree::And(left_ast, right_ast) => {
             let left_sql = translate_condition_tree_to_sql_condition_tree(left_ast)?;
             let right_sql = translate_condition_tree_to_sql_condition_tree(right_ast)?;
-            Ok(commands::SqlConditionTree::And(
-                Box::new(left_sql),
-                Box::new(right_sql),
-            ))
+            Ok(commands::SqlConditionTree::And(Box::new(left_sql), Box::new(right_sql)))
         }
         ast::ConditionTree::Or(left_ast, right_ast) => {
             let left_sql = translate_condition_tree_to_sql_condition_tree(left_ast)?;
             let right_sql = translate_condition_tree_to_sql_condition_tree(right_ast)?;
-            Ok(commands::SqlConditionTree::Or(
-                Box::new(left_sql),
-                Box::new(right_sql),
-            ))
+            Ok(commands::SqlConditionTree::Or(Box::new(left_sql), Box::new(right_sql)))
         }
         ast::ConditionTree::Not(ast_cond) => {
             let sql_cond = translate_condition_tree_to_sql_condition_tree(ast_cond)?;
@@ -512,12 +505,13 @@ mod tests {
         });
         let command = translate_ast_to_command(ast_stmt).unwrap();
         match command {
-            Command::Select { columns, source, condition, order_by, limit } => { // Added
+            Command::Select { columns, source, condition, order_by, limit } => {
+                // Added
                 assert_eq!(columns, commands::SelectColumnSpec::All);
                 assert_eq!(source, "users");
                 assert!(condition.is_none());
                 assert!(order_by.is_none()); // Added
-                assert!(limit.is_none());    // Added
+                assert!(limit.is_none()); // Added
             }
             _ => panic!("Expected Command::Select"),
         }

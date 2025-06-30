@@ -27,7 +27,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
             Command::CommitTransaction => executor.handle_commit_transaction(),
             Command::RollbackTransaction => executor.handle_rollback_transaction(),
             Command::Vacuum => executor.handle_vacuum(),
-            Command::Select { columns, source, condition, order_by: _order_by, limit: _limit } => { // Updated pattern
+            Command::Select { columns, source, condition, order_by: _order_by, limit: _limit } => {
+                // Updated pattern
                 // TODO: Pass order_by and limit to handle_select
                 executor.handle_select(columns.clone(), source.clone(), condition.clone())
             }
@@ -224,16 +225,25 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
             Command::SqlDelete { table_name, condition } => {
                 executor.handle_sql_delete(table_name.clone(), condition.clone())
             }
-            Command::SimilaritySearch { table_name: _table_name, vector_column_name: _vector_column_name, query_vector: _query_vector, top_k: _top_k } => {
+            Command::SimilaritySearch {
+                table_name: _table_name,
+                vector_column_name: _vector_column_name,
+                query_vector: _query_vector,
+                top_k: _top_k,
+            } => {
                 // TODO: Implement actual call to an executor method for similarity search
                 // For now, using a placeholder. This will likely involve calling a new method on `executor`.
                 // executor.handle_similarity_search(table_name.clone(), vector_column_name.clone(), query_vector.clone(), *top_k)
-                Err(OxidbError::NotImplemented { feature: "SimilaritySearch command processing".to_string() })
+                Err(OxidbError::NotImplemented {
+                    feature: "SimilaritySearch command processing".to_string(),
+                })
             }
             Command::DropTable { table_name: _table_name, if_exists: _if_exists } => {
                 // TODO: Implement actual call to an executor method for drop table
                 // executor.handle_drop_table(table_name.clone(), *if_exists)
-                Err(OxidbError::NotImplemented { feature: "DropTable command processing".to_string() })
+                Err(OxidbError::NotImplemented {
+                    feature: "DropTable command processing".to_string(),
+                })
             }
         }
     }

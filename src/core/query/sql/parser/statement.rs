@@ -1,6 +1,7 @@
 use super::core::SqlParser;
 use crate::core::query::sql::ast::{
-    self, AstLiteralValue, CreateTableStatement, DropTableStatement, OrderByExpr, OrderDirection, SelectStatement, Statement, UpdateStatement,
+    self, AstLiteralValue, CreateTableStatement, DropTableStatement, OrderByExpr, OrderDirection,
+    SelectStatement, Statement, UpdateStatement,
 };
 use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::tokenizer::Token; // For matching specific tokens like Token::Where
@@ -9,7 +10,8 @@ impl SqlParser {
     // Adding the new method here
     fn parse_data_type_definition(&mut self) -> Result<ast::AstDataType, SqlParseError> {
         let type_ident_token_pos = self.current_token_pos();
-        let type_name_ident = self.expect_identifier("Expected data type name (e.g., INTEGER, TEXT, VECTOR)")?;
+        let type_name_ident =
+            self.expect_identifier("Expected data type name (e.g., INTEGER, TEXT, VECTOR)")?;
         let type_name_upper = type_name_ident.to_uppercase();
 
         // Handle types with parameters like VARCHAR(255) or DECIMAL(10,2) if needed here
@@ -47,21 +49,25 @@ impl SqlParser {
                 let dim_token_pos = self.current_token_pos();
                 let dim_str = match self.consume_any() {
                     Some(Token::NumericLiteral(s)) => s,
-                    Some(other) => return Err(SqlParseError::UnexpectedToken {
-                        expected: "numeric dimension for VECTOR type".to_string(),
-                        found: format!("{:?}", other),
-                        position: dim_token_pos,
-                    }),
+                    Some(other) => {
+                        return Err(SqlParseError::UnexpectedToken {
+                            expected: "numeric dimension for VECTOR type".to_string(),
+                            found: format!("{:?}", other),
+                            position: dim_token_pos,
+                        })
+                    }
                     None => return Err(SqlParseError::UnexpectedEOF),
                 };
-                let dimension = dim_str.parse::<u32>().map_err(|_| SqlParseError::InvalidDataTypeParameter {
-                    type_name: "VECTOR".to_string(),
-                    parameter: dim_str.clone(), // Use clone if original dim_str is needed later
-                    position: dim_token_pos,
-                    reason: "Dimension must be a positive integer".to_string(),
+                let dimension = dim_str.parse::<u32>().map_err(|_| {
+                    SqlParseError::InvalidDataTypeParameter {
+                        type_name: "VECTOR".to_string(),
+                        parameter: dim_str.clone(), // Use clone if original dim_str is needed later
+                        position: dim_token_pos,
+                        reason: "Dimension must be a positive integer".to_string(),
+                    }
                 })?;
                 if dimension == 0 {
-                     return Err(SqlParseError::InvalidDataTypeParameter {
+                    return Err(SqlParseError::InvalidDataTypeParameter {
                         type_name: "VECTOR".to_string(),
                         parameter: dim_str,
                         position: dim_token_pos,
@@ -91,7 +97,8 @@ impl SqlParser {
     }
 
     // Helper to expect a specific identifier, case-insensitive
-    pub(super) fn expect_specific_identifier( // Changed to pub(super)
+    pub(super) fn expect_specific_identifier(
+        // Changed to pub(super)
         &mut self,
         expected: &str,
         _error_msg_if_not_specific: &str,
@@ -317,9 +324,10 @@ impl SqlParser {
         let limit_val = if self.match_token(Token::Limit) {
             self.consume(Token::Limit)?;
             let current_pos = self.current_token_pos();
-            match self.peek().cloned() { // Clone peeked token
+            match self.peek().cloned() {
+                // Clone peeked token
                 Some(Token::NumericLiteral(_)) => {
-                     match self.parse_literal_value("Expected numeric literal for LIMIT clause")? {
+                    match self.parse_literal_value("Expected numeric literal for LIMIT clause")? {
                         AstLiteralValue::Number(n) => Some(AstLiteralValue::Number(n)),
                         _ => {
                             return Err(SqlParseError::UnexpectedToken {
@@ -330,7 +338,8 @@ impl SqlParser {
                         }
                     }
                 }
-                Some(other_token_val) => { // Use the cloned value
+                Some(other_token_val) => {
+                    // Use the cloned value
                     // If it's not a NumericLiteral, it's an error.
                     // Consume the actual token from the stream to advance the parser state.
                     self.consume_any();
@@ -385,18 +394,18 @@ impl SqlParser {
                 direction = Some(OrderDirection::Desc);
             }
 
-            order_expressions.push(OrderByExpr {
-                expression: expr_name,
-                direction,
-            });
+            order_expressions.push(OrderByExpr { expression: expr_name, direction });
 
             if !self.match_token(Token::Comma) {
                 break;
             }
             self.consume(Token::Comma)?;
             // Ensure not a trailing comma before LIMIT or Semicolon or EOF
-            if self.match_token(Token::Limit) || self.match_token(Token::Semicolon) || self.is_at_end() {
-                 return Err(SqlParseError::UnexpectedToken {
+            if self.match_token(Token::Limit)
+                || self.match_token(Token::Semicolon)
+                || self.is_at_end()
+            {
+                return Err(SqlParseError::UnexpectedToken {
                     expected: "column name after comma in ORDER BY".to_string(),
                     found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
                     position: self.current_token_pos(),
@@ -404,7 +413,7 @@ impl SqlParser {
             }
         }
         if order_expressions.is_empty() {
-             return Err(SqlParseError::UnexpectedToken {
+            return Err(SqlParseError::UnexpectedToken {
                 expected: "at least one column for ORDER BY clause".to_string(),
                 found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
                 position: self.current_token_pos(),
@@ -459,9 +468,6 @@ impl SqlParser {
         let table_name = self.expect_identifier("Expected table name after DROP TABLE")?;
 
         // Semicolon handled by main parse()
-        Ok(Statement::DropTable(DropTableStatement {
-            table_name,
-            if_exists,
-        }))
+        Ok(Statement::DropTable(DropTableStatement { table_name, if_exists }))
     }
 }

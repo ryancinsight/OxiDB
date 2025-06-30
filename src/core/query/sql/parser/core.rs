@@ -47,7 +47,8 @@ impl SqlParser {
                 Ok(self.previous().unwrap())
             }
             Some(found_token) => {
-                if *found_token == Token::EOF { // If we found EOF but expected something else
+                if *found_token == Token::EOF {
+                    // If we found EOF but expected something else
                     Err(SqlParseError::UnexpectedEOF)
                 } else {
                     Err(SqlParseError::UnexpectedToken {

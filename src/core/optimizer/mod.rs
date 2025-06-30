@@ -15,7 +15,8 @@ use crate::core::optimizer::rules::apply_constant_folding_rule;
 use crate::core::optimizer::rules::apply_noop_filter_removal_rule;
 use crate::core::query::sql::ast::{
     AstLiteralValue as AstSqlLiteralValue, // Removed AstSqlCondition
-    SelectColumn as AstSqlSelectColumn, Statement as AstStatement,
+    SelectColumn as AstSqlSelectColumn,
+    Statement as AstStatement,
 };
 use crate::core::types::DataType; // Unified import
 use std::sync::{Arc, RwLock};
@@ -91,16 +92,12 @@ impl Optimizer {
                 };
                 Ok(plan_node)
             }
-            AstStatement::CreateTable(_) => {
-                Err(OxidbError::NotImplemented {
-                    feature: "Query planning for CREATE TABLE statements".to_string(),
-                })
-            }
-            AstStatement::Insert(_) => {
-                Err(OxidbError::NotImplemented {
-                    feature: "Query planning for INSERT statements".to_string(),
-                })
-            }
+            AstStatement::CreateTable(_) => Err(OxidbError::NotImplemented {
+                feature: "Query planning for CREATE TABLE statements".to_string(),
+            }),
+            AstStatement::Insert(_) => Err(OxidbError::NotImplemented {
+                feature: "Query planning for INSERT statements".to_string(),
+            }),
             AstStatement::Delete(delete_ast) => {
                 let mut plan_node = QueryPlanNode::TableScan {
                     table_name: delete_ast.table_name.clone(),
@@ -118,11 +115,9 @@ impl Optimizer {
                     table_name: delete_ast.table_name.clone(),
                 })
             }
-            AstStatement::DropTable(_) => {
-                Err(OxidbError::NotImplemented {
-                    feature: "Query planning for DROP TABLE statements".to_string(),
-                })
-            }
+            AstStatement::DropTable(_) => Err(OxidbError::NotImplemented {
+                feature: "Query planning for DROP TABLE statements".to_string(),
+            }),
         }
     }
 
@@ -183,10 +178,7 @@ impl Optimizer {
             }
             crate::core::query::sql::ast::ConditionTree::Not(ast_cond) => {
                 let expr = self.ast_sql_condition_to_optimizer_expression(ast_cond)?;
-                Ok(Expression::UnaryOp {
-                    op: "NOT".to_string(),
-                    expr: Box::new(expr),
-                })
+                Ok(Expression::UnaryOp { op: "NOT".to_string(), expr: Box::new(expr) })
             }
         }
     }
@@ -365,7 +357,8 @@ pub enum Expression {
         op: String,
         right: Box<Expression>,
     },
-    UnaryOp { // Added for NOT
+    UnaryOp {
+        // Added for NOT
         op: String, // e.g., "NOT"
         expr: Box<Expression>,
     },
