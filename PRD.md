@@ -26,6 +26,7 @@ This document outlines the product requirements for oxidb, a pure Rust-based dat
 *   **Transactions:** Basic transactional support (atomicity for single operations initially).
 *   **Safety:** Strong emphasis on compile-time and run-time safety.
 *   **Configuration:** Minimal configuration, sensible defaults.
+*   **Vector Support:** Store and query vector embeddings for RAG.
 
 ## 5. Non-Functional Requirements
 
@@ -36,8 +37,9 @@ This document outlines the product requirements for oxidb, a pure Rust-based dat
 
 ## 6. Future Considerations (Out of Scope for Initial Version)
 
-*   Advanced indexing
-*   Complex query language (SQL-like)
+*   Advanced indexing (beyond basic vector indexing)
+*   Complex query language (SQL-like integration with vector search)
 *   Concurrency control for multi-user access
 *   Network interface
 *   Replication / Distributed operations
+*   Advanced RAG capabilities (e.g., sophisticated chunking, re-ranking, knowledge graph integration)

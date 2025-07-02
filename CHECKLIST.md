@@ -231,6 +231,33 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
             *   [ ] Sub-subtask: Compare performance with and without indexes (manually or via EXPLAIN).
     *   [ ] **Validation:** Indexes speed up query performance; data retrieval via indexes is correct.
 
+## Phase 4.5: Advanced Features (includes RAG)
+
+11a. **Implement Vector Data Type and Storage:**
+    *   [x] Define a new `Vector` data type in `src/core/common/types/value.rs` and `src/core/common/types/data_type.rs`.
+        *   [x] Subtask: The `Vector` type should store a list of floating-point numbers.
+        *   [x] Subtask: Implement serialization and deserialization for the `Vector` type (via Serde).
+        *   [x] Subtask: Write unit tests for `Vector` type operations (covered by `Value` and `DataType` tests).
+    *   [ ] Adapt storage engine to handle `Vector` data (physical storage in DB tables - PENDING).
+        *   [ ] Subtask: Ensure `TablePage` and record operations can store and retrieve `Vector` types.
+        *   [ ] Subtask: Write tests for storing and retrieving records with `Vector` data.
+    *   [x] **Validation:** `Vector` data type is correctly implemented at the type system level. Physical storage and retrieval in DB is PENDING.
+
+11b. **Implement Vector Similarity Search (Core Logic):**
+    *   [x] Design and implement functions for basic vector similarity calculations (e.g., cosine similarity, dot product) in a new module `src/core/vector/similarity.rs`.
+        *   [x] Subtask: Implement cosine similarity function.
+        *   [x] Subtask: Implement dot product function.
+        *   [x] Subtask: Write unit tests for similarity functions.
+    *   [x] **Validation:** Vector similarity functions are correct.
+
+11c. **Implement RAG Framework Core:**
+    *   [x] Create a new module `src/core/rag/mod.rs`.
+    *   [x] Design core RAG pipeline components (e.g., `Document`, `Embedding` structs, `EmbeddingModel` trait, `Retriever` trait).
+        *   [x] Subtask: Define traits for embedders (to allow different embedding models).
+        *   [x] Subtask: Implement a basic retriever that uses vector similarity search (`InMemoryRetriever`).
+    *   [x] Write unit tests for core RAG components.
+    *   [x] **Validation:** Core RAG components are functional and tested.
+
 ## Phase 5: API and Finalization
 
 12. **Define and Implement a Client API:**
