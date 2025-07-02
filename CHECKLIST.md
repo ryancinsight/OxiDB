@@ -238,10 +238,10 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
         *   [x] Subtask: The `Vector` type should store a list of floating-point numbers.
         *   [x] Subtask: Implement serialization and deserialization for the `Vector` type (via Serde).
         *   [x] Subtask: Write unit tests for `Vector` type operations (covered by `Value` and `DataType` tests).
-    *   [ ] Adapt storage engine to handle `Vector` data (physical storage in DB tables - PENDING).
-        *   [ ] Subtask: Ensure `TablePage` and record operations can store and retrieve `Vector` types.
-        *   [ ] Subtask: Write tests for storing and retrieving records with `Vector` data.
-    *   [x] **Validation:** `Vector` data type is correctly implemented at the type system level. Physical storage and retrieval in DB is PENDING.
+    *   [x] Adapt storage engine to handle `Vector` data (physical storage in DB tables - VERIFIED VIA SERIALIZATION).
+        *   [x] Subtask: Ensure `TablePage` and record operations can store and retrieve `Vector` types (verified by testing storage of serialized `Row` containing `Value::Vector`).
+        *   [x] Subtask: Write tests for storing and retrieving records with `Vector` data (test `test_insert_and_get_row_with_vector` in `table_page_tests.rs` added).
+    *   [x] **Validation:** `Vector` data type is correctly implemented at the type system level. Physical storage and retrieval of serialized vectors in DB pages is now VERIFIED.
 
 11b. **Implement Vector Similarity Search (Core Logic):**
     *   [x] Design and implement functions for basic vector similarity calculations (e.g., cosine similarity, dot product) in a new module `src/core/vector/similarity.rs`.
