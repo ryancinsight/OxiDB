@@ -67,7 +67,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         let ast_statement_for_select =
             AstStatement::Select(crate::core::query::sql::ast::SelectStatement {
                 columns: ast_select_items,
-                source: source_table_name.clone(),
+                from_clause: crate::core::query::sql::ast::TableReference {
+                    name: source_table_name.clone(),
+                    alias: None,
+                },
+                joins: Vec::new(),
                 condition: ast_condition_tree_opt, // Changed
                 order_by: None,                    // Added
                 limit: None,                       // Added

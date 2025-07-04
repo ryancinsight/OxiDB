@@ -42,8 +42,11 @@ impl Optimizer {
     ) -> Result<QueryPlanNode, OxidbError> {
         match statement {
             AstStatement::Select(select_ast) => {
-                let mut plan_node =
-                    QueryPlanNode::TableScan { table_name: select_ast.source.clone(), alias: None };
+                let mut plan_node = QueryPlanNode::TableScan {
+                    table_name: select_ast.from_clause.name.clone(),
+                    alias: select_ast.from_clause.alias.clone(),
+                };
+                // TODO: Incorporate select_ast.joins into the initial plan
 
                 if let Some(ref condition_ast) = select_ast.condition {
                     let expression =
@@ -127,35 +130,45 @@ impl Optimizer {
     ) -> Result<Expression, OxidbError> {
         match ast_cond_tree {
             crate::core::query::sql::ast::ConditionTree::Comparison(ast_simple_cond) => {
-                let value = match &ast_simple_cond.value {
-                    AstSqlLiteralValue::String(s) => DataType::String(s.clone()),
-                    AstSqlLiteralValue::Number(n_str) => {
-                        if let Ok(i_val) = n_str.parse::<i64>() {
-                            DataType::Integer(i_val)
-                        } else if let Ok(f_val) = n_str.parse::<f64>() {
-                            DataType::Float(f_val)
-                        } else {
-                            return Err(OxidbError::SqlParsing(format!(
-                                "Cannot parse numeric literal '{}'",
-                                n_str
-                            )));
+                // ast_simple_cond.value is now AstExpressionValue
+                // The optimizer currently expects to compare columns with literals.
+                // If it's ColumnIdentifier vs ColumnIdentifier, this translation needs enhancement.
+                let right_expr_operand = match &ast_simple_cond.value {
+                    crate::core::query::sql::ast::AstExpressionValue::Literal(literal_val) => {
+                        match literal_val {
+                            AstSqlLiteralValue::String(s) => Expression::Literal(DataType::String(s.clone())),
+                            AstSqlLiteralValue::Number(n_str) => {
+                                if let Ok(i_val) = n_str.parse::<i64>() {
+                                    Expression::Literal(DataType::Integer(i_val))
+                                } else if let Ok(f_val) = n_str.parse::<f64>() {
+                                    Expression::Literal(DataType::Float(f_val))
+                                } else {
+                                    return Err(OxidbError::SqlParsing(format!(
+                                        "Cannot parse numeric literal '{}'",
+                                        n_str
+                                    )));
+                                }
+                            }
+                            AstSqlLiteralValue::Boolean(b) => Expression::Literal(DataType::Boolean(*b)),
+                            AstSqlLiteralValue::Null => Expression::Literal(DataType::Null),
+                            AstSqlLiteralValue::Vector(_) => {
+                                return Err(OxidbError::NotImplemented {
+                                    feature: "Vector comparison in optimizer expressions".to_string(),
+                                });
+                            }
                         }
                     }
-                    AstSqlLiteralValue::Boolean(b) => DataType::Boolean(*b),
-                    AstSqlLiteralValue::Null => DataType::Null,
-                    AstSqlLiteralValue::Vector(_) => {
-                        // Optimizer might not handle vector comparisons directly yet.
-                        // This could be an error or a specific non-optimizable expression.
-                        return Err(OxidbError::NotImplemented {
-                            feature: "Vector comparison in optimizer expressions".to_string(),
-                        });
+                    crate::core::query::sql::ast::AstExpressionValue::ColumnIdentifier(col_name) => {
+                        // Optimizer's Expression::CompareOp expects Box<Expression> for right.
+                        // So, wrap the column name in Expression::Column.
+                        Expression::Column(col_name.clone())
                     }
                 };
 
                 Ok(Expression::CompareOp {
                     left: Box::new(Expression::Column(ast_simple_cond.column.clone())),
                     op: ast_simple_cond.operator.clone(),
-                    right: Box::new(Expression::Literal(value)),
+                    right: Box::new(right_expr_operand),
                 })
             }
             crate::core::query::sql::ast::ConditionTree::And(left_ast, right_ast) => {

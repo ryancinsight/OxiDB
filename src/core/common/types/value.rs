@@ -7,6 +7,7 @@ pub enum Value {
     Text(String),
     Boolean(bool),
     Blob(Vec<u8>),
+    Vector(Vec<f32>), // Represents a vector of f32
     Null,
 }
 
@@ -17,6 +18,7 @@ impl Value {
             Value::Text(_) => DataType::Text,
             Value::Boolean(_) => DataType::Boolean,
             Value::Blob(_) => DataType::Blob,
+            Value::Vector(_) => DataType::Vector(None), // Or determine dimension if stored
             Value::Null => DataType::Null,
         }
     }
@@ -29,6 +31,10 @@ impl PartialOrd for Value {
             (Value::Text(a), Value::Text(b)) => a.partial_cmp(b),
             (Value::Boolean(a), Value::Boolean(b)) => a.partial_cmp(b),
             (Value::Blob(a), Value::Blob(b)) => a.partial_cmp(b),
+            // Vector comparison is not straightforward (e.g., lexicographical, magnitude)
+            // For now, let's say they are not comparable for ordering purposes
+            // Or define a specific comparison logic if needed by the application
+            (Value::Vector(_), Value::Vector(_)) => None,
             (Value::Null, Value::Null) => Some(Ordering::Equal),
             // All other combinations are non-compatible
             _ => None,

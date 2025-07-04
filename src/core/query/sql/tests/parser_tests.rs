@@ -174,12 +174,12 @@ fn test_update_missing_value_in_condition() {
     );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert!(
-            expected.to_lowercase().contains("literal value")
-                || expected.to_lowercase().contains("expected value for condition")
+            expected.to_lowercase().contains("expected literal or column identifier for rhs of condition")
+            || expected.to_lowercase().contains("expected identifier") // If parse_qualified_identifier fails early
         );
         assert!(found.to_lowercase().contains("semicolon"));
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
-        // also possible
+        // also possible if input ends after "="
     } else {
         panic!("Wrong error type for missing value in condition (UPDATE): {:?}", result);
     }
@@ -262,9 +262,10 @@ fn test_parse_select_simple() {
     let ast = parser.parse().unwrap();
     match ast {
         Statement::Select(select_stmt) => {
-            assert_eq!(select_stmt.source, "users");
+            assert_eq!(select_stmt.from_clause.name, "users");
             assert_eq!(select_stmt.columns, vec![SelectColumn::ColumnName("name".to_string())]);
             assert!(select_stmt.condition.is_none());
+            assert!(select_stmt.joins.is_empty()); // New check
         }
         _ => panic!("Expected SelectStatement"),
     }
@@ -482,7 +483,7 @@ fn test_parse_delete_simple() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "id");
                     assert_eq!(cond.operator, "=");
-                    assert_eq!(cond.value, AstLiteralValue::Number("100".to_string()));
+                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("100".to_string())));
                 }
                 _ => panic!("Expected simple comparison in DELETE"),
             }
@@ -562,9 +563,10 @@ fn test_parse_select_asterisk() {
     let ast = parser.parse().unwrap();
     match ast {
         Statement::Select(select_stmt) => {
-            assert_eq!(select_stmt.source, "orders");
+            assert_eq!(select_stmt.from_clause.name, "orders");
             assert_eq!(select_stmt.columns, vec![SelectColumn::Asterisk]);
             assert!(select_stmt.condition.is_none());
+            assert!(select_stmt.joins.is_empty());
         }
         _ => panic!("Expected SelectStatement"),
     }
@@ -577,7 +579,7 @@ fn test_parse_select_multiple_columns() {
     let ast = parser.parse().unwrap();
     match ast {
         Statement::Select(select_stmt) => {
-            assert_eq!(select_stmt.source, "customers");
+            assert_eq!(select_stmt.from_clause.name, "customers");
             assert_eq!(
                 select_stmt.columns,
                 vec![
@@ -587,6 +589,7 @@ fn test_parse_select_multiple_columns() {
                 ]
             );
             assert!(select_stmt.condition.is_none());
+            assert!(select_stmt.joins.is_empty());
         }
         _ => panic!("Expected SelectStatement"),
     }
@@ -599,14 +602,15 @@ fn test_parse_select_with_where_clause() {
     let ast = parser.parse().unwrap();
     match ast {
         Statement::Select(select_stmt) => {
-            assert_eq!(select_stmt.source, "products");
+            assert_eq!(select_stmt.from_clause.name, "products");
             assert_eq!(select_stmt.columns, vec![SelectColumn::ColumnName("id".to_string())]);
             assert!(select_stmt.condition.is_some());
+            assert!(select_stmt.joins.is_empty());
             match select_stmt.condition.unwrap() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "price");
                     assert_eq!(cond.operator, "=");
-                    assert_eq!(cond.value, AstLiteralValue::Number("10.99".to_string()));
+                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("10.99".to_string())));
                 }
                 _ => panic!("Expected ConditionTree::Comparison for price condition"),
             }
@@ -624,7 +628,8 @@ fn test_parse_select_with_complex_where_clause_and_or_not_parens() {
 
     match ast {
         Statement::Select(select_stmt) => {
-            assert_eq!(select_stmt.source, "data");
+            assert_eq!(select_stmt.from_clause.name, "data");
+            assert!(select_stmt.joins.is_empty());
             assert!(select_stmt.condition.is_some());
             let condition_tree = select_stmt.condition.unwrap();
 
@@ -640,7 +645,7 @@ fn test_parse_select_with_complex_where_clause_and_or_not_parens() {
                                     assert_eq!(cond.operator, "=");
                                     assert_eq!(
                                         cond.value,
-                                        AstLiteralValue::Number("10".to_string())
+                                        ast::AstExpressionValue::Literal(AstLiteralValue::Number("10".to_string()))
                                     );
                                 }
                                 _ => panic!("Expected Comparison for col1=10"),
@@ -651,7 +656,7 @@ fn test_parse_select_with_complex_where_clause_and_or_not_parens() {
                                     assert_eq!(cond.operator, "=");
                                     assert_eq!(
                                         cond.value,
-                                        AstLiteralValue::String("test".to_string())
+                                        ast::AstExpressionValue::Literal(AstLiteralValue::String("test".to_string()))
                                     );
                                 }
                                 _ => panic!("Expected Comparison for col2='test'"),
@@ -666,7 +671,7 @@ fn test_parse_select_with_complex_where_clause_and_or_not_parens() {
                             ConditionTree::Comparison(cond) => {
                                 assert_eq!(cond.column, "col3");
                                 assert_eq!(cond.operator, "<");
-                                assert_eq!(cond.value, AstLiteralValue::Number("5.5".to_string()));
+                                assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("5.5".to_string())));
                             }
                             _ => panic!("Expected Comparison for col3<5.5 inside NOT"),
                         },
@@ -689,6 +694,8 @@ fn test_parse_select_where_precedence() {
     let ast = parser.parse().unwrap();
     match ast {
         Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.from_clause.name, "test");
+            assert!(select_stmt.joins.is_empty());
             let condition_tree = select_stmt.condition.unwrap();
             match condition_tree {
                 ConditionTree::Or(left_or_box, right_or_box) => {
@@ -696,7 +703,7 @@ fn test_parse_select_where_precedence() {
                         ConditionTree::Comparison(cond) => {
                             assert_eq!(cond.column, "a");
                             assert_eq!(cond.operator, "="); // Added operator check
-                            assert_eq!(cond.value, AstLiteralValue::Number("1".to_string()));
+                            assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string())));
                             // Added value check
                         }
                         _ => panic!("Expected comparison for 'a=1'"),
@@ -709,7 +716,7 @@ fn test_parse_select_where_precedence() {
                                     assert_eq!(cond.operator, "="); // Added operator check
                                     assert_eq!(
                                         cond.value,
-                                        AstLiteralValue::Number("2".to_string())
+                                        ast::AstExpressionValue::Literal(AstLiteralValue::Number("2".to_string()))
                                     ); // Added value check
                                 }
                                 _ => panic!("Expected comparison for 'b=2'"),
@@ -720,7 +727,7 @@ fn test_parse_select_where_precedence() {
                                     assert_eq!(cond.operator, "="); // Added operator check
                                     assert_eq!(
                                         cond.value,
-                                        AstLiteralValue::Number("3".to_string())
+                                        ast::AstExpressionValue::Literal(AstLiteralValue::Number("3".to_string()))
                                     ); // Added value check
                                 }
                                 _ => panic!("Expected comparison for 'c=3'"),
@@ -744,6 +751,8 @@ fn test_parse_select_where_is_null_and_is_not_null() {
     let ast = parser.parse().unwrap();
     match ast {
         Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.from_clause.name, "test");
+            assert!(select_stmt.joins.is_empty());
             assert!(select_stmt.condition.is_some());
             let condition_tree = select_stmt.condition.unwrap();
             match condition_tree {
@@ -752,7 +761,7 @@ fn test_parse_select_where_is_null_and_is_not_null() {
                         ConditionTree::Comparison(cond) => {
                             assert_eq!(cond.column, "name");
                             assert_eq!(cond.operator, "IS NULL");
-                            assert_eq!(cond.value, AstLiteralValue::Null);
+                            assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Null));
                         }
                         _ => panic!("Expected Comparison for name IS NULL"),
                     }
@@ -760,7 +769,7 @@ fn test_parse_select_where_is_null_and_is_not_null() {
                         ConditionTree::Comparison(cond) => {
                             assert_eq!(cond.column, "description");
                             assert_eq!(cond.operator, "IS NOT NULL");
-                            assert_eq!(cond.value, AstLiteralValue::Null);
+                            assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Null));
                         }
                         _ => panic!("Expected Comparison for description IS NOT NULL"),
                     }
@@ -791,7 +800,7 @@ fn test_parse_update_simple() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "id");
                     assert_eq!(cond.operator, "=");
-                    assert_eq!(cond.value, AstLiteralValue::Number("1".to_string()));
+                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string())));
                 }
                 _ => panic!("Expected ConditionTree::Comparison for id condition"),
             }
@@ -827,7 +836,7 @@ fn test_parse_update_multiple_assignments() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "category");
                     assert_eq!(cond.operator, "=");
-                    assert_eq!(cond.value, AstLiteralValue::String("electronics".to_string()));
+                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::String("electronics".to_string())));
                 }
                 _ => panic!("Expected ConditionTree::Comparison for category condition"),
             }
@@ -883,7 +892,7 @@ fn test_unexpected_token_instead_of_literal() {
         result
     );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
-        assert_eq!(expected, "Expected value for condition"); // Was "literal value..."
+        assert_eq!(expected, "Expected literal or column identifier for RHS of condition");
         assert!(found.contains("Select"));
     } else {
         panic!("Wrong error type for unexpected token: {:?}", result);
@@ -1017,12 +1026,12 @@ fn test_select_missing_value_in_condition() {
     );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert!(
-            expected.to_lowercase().contains("literal value")
-                || expected.to_lowercase().contains("expected value for condition")
+            expected.to_lowercase().contains("expected literal or column identifier for rhs of condition")
+            || expected.to_lowercase().contains("expected identifier") // If parse_qualified_identifier fails early
         );
         assert!(found.to_lowercase().contains("semicolon"));
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
-        // This case is also possible
+        // This case is also possible if input is "SELECT ... WHERE field =" (no semicolon)
     } else {
         panic!("Wrong error type for select missing value in condition: {:?}", result);
     }
@@ -1094,14 +1103,18 @@ fn test_select_empty_string_literal() {
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse().unwrap();
     match result {
-        Statement::Select(select_stmt) => match select_stmt.condition.unwrap() {
-            ConditionTree::Comparison(cond) => {
-                assert_eq!(cond.column, "name");
-                assert_eq!(cond.operator, "=");
-                assert_eq!(cond.value, AstLiteralValue::String("".to_string()));
+        Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.from_clause.name, "test");
+            assert!(select_stmt.joins.is_empty());
+            match select_stmt.condition.unwrap() {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "name");
+                    assert_eq!(cond.operator, "=");
+                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::String("".to_string())));
+                }
+                _ => panic!("Expected ConditionTree::Comparison for name condition"),
             }
-            _ => panic!("Expected ConditionTree::Comparison for name condition"),
-        },
+        }
         _ => panic!("Expected SelectStatement"),
     }
 }
@@ -1119,7 +1132,7 @@ fn test_update_set_null_value() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "id");
                     assert_eq!(cond.operator, "=");
-                    assert_eq!(cond.value, AstLiteralValue::Number("1".to_string()));
+                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string())));
                 }
                 _ => panic!("Expected ConditionTree::Comparison for id condition"),
             }
@@ -1134,14 +1147,18 @@ fn test_select_where_null_value() {
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse().unwrap();
     match result {
-        Statement::Select(select_stmt) => match select_stmt.condition.unwrap() {
-            ConditionTree::Comparison(cond) => {
-                assert_eq!(cond.column, "data");
-                assert_eq!(cond.operator, "=");
-                assert_eq!(cond.value, AstLiteralValue::Null);
+        Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.from_clause.name, "test");
+            assert!(select_stmt.joins.is_empty());
+            match select_stmt.condition.unwrap() {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "data");
+                    assert_eq!(cond.operator, "=");
+                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Null));
+                }
+                _ => panic!("Expected ConditionTree::Comparison for data condition"),
             }
-            _ => panic!("Expected ConditionTree::Comparison for data condition"),
-        },
+        }
         _ => panic!("Expected SelectStatement"),
     }
 }
@@ -1154,12 +1171,13 @@ fn test_identifier_as_substring_of_keyword() {
     match result {
         Statement::Select(select_stmt) => {
             assert_eq!(select_stmt.columns, vec![SelectColumn::ColumnName("selector".to_string())]);
-            assert_eq!(select_stmt.source, "selections");
+            assert_eq!(select_stmt.from_clause.name, "selections");
+            assert!(select_stmt.joins.is_empty());
             match select_stmt.condition.unwrap() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "selector_id");
                     assert_eq!(cond.operator, "="); // Added operator check, was missing
-                    assert_eq!(cond.value, AstLiteralValue::Number("1".to_string()));
+                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string())));
                 }
                 _ => panic!("Expected ConditionTree::Comparison for selector_id condition"),
             }
@@ -1294,13 +1312,14 @@ fn test_mixed_case_keywords() {
     match result {
         Statement::Select(select_stmt) => {
             assert_eq!(select_stmt.columns, vec![SelectColumn::Asterisk]);
-            assert_eq!(select_stmt.source, "my_table");
+            assert_eq!(select_stmt.from_clause.name, "my_table");
+            assert!(select_stmt.joins.is_empty());
             let cond_tree = select_stmt.condition.unwrap();
             match cond_tree {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "value");
                     assert_eq!(cond.operator, "="); // Added operator check
-                    assert_eq!(cond.value, AstLiteralValue::Boolean(true));
+                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Boolean(true)));
                 }
                 _ => panic!("Expected simple comparison"),
             }
@@ -1316,21 +1335,25 @@ fn test_parse_vector_literal_simple() {
     let mut parser = SqlParser::new(tokens);
     let ast = parser.parse().unwrap();
     match ast {
-        Statement::Select(select_stmt) => match select_stmt.condition.unwrap() {
-            ConditionTree::Comparison(cond) => {
-                assert_eq!(cond.column, "embedding");
-                assert_eq!(cond.operator, "=");
-                assert_eq!(
-                    cond.value,
-                    AstLiteralValue::Vector(vec![
-                        AstLiteralValue::Number("1.0".to_string()),
-                        AstLiteralValue::Number("2.5".to_string()),
-                        AstLiteralValue::Number("3.0".to_string()),
-                    ])
-                );
+        Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.from_clause.name, "vectors");
+            assert!(select_stmt.joins.is_empty());
+            match select_stmt.condition.unwrap() {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "embedding");
+                    assert_eq!(cond.operator, "=");
+                    assert_eq!(
+                        cond.value,
+                        ast::AstExpressionValue::Literal(AstLiteralValue::Vector(vec![
+                            AstLiteralValue::Number("1.0".to_string()),
+                            AstLiteralValue::Number("2.5".to_string()),
+                            AstLiteralValue::Number("3.0".to_string()),
+                        ]))
+                    );
+                }
+                _ => panic!("Expected simple comparison for vector literal"),
             }
-            _ => panic!("Expected simple comparison for vector literal"),
-        },
+        }
         _ => panic!("Expected SelectStatement for vector literal test"),
     }
 }
@@ -1384,14 +1407,18 @@ fn test_parse_vector_literal_empty() {
     let mut parser = SqlParser::new(tokens);
     let ast = parser.parse().unwrap();
     match ast {
-        Statement::Select(select_stmt) => match select_stmt.condition.unwrap() {
-            ConditionTree::Comparison(cond) => {
-                assert_eq!(cond.column, "tags");
-                assert_eq!(cond.operator, "=");
-                assert_eq!(cond.value, AstLiteralValue::Vector(vec![]));
+        Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.from_clause.name, "items");
+            assert!(select_stmt.joins.is_empty());
+            match select_stmt.condition.unwrap() {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "tags");
+                    assert_eq!(cond.operator, "=");
+                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Vector(vec![])));
+                }
+                _ => panic!("Expected simple comparison for empty vector"),
             }
-            _ => panic!("Expected simple comparison for empty vector"),
-        },
+        }
         _ => panic!("Expected SelectStatement for empty vector test"),
     }
 }
@@ -1627,6 +1654,248 @@ fn test_parse_drop_table_if_missing_exists() {
     }
 }
 
+// --- Tests for JOIN clauses ---
+
+#[test]
+fn test_parse_select_simple_inner_join() {
+    let sql = "SELECT t1.name, t2.value FROM table1 t1 JOIN table2 t2 ON t1.id = t2.t1_id;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast_result = parser.parse();
+    assert!(ast_result.is_ok(), "Parse failed: {:?}", ast_result.err());
+    let ast = ast_result.unwrap();
+
+    match ast {
+        Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.from_clause.name, "table1");
+            assert_eq!(select_stmt.from_clause.alias, Some("t1".to_string()));
+            assert_eq!(select_stmt.joins.len(), 1);
+
+            let join_clause = &select_stmt.joins[0];
+            assert_eq!(join_clause.join_type, ast::JoinType::Inner);
+            assert_eq!(join_clause.right_source.name, "table2");
+            assert_eq!(join_clause.right_source.alias, Some("t2".to_string()));
+            assert!(join_clause.on_condition.is_some());
+
+            match join_clause.on_condition.as_ref().unwrap() {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "t1.id");
+                    assert_eq!(cond.operator, "=");
+                    assert_eq!(cond.value, ast::AstExpressionValue::ColumnIdentifier("t2.t1_id".to_string()));
+                }
+                _ => panic!("Expected Comparison condition for ON clause"),
+            }
+        }
+        _ => panic!("Expected SelectStatement"),
+    }
+}
+
+#[test]
+fn test_parse_select_simple_inner_join_original_on_fails() {
+    // This test originally demonstrated a limitation with "col = col" in ON.
+    // With AstExpressionValue supporting ColumnIdentifier, this should now parse.
+    let sql = "SELECT t1.name, t2.value FROM table1 t1 JOIN table2 t2 ON t1.id = t2.t1_id;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast_result = parser.parse();
+    assert!(ast_result.is_ok(), "Parse failed for 'col = col' ON condition: {:?}", ast_result.err());
+    let ast = ast_result.unwrap();
+
+    match ast {
+        Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.from_clause.name, "table1");
+            assert_eq!(select_stmt.from_clause.alias, Some("t1".to_string()));
+            assert_eq!(select_stmt.joins.len(), 1);
+            let join_clause = &select_stmt.joins[0];
+            assert_eq!(join_clause.join_type, ast::JoinType::Inner);
+            assert_eq!(join_clause.right_source.name, "table2");
+            assert_eq!(join_clause.right_source.alias, Some("t2".to_string()));
+            assert!(join_clause.on_condition.is_some());
+            match join_clause.on_condition.as_ref().unwrap() {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "t1.id");
+                    assert_eq!(cond.operator, "=");
+                    assert_eq!(cond.value, ast::AstExpressionValue::ColumnIdentifier("t2.t1_id".to_string()));
+                }
+                _ => panic!("Expected Comparison condition for ON clause"),
+            }
+        }
+        _ => panic!("Expected SelectStatement"),
+    }
+}
+
+
+#[test]
+fn test_parse_select_left_outer_join() {
+    let sql = "SELECT * FROM tableA LEFT OUTER JOIN tableB ON tableA.id = 10;"; // Using literal for ON
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.from_clause.name, "tableA");
+            assert_eq!(select_stmt.joins.len(), 1);
+            let join = &select_stmt.joins[0];
+            assert_eq!(join.join_type, ast::JoinType::LeftOuter);
+            assert_eq!(join.right_source.name, "tableB");
+            assert!(join.on_condition.is_some());
+            match join.on_condition.as_ref().unwrap() {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.column, "tableA.id");
+                    assert_eq!(cond.operator, "=");
+                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("10".to_string())));
+                }
+                _ => panic!("Expected Comparison condition for ON clause"),
+            }
+        }
+        _ => panic!("Expected SelectStatement with LEFT OUTER JOIN"),
+    }
+}
+
+#[test]
+fn test_parse_select_right_join() {
+    let sql = "SELECT * FROM tableA RIGHT JOIN tableB ON tableA.name = 'test';"; // Using literal
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.from_clause.name, "tableA");
+            assert_eq!(select_stmt.joins.len(), 1);
+            let join = &select_stmt.joins[0];
+            assert_eq!(join.join_type, ast::JoinType::RightOuter); // RIGHT implies RIGHT OUTER
+            assert_eq!(join.right_source.name, "tableB");
+            assert!(join.on_condition.is_some());
+        }
+        _ => panic!("Expected SelectStatement with RIGHT JOIN"),
+    }
+}
+
+
+#[test]
+fn test_parse_select_full_outer_join() {
+    let sql = "SELECT * FROM tableA FULL OUTER JOIN tableB ON tableA.flag = TRUE;"; // Using literal
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.from_clause.name, "tableA");
+            assert_eq!(select_stmt.joins.len(), 1);
+            let join = &select_stmt.joins[0];
+            assert_eq!(join.join_type, ast::JoinType::FullOuter);
+            assert_eq!(join.right_source.name, "tableB");
+            assert!(join.on_condition.is_some());
+        }
+        _ => panic!("Expected SelectStatement with FULL OUTER JOIN"),
+    }
+}
+
+
+#[test]
+fn test_parse_select_cross_join() {
+    let sql = "SELECT * FROM table1 CROSS JOIN table2;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.from_clause.name, "table1");
+            assert_eq!(select_stmt.joins.len(), 1);
+            let join = &select_stmt.joins[0];
+            assert_eq!(join.join_type, ast::JoinType::Cross);
+            assert_eq!(join.right_source.name, "table2");
+            assert!(join.on_condition.is_none()); // CROSS JOIN has no ON
+        }
+        _ => panic!("Expected SelectStatement with CROSS JOIN"),
+    }
+}
+
+#[test]
+fn test_parse_select_multiple_joins() {
+    let sql = "SELECT * FROM t1 JOIN t2 ON t1.id = 1 LEFT JOIN t3 ON t2.id = 2;"; // Using literals
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.from_clause.name, "t1");
+            assert_eq!(select_stmt.joins.len(), 2);
+
+            let join1 = &select_stmt.joins[0];
+            assert_eq!(join1.join_type, ast::JoinType::Inner);
+            assert_eq!(join1.right_source.name, "t2");
+            assert!(join1.on_condition.is_some());
+             match join1.on_condition.as_ref().unwrap() {
+                ConditionTree::Comparison(cond) => assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string()))),
+                _ => panic!("Expected Comparison for first ON"),
+            }
+
+            let join2 = &select_stmt.joins[1];
+            assert_eq!(join2.join_type, ast::JoinType::LeftOuter);
+            assert_eq!(join2.right_source.name, "t3");
+            assert!(join2.on_condition.is_some());
+            match join2.on_condition.as_ref().unwrap() {
+                ConditionTree::Comparison(cond) => assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("2".to_string()))),
+                _ => panic!("Expected Comparison for second ON"),
+            }
+        }
+        _ => panic!("Expected SelectStatement with multiple JOINs"),
+    }
+}
+
+
+#[test]
+fn test_parse_join_missing_on_condition_for_inner_join() {
+    let sql = "SELECT * FROM t1 INNER JOIN t2;"; // Missing ON
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
+     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
+        assert_eq!(expected.to_lowercase(), "on"); // Parser expects ON after table name for non-CROSS joins
+        assert!(found.to_lowercase().contains("semicolon") || found.to_lowercase().contains("eof"));
+    } else {
+        panic!("Wrong error type for JOIN missing ON: {:?}", result);
+    }
+}
+
+#[test]
+fn test_parse_join_missing_table_name_after_on() {
+    let sql = "SELECT * FROM t1 JOIN ON t1.id = t2.id;"; // Missing table after JOIN
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
+    if let Err(SqlParseError::UnexpectedToken {expected, found, ..}) = result {
+        assert_eq!(expected.to_lowercase(), "expected table name after join clause");
+        assert_eq!(found.to_lowercase(), "on");
+    } else {
+        panic!("Error expected for missing table name in JOIN: {:?}", result);
+    }
+}
+
+
+#[test]
+fn test_parse_join_cross_join_with_on_error() {
+    let sql = "SELECT * FROM t1 CROSS JOIN t2 ON t1.id = 1;"; // Using literal for ON
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse(); // Should error because CROSS JOIN cannot have ON
+                                  // The current parser consumes ON even for CROSS JOIN if it's there,
+                                  // then fails later if it's not expecting more tokens.
+                                  // A more specific error would be better.
+    assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
+    if let Err(SqlParseError::UnexpectedToken {expected, found, ..}) = result {
+        // After "CROSS JOIN t2", it expects WHERE/ORDER/LIMIT/EOF. "ON" is unexpected.
+        assert_eq!(expected.to_lowercase(), "end of statement or eof");
+        assert_eq!(found.to_lowercase(), "on");
+    } else {
+        panic!("CROSS JOIN with ON should be an error: {:?}", result);
+    }
+}
+
+
 // --- Tests for ORDER BY and LIMIT ---
 
 #[test]
@@ -1637,7 +1906,7 @@ fn test_parse_select_order_by_simple() {
     let ast = parser.parse().unwrap();
     match ast {
         Statement::Select(select_stmt) => {
-            assert_eq!(select_stmt.source, "users");
+            assert_eq!(select_stmt.from_clause.name, "users"); // Updated from source
             assert!(select_stmt.order_by.is_some());
             let order_by_list = select_stmt.order_by.unwrap();
             assert_eq!(order_by_list.len(), 1);
@@ -1677,6 +1946,7 @@ fn test_parse_select_limit_simple() {
     let ast = parser.parse().unwrap();
     match ast {
         Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.from_clause.name, "products"); // Updated
             assert!(select_stmt.limit.is_some());
             assert_eq!(select_stmt.limit.unwrap(), AstLiteralValue::Number("10".to_string()));
             assert!(select_stmt.order_by.is_none());
@@ -1693,6 +1963,7 @@ fn test_parse_select_order_by_limit() {
     let ast = parser.parse().unwrap();
     match ast {
         Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.from_clause.name, "people"); // Updated
             assert!(select_stmt.order_by.is_some());
             let order_by_list = select_stmt.order_by.unwrap();
             assert_eq!(order_by_list.len(), 1);

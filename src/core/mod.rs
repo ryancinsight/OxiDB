@@ -7,5 +7,7 @@ pub mod query;
 pub mod storage;
 pub mod transaction;
 pub mod types;
+pub mod vector; // Added vector module
+pub mod rag; // Added RAG module
 pub mod wal; // Added WAL module
 pub use self::config::Config;

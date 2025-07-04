@@ -16,11 +16,11 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
             };
             let order_by_cmd = match select_ast.order_by {
                 Some(order_by_ast_list) => {
-                    let mut translated_list = Vec::new();
-                    for order_expr_ast in order_by_ast_list {
-                        translated_list.push(translate_order_by_expr(&order_expr_ast)?);
-                    }
-                    Some(translated_list)
+                    order_by_ast_list
+                        .iter()
+                        .map(translate_order_by_expr)
+                        .collect::<Result<Vec<commands::SqlOrderByExpr>, OxidbError>>()
+                        .map(Some)?
                 }
                 None => None,
             };
@@ -45,7 +45,8 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
 
             Ok(Command::Select {
                 columns: columns_spec,
-                source: select_ast.source,
+                source: select_ast.from_clause.name.clone(), // Changed from select_ast.source
+                // Note: select_ast.joins is ignored here as Command::Select doesn't support it.
                 condition: condition_cmd,
                 order_by: order_by_cmd,
                 limit: limit_cmd,
@@ -248,7 +249,18 @@ fn translate_condition_tree_to_sql_condition_tree(
 ) -> Result<commands::SqlConditionTree, OxidbError> {
     match ast_tree {
         ast::ConditionTree::Comparison(ast_cond) => {
-            let value = translate_literal(&ast_cond.value)?;
+            let value = match &ast_cond.value {
+                ast::AstExpressionValue::Literal(literal_val) => translate_literal(literal_val)?,
+                ast::AstExpressionValue::ColumnIdentifier(col_name) => {
+                    // TODO: This would be a column-to-column comparison.
+                    // For now, SqlSimpleCondition only supports column-to-literal.
+                    // This could be an error or a different command variant if supported.
+                    return Err(OxidbError::SqlParsing(format!(
+                        "Column-to-column comparison ('{} {} {}') is not yet supported in conditions.",
+                        ast_cond.column, ast_cond.operator, col_name
+                    )));
+                }
+            };
             Ok(commands::SqlConditionTree::Comparison(commands::SqlSimpleCondition {
                 column: ast_cond.column.clone(),
                 operator: ast_cond.operator.clone(),
@@ -394,7 +406,9 @@ mod tests {
         let ast_cond_tree = ast::ConditionTree::Comparison(TestCondition {
             column: "name".to_string(),
             operator: "=".to_string(),
-            value: TestAstLiteralValue::String("test_user".to_string()),
+            value: ast::AstExpressionValue::Literal(TestAstLiteralValue::String(
+                "test_user".to_string(),
+            )),
         });
         let expected_sql_cond_tree =
             commands::SqlConditionTree::Comparison(commands::SqlSimpleCondition {
@@ -413,7 +427,7 @@ mod tests {
         let ast_cond_tree = ast::ConditionTree::Comparison(TestCondition {
             column: "age".to_string(),
             operator: ">".to_string(),
-            value: TestAstLiteralValue::Number("30".to_string()),
+            value: ast::AstExpressionValue::Literal(TestAstLiteralValue::Number("30".to_string())),
         });
         let expected_sql_cond_tree =
             commands::SqlConditionTree::Comparison(commands::SqlSimpleCondition {
@@ -498,7 +512,11 @@ mod tests {
     fn test_translate_ast_select_simple() {
         let ast_stmt = TestStatement::Select(TestSelectStatement {
             columns: vec![TestSelectColumn::Asterisk],
-            source: "users".to_string(),
+            from_clause: ast::TableReference {
+                name: "users".to_string(),
+                alias: None,
+            },
+            joins: Vec::new(),
             condition: None,
             order_by: None, // Added
             limit: None,    // Added
@@ -521,14 +539,20 @@ mod tests {
     fn test_translate_ast_select_with_condition() {
         let ast_stmt = TestStatement::Select(TestSelectStatement {
             columns: vec![TestSelectColumn::ColumnName("email".to_string())],
-            source: "customers".to_string(),
+            from_clause: ast::TableReference { // Corrected
+                name: "customers".to_string(),
+                alias: None,
+            },
+            joins: Vec::new(), // Corrected
             condition: Some(ast::ConditionTree::Comparison(TestCondition {
                 column: "id".to_string(),
                 operator: "=".to_string(),
-                value: TestAstLiteralValue::Number("101".to_string()),
+                value: ast::AstExpressionValue::Literal(TestAstLiteralValue::Number(
+                    "101".to_string(),
+                )),
             })),
-            order_by: None, // Added for new fields
-            limit: None,    // Added for new fields
+            order_by: None,
+            limit: None,
         });
         let command = translate_ast_to_command(ast_stmt).unwrap();
         match command {
@@ -564,7 +588,9 @@ mod tests {
             condition: Some(ast::ConditionTree::Comparison(TestCondition {
                 column: "product_id".to_string(),
                 operator: "=".to_string(),
-                value: TestAstLiteralValue::String("XYZ123".to_string()),
+                value: ast::AstExpressionValue::Literal(TestAstLiteralValue::String(
+                    "XYZ123".to_string(),
+                )),
             })),
         });
         let command = translate_ast_to_command(ast_stmt).unwrap();

@@ -285,3 +285,60 @@ fn test_insert_empty_record_error() {
 // This makes SLOTS_ARRAY_DATA_OFFSET available. Slot::SERIALIZED_SIZE is an associated const, also available.
 // TablePage::PAGE_DATA_SIZE needs to be a pub const on TablePage struct or pub const in its module.
 // Redefined TEST_PAGE_DATA_SIZE locally for now.
+
+#[test]
+fn test_insert_and_get_row_with_vector() {
+    use crate::core::common::types::{value::Value, row::Row};
+
+    let mut page_data = create_test_page_data();
+
+    // 1. Create a Row with a Value::Vector
+    let original_row = Row {
+        values: vec![
+            Value::Integer(123),
+            Value::Text("test_string".to_string()),
+            Value::Vector(vec![1.0, 2.5, -3.0, 4.2]),
+        ],
+    };
+
+    // 2. Serialize this Row into Vec<u8> using bincode
+    let serialized_row = bincode::serialize(&original_row).expect("Failed to serialize row");
+
+    // 3. Use TablePage::insert_record to store this Vec<u8>
+    let slot_id = TablePage::insert_record(&mut page_data, &serialized_row).expect("Insert row failed");
+
+    // Verify num_records and slot info (optional, but good for sanity)
+    assert_eq!(TablePage::get_num_records(&page_data).unwrap(), 1);
+    let s_info = TablePage::get_slot_info(&page_data, slot_id).unwrap().unwrap();
+    assert_eq!(s_info.length, serialized_row.len() as u16);
+
+    // 4. Use TablePage::get_record to retrieve the Vec<u8>
+    let retrieved_serialized_row = TablePage::get_record(&page_data, slot_id)
+        .expect("Get record failed")
+        .expect("Record not found");
+
+    // 5. Deserialize the Vec<u8> back into a Row
+    let retrieved_row: Row = bincode::deserialize(&retrieved_serialized_row).expect("Failed to deserialize row");
+
+    // 6. Verify that the retrieved Row and its Value::Vector are identical to the original
+    assert_eq!(original_row.values.len(), retrieved_row.values.len());
+
+    for (original_val, retrieved_val) in original_row.values.iter().zip(retrieved_row.values.iter()) {
+        match (original_val, retrieved_val) {
+            (Value::Integer(o), Value::Integer(r)) => assert_eq!(o, r),
+            (Value::Text(o), Value::Text(r)) => assert_eq!(o, r),
+            (Value::Vector(o_vec), Value::Vector(r_vec)) => {
+                assert_eq!(o_vec.len(), r_vec.len());
+                for (ov, rv) in o_vec.iter().zip(r_vec.iter()) {
+                    // Use approx::assert_relative_eq for float comparisons if needed,
+                    // but for exact bitwise representation from serde, direct eq should work.
+                    assert_eq!(ov, rv);
+                }
+            }
+            (Value::Boolean(o), Value::Boolean(r)) => assert_eq!(o, r),
+            (Value::Blob(o), Value::Blob(r)) => assert_eq!(o, r),
+            (Value::Null, Value::Null) => { /* Both null, good */ },
+            _ => panic!("Mismatched or unexpected Value types: {:?} vs {:?}", original_val, retrieved_val),
+        }
+    }
+}

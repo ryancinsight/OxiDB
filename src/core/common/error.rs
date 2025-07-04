@@ -70,6 +70,12 @@ pub enum OxidbError {
 
     #[error("ConstraintViolation: {message}")]
     ConstraintViolation { message: String },
+
+    #[error("Vector dimension mismatch: dim1 = {dim1}, dim2 = {dim2}")]
+    VectorDimensionMismatch { dim1: usize, dim2: usize },
+
+    #[error("Vector magnitude is zero, cannot compute cosine similarity")]
+    VectorMagnitudeZero,
 }
 
 impl From<crate::core::indexing::btree::OxidbError> for OxidbError {
