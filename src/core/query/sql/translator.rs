@@ -45,7 +45,8 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
 
             Ok(Command::Select {
                 columns: columns_spec,
-                source: select_ast.source,
+                source: select_ast.from_clause.name.clone(), // Changed from select_ast.source
+                // Note: select_ast.joins is ignored here as Command::Select doesn't support it.
                 condition: condition_cmd,
                 order_by: order_by_cmd,
                 limit: limit_cmd,
@@ -498,7 +499,11 @@ mod tests {
     fn test_translate_ast_select_simple() {
         let ast_stmt = TestStatement::Select(TestSelectStatement {
             columns: vec![TestSelectColumn::Asterisk],
-            source: "users".to_string(),
+            from_clause: ast::TableReference {
+                name: "users".to_string(),
+                alias: None,
+            },
+            joins: Vec::new(),
             condition: None,
             order_by: None, // Added
             limit: None,    // Added
@@ -521,14 +526,18 @@ mod tests {
     fn test_translate_ast_select_with_condition() {
         let ast_stmt = TestStatement::Select(TestSelectStatement {
             columns: vec![TestSelectColumn::ColumnName("email".to_string())],
-            source: "customers".to_string(),
+            from_clause: ast::TableReference { // Corrected
+                name: "customers".to_string(),
+                alias: None,
+            },
+            joins: Vec::new(), // Corrected
             condition: Some(ast::ConditionTree::Comparison(TestCondition {
                 column: "id".to_string(),
                 operator: "=".to_string(),
                 value: TestAstLiteralValue::Number("101".to_string()),
             })),
-            order_by: None, // Added for new fields
-            limit: None,    // Added for new fields
+            order_by: None,
+            limit: None,
         });
         let command = translate_ast_to_command(ast_stmt).unwrap();
         match command {

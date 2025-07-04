@@ -25,6 +25,16 @@ pub enum Token {
     Desc,   // Added Desc Token
     Limit,  // Added Limit Token
 
+    // Join-related keywords
+    Join,
+    On,
+    Inner,
+    Left,
+    Right,
+    Full,
+    Outer,
+    Cross,
+
     // Literals
     Identifier(String),
     StringLiteral(String),
@@ -40,6 +50,7 @@ pub enum Token {
     Semicolon,
     LBracket, // Added [
     RBracket, // Added ]
+    Dot,      // Added . for qualified names
 
     // End of File
     EOF,
@@ -67,6 +78,14 @@ impl fmt::Debug for Token {
             Token::Asc => write!(f, "Asc"),       // Added for Asc Token
             Token::Desc => write!(f, "Desc"),     // Added for Desc Token
             Token::Limit => write!(f, "Limit"),   // Added for Limit Token
+            Token::Join => write!(f, "Join"),
+            Token::On => write!(f, "On"),
+            Token::Inner => write!(f, "Inner"),
+            Token::Left => write!(f, "Left"),
+            Token::Right => write!(f, "Right"),
+            Token::Full => write!(f, "Full"),
+            Token::Outer => write!(f, "Outer"),
+            Token::Cross => write!(f, "Cross"),
             Token::Identifier(s) => f.debug_tuple("Identifier").field(s).finish(),
             Token::StringLiteral(s) => f.debug_tuple("StringLiteral").field(s).finish(),
             Token::NumericLiteral(s) => f.debug_tuple("NumericLiteral").field(s).finish(),
@@ -79,6 +98,7 @@ impl fmt::Debug for Token {
             Token::Semicolon => write!(f, "Semicolon"),
             Token::LBracket => write!(f, "LBracket"),
             Token::RBracket => write!(f, "RBracket"),
+            Token::Dot => write!(f, "Dot"),
             Token::EOF => write!(f, "EOF"),
         }
     }
@@ -146,6 +166,14 @@ impl<'a> Tokenizer<'a> {
             "ASC" => Token::Asc,       // Added for Asc Token
             "DESC" => Token::Desc,     // Added for Desc Token
             "LIMIT" => Token::Limit,   // Added for Limit Token
+            "JOIN" => Token::Join,
+            "ON" => Token::On,
+            "INNER" => Token::Inner,
+            "LEFT" => Token::Left,
+            "RIGHT" => Token::Right,
+            "FULL" => Token::Full,
+            "OUTER" => Token::Outer,
+            "CROSS" => Token::Cross,
             _ => Token::Identifier(ident.to_string()),
         })
     }
@@ -302,19 +330,15 @@ impl<'a> Tokenizer<'a> {
                         c if c.is_ascii_digit() => {
                             tokens.push(self.read_numeric_literal(idx)?);
                         }
-                        // Handle '.' not part of a number as an invalid character for now,
-                        // or it could be part of a more complex identifier/operator later.
                         '.' => {
-                            // Check if it's a decimal starting with '.'
-                            if self
-                                .chars
-                                .clone()
-                                .nth(1)
-                                .is_some_and(|(_, next_ch)| next_ch.is_ascii_digit())
-                            {
+                            // Peek ahead: if the next char is a digit, it's a numeric literal like .5
+                            if self.chars.clone().nth(1).map_or(false, |(_, next_ch)| next_ch.is_ascii_digit()) {
                                 tokens.push(self.read_numeric_literal(idx)?);
                             } else {
-                                return Err(SqlTokenizerError::InvalidCharacter(ch, idx));
+                                // Otherwise, it's a Dot token for qualified names (e.g. table.column)
+                                self.chars.next(); // Consume the dot
+                                tokens.push(Token::Dot);
+                                self.current_pos = idx + 1;
                             }
                         }
                         // Use self.current_pos which was set at the start of the loop iteration
@@ -543,6 +567,80 @@ mod tests {
                 Token::Asterisk,
                 Token::From,
                 Token::Identifier("users".to_string()),
+                Token::Semicolon,
+                Token::EOF,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_join_keywords() {
+        let sql = "INNER JOIN LEFT RIGHT FULL OUTER CROSS ON";
+        let mut tokenizer = Tokenizer::new(sql);
+        let tokens = tokenizer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Inner,
+                Token::Join,
+                Token::Left,
+                Token::Right,
+                Token::Full,
+                Token::Outer,
+                Token::Cross,
+                Token::On,
+                Token::EOF,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_join_statement_tokenization() {
+        let sql = "SELECT c.name, o.order_date
+                   FROM customers c
+                   INNER JOIN orders o ON c.id = o.customer_id
+                   LEFT OUTER JOIN products p ON o.product_id = p.id;";
+        let mut tokenizer = Tokenizer::new(sql);
+        let tokens = tokenizer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Select,
+                Token::Identifier("c".to_string()),
+                Token::Dot,
+                Token::Identifier("name".to_string()),
+                Token::Comma,
+                Token::Identifier("o".to_string()),
+                Token::Dot,
+                Token::Identifier("order_date".to_string()),
+                Token::From,
+                Token::Identifier("customers".to_string()),
+                Token::Identifier("c".to_string()),
+                Token::Inner,
+                Token::Join,
+                Token::Identifier("orders".to_string()),
+                Token::Identifier("o".to_string()),
+                Token::On,
+                Token::Identifier("c".to_string()),
+                Token::Dot,
+                Token::Identifier("id".to_string()),
+                Token::Operator("=".to_string()),
+                Token::Identifier("o".to_string()),
+                Token::Dot,
+                Token::Identifier("customer_id".to_string()),
+                Token::Left,
+                Token::Outer,
+                Token::Join,
+                Token::Identifier("products".to_string()),
+                Token::Identifier("p".to_string()),
+                Token::On,
+                Token::Identifier("o".to_string()),
+                Token::Dot,
+                Token::Identifier("product_id".to_string()),
+                Token::Operator("=".to_string()),
+                Token::Identifier("p".to_string()),
+                Token::Dot,
+                Token::Identifier("id".to_string()),
                 Token::Semicolon,
                 Token::EOF,
             ]

@@ -303,7 +303,90 @@ impl SqlParser {
         self.consume(Token::Select)?;
         let columns = self.parse_select_column_list()?;
         self.consume(Token::From)?;
-        let source = self.expect_identifier("Expected table name after FROM")?;
+        let from_table_name = self.expect_identifier("Expected table name after FROM")?;
+        let from_clause = ast::TableReference {
+            name: from_table_name,
+            alias: None, // Alias parsing to be added later
+        };
+
+        let mut joins = Vec::new();
+        // Loop to parse JOIN clauses
+        // TODO: Add alias parsing for joined tables as well.
+        loop {
+            let current_join_type: ast::JoinType;
+
+            // Peek to decide the type of join
+            match self.peek() {
+                Some(Token::Join) => {
+                    self.consume(Token::Join)?;
+                    current_join_type = ast::JoinType::Inner;
+                }
+                Some(Token::Inner) => {
+                    self.consume(Token::Inner)?;
+                    self.consume(Token::Join)?;
+                    current_join_type = ast::JoinType::Inner;
+                }
+                Some(Token::Left) => {
+                    self.consume(Token::Left)?;
+                    if self.match_token(Token::Outer) {
+                        self.consume(Token::Outer)?;
+                    }
+                    self.consume(Token::Join)?;
+                    current_join_type = ast::JoinType::LeftOuter;
+                }
+                Some(Token::Right) => {
+                    self.consume(Token::Right)?;
+                    if self.match_token(Token::Outer) {
+                        self.consume(Token::Outer)?;
+                    }
+                    self.consume(Token::Join)?;
+                    current_join_type = ast::JoinType::RightOuter;
+                }
+                Some(Token::Full) => {
+                    self.consume(Token::Full)?;
+                    if self.match_token(Token::Outer) {
+                        self.consume(Token::Outer)?;
+                    }
+                    self.consume(Token::Join)?;
+                    current_join_type = ast::JoinType::FullOuter;
+                }
+                Some(Token::Cross) => {
+                    self.consume(Token::Cross)?;
+                    self.consume(Token::Join)?;
+                    current_join_type = ast::JoinType::Cross;
+                }
+                _ => {
+                    // Not a JOIN keyword, break the loop
+                    break;
+                }
+            }
+
+            // If we matched and consumed a JOIN sequence, current_join_type is set.
+            // If we broke out of the match, we break out of the loop.
+            // So, if we are here, current_join_type is initialized.
+
+            let right_table_name =
+                self.expect_identifier("Expected table name after JOIN clause")?;
+                let right_source = ast::TableReference {
+                    name: right_table_name,
+                    alias: None, // Alias parsing to be added later
+                };
+
+                let on_condition = if current_join_type != ast::JoinType::Cross { // Use current_join_type
+                    self.consume(Token::On)?;
+                    Some(self.parse_condition_expr()?)
+                } else {
+                    None // CROSS JOIN does not have ON condition
+                };
+
+                joins.push(ast::JoinClause {
+                    join_type: current_join_type,
+                    right_source,
+                    on_condition,
+                });
+            // The incorrect else block was here and has been removed.
+        }
+
         let condition = if self.match_token(Token::Where) {
             self.consume(Token::Where)?;
             Some(self.parse_condition_expr()?)
@@ -364,10 +447,11 @@ impl SqlParser {
         // Semicolon handled by main parse()
         Ok(Statement::Select(SelectStatement {
             columns,
-            source,
+            from_clause, // Use the new from_clause
+            joins,       // Add the parsed joins
             condition,
             order_by,
-            limit: limit_val, // This was 'limit', should be 'limit_val'
+            limit: limit_val,
         }))
     }
 

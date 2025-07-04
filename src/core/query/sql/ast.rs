@@ -8,10 +8,16 @@ pub enum AstLiteralValue {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum AstExpressionValue { // ADDED
+    Literal(AstLiteralValue),
+    ColumnIdentifier(String),
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct Condition {
-    pub column: String,
+    pub column: String, // Left-hand side, always a column for now
     pub operator: String, // e.g., "=", "!=", "<", ">", "IS NULL", "IS NOT NULL"
-    pub value: AstLiteralValue,
+    pub value: AstExpressionValue, // Right-hand side - CHANGED
 }
 
 /// Represents a tree of conditions for WHERE clauses.
@@ -38,16 +44,39 @@ pub enum SelectColumn {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SelectStatement {
-    pub columns: Vec<SelectColumn>, // Changed to Vec<SelectColumn> to support specific columns or *
-    pub source: String,             // Table name
+    pub columns: Vec<SelectColumn>,
+    pub from_clause: TableReference,
+    pub joins: Vec<JoinClause>,
     pub condition: Option<ConditionTree>,
     pub order_by: Option<Vec<OrderByExpr>>,
-    pub limit: Option<AstLiteralValue>, // Using AstLiteralValue for now, translator will ensure it's a number
+    pub limit: Option<AstLiteralValue>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum JoinType {
+    Inner,
+    LeftOuter,
+    RightOuter,
+    FullOuter,
+    Cross,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct TableReference {
+    pub name: String,
+    pub alias: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct JoinClause {
+    pub join_type: JoinType,
+    pub right_source: TableReference,
+    pub on_condition: Option<ConditionTree>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct OrderByExpr {
-    pub expression: String, // For now, simple column name. Could be more complex Ast::Expression later.
+    pub expression: String,
     pub direction: Option<OrderDirection>,
 }
 
@@ -59,19 +88,16 @@ pub enum OrderDirection {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct UpdateStatement {
-    pub source: String, // Table name
+    pub source: String,
     pub assignments: Vec<Assignment>,
     pub condition: Option<ConditionTree>,
 }
-
-// Future statements: InsertStatement, DeleteStatement, CreateTableStatement etc.
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum AstColumnConstraint {
     NotNull,
     Unique,
     PrimaryKey,
-    // Potentially others like Check(String), Default(AstLiteralValue) in the future
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -80,19 +106,14 @@ pub enum AstDataType {
     Text,
     Boolean,
     Float,
-    // SQL standard types that map to engine types
-    // VARCHAR, CHAR, DECIMAL, etc. can be added here.
-    // For now, keeping it simple.
-    Vector { dimension: u32 }, // Represents VECTOR[dimension]
-    // Adding other known types from the engine for completeness if they can be declared in SQL
-    Blob, // If blobs can be declared directly in SQL like CREATE TABLE t (b BLOB)
-          // NullType is usually implicit, not a declared column type.
+    Vector { dimension: u32 },
+    Blob,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ColumnDef {
     pub name: String,
-    pub data_type: AstDataType, // Changed from String
+    pub data_type: AstDataType,
     pub constraints: Vec<AstColumnConstraint>,
 }
 
@@ -105,8 +126,8 @@ pub struct CreateTableStatement {
 #[derive(Debug, PartialEq, Clone)]
 pub struct InsertStatement {
     pub table_name: String,
-    pub columns: Option<Vec<String>>, // Optional: e.g., INSERT INTO foo VALUES (...) vs INSERT INTO foo (col1, col2) VALUES (...)
-    pub values: Vec<Vec<AstLiteralValue>>, // Support for multi-value inserts: VALUES (...), (...)
+    pub columns: Option<Vec<String>>,
+    pub values: Vec<Vec<AstLiteralValue>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -128,5 +149,5 @@ pub enum Statement {
 #[derive(Debug, PartialEq, Clone)]
 pub struct DropTableStatement {
     pub table_name: String,
-    pub if_exists: bool, // Support IF EXISTS
+    pub if_exists: bool,
 }
