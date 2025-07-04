@@ -168,7 +168,7 @@ impl Optimizer {
                 Ok(Expression::CompareOp {
                     left: Box::new(Expression::Column(ast_simple_cond.column.clone())),
                     op: ast_simple_cond.operator.clone(),
-                    right: Box::new(Expression::Literal(value)),
+                    right: Box::new(right_expr_operand),
                 })
             }
             crate::core::query::sql::ast::ConditionTree::And(left_ast, right_ast) => {

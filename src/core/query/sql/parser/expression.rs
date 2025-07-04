@@ -1,5 +1,5 @@
 use super::core::SqlParser;
-use crate::core::query::sql::ast::{self, Assignment, AstLiteralValue, Condition, SelectColumn, AstExpressionValue};
+use crate::core::query::sql::ast::{self, Assignment, AstLiteralValue, Condition, SelectColumn};
 use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::tokenizer::Token; // For matching specific tokens
 

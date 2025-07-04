@@ -34,6 +34,7 @@ pub enum Token {
     Full,
     Outer,
     Cross,
+    As, // Added As keyword for aliases
 
     // Literals
     Identifier(String),
@@ -86,6 +87,7 @@ impl fmt::Debug for Token {
             Token::Full => write!(f, "Full"),
             Token::Outer => write!(f, "Outer"),
             Token::Cross => write!(f, "Cross"),
+            Token::As => write!(f, "As"), // Added for As
             Token::Identifier(s) => f.debug_tuple("Identifier").field(s).finish(),
             Token::StringLiteral(s) => f.debug_tuple("StringLiteral").field(s).finish(),
             Token::NumericLiteral(s) => f.debug_tuple("NumericLiteral").field(s).finish(),
@@ -174,6 +176,7 @@ impl<'a> Tokenizer<'a> {
             "FULL" => Token::Full,
             "OUTER" => Token::Outer,
             "CROSS" => Token::Cross,
+            "AS" => Token::As, // Added As keyword
             _ => Token::Identifier(ident.to_string()),
         })
     }

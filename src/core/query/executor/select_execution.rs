@@ -108,7 +108,9 @@ pub(super) fn command_condition_tree_to_ast_condition_tree<
                 crate::core::query::sql::ast::Condition {
                     column: sql_simple_cond.column.clone(),
                     operator: sql_simple_cond.operator.clone(),
-                    value: datatype_to_ast_literal(&sql_simple_cond.value)?,
+                    value: crate::core::query::sql::ast::AstExpressionValue::Literal(
+                        datatype_to_ast_literal(&sql_simple_cond.value)?,
+                    ),
                 },
             ))
         }
