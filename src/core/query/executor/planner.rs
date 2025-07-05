@@ -52,26 +52,27 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 let operator = FilterOperator::new(input_operator, predicate);
                 Ok(Box::new(operator))
             }
-            QueryPlanNode::Project { input, columns } => {
+            QueryPlanNode::Project { input, expressions } => { // `expressions` is now Vec<BoundExpression>
                 let input_operator =
                     self.build_execution_tree(*input, snapshot_id, committed_ids.clone())?;
-                let mut column_indices = Vec::new();
-                if columns.len() == 1 && columns[0] == "*" {
-                    column_indices = Vec::new(); // ProjectOperator interprets empty as all columns
-                } else {
-                    for col_str in columns {
-                        match col_str.parse::<usize>() {
-                            Ok(idx) => column_indices.push(idx),
-                            Err(_) => {
-                                return Err(OxidbError::SqlParsing(format!(
-                                    "Project column '{}' is not a valid numeric index and not '*'.",
-                                    col_str
-                                )));
-                            }
-                        }
-                    }
+
+                // Get the schema from the input operator
+                let input_schema = input_operator.get_output_schema();
+
+                // The expressions are already bound, so we can pass them directly.
+                // The check for empty expressions (previously for "*") should ideally be handled
+                // by the optimizer ensuring `expressions` is populated correctly (e.g., expanding "*").
+                // If `expressions` is empty here, ProjectOperator will produce empty tuples.
+                // This might be valid for `SELECT;` if allowed, or should be an error earlier.
+                if expressions.is_empty() {
+                    // This case should ideally not be hit if SELECT * is expanded by the optimizer,
+                    // or if zero-column projections are disallowed earlier.
+                    // For now, ProjectOperator handles empty expressions by producing empty tuples.
+                    // Depending on desired SQL behavior, an error might be more appropriate here.
+                     eprintln!("[Planner] Warning: QueryPlanNode::Project has empty expressions. This will result in empty tuples.");
                 }
-                let operator = ProjectOperator::new(input_operator, column_indices);
+
+                let operator = ProjectOperator::new(input_operator, (*input_schema).clone(), expressions);
                 Ok(Box::new(operator))
             }
             QueryPlanNode::NestedLoopJoin { left, right, join_predicate } => {

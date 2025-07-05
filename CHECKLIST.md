@@ -162,26 +162,30 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
             *   [ ] Sub-subtask: Test conversion of LogicalScan to PhysicalTableScan.
             *   [ ] Sub-subtask: Test conversion of LogicalFilter to PhysicalFilter.
             *   [ ] Sub-subtask: Test selection of appropriate join algorithms (e.g., HashJoin vs. NestedLoopJoin based on heuristics or statistics if available).
-    *   [ ] **Validation:** Optimized physical query plans are generated.
+    *   [~] **Validation:** Optimized physical query plans are generated. (Project node now uses BoundExpressions; overall optimization state pending further work on schema propagation for binding).
 
 9.  **Implement Query Execution Engine (Volcano/Iterator Model):**
-    *   [ ] Implement executor for each physical plan operator.
-        *   [ ] Subtask: Each operator should implement a `next()` method returning tuples.
-            *   [ ] Sub-subtask: Implement `TableScanExecutor` to read rows from a table.
-            *   [ ] Sub-subtask: Implement `FilterExecutor` to apply predicates.
-            *   [ ] Sub-subtask: Implement `ProjectionExecutor` to select specific columns.
+    *   [~] Implement executor for each physical plan operator.
+        *   [x] Subtask: Each operator should implement a `next()` method returning tuples. (Core trait and several operators exist).
+        *   [x] Subtask: Each operator should implement `get_output_schema()` method. (Added to trait and implemented for TableScan, Filter, Project, NestedLoopJoin).
+            *   [x] Sub-subtask: Implement `TableScanExecutor` to read rows from a table. (Exists, `get_output_schema` added).
+            *   [x] Sub-subtask: Implement `FilterExecutor` to apply predicates. (Exists, `get_output_schema` added. Predicate evaluation logic uses `optimizer::Expression`, not yet the new central `expression_evaluator`).
+            *   [x] Sub-subtask: Implement `ProjectionExecutor` to select/evaluate specific expressions. (Renamed/refactored to `ProjectOperator`, now uses `expression_evaluator` for `BoundExpressions`).
             *   [ ] Sub-subtask: Implement `LimitExecutor` to restrict the number of output rows.
             *   [ ] Sub-subtask: Implement `InsertExecutor` to insert rows into a table.
-            *   [ ] Sub-subtask: Implement `UpdateExecutor` to modify existing rows.
-            *   [ ] Sub-subtask: Implement `DeleteExecutor` to remove rows.
-        *   [ ] Subtask: Write unit tests for each individual operator.
-            *   [ ] Sub-subtask: Test `TableScanExecutor` by reading all rows from a known table.
-            *   [ ] Sub-subtask: Test `FilterExecutor` with various predicates.
-            *   [ ] Sub-subtask: Test `ProjectionExecutor` with different column selections.
+            *   [x] Sub-subtask: Implement `UpdateExecutor` to modify existing rows. (Exists as part of `QueryExecutor::handle_update_statement` which builds an internal plan).
+            *   [x] Sub-subtask: Implement `DeleteExecutor` to remove rows. (Exists).
+        *   [~] Subtask: Write unit tests for each individual operator.
+            *   [x] Sub-subtask: Test `TableScanExecutor` by reading all rows from a known table. (Covered by API tests using SELECT * or similar).
+            *   [x] Sub-subtask: Test `FilterExecutor` with various predicates. (Covered by API tests using WHERE clauses).
+            *   [~] Sub-subtask: Test `ProjectOperator` with different column selections and expressions. (New expression evaluation tested at `expression_evaluator` level. Old `ProjectOperator` tests commented out; new operator-level tests for projection need `MockOperator` or similar harness).
+    *   [x] Implement core expression evaluation system (`core::execution::expression_evaluator`).
+        *   [x] Subtask: Supports literals, column references (basic), and function calls.
+        *   [x] Subtask: Executes `COSINE_SIMILARITY` and `DOT_PRODUCT` via SQL (with literal arguments confirmed).
     *   [ ] Implement query execution context.
         *   [ ] Subtask: Manage transaction context and other execution-time state.
             *   [ ] Sub-subtask: Design struct for `ExecutionContext` holding transaction ID, buffer pool manager instance, catalog access, etc.
-    *   [ ] **Validation:** Queries are executed correctly, and results match expectations. Test with various SELECT, INSERT, UPDATE, DELETE statements.
+    *   [~] **Validation:** Queries are executed correctly, and results match expectations. Test with various SELECT, INSERT, UPDATE, DELETE statements. (Vector function execution with literals now works; column-based vector functions pending optimizer/binder schema fix).
 
 ## Phase 4: Concurrency and Indexing
 

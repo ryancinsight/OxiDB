@@ -170,3 +170,22 @@ This ledger will be updated as work progresses on each component. "Required Comp
         *   Dependent code in the optimizer, translator, and parser tests has been refactored to align with the new AST structure. Placeholders (e.g., stringification of complex expressions) have been used in the optimizer/translator where full processing is not yet implemented.
     *   **Testing**: All parser-related tests (540+) are passing, including new tests for comments, `DISTINCT`, `GROUP BY`, `HAVING`, basic aggregate functions, and arithmetic expressions.
     *   **Status**: The SQL parser is now "Substantially Implemented", capable of parsing a wide range of SQL DML and DDL features with a rich expression system. Execution of all parsed features is the next major step.
+
+## Recent Updates - {$current_date$} (Jules Agent)
+
+*   **Vector Function Execution (Initial)**:
+    *   Implemented an expression evaluation system (`src/core/execution/expression_evaluator.rs`) capable of evaluating `BoundExpression`s.
+    *   This evaluator supports literals, column references (basic), and function calls.
+    *   Specifically, `COSINE_SIMILARITY` and `DOT_PRODUCT` functions (from `src/core/vector/similarity.rs`) can now be executed via SQL if they appear in the `SELECT` clause.
+    *   The `ProjectOperator` (`src/core/execution/operators/project.rs`) was refactored to use this expression evaluation system. It now takes `Vec<BoundExpression>` and an input schema to correctly evaluate projections.
+    *   The `QueryPlanNode::Project` was updated to carry `Vec<BoundExpression>`.
+    *   The `ExecutionOperator` trait now includes a `get_output_schema()` method, implemented for `TableScanOperator`, `FilterOperator`, `NestedLoopJoinOperator`, and `ProjectOperator`.
+    *   The planner (`src/core/query/executor/planner.rs`) was updated to construct `ProjectOperator` with bound expressions and the input schema.
+    *   The optimizer (`src/core/optimizer/optimizer.rs`) was updated to attempt binding of projection expressions into `BoundExpression`s.
+*   **Testing for Vector Functions**:
+    *   End-to-end tests were added for `COSINE_SIMILARITY` and `DOT_PRODUCT` functions with literal vector arguments. These tests pass, validating the core execution path for these functions.
+*   **Known Limitations & Next Steps**:
+    *   Execution of vector functions with column arguments (e.g., `SELECT COSINE_SIMILARITY(col_vec1, col_vec2) ...`) is currently blocked. This is due to the optimizer (`Optimizer::build_initial_plan`) using a placeholder schema when binding expressions, leading to `ColumnNotFound` errors during the binding phase for column identifiers.
+    *   Asterisk (`*`) expansion in `SELECT` statements within the optimizer needs to be implemented to correctly use the new `BoundExpression` projection mechanism.
+    *   The `TableScanOperator`'s deserialization logic for converting stored data (assumed `Value::Map`) to a `Tuple` matching the table schema needs further refinement for robustness.
+    *   Schema propagation throughout the query planning and optimization stages, especially to the `Binder` when used by the `Optimizer`, requires significant improvement.

@@ -962,3 +962,150 @@ fn test_constraint_primary_key_not_null_violation_insert() {
         }
     }
 }
+
+// --- Tests for Vector Function Execution ---
+
+#[test]
+fn test_execute_query_str_vector_cosine_similarity_literals() {
+    let db_path = get_temp_db_path();
+    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb for vector test");
+
+    // Create a dummy table to satisfy FROM clause, though it won't be used for literals.
+    db.execute_query_str("CREATE TABLE dummy_vec_table (id INTEGER);").unwrap();
+    db.execute_query_str("INSERT INTO dummy_vec_table (id) VALUES (1);").unwrap();
+
+    let query = "SELECT COSINE_SIMILARITY([1.0, 0.0], [0.0, 1.0]) FROM dummy_vec_table;"; // Orthogonal vectors
+    match db.execute_query_str(query) {
+        Ok(ExecutionResult::ResultSet { columns, rows }) => {
+            assert_eq!(columns.len(), 1);
+            // Column name might be 'cosine_similarity' or similar default.
+            // assert_eq!(columns[0].name.to_lowercase(), "cosine_similarity");
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].len(), 1);
+            match &rows[0][0] {
+                DataType::Float64(val) => assert!((val - 0.0).abs() < 1e-6),
+                other => panic!("Expected Float64(0.0), got {:?}", other),
+            }
+        }
+        other => panic!("Expected ResultSet, got {:?}", other),
+    }
+
+    let query_collinear = "SELECT COSINE_SIMILARITY([1.0, 2.0, 3.0], [2.0, 4.0, 6.0]) FROM dummy_vec_table;"; // Collinear
+    match db.execute_query_str(query_collinear) {
+        Ok(ExecutionResult::ResultSet { columns: _, rows }) => {
+            assert_eq!(rows.len(), 1);
+            match &rows[0][0] {
+                DataType::Float64(val) => assert!((val - 1.0).abs() < 1e-6),
+                other => panic!("Expected Float64(1.0), got {:?}", other),
+            }
+        }
+        other => panic!("Expected ResultSet for collinear, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_execute_query_str_vector_dot_product_literals() {
+    let db_path = get_temp_db_path();
+    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb for vector test");
+    db.execute_query_str("CREATE TABLE dummy_vec_table2 (id INTEGER);").unwrap();
+    db.execute_query_str("INSERT INTO dummy_vec_table2 (id) VALUES (1);").unwrap();
+
+    let query = "SELECT DOT_PRODUCT([1.0, 2.0, 3.0], [4.0, 5.0, 6.0]) FROM dummy_vec_table2;"; // 1*4 + 2*5 + 3*6 = 4 + 10 + 18 = 32
+    match db.execute_query_str(query) {
+        Ok(ExecutionResult::ResultSet { columns: _, rows }) => {
+            assert_eq!(rows.len(), 1);
+            match &rows[0][0] {
+                DataType::Float64(val) => assert!((val - 32.0).abs() < 1e-6),
+                other => panic!("Expected Float64(32.0), got {:?}", other),
+            }
+        }
+        other => panic!("Expected ResultSet, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_execute_query_str_vector_functions_with_columns() {
+    let db_path = get_temp_db_path();
+    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb for vector column test");
+
+    db.execute_query_str("CREATE TABLE embeddings (id INTEGER, vec1 VECTOR[2], vec2 VECTOR[2]);").unwrap();
+    // Note: INSERT syntax for vectors might need specific parser/binder support if not just using array-like literals.
+    // Assuming vector literals [...] are parsed and bound correctly for INSERT.
+    // The values are inserted as DataType::Vector.
+    db.execute_query_str("INSERT INTO embeddings (id, vec1, vec2) VALUES (1, [1.0, 0.0], [0.0, 1.0]);").unwrap(); // Orthogonal
+    db.execute_query_str("INSERT INTO embeddings (id, vec1, vec2) VALUES (2, [1.0, 2.0], [2.0, 4.0]);").unwrap(); // Collinear
+    db.execute_query_str("INSERT INTO embeddings (id, vec1, vec2) VALUES (3, [3.0, 4.0], [1.0, 1.0]);").unwrap(); // General: 3*1+4*1=7. mag1=5, mag2=sqrt(2). sim=7/(5*sqrt(2))=0.989949
+
+    let query_cosine = "SELECT COSINE_SIMILARITY(vec1, vec2) FROM embeddings ORDER BY id;";
+    match db.execute_query_str(query_cosine) {
+        Ok(ExecutionResult::ResultSet { columns: _, rows }) => {
+            assert_eq!(rows.len(), 3);
+            match &rows[0][0] { // id=1, orthogonal
+                DataType::Float64(val) => assert!((val - 0.0).abs() < 1e-6, "Row 1 Cosine: Expected 0.0, got {}", val),
+                other => panic!("Row 1 Cosine: Expected Float64, got {:?}", other),
+            }
+            match &rows[1][0] { // id=2, collinear
+                DataType::Float64(val) => assert!((val - 1.0).abs() < 1e-6, "Row 2 Cosine: Expected 1.0, got {}", val),
+                other => panic!("Row 2 Cosine: Expected Float64, got {:?}", other),
+            }
+            match &rows[2][0] { // id=3, general
+                DataType::Float64(val) => assert!((val - 0.98994949).abs() < 1e-6, "Row 3 Cosine: Expected ~0.9899, got {}", val),
+                other => panic!("Row 3 Cosine: Expected Float64, got {:?}", other),
+            }
+        }
+        other => panic!("Expected ResultSet for cosine with columns, got {:?}", other),
+    }
+
+    let query_dot = "SELECT DOT_PRODUCT(vec1, vec2) FROM embeddings WHERE id = 3;";
+     match db.execute_query_str(query_dot) {
+        Ok(ExecutionResult::ResultSet { columns: _, rows }) => {
+            assert_eq!(rows.len(), 1);
+            match &rows[0][0] { // id=3, dot product = 7.0
+                DataType::Float64(val) => assert!((val - 7.0).abs() < 1e-6, "Row 3 Dot: Expected 7.0, got {}", val),
+                other => panic!("Row 3 Dot: Expected Float64, got {:?}", other),
+            }
+        }
+        other => panic!("Expected ResultSet for dot product with columns, got {:?}", other),
+    }
+}
+
+#[test]
+fn test_execute_query_str_vector_function_dimension_mismatch_error_runtime() {
+    let db_path = get_temp_db_path();
+    let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb for vector error test");
+
+    db.execute_query_str("CREATE TABLE vecs_err (id INTEGER, v2 VECTOR[2], v3 VECTOR[3]);").unwrap();
+    db.execute_query_str("INSERT INTO vecs_err (id, v2, v3) VALUES (1, [1.0, 0.0], [1.0, 2.0, 3.0]);").unwrap();
+
+    // This query should pass binding if both dimensions are known and mismatched,
+    // or if one is unknown. The error should occur at runtime via expression_evaluator.
+    // The binder *should* catch this if both column types (with dimensions) are known.
+    // Let's test binding error first.
+    let query_bind_error = "SELECT COSINE_SIMILARITY(v2, v3) FROM vecs_err;";
+    match db.execute_query_str(query_bind_error) {
+        Err(OxidbError::Binding(msg)) => {
+            assert!(msg.contains("Vector dimension mismatch for function 'COSINE_SIMILARITY': dim1=2, dim2=3") || msg.contains("vector_dimension_mismatch"));
+        }
+        // If binding doesn't catch it (e.g., due to schema issues in optimizer), execution should.
+        Err(OxidbError::Execution(msg)) => {
+             assert!(msg.contains("Vector dimension mismatch during evaluation for function 'COSINE_SIMILARITY': dim1=2, dim2=3") || msg.contains("vector_dimension_mismatch"));
+        }
+        Ok(res) => panic!("Expected Binding or Execution error for dimension mismatch, got Ok({:?})", res),
+        other_err => panic!("Expected Binding or Execution error, got {:?}", other_err),
+    }
+
+    // Test with a literal that causes a runtime mismatch if binding somehow allows it
+    // (e.g. if column `v2` had DataType::Vector(None) in a faulty schema for binder)
+    // This specific query should be caught by the binder.
+    let query_runtime_error_if_binder_misses = "SELECT COSINE_SIMILARITY(v2, [1.0, 2.0, 3.0]) FROM vecs_err;";
+     match db.execute_query_str(query_runtime_error_if_binder_misses) {
+        Err(OxidbError::Binding(msg)) => {
+            assert!(msg.contains("Vector dimension mismatch for function 'COSINE_SIMILARITY': dim1=2, dim2=3") || msg.contains("vector_dimension_mismatch"));
+        }
+         Err(OxidbError::Execution(msg)) => {
+             assert!(msg.contains("Vector dimension mismatch during evaluation for function 'COSINE_SIMILARITY': dim1=2, dim2=3") || msg.contains("vector_dimension_mismatch"));
+        }
+        Ok(res) => panic!("Expected Binding or Execution error for literal dimension mismatch, got Ok({:?})", res),
+        other_err => panic!("Expected Binding or Execution error, got {:?}", other_err),
+    }
+}

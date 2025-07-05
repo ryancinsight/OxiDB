@@ -226,6 +226,10 @@ impl ExecutionOperator for FilterOperator {
 
         Ok(Box::new(iterator))
     }
+
+    fn get_output_schema(&self) -> std::sync::Arc<crate::core::common::types::Schema> {
+        self.input.get_output_schema()
+    }
 }
 
 #[cfg(test)]

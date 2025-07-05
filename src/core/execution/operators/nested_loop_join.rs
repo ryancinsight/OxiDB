@@ -165,4 +165,16 @@ impl ExecutionOperator for NestedLoopJoinOperator {
 
         Ok(Box::new(iter))
     }
+
+    fn get_output_schema(&self) -> Arc<crate::core::common::types::Schema> {
+        let left_schema = self.left_input.get_output_schema();
+        let right_schema = self.right_input.get_output_schema();
+
+        let mut combined_columns = left_schema.columns.clone();
+        combined_columns.extend(right_schema.columns.clone());
+
+        // TODO: Handle potential duplicate column names, perhaps by prefixing with table alias if available.
+        // For now, direct concatenation.
+        Arc::new(crate::core::common::types::Schema { columns: combined_columns })
+    }
 }

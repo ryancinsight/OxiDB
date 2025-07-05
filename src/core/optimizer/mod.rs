@@ -114,9 +114,57 @@ impl Optimizer {
                     ));
                 }
 
+                // Binder needs a schema. This is a simplification.
+                // A real system would get this from a catalog manager.
+                // For now, let's assume a dummy schema or one derived from the table_name.
+                // This part needs to be robust in a complete system.
+                let table_schema_for_binding = Schema { columns: vec![] }; // Placeholder
+                let mut binder = crate::core::query::binder::binder::Binder::new(Some(&table_schema_for_binding)); // TEMP SCHEMA
+
+                let mut projection_expressions: Vec<crate::core::query::binder::expression::BoundExpression> = Vec::new();
+                for col_ast in &select_ast.columns {
+                    match col_ast {
+                        AstSqlSelectColumn::Expression(expr_ast) => {
+                            // TODO: Handle schema context for binder correctly.
+                            // The binder currently uses a placeholder schema.
+                            // It should use the schema of the output of `plan_node` *before* this projection.
+                            // This implies a more iterative plan building or passing schema info along.
+                            // For now, binding might fail for ColumnIdentifiers if schema isn't right.
+                            match binder.bind_expression(expr_ast) {
+                                Ok(bound_expr) => projection_expressions.push(bound_expr),
+                                Err(bind_err) => {
+                                    // If binding fails (e.g. column not found in dummy schema),
+                                    // fall back to a placeholder string representation for now.
+                                    // This is NOT ideal but keeps the structure.
+                                    // A proper fix involves correct schema propagation to the binder.
+                                    eprintln!("Warning: Binding failed for projection expression {:?}: {:?}. Using placeholder.", expr_ast, bind_err);
+                                    // This fallback is problematic as QueryPlanNode::Project now expects BoundExpression.
+                                    // We MUST successfully bind. If not, it's an error.
+                                    return Err(OxidbError::Binding(format!("Failed to bind projection expression: {:?}, error: {:?}", expr_ast, bind_err)));
+                                }
+                            }
+                        }
+                        AstSqlSelectColumn::Asterisk => {
+                            // TODO: Expand asterisk. This requires knowing the schema of the input to the project node.
+                            // This also implies the binder needs the correct schema.
+                            // For now, this will be an error if not handled before here.
+                            return Err(OxidbError::NotImplemented {
+                                feature: "Asterisk expansion in Optimizer::build_initial_plan. Input schema needed.".to_string(),
+                            });
+                        }
+                    }
+                }
+
+                if projection_expressions.is_empty() && !select_ast.columns.iter().any(|c| matches!(c, AstSqlSelectColumn::Asterisk)) {
+                     return Err(OxidbError::SqlParsing(
+                        "SELECT statement with no columns specified and no asterisk.".to_string(),
+                    ));
+                }
+
+
                 plan_node = QueryPlanNode::Project {
                     input: Box::new(plan_node),
-            columns: projection_columns, // Still Vec<String>, but strings are now more representative
+                    expressions: projection_expressions,
                 };
 
                 Ok(plan_node)
@@ -501,7 +549,7 @@ pub enum QueryPlanNode {
     },
     Project {
         input: Box<QueryPlanNode>,
-        columns: Vec<String>,
+        expressions: Vec<crate::core::query::binder::expression::BoundExpression>, // Changed
     },
     NestedLoopJoin {
         left: Box<QueryPlanNode>,
