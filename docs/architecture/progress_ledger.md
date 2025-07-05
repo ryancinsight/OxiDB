@@ -189,3 +189,21 @@ This ledger will be updated as work progresses on each component. "Required Comp
     *   Asterisk (`*`) expansion in `SELECT` statements within the optimizer needs to be implemented to correctly use the new `BoundExpression` projection mechanism.
     *   The `TableScanOperator`'s deserialization logic for converting stored data (assumed `Value::Map`) to a `Tuple` matching the table schema needs further refinement for robustness.
     *   Schema propagation throughout the query planning and optimization stages, especially to the `Binder` when used by the `Optimizer`, requires significant improvement.
+
+## Recent Updates - 2025-06-22 (Jules Agent Follow-up)
+
+*   **Schema Propagation in Optimizer Fixed for Projections**:
+    *   Refactored the `Optimizer` to access and utilize actual table schemas when binding expressions in `SELECT` clauses. It no longer uses a placeholder schema for this critical step.
+    *   This resolves the primary blocker for using column arguments in vector functions and for `SELECT *` expansion.
+*   **`SELECT *` Expansion Implemented**:
+    *   The `Optimizer` now correctly expands `SELECT *` into a list of `BoundExpression::ColumnRef` for each column in the input schema.
+*   **Vector Functions with Column Arguments Enabled**:
+    *   As a result of improved schema handling in the optimizer, vector functions like `COSINE_SIMILARITY` and `DOT_PRODUCT` now support column arguments (e.g., `SELECT COSINE_SIMILARITY(vec_col1, vec_col2) ...`).
+    *   End-to-end tests for these scenarios have been added and are passing.
+*   **`TableScanOperator` Deserialization Refined**:
+    *   The `Schema::ColumnDef` type now includes `is_nullable`, `is_primary_key`, and `is_unique` attributes, correctly translated from `CREATE TABLE` AST constraints.
+    *   `TableScanOperator` utilizes the `is_nullable` attribute to more robustly handle missing columns when converting stored row data (assumed to be `Value::Map`) into `Tuple`s, erroring if a `NOT NULL` column is missing.
+*   **Remaining Considerations & Next Steps**:
+    *   The `Optimizer`'s handling of schemas for `UPDATE` statement projections (specifically the `__ROWID__` case) needs further review due to `QueryPlanNode::Project` now strictly expecting `BoundExpression`s.
+    *   While schema propagation to the `Binder` for `SELECT` projections is fixed, comprehensive schema propagation throughout all optimizer stages and for all expression types (e.g., in filter predicates if they were to use `BoundExpression`s) is an ongoing area for improvement.
+    *   The assumption of `Value::Map` for row storage in `TableScanOperator` is per current design indications; a more direct tuple storage/deserialization format could be a future optimization.

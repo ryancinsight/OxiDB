@@ -22,9 +22,14 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     ) -> Result<Box<dyn ExecutionOperator + Send + Sync>, OxidbError> {
         match plan {
             QueryPlanNode::TableScan { table_name, alias: _ } => {
+                // Fetch the schema for the table
+                let table_schema_arc = self.get_table_schema(&table_name)?
+                    .ok_or_else(|| OxidbError::Execution(format!("Table '{}' not found during planning TableScan.", table_name)))?;
+
                 let operator = TableScanOperator::new(
                     self.store.clone(),
-                    table_name,
+                    table_name, // table_name is already String
+                    table_schema_arc, // Pass the fetched schema
                     snapshot_id,
                     committed_ids.clone(),
                 );

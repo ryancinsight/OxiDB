@@ -88,7 +88,7 @@ impl<S: KeyValueStore<Key, Vec<u8>> + Send + Sync + 'static> ExecutionOperator f
                                     // or it's a nullable column. Pushing Null if missing.
                                     // This behavior should be more robust.
                                     // If a column is NOT NULL and missing, it's an error.
-                                    if col_def.is_nullable.unwrap_or(true) { // Assuming a new is_nullable field or default
+                                    if col_def.is_nullable {
                                          tuple_values.push(Value::Null);
                                     } else {
                                         conversion_ok = false;

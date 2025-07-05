@@ -18,7 +18,7 @@ pub mod utils;
 use crate::core::common::types::TransactionId; // Ensure TransactionId is imported
 use crate::core::common::OxidbError;
 use crate::core::indexing::manager::IndexManager;
-use crate::core::optimizer::Optimizer;
+use crate::core::optimizer::Optimizer; // Optimizer is now generic
 use crate::core::storage::engine::traits::KeyValueStore;
 use crate::core::storage::engine::SimpleFileKvStore;
 use crate::core::transaction::lock_manager::LockManager;
@@ -53,7 +53,7 @@ pub struct QueryExecutor<S: KeyValueStore<Vec<u8>, Vec<u8>>> {
     /// Manages indexes for efficient data retrieval.
     pub(crate) index_manager: Arc<RwLock<IndexManager>>,
     /// Optimizes query plans for more efficient execution.
-    pub(crate) optimizer: Optimizer,
+    pub(crate) optimizer: Optimizer<S>, // Optimizer is now generic over S
     /// Manages the write-ahead log for durability.
     pub(crate) log_manager: Arc<LogManager>,
 }

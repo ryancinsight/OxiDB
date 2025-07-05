@@ -374,11 +374,12 @@ pub fn apply_constant_folding_rule(plan: QueryPlanNode) -> QueryPlanNode {
             let folded_predicate = fold_expression(predicate);
             QueryPlanNode::Filter { input: new_input, predicate: folded_predicate }
         }
-        QueryPlanNode::Project { input, columns } => {
-            // If columns could contain expressions in the future, they should be folded here.
-            // For now, columns are just names (Vec<String>).
+        QueryPlanNode::Project { input, expressions } => { // Changed columns to expressions
+            // expressions are Vec<BoundExpression>. Constant folding on these
+            // would require a new function `fold_bound_expression` or conversion.
+            // For now, just recurse on input and pass expressions through.
             let new_input = Box::new(apply_constant_folding_rule(*input));
-            QueryPlanNode::Project { input: new_input, columns }
+            QueryPlanNode::Project { input: new_input, expressions } // Changed columns to expressions
         }
         QueryPlanNode::NestedLoopJoin { left, right, join_predicate } => {
             // If join_predicate were an Expression, it would be folded here.

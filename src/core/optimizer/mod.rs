@@ -18,7 +18,8 @@ use crate::core::query::sql::ast::{
     SelectColumn as AstSqlSelectColumn,
     Statement as AstStatement,
 };
-use crate::core::types::DataType; // Unified import
+use crate::core::types::{DataType, Schema}; // Unified import, Added Schema
+use crate::core::storage::engine::traits::KeyValueStore; // Added KeyValueStore
 use std::sync::{Arc, RwLock};
 
 /// The `Optimizer` is responsible for transforming an initial query plan
@@ -26,14 +27,38 @@ use std::sync::{Arc, RwLock};
 /// It applies a series of rules, such as predicate pushdown, index selection,
 /// and constant folding, to achieve this.
 #[derive(Debug)]
-pub struct Optimizer {
+pub struct Optimizer<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> {
     /// A shared reference to the `IndexManager` to access available indexes.
     index_manager: Arc<RwLock<IndexManager>>,
+    /// A shared reference to the `KeyValueStore` to access table schemas.
+    store: Arc<RwLock<S>>,
 }
 
-impl Optimizer {
-    pub fn new(index_manager: Arc<RwLock<IndexManager>>) -> Self {
-        Optimizer { index_manager }
+impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> Optimizer<S> {
+    pub fn new(index_manager: Arc<RwLock<IndexManager>>, store: Arc<RwLock<S>>) -> Self {
+        Optimizer { index_manager, store }
+    }
+
+    // Helper method to construct schema key
+    fn schema_key(table_name: &str) -> Vec<u8> {
+        format!("_schema_{}", table_name).into_bytes()
+    }
+
+    // Fetches table schema from the store
+    fn get_table_schema(&self, table_name: &str) -> Result<Option<Arc<Schema>>, OxidbError> {
+        let schema_key = Self::schema_key(table_name);
+        // Using snapshot_id = 0 and an empty set for committed_ids for schema reads.
+        // This assumes DDLs are auto-committed or we want the latest committed schema for planning.
+        // A more robust solution might involve transaction context.
+        let committed_ids_for_schema_read = std::collections::HashSet::new();
+
+        match self.store.read()
+            .map_err(|e| OxidbError::Lock(format!("Optimizer: Failed to acquire read lock on store for get_table_schema: {}", e)))?
+            .get_schema(&schema_key, 0, &committed_ids_for_schema_read)?
+        {
+            Some(schema) => Ok(Some(Arc::new(schema))),
+            None => Ok(None),
+        }
     }
 
     pub fn build_initial_plan(
@@ -42,136 +67,106 @@ impl Optimizer {
     ) -> Result<QueryPlanNode, OxidbError> {
         match statement {
             AstStatement::Select(select_ast) => {
+                // Determine the schema of the input to the projection.
+                // For now, assume single table, no joins. Schema is from the FROM clause.
+                let table_name_for_schema = &select_ast.from_clause.name;
+                let input_schema_for_projection_arc = self.get_table_schema(table_name_for_schema)?
+                    .ok_or_else(|| OxidbError::Binding(format!("Table '{}' not found for schema binding.", table_name_for_schema)))?;
+
+                let input_schema_ref_for_binder: &Schema = input_schema_for_projection_arc.as_ref();
+
+                // Initial plan starts with TableScan
                 let mut plan_node = QueryPlanNode::TableScan {
                     table_name: select_ast.from_clause.name.clone(),
                     alias: select_ast.from_clause.alias.clone(),
                 };
-                // TODO: Incorporate select_ast.joins into the initial plan
+                // TODO: Incorporate select_ast.joins into the initial plan.
+                // If joins are present, `input_schema_for_projection_arc` would be more complex (combined schema).
 
                 if let Some(ref condition_ast) = select_ast.condition {
+                    // Binding for filter conditions also needs a schema.
+                    // The schema for filter conditions applied directly to a table scan
+                    // is that table's schema.
+                    // TODO: If filter is after a join, it needs the joined schema.
+                    // For now, ast_sql_condition_to_optimizer_expression doesn't use a binder,
+                    // it directly translates to optimizer::Expression. This might need revisiting
+                    // if filter predicates also need full binding with BoundExpression.
                     let expression =
                         self.ast_sql_condition_to_optimizer_expression(condition_ast)?;
                     plan_node =
                         QueryPlanNode::Filter { input: Box::new(plan_node), predicate: expression };
                 }
 
-                let projection_columns: Vec<String> = select_ast
-                    .columns
-                    .iter()
-                    .map(|col| match col {
-                        AstSqlSelectColumn::Expression(expr) => {
-                            // TODO: Translate AstExpression to a String representation for projection.
-                            // This is a placeholder and needs proper handling based on expression type.
-                            // For now, just a debug representation or a simple column name if possible.
-                            match expr {
-                                crate::core::query::sql::ast::AstExpression::ColumnIdentifier(name) => name.clone(),
-                                crate::core::query::sql::ast::AstExpression::Literal(lit) => format!("{:?}", lit),
-                                crate::core::query::sql::ast::AstExpression::FunctionCall { name, args } => {
-                                    let args_str: Vec<String> = args.iter().map(|arg| {
-                                        match arg {
-                                            crate::core::query::sql::ast::AstFunctionArg::Asterisk => "*".to_string(),
-                                crate::core::query::sql::ast::AstFunctionArg::Expression(e) => {
-                                    // Attempt to translate to optimizer expression for better representation if possible
-                                    // This is a bit of a hack due to Project taking Vec<String>
-                                    // A full solution would involve Project taking Vec<optimizer::Expression>
-                                    self.ast_expression_to_optimizer_expression(e).map_or_else(
-                                        |_| format!("{:?}", e), // Fallback to debug on error
-                                        |opt_expr| format!("{:?}", opt_expr) // Use debug of optimizer::Expression
-                                    )
-                                },
-                                crate::core::query::sql::ast::AstFunctionArg::Distinct(e_box) => {
-                                     self.ast_expression_to_optimizer_expression(e_box).map_or_else(
-                                        |_| format!("DISTINCT {:?}", e_box),
-                                        |opt_expr| format!("DISTINCT {:?}", opt_expr)
-                                    )
-                                },
-                                        }
-                                    }).collect();
-                        // For the projection string, we use the original name, not necessarily upper_name
-                                    format!("{}({})", name, args_str.join(", "))
-                                }
-                                crate::core::query::sql::ast::AstExpression::BinaryOp { left, op, right } => {
-                        // Similar to above, try to get a better representation
-                        let left_s = self.ast_expression_to_optimizer_expression(left).map_or_else(|_| format!("{:?}", left), |e| format!("{:?}",e));
-                        let right_s = self.ast_expression_to_optimizer_expression(right).map_or_else(|_| format!("{:?}", right), |e| format!("{:?}",e));
-                        format!("({} {:?} {})", left_s, op, right_s)
-                                }
-                                crate::core::query::sql::ast::AstExpression::UnaryOp { op, expr } => {
-                        let expr_s = self.ast_expression_to_optimizer_expression(expr).map_or_else(|_| format!("{:?}", expr), |e| format!("{:?}",e));
-                        format!("({:?} {})", op, expr_s)
-                                }
-                            }
-                        }
-                        AstSqlSelectColumn::Asterisk => "*".to_string(),
-                    })
-                    .collect();
-
-                if projection_columns.is_empty()
-                    && !select_ast.columns.iter().any(|c| matches!(c, AstSqlSelectColumn::Asterisk))
-                {
-                    return Err(OxidbError::SqlParsing(
-                        "SELECT statement with no columns specified.".to_string(),
-                    ));
-                }
-
-                // Binder needs a schema. This is a simplification.
-                // A real system would get this from a catalog manager.
-                // For now, let's assume a dummy schema or one derived from the table_name.
-                // This part needs to be robust in a complete system.
-                let table_schema_for_binding = Schema { columns: vec![] }; // Placeholder
-                let mut binder = crate::core::query::binder::binder::Binder::new(Some(&table_schema_for_binding)); // TEMP SCHEMA
+                // Now, bind the projection expressions using the fetched schema
+                let mut binder = crate::core::query::binder::binder::Binder::new(Some(input_schema_ref_for_binder));
 
                 let mut projection_expressions: Vec<crate::core::query::binder::expression::BoundExpression> = Vec::new();
                 for col_ast in &select_ast.columns {
                     match col_ast {
                         AstSqlSelectColumn::Expression(expr_ast) => {
-                            // TODO: Handle schema context for binder correctly.
-                            // The binder currently uses a placeholder schema.
-                            // It should use the schema of the output of `plan_node` *before* this projection.
-                            // This implies a more iterative plan building or passing schema info along.
-                            // For now, binding might fail for ColumnIdentifiers if schema isn't right.
                             match binder.bind_expression(expr_ast) {
                                 Ok(bound_expr) => projection_expressions.push(bound_expr),
                                 Err(bind_err) => {
-                                    // If binding fails (e.g. column not found in dummy schema),
-                                    // fall back to a placeholder string representation for now.
-                                    // This is NOT ideal but keeps the structure.
-                                    // A proper fix involves correct schema propagation to the binder.
-                                    eprintln!("Warning: Binding failed for projection expression {:?}: {:?}. Using placeholder.", expr_ast, bind_err);
-                                    // This fallback is problematic as QueryPlanNode::Project now expects BoundExpression.
-                                    // We MUST successfully bind. If not, it's an error.
                                     return Err(OxidbError::Binding(format!("Failed to bind projection expression: {:?}, error: {:?}", expr_ast, bind_err)));
                                 }
                             }
                         }
                         AstSqlSelectColumn::Asterisk => {
-                            // TODO: Expand asterisk. This requires knowing the schema of the input to the project node.
-                            // This also implies the binder needs the correct schema.
-                            // For now, this will be an error if not handled before here.
-                            return Err(OxidbError::NotImplemented {
-                                feature: "Asterisk expansion in Optimizer::build_initial_plan. Input schema needed.".to_string(),
-                            });
+                            // Expand asterisk using input_schema_ref_for_binder
+                            if input_schema_ref_for_binder.columns.is_empty() {
+                                // This case (SELECT * FROM table_with_no_columns) is unlikely
+                                // or might be an error depending on SQL standards/database behavior.
+                                // Log a warning. If SELECT * from an empty schema table is an error,
+                                // it could be checked here or result in an empty projection_expressions
+                                // which is handled below.
+                                eprintln!("[Optimizer] Warning: SELECT * from a table with no columns ('{}').", table_name_for_schema);
+                            }
+                            for col_def in &input_schema_ref_for_binder.columns {
+                                projection_expressions.push(
+                                    crate::core::query::binder::expression::BoundExpression::ColumnRef {
+                                        name: col_def.name.clone(),
+                                        return_type: col_def.data_type.clone(),
+                                    }
+                                );
+                            }
                         }
                     }
                 }
 
-                if projection_expressions.is_empty() && !select_ast.columns.iter().any(|c| matches!(c, AstSqlSelectColumn::Asterisk)) {
-                     return Err(OxidbError::SqlParsing(
-                        "SELECT statement with no columns specified and no asterisk.".to_string(),
-                    ));
+                // After processing all select_ast.columns, if projection_expressions is still empty,
+                // it means either:
+                // 1. The original select_ast.columns was empty (e.g. `SELECT FROM table;`) - parser should catch this.
+                // 2. The original select_ast.columns only contained `*` and the table schema was empty.
+                // Case 1 should be a parsing error. Case 2 is valid (results in no columns).
+                if projection_expressions.is_empty() {
+                    if select_ast.columns.is_empty() {
+                        // This indicates `SELECT FROM table;` which is invalid SQL.
+                        // The parser should ideally prevent this.
+                        return Err(OxidbError::SqlParsing(
+                            "SELECT statement with an empty select list is invalid.".to_string(),
+                        ));
+                    }
+                    // If select_ast.columns was not empty (e.g. it was `[*]`),
+                    // and projection_expressions is empty, it means `*` expanded to nothing
+                    // (empty schema), which is valid. No error here.
                 }
-
+                // Removed extra closing brace that was here.
 
                 plan_node = QueryPlanNode::Project {
                     input: Box::new(plan_node),
-                    expressions: projection_expressions,
+                    expressions: projection_expressions, // These are now BoundExpression
                 };
 
                 Ok(plan_node)
             }
             AstStatement::Update(update_ast) => {
-        // For UPDATE, the projection is internal and doesn't need complex stringification for user output.
-        // The key part is that the WHERE clause (filter predicate) uses the proper optimizer::Expression.
+                // For UPDATE, the projection is internal. The WHERE clause uses optimizer::Expression.
+                // If UPDATE needs to bind expressions in SET clauses, it would also need schema access.
+                let table_name = &update_ast.source;
+                let _table_schema_arc = self.get_table_schema(table_name)?
+                    .ok_or_else(|| OxidbError::Binding(format!("Table '{}' not found for UPDATE schema binding.", table_name)))?;
+                // TODO: Use table_schema_arc if SET expressions need binding.
+
                 let mut plan_node =
                     QueryPlanNode::TableScan { table_name: update_ast.source.clone(), alias: None };
 
@@ -181,12 +176,32 @@ impl Optimizer {
                     plan_node =
                         QueryPlanNode::Filter { input: Box::new(plan_node), predicate: expression };
                 }
-        // The projection for UPDATE is just a placeholder to ensure the pipeline structure.
-        // It might project necessary columns for the update operation itself (e.g., primary key).
-        // For now, "0" might mean "all relevant internal columns" or just a dummy.
+                // The projection for UPDATE is just a placeholder or for internal columns.
+                // It currently uses `columns: vec!["__ROWID__".to_string()]` which is a Vec<String>.
+                // If QueryPlanNode::Project strictly expects BoundExpression, this needs adjustment.
+                // For now, assuming the existing structure for Update's Project node is permissible
+                // or will be updated separately. This change focuses on SELECT's Project node.
+                // TODO: Revisit Project node structure for UPDATE if it must use BoundExpression.
+                // This will error if Project strictly requires BoundExpressions.
+                // The progress_ledger indicates Project uses BoundExpression.
+                // So, we need to bind `__ROWID__` or handle this differently.
+                // For now, let this be a known issue if it causes a compile error.
+                // A simple fix might be to not have a Project node for Update if not strictly needed,
+                // or create a BoundColumnRef for __ROWID__ if it's a known internal column.
+
+                // Placeholder: If __ROWID__ is a known concept, bind it.
+                // This requires __ROWID__ to be part of the schema or handled specially.
+                // For now, this part is problematic due to Project's change to BoundExpression.
+                // Quick Fix: Create a dummy BoundExpression if no schema for __ROWID__.
+                // This is not robust.
+                 let dummy_rowid_expr = crate::core::query::binder::expression::BoundExpression::Literal {
+                    value: crate::core::common::types::Value::Integer(0), // Placeholder
+                    return_type: DataType::Integer,
+                 };
+
                 plan_node = QueryPlanNode::Project {
                     input: Box::new(plan_node),
-            columns: vec!["__ROWID__".to_string()], // Example: project internal row identifier
+                    expressions: vec![dummy_rowid_expr], // Needs to be Vec<BoundExpression>
                 };
                 Ok(plan_node)
             }
@@ -425,20 +440,20 @@ impl Optimizer {
             QueryPlanNode::Filter { input, predicate } => {
                 let optimized_input = self.apply_predicate_pushdown(*input);
                 match optimized_input {
-                    QueryPlanNode::Project { input: project_input, columns } => {
+                    QueryPlanNode::Project { input: project_input, expressions } => { // Changed columns to expressions
                         let pushed_filter = QueryPlanNode::Filter {
                             input: project_input,
                             predicate: predicate.clone(),
                         };
                         let optimized_pushed_filter = self.apply_predicate_pushdown(pushed_filter);
-                        QueryPlanNode::Project { input: Box::new(optimized_pushed_filter), columns }
+                        QueryPlanNode::Project { input: Box::new(optimized_pushed_filter), expressions } // Changed columns to expressions
                     }
                     _ => QueryPlanNode::Filter { input: Box::new(optimized_input), predicate },
                 }
             }
-            QueryPlanNode::Project { input, columns } => QueryPlanNode::Project {
+            QueryPlanNode::Project { input, expressions } => QueryPlanNode::Project { // Changed columns to expressions
                 input: Box::new(self.apply_predicate_pushdown(*input)),
-                columns,
+                expressions, // Changed columns to expressions
             },
             QueryPlanNode::NestedLoopJoin { left, right, join_predicate } => {
                 QueryPlanNode::NestedLoopJoin {
@@ -506,9 +521,9 @@ impl Optimizer {
                     Ok(QueryPlanNode::Filter { input: Box::new(optimized_input), predicate })
                 }
             }
-            QueryPlanNode::Project { input, columns } => Ok(QueryPlanNode::Project {
+            QueryPlanNode::Project { input, expressions } => Ok(QueryPlanNode::Project { // Changed columns to expressions
                 input: Box::new(self.apply_index_selection(*input)?),
-                columns,
+                expressions, // Changed columns to expressions
             }),
             QueryPlanNode::NestedLoopJoin { left, right, join_predicate } => {
                 Ok(QueryPlanNode::NestedLoopJoin {

@@ -328,6 +328,32 @@ fn test_constraint_update_violating_unique() {
     .unwrap();
     db.execute_query_str("INSERT INTO services_uq (id, service_name) VALUES (1, 'Basic');")
         .unwrap();
+
+    // Test vector functions with literal arguments (from progress_ledger.md)
+    let result_cosine_lit = db.execute_query_str("SELECT COSINE_SIMILARITY([1.0, 2.0], [2.0, 4.0]);").unwrap();
+    if let QueryResult::Select { rows, schema: _ } = result_cosine_lit {
+        let row = rows.into_iter().next().unwrap().unwrap();
+        if let Value::Float64(val) = row.values[0] {
+            assert!((val - 1.0).abs() < 1e-6, "Expected 1.0, got {}", val);
+        } else {
+            panic!("Expected Float64 result for COSINE_SIMILARITY literal test");
+        }
+    } else {
+        panic!("Expected Select result for COSINE_SIMILARITY literal test");
+    }
+
+    let result_dot_lit = db.execute_query_str("SELECT DOT_PRODUCT([1.0, 2.0, 3.0], [0.5, 1.0, 0.5]);").unwrap(); // 0.5 + 2.0 + 1.5 = 4.0
+     if let QueryResult::Select { rows, schema: _ } = result_dot_lit {
+        let row = rows.into_iter().next().unwrap().unwrap();
+        if let Value::Float64(val) = row.values[0] {
+            assert!((val - 4.0).abs() < 1e-6, "Expected 4.0, got {}", val);
+        } else {
+            panic!("Expected Float64 result for DOT_PRODUCT literal test");
+        }
+    } else {
+        panic!("Expected Select result for DOT_PRODUCT literal test");
+    }
+
     db.execute_query_str("INSERT INTO services_uq (id, service_name) VALUES (2, 'Premium');")
         .unwrap();
 
@@ -1108,4 +1134,75 @@ fn test_execute_query_str_vector_function_dimension_mismatch_error_runtime() {
         Ok(res) => panic!("Expected Binding or Execution error for literal dimension mismatch, got Ok({:?})", res),
         other_err => panic!("Expected Binding or Execution error, got {:?}", other_err),
     }
+}
+
+#[test]
+fn test_vector_functions_with_column_args() {
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let data_dir = temp_dir.path().join("vector_col_args_db");
+    let mut db = Oxidb::new(&data_dir).unwrap();
+
+    db.execute_query_str("CREATE TABLE vector_items (id INT, vec1 VECTOR[3], vec2 VECTOR[3]);").unwrap();
+    db.execute_query_str("INSERT INTO vector_items VALUES (1, [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);").unwrap(); // Orthogonal, cos_sim = 0
+    db.execute_query_str("INSERT INTO vector_items VALUES (2, [1.0, 2.0, 3.0], [2.0, 4.0, 6.0]);").unwrap(); // Collinear, cos_sim = 1, dot = 28
+    db.execute_query_str("INSERT INTO vector_items VALUES (3, [1.0, 1.0, 1.0], [1.0, 1.0, 0.0]);").unwrap(); // General: dot=2. cos_sim = 2/(sqrt(3)*sqrt(2)) = 2/sqrt(6) = 0.816496
+
+    // Test 1: COSINE_SIMILARITY(column, literal)
+    // For id=1, vec1 is [1,0,0]. Literal is [1,0,0]. Cosine similarity should be 1.0.
+    let result_cos_col_lit = db.execute_query_str("SELECT COSINE_SIMILARITY(vec1, [1.0, 0.0, 0.0]) FROM vector_items WHERE id = 1;").unwrap();
+    if let ExecutionResult::ResultSet { rows, .. } = result_cos_col_lit {
+        let row_values = rows.into_iter().next().unwrap(); // Assuming single row result
+        if let DataType::Float64(val) = row_values[0] { // Assuming result is single column
+            assert!((val - 1.0).abs() < 1e-6, "COS_COL_LIT: Expected 1.0, got {}", val);
+        } else {
+            panic!("COS_COL_LIT: Expected Float64 result, got {:?}", row_values[0]);
+        }
+    } else {
+        panic!("COS_COL_LIT: Expected ResultSet result, got {:?}", result_cos_col_lit);
+    }
+
+    // Test 2: DOT_PRODUCT(column, column) for id = 2
+    // vec1 = [1,2,3], vec2 = [2,4,6]. Dot product = 1*2 + 2*4 + 3*6 = 2 + 8 + 18 = 28
+    let result_dot_col_col = db.execute_query_str("SELECT DOT_PRODUCT(vec1, vec2) FROM vector_items WHERE id = 2;").unwrap();
+    if let ExecutionResult::ResultSet { rows, .. } = result_dot_col_col {
+        let row_values = rows.into_iter().next().unwrap();
+        if let DataType::Float64(val) = row_values[0] {
+            assert!((val - 28.0).abs() < 1e-6, "DOT_COL_COL: Expected 28.0, got {}", val);
+        } else {
+            panic!("DOT_COL_COL: Expected Float64 result, got {:?}", row_values[0]);
+        }
+    } else {
+        panic!("DOT_COL_COL: Expected ResultSet result, got {:?}", result_dot_col_col);
+    }
+
+    // Test 3: COSINE_SIMILARITY(column, column) - orthogonal case for id = 1
+    // vec1 = [1,0,0], vec2 = [0,1,0]. Cosine similarity = 0
+    let result_cos_col_col_ortho = db.execute_query_str("SELECT COSINE_SIMILARITY(vec1, vec2) FROM vector_items WHERE id = 1;").unwrap();
+    if let ExecutionResult::ResultSet { rows, .. } = result_cos_col_col_ortho {
+        let row_values = rows.into_iter().next().unwrap();
+        if let DataType::Float64(val) = row_values[0] {
+            assert!((val - 0.0).abs() < 1e-6, "COS_COL_COL_ORTHO: Expected 0.0, got {}", val);
+        } else {
+            panic!("COS_COL_COL_ORTHO: Expected Float64 result, got {:?}", row_values[0]);
+        }
+    } else {
+        panic!("COS_COL_COL_ORTHO: Expected ResultSet result, got {:?}", result_cos_col_col_ortho);
+    }
+
+    // Test 4: COSINE_SIMILARITY(column, column) - general case for id = 3
+    // vec1 = [1,1,1], vec2 = [1,1,0]. Cosine similarity = 2 / (sqrt(3) * sqrt(2)) approx 0.816496
+    let result_cos_col_col_general = db.execute_query_str("SELECT COSINE_SIMILARITY(vec1, vec2) FROM vector_items WHERE id = 3;").unwrap();
+    if let ExecutionResult::ResultSet { rows, .. } = result_cos_col_col_general {
+        let row_values = rows.into_iter().next().unwrap();
+        if let DataType::Float64(val) = row_values[0] {
+            assert!((val - 0.81649658).abs() < 1e-6, "COS_COL_COL_GENERAL: Expected ~0.816497, got {}", val);
+        } else {
+            panic!("COS_COL_COL_GENERAL: Expected Float64 result, got {:?}", row_values[0]);
+        }
+    } else {
+        panic!("COS_COL_COL_GENERAL: Expected ResultSet result, got {:?}", result_cos_col_col_general);
+    }
+
+    // Clean up
+    std::fs::remove_dir_all(&data_dir).unwrap();
 }

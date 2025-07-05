@@ -4,6 +4,9 @@ use super::data_type::DataType;
 pub struct ColumnDef {
     pub name: String,
     pub data_type: DataType,
+    pub is_nullable: bool,
+    pub is_primary_key: bool,
+    pub is_unique: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
