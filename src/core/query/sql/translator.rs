@@ -168,8 +168,16 @@ fn translate_order_by_expr(
         Some(ast::OrderDirection::Desc) => Some(commands::SqlOrderDirection::Desc),
         None => None,
     };
+
+    // Attempt to simplify or stringify the AstExpression for the command layer
+    let expr_str = match &ast_expr.expression {
+        ast::AstExpression::ColumnIdentifier(name) => name.clone(),
+        // TODO: More robust stringification or structured representation if command layer evolves
+        _ => format!("{:?}", ast_expr.expression), // Fallback to debug string
+    };
+
     Ok(commands::SqlOrderByExpr {
-        expression: ast_expr.expression.clone(), // Assuming expression is a String (column name for now)
+        expression: expr_str,
         direction,
     })
 }
@@ -243,29 +251,104 @@ fn translate_literal(literal: &ast::AstLiteralValue) -> Result<DataType, OxidbEr
     }
 }
 
-// Renamed and updated to translate ConditionTree
+// Helper to attempt to simplify an AstExpression to a simple column name string
+fn try_ast_expression_to_column_name(ast_expr: &ast::AstExpression) -> Option<String> {
+    if let ast::AstExpression::ColumnIdentifier(name) = ast_expr {
+        Some(name.clone())
+    } else {
+        None // Cannot simplify to a simple column name
+    }
+}
+
+// Helper to attempt to simplify an AstExpression to a DataType literal
+fn try_ast_expression_to_datatype_literal(ast_expr: &ast::AstExpression) -> Result<Option<DataType>, OxidbError> {
+    if let ast::AstExpression::Literal(literal_val) = ast_expr {
+        translate_literal(literal_val).map(Some)
+    } else {
+        Ok(None) // Not a simple literal
+    }
+}
+
+
+// Updated to translate ConditionTree with new AstExpression fields
 fn translate_condition_tree_to_sql_condition_tree(
     ast_tree: &ast::ConditionTree,
 ) -> Result<commands::SqlConditionTree, OxidbError> {
     match ast_tree {
-        ast::ConditionTree::Comparison(ast_cond) => {
-            let value = match &ast_cond.value {
-                ast::AstExpressionValue::Literal(literal_val) => translate_literal(literal_val)?,
-                ast::AstExpressionValue::ColumnIdentifier(col_name) => {
-                    // TODO: This would be a column-to-column comparison.
-                    // For now, SqlSimpleCondition only supports column-to-literal.
-                    // This could be an error or a different command variant if supported.
-                    return Err(OxidbError::SqlParsing(format!(
-                        "Column-to-column comparison ('{} {} {}') is not yet supported in conditions.",
-                        ast_cond.column, ast_cond.operator, col_name
-                    )));
-                }
+        ast::ConditionTree::Comparison(ast_condition) => { // ast_condition is now ast::Condition
+            let op_str = match ast_condition.operator {
+                ast::AstComparisonOperator::Equals => "=".to_string(),
+                ast::AstComparisonOperator::NotEquals => "!=".to_string(), // Assuming translator uses != for NotEquals
+                ast::AstComparisonOperator::LessThan => "<".to_string(),
+                ast::AstComparisonOperator::LessThanOrEquals => "<=".to_string(),
+                ast::AstComparisonOperator::GreaterThan => ">".to_string(),
+                ast::AstComparisonOperator::GreaterThanOrEquals => ">=".to_string(),
+                ast::AstComparisonOperator::IsNull => "IS NULL".to_string(),
+                ast::AstComparisonOperator::IsNotNull => "IS NOT NULL".to_string(),
             };
-            Ok(commands::SqlConditionTree::Comparison(commands::SqlSimpleCondition {
-                column: ast_cond.column.clone(),
-                operator: ast_cond.operator.clone(),
-                value,
-            }))
+
+            // For SqlSimpleCondition, we need a column name on one side and a literal on the other.
+            // Handle IS NULL / IS NOT NULL first
+            if ast_condition.operator == ast::AstComparisonOperator::IsNull || ast_condition.operator == ast::AstComparisonOperator::IsNotNull {
+                if let Some(column_name) = try_ast_expression_to_column_name(&ast_condition.left) {
+                    // The 'right' side of IS NULL/IS NOT NULL is AstExpression::Literal(AstLiteralValue::Null) by parser convention
+                    // commands::SqlSimpleCondition expects a DataType value. For "IS NULL", this value is typically DataType::Null.
+                    Ok(commands::SqlConditionTree::Comparison(commands::SqlSimpleCondition {
+                        column: column_name,
+                        operator: op_str,
+                        value: DataType::Null, // This is consistent with how IS NULL is often handled
+                    }))
+                } else {
+                    Err(OxidbError::SqlParsing(format!(
+                        "Left-hand side of {} operator must be a column name.", op_str
+                    )))
+                }
+            } else {
+                // Attempt to make it column <op> literal
+                if let Some(column_name) = try_ast_expression_to_column_name(&ast_condition.left) {
+                    if let Some(literal_value) = try_ast_expression_to_datatype_literal(&ast_condition.right)? {
+                        Ok(commands::SqlConditionTree::Comparison(commands::SqlSimpleCondition {
+                            column: column_name,
+                            operator: op_str,
+                            value: literal_value,
+                        }))
+                    } else {
+                        Err(OxidbError::SqlParsing(format!(
+                            "Right-hand side of comparison for column '{}' must be a literal. Found complex expression: {:?}",
+                            column_name, ast_condition.right
+                        )))
+                    }
+                }
+                // Attempt to make it literal <op> column (and swap)
+                else if let Some(column_name) = try_ast_expression_to_column_name(&ast_condition.right) {
+                    if let Some(literal_value) = try_ast_expression_to_datatype_literal(&ast_condition.left)? {
+                        let reversed_op_str = match ast_condition.operator {
+                            ast::AstComparisonOperator::LessThan => ">".to_string(),
+                            ast::AstComparisonOperator::LessThanOrEquals => ">=".to_string(),
+                            ast::AstComparisonOperator::GreaterThan => "<".to_string(),
+                            ast::AstComparisonOperator::GreaterThanOrEquals => "<=".to_string(),
+                            // Equals and NotEquals are symmetric
+                            _ => op_str,
+                        };
+                        Ok(commands::SqlConditionTree::Comparison(commands::SqlSimpleCondition {
+                            column: column_name,
+                            operator: reversed_op_str,
+                            value: literal_value,
+                        }))
+                    } else {
+                        Err(OxidbError::SqlParsing(format!(
+                            "Left-hand side of comparison with column '{}' must be a literal. Found complex expression: {:?}",
+                            column_name, ast_condition.left
+                        )))
+                    }
+                }
+                // Neither side could be simplified to a column name for SqlSimpleCondition with a literal on the other.
+                else {
+                    Err(OxidbError::SqlParsing(
+                        "Comparison conditions must involve one column name and one literal for current translation capabilities.".to_string()
+                    ))
+                }
+            }
         }
         ast::ConditionTree::And(left_ast, right_ast) => {
             let left_sql = translate_condition_tree_to_sql_condition_tree(left_ast)?;
@@ -287,9 +370,20 @@ fn translate_condition_tree_to_sql_condition_tree(
 fn translate_assignment_to_sql_assignment(
     ast_assignment: &ast::Assignment,
 ) -> Result<commands::SqlAssignment, OxidbError> {
-    // Changed
-    let value = translate_literal(&ast_assignment.value)?;
-    Ok(commands::SqlAssignment { column: ast_assignment.column.clone(), value })
+    // The value in ast::Assignment is now an AstExpression.
+    // commands::SqlAssignment expects a DataType.
+    // We can only translate if the AstExpression is a literal.
+    if let Some(data_type_value) = try_ast_expression_to_datatype_literal(&ast_assignment.value)? {
+        Ok(commands::SqlAssignment {
+            column: ast_assignment.column.clone(),
+            value: data_type_value,
+        })
+    } else {
+        Err(OxidbError::SqlParsing(format!(
+            "Right-hand side of assignment for column '{}' must be a literal for current translation capabilities. Found: {:?}",
+            ast_assignment.column, ast_assignment.value
+        )))
+    }
 }
 
 fn translate_select_columns(ast_columns: Vec<ast::SelectColumn>) -> commands::SelectColumnSpec {
@@ -299,9 +393,32 @@ fn translate_select_columns(ast_columns: Vec<ast::SelectColumn>) -> commands::Se
 
     let specific_columns: Vec<String> = ast_columns
         .into_iter()
-        .filter_map(|col| match col {
-            ast::SelectColumn::ColumnName(name) => Some(name),
-            ast::SelectColumn::Asterisk => None,
+        .filter_map(|col_enum| match col_enum {
+            ast::SelectColumn::Expression(expr) => {
+                // Attempt to stringify the expression for the command layer
+                // This is a simplification; command layer might need richer info later.
+                match expr {
+                    ast::AstExpression::ColumnIdentifier(name) => Some(name),
+                    ast::AstExpression::FunctionCall { name, args } => {
+                        let args_str: Vec<String> = args.iter().map(|arg| {
+                            match arg {
+                                ast::AstFunctionArg::Asterisk => "*".to_string(),
+                                ast::AstFunctionArg::Expression(e) => format!("{:?}", e), // Debug format for now
+                                ast::AstFunctionArg::Distinct(e_box) => format!("DISTINCT {:?}", e_box), // Debug format
+                            }
+                        }).collect();
+                        Some(format!("{}({})", name, args_str.join(", ")))
+                    }
+                    // For other AstExpression types (Literal, BinaryOp, UnaryOp),
+                    // translating them to a single string for SelectColumnSpec::Specific might not be ideal.
+                    // For now, let's return their debug representation or error.
+                    // This part of the translator might need more sophisticated handling if complex expressions
+                    // in SELECT list need to be passed to the command layer in a structured way.
+                    // For now, we'll allow stringification via debug for simplicity in this step.
+                    _ => Some(format!("{:?}", expr)), // Fallback to debug string
+                }
+            }
+            ast::SelectColumn::Asterisk => None, // Asterisk presence handled by the initial check
         })
         .collect();
 
@@ -404,9 +521,9 @@ mod tests {
     #[test]
     fn test_translate_condition_simple_equals() {
         let ast_cond_tree = ast::ConditionTree::Comparison(TestCondition {
-            column: "name".to_string(),
-            operator: "=".to_string(),
-            value: ast::AstExpressionValue::Literal(TestAstLiteralValue::String(
+            left: ast::AstExpression::ColumnIdentifier("name".to_string()),
+            operator: ast::AstComparisonOperator::Equals,
+            right: ast::AstExpression::Literal(TestAstLiteralValue::String(
                 "test_user".to_string(),
             )),
         });
@@ -425,9 +542,9 @@ mod tests {
     #[test]
     fn test_translate_condition_with_numeric_value() {
         let ast_cond_tree = ast::ConditionTree::Comparison(TestCondition {
-            column: "age".to_string(),
-            operator: ">".to_string(),
-            value: ast::AstExpressionValue::Literal(TestAstLiteralValue::Number("30".to_string())),
+            left: ast::AstExpression::ColumnIdentifier("age".to_string()),
+            operator: ast::AstComparisonOperator::GreaterThan,
+            right: ast::AstExpression::Literal(TestAstLiteralValue::Number("30".to_string())),
         });
         let expected_sql_cond_tree =
             commands::SqlConditionTree::Comparison(commands::SqlSimpleCondition {
@@ -445,7 +562,7 @@ mod tests {
     fn test_translate_assignment_string() {
         let ast_assign = TestAssignment {
             column: "email".to_string(),
-            value: TestAstLiteralValue::String("new@example.com".to_string()),
+            value: ast::AstExpression::Literal(TestAstLiteralValue::String("new@example.com".to_string())),
         };
         let expected_sql_assign = commands::SqlAssignment {
             column: "email".to_string(),
@@ -460,7 +577,7 @@ mod tests {
     fn test_translate_assignment_boolean() {
         let ast_assign = TestAssignment {
             column: "is_active".to_string(),
-            value: TestAstLiteralValue::Boolean(true),
+            value: ast::AstExpression::Literal(TestAstLiteralValue::Boolean(true)),
         };
         let expected_sql_assign = commands::SqlAssignment {
             column: "is_active".to_string(),
@@ -480,8 +597,8 @@ mod tests {
     #[test]
     fn test_translate_select_columns_specific() {
         let ast_cols = vec![
-            TestSelectColumn::ColumnName("id".to_string()),
-            TestSelectColumn::ColumnName("name".to_string()),
+            TestSelectColumn::Expression(ast::AstExpression::ColumnIdentifier("id".to_string())),
+            TestSelectColumn::Expression(ast::AstExpression::ColumnIdentifier("name".to_string())),
         ];
         let expected_spec =
             commands::SelectColumnSpec::Specific(vec!["id".to_string(), "name".to_string()]);
@@ -491,14 +608,14 @@ mod tests {
     #[test]
     fn test_translate_select_columns_specific_with_asterisk_first() {
         let ast_cols =
-            vec![TestSelectColumn::Asterisk, TestSelectColumn::ColumnName("id".to_string())];
+            vec![TestSelectColumn::Asterisk, TestSelectColumn::Expression(ast::AstExpression::ColumnIdentifier("id".to_string()))];
         assert_eq!(translate_select_columns(ast_cols), commands::SelectColumnSpec::All);
     }
 
     #[test]
     fn test_translate_select_columns_specific_with_asterisk_last() {
         let ast_cols =
-            vec![TestSelectColumn::ColumnName("id".to_string()), TestSelectColumn::Asterisk];
+            vec![TestSelectColumn::Expression(ast::AstExpression::ColumnIdentifier("id".to_string())), TestSelectColumn::Asterisk];
         assert_eq!(translate_select_columns(ast_cols), commands::SelectColumnSpec::All);
     }
 
@@ -511,6 +628,7 @@ mod tests {
     #[test]
     fn test_translate_ast_select_simple() {
         let ast_stmt = TestStatement::Select(TestSelectStatement {
+            distinct: false, // Added default
             columns: vec![TestSelectColumn::Asterisk],
             from_clause: ast::TableReference {
                 name: "users".to_string(),
@@ -518,6 +636,8 @@ mod tests {
             },
             joins: Vec::new(),
             condition: None,
+            group_by: None, // Added default
+            having: None,   // Added default
             order_by: None, // Added
             limit: None,    // Added
         });
@@ -538,19 +658,22 @@ mod tests {
     #[test]
     fn test_translate_ast_select_with_condition() {
         let ast_stmt = TestStatement::Select(TestSelectStatement {
-            columns: vec![TestSelectColumn::ColumnName("email".to_string())],
-            from_clause: ast::TableReference { // Corrected
+            distinct: false, // Added default
+            columns: vec![TestSelectColumn::Expression(ast::AstExpression::ColumnIdentifier("email".to_string()))],
+            from_clause: ast::TableReference {
                 name: "customers".to_string(),
                 alias: None,
             },
-            joins: Vec::new(), // Corrected
+            joins: Vec::new(),
             condition: Some(ast::ConditionTree::Comparison(TestCondition {
-                column: "id".to_string(),
-                operator: "=".to_string(),
-                value: ast::AstExpressionValue::Literal(TestAstLiteralValue::Number(
+                left: ast::AstExpression::ColumnIdentifier("id".to_string()),
+                operator: ast::AstComparisonOperator::Equals,
+                right: ast::AstExpression::Literal(TestAstLiteralValue::Number(
                     "101".to_string(),
                 )),
             })),
+            group_by: None,
+            having: None,
             order_by: None,
             limit: None,
         });
@@ -583,12 +706,12 @@ mod tests {
             source: "products".to_string(),
             assignments: vec![TestAssignment {
                 column: "price".to_string(),
-                value: TestAstLiteralValue::Number("19.99".to_string()),
+                value: ast::AstExpression::Literal(TestAstLiteralValue::Number("19.99".to_string())),
             }],
             condition: Some(ast::ConditionTree::Comparison(TestCondition {
-                column: "product_id".to_string(),
-                operator: "=".to_string(),
-                value: ast::AstExpressionValue::Literal(TestAstLiteralValue::String(
+                left: ast::AstExpression::ColumnIdentifier("product_id".to_string()),
+                operator: ast::AstComparisonOperator::Equals,
+                right: ast::AstExpression::Literal(TestAstLiteralValue::String(
                     "XYZ123".to_string(),
                 )),
             })),

@@ -140,4 +140,10 @@ impl SqlParser {
             None => Err(SqlParseError::UnexpectedEOF),
         }
     }
+
+    // Placeholder for dialect-specific behavior checks
+    // TODO: Implement this based on actual dialect settings if needed.
+    pub(super) fn dialect_allows_having_without_group_by(&self) -> bool {
+        false // Default to false (standard SQL behavior is often strict)
+    }
 }

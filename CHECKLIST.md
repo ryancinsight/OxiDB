@@ -45,7 +45,7 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
 ## Phase 2: Storage Engine
 
 4.  **Implement the Page Management System:**
-    *   [ ] Design page layout and structure (e.g., header, data area).
+    *   [~] Design page layout and structure (e.g., header, data area). (Core Page/PageHeader structs exist, data area flexible with Vec<u8>)
         *   [x] Subtask: Define structs for page headers and page data. (Created src/core/storage/engine/page.rs with Page, PageHeader, PageType structs and PAGE_SIZE constant. Page.data uses Vec<u8> for now due to serde large array limitations.)
     *   [x] Implement page serialization and deserialization.
         *   [x] Subtask: Write functions to read/write pages from/to disk. (Covered by Page ser/de and DiskManager)
@@ -113,26 +113,32 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
 
 ## Phase 3: Query Processing
 
-7.  **Implement SQL Parser:**
-    *   [ ] Define supported SQL grammar (subset of SQLite).
-        *   [ ] Subtask: Specify supported DDL (CREATE TABLE, DROP TABLE) and DML (SELECT, INSERT, UPDATE, DELETE) statements.
-        *   [ ] Subtask: Document specific clauses and options for each supported DDL/DML statement (e.g., for SELECT: WHERE, LIMIT, ORDER BY; for CREATE TABLE: column types, constraints like NOT NULL, PRIMARY KEY).
-    *   [ ] Choose or implement a parser library (e.g., `sqlparser-rs` or custom).
-        *   [ ] Subtask: Evaluate pros and cons of `sqlparser-rs` vs. a custom recursive descent parser.
-        *   [ ] Subtask: If using a library, integrate it into the project.
-        *   [ ] Subtask: If custom, implement lexer and parser.
-    *   [ ] Convert SQL strings into an Abstract Syntax Tree (AST).
-        *   [ ] Subtask: Define AST node types.
-            *   [ ] Sub-subtask: Define Rust enums/structs for statements (e.g., `Statement::CreateTable`, `Statement::Select`).
-            *   [ ] Sub-subtask: Define Rust enums/structs for expressions, table names, column names, values, etc.
-        *   [ ] Subtask: Write unit tests for parsing various SQL queries.
-            *   [ ] Sub-subtask: Test CREATE TABLE with different column definitions and constraints.
-            *   [ ] Sub-subtask: Test INSERT with various value combinations.
-            *   [ ] Sub-subtask: Test SELECT with different clauses (WHERE, JOIN, GROUP BY, ORDER BY, LIMIT).
-            *   [ ] Sub-subtask: Test UPDATE with WHERE clauses.
-            *   [ ] Sub-subtask: Test DELETE with WHERE clauses.
-            *   [ ] Sub-subtask: Test parsing invalid SQL syntax to ensure proper error reporting.
-    *   [ ] **Validation:** SQL queries are correctly parsed into ASTs.
+7.  **[x] Implement SQL Parser:** (Custom recursive descent parser implemented)
+    *   [~] Define supported SQL grammar (subset of SQLite). (Implicitly defined by current implementation; formal documentation pending)
+        *   [x] Subtask: Implemented DDL: `CREATE TABLE` (with column types: INT, TEXT, BOOL, FLOAT, BLOB, VECTOR[dim]; constraints: NOT NULL, PRIMARY KEY, UNIQUE), `DROP TABLE [IF EXISTS]`.
+        *   [x] Subtask: Implemented DML: `SELECT`, `INSERT`, `UPDATE`, `DELETE`.
+        *   [x] Subtask: `SELECT` clauses: `DISTINCT`, `FROM table [AS alias]`, `JOIN` (INNER, LEFT/RIGHT/FULL OUTER, CROSS) `ON condition`, `WHERE condition`, `GROUP BY expr_list`, `HAVING condition`, `ORDER BY expr [ASC|DESC]`, `LIMIT num`.
+        *   [x] Subtask: `INSERT INTO table [(cols)] VALUES (vals), ...`.
+        *   [x] Subtask: `UPDATE table SET col = expr, ... WHERE condition`.
+        *   [x] Subtask: `DELETE FROM table WHERE condition`.
+    *   [x] Custom recursive descent parser implemented.
+        *   [x] Subtask: Lexer (`Tokenizer`) implemented: handles core SQL tokens, operators, literals, and comments (`--`, `/* */`).
+        *   [x] Subtask: Parser (`SqlParser`) implemented: uses recursive descent for statements and expressions.
+    *   [x] Convert SQL strings into an Abstract Syntax Tree (AST).
+        *   [x] Subtask: Defined AST node types (`sql::ast`):
+            *   [x] Statements: `SelectStatement`, `UpdateStatement`, `CreateTableStatement`, `InsertStatement`, `DeleteStatement`, `DropTableStatement`.
+            *   [x] Expressions: Central `AstExpression` enum (Literal, ColumnIdentifier, FunctionCall, BinaryOp for arithmetic, UnaryOp for +/-). `AstLiteralValue` (String, Number, Bool, Null, Vector). `AstFunctionArg` (Asterisk, Expression, Distinct). `ConditionTree` for boolean logic (AND, OR, NOT, Comparison). `Condition` (left expr, comparison op, right expr).
+            *   [x] Other: `SelectColumn` (Expression, Asterisk), `OrderByExpr`, `Assignment`, `ColumnDef`, `TableReference`, `JoinClause`.
+        *   [x] Subtask: Extensive unit tests for parsing various SQL queries and error conditions.
+            *   [x] Test `CREATE TABLE` (various column definitions, constraints, vector types).
+            *   [x] Test `INSERT` (simple, multiple values, optional columns).
+            *   [x] Test `SELECT` (all major clauses: `DISTINCT`, `JOIN` types, `WHERE` (complex, precedence), `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`).
+            *   [x] Test `SELECT` list items: column names, `*`, aggregate functions (`COUNT(*)`, `COUNT(col)`, `COUNT(DISTINCT col)`, `SUM`, `AVG`, `MIN`, `MAX`), arithmetic expressions (`+,-,*,/` with precedence, parentheses), unary `+/-`.
+            *   [x] Test `UPDATE` (SET with expressions - currently literals, WHERE).
+            *   [x] Test `DELETE` (WHERE).
+            *   [x] Test `DROP TABLE`.
+            *   [x] Test parsing invalid SQL syntax and ensuring proper error reporting.
+    *   [x] **Validation:** SQL queries (for the implemented feature set) are correctly parsed into ASTs, verified by extensive unit tests.
 
 8.  **Implement Query Planner and Optimizer:**
     *   [ ] Convert AST to a logical query plan.
@@ -238,10 +244,14 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
         *   [x] Subtask: The `Vector` type should store a list of floating-point numbers.
         *   [x] Subtask: Implement serialization and deserialization for the `Vector` type (via Serde).
         *   [x] Subtask: Write unit tests for `Vector` type operations (covered by `Value` and `DataType` tests).
+    *   [x] SQL Parser Support for Vector Types and Literals:
+        *   [x] Subtask: Implement parsing for `VECTOR[dimension]` data type in `CREATE TABLE` statements (e.g., `my_col VECTOR[128]`). (Covered by `AstDataType::Vector` and parser logic)
+        *   [x] Subtask: Implement parsing for vector literals in SQL expressions (e.g., `[1.0, 2.0, 3.0]`). (Covered by `AstLiteralValue::Vector` and expression parser)
+        *   [x] Subtask: Write unit tests for parsing `CREATE TABLE` with vector types and queries with vector literals. (Covered in `parser_tests.rs`)
     *   [x] Adapt storage engine to handle `Vector` data (physical storage in DB tables - VERIFIED VIA SERIALIZATION).
         *   [x] Subtask: Ensure `TablePage` and record operations can store and retrieve `Vector` types (verified by testing storage of serialized `Row` containing `Value::Vector`).
         *   [x] Subtask: Write tests for storing and retrieving records with `Vector` data (test `test_insert_and_get_row_with_vector` in `table_page_tests.rs` added).
-    *   [x] **Validation:** `Vector` data type is correctly implemented at the type system level. Physical storage and retrieval of serialized vectors in DB pages is now VERIFIED.
+    *   [x] **Validation:** `Vector` data type is correctly implemented at the type system and SQL parser level. Physical storage and retrieval of serialized vectors in DB pages is now VERIFIED.
 
 11b. **Implement Vector Similarity Search (Core Logic):**
     *   [x] Design and implement functions for basic vector similarity calculations (e.g., cosine similarity, dot product) in a new module `src/core/vector/similarity.rs`.

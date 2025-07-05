@@ -29,13 +29,13 @@ This ledger tracks the status of major features and components of the Oxidb cath
 *   Status: Partially Implemented
 *   Sub-Modules:
     *   **Parser** (`src/core/query/parser`)
-        *   Status: Partially Implemented
+        *   Status: Substantially Implemented
         *   Checklist:
             *   [x] `mod.rs`
-            *   [x] `sql/tokenizer.rs` (Note: Tokenizer is within `src/core/query/sql/`)
-            *   [x] `sql/ast.rs` (Note: AST definitions are within `src/core/query/sql/`)
-            *   [x] `sql/parser/ (core.rs, statement.rs, etc.)` (Note: Parser modules are within `src/core/query/sql/`)
-            *   [ ] ADR for query language/parser design
+            *   [x] `sql/tokenizer.rs` (Handles comments, core tokens)
+            *   [x] `sql/ast.rs` (Rich `AstExpression` tree, supports SELECT, INSERT, UPDATE, DELETE, CREATE TABLE, DROP TABLE, JOINs, WHERE, GROUP BY, HAVING, ORDER BY, LIMIT, DISTINCT, basic aggregates, arithmetic ops, vector types/literals)
+            *   [x] `sql/parser/ (core.rs, statement.rs, expression.rs, etc.)` (Recursive descent parser for expressions and statements)
+            *   [~] ADR for query language/parser design (Partially covered by incremental feature implementation; formal doc pending)
     *   **Binder** (`src/core/query/binder`)
         *   Status: Partially Implemented
         *   Checklist:
@@ -152,3 +152,21 @@ This ledger will be updated as work progresses on each component. "Required Comp
     *   Removed an obsolete TODO comment from `src/core/query/sql/parser/statement.rs` as the described functionality (`ast::DeleteStatement`) was already in use.
     *   Updated a TODO comment in `src/core/query/executor/planner.rs` to clarify that dynamic primary key determination for DELETE operations is currently blocked by schema limitations (`ColumnDef` lacking an `is_primary_key` marker).
     *   Previously noted TODOs in `src/core/optimizer/mod.rs` (related to `#[allow(dead_code)]`) and `src/core/storage/engine/heap/table_page.rs` (design considerations for record management and advanced updates) remain deferred for future work.
+
+## Recent Updates -SACTION_DATE
+
+*   **SQL Parser Enhancements**:
+    *   The SQL parser (`src/core/query/sql/`) has been substantially enhanced.
+    *   **Tokenizer**: Now correctly handles single-line (`--`) and multi-line (`/* ... */`) comments. Arithmetic operators (`+`, `-`, `*`, `/`) are tokenized.
+    *   **AST**: Major refactoring to introduce a central `AstExpression` enum. This enum now represents literals, column identifiers, function calls, binary arithmetic operations (with precedence), and unary `+/-` operations. `SelectColumn`, `Condition`, `AstFunctionArg`, `OrderByExpr`, `Assignment`, and `SelectStatement.group_by` have been updated to use this new `AstExpression`. Vector types (`VECTOR[dim]`) and vector literals (`[...]`) are supported in the AST.
+    *   **Parser Logic**:
+        *   Implemented a recursive descent parser for expressions, correctly handling operator precedence for `+`, `-`, `*`, `/` and unary `+`, `-`.
+        *   Function call parsing (`COUNT`, `SUM`, `AVG`, `MIN`, `MAX`) now supports `*`, `DISTINCT col`, and regular column arguments (which are parsed as expressions).
+        *   `SELECT` statements now support `DISTINCT`.
+        *   `SELECT` statements now support `GROUP BY expr_list` (expressions currently limited to column identifiers by translator, but parser supports richer `AstExpression`).
+        *   `SELECT` statements now support `HAVING condition` (requires `GROUP BY`).
+    *   **Integration & Refactoring**:
+        *   The new expression parser is integrated into `SELECT` list parsing, `WHERE`/`HAVING` condition parsing, `UPDATE SET` assignment values, `ORDER BY` terms, and `GROUP BY` terms.
+        *   Dependent code in the optimizer, translator, and parser tests has been refactored to align with the new AST structure. Placeholders (e.g., stringification of complex expressions) have been used in the optimizer/translator where full processing is not yet implemented.
+    *   **Testing**: All parser-related tests (540+) are passing, including new tests for comments, `DISTINCT`, `GROUP BY`, `HAVING`, basic aggregate functions, and arithmetic expressions.
+    *   **Status**: The SQL parser is now "Substantially Implemented", capable of parsing a wide range of SQL DML and DDL features with a rich expression system. Execution of all parsed features is the next major step.

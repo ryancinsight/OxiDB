@@ -7,17 +7,80 @@ pub enum AstLiteralValue {
     Vector(Vec<AstLiteralValue>), // Represents a list of literals, e.g., [1.0, 2.0, 3.0]
 }
 
+// Forward declaration for AstExpression if needed, or ensure order allows its use.
+
 #[derive(Debug, PartialEq, Clone)]
-pub enum AstExpressionValue { // ADDED
-    Literal(AstLiteralValue),
-    ColumnIdentifier(String),
+pub enum AstArithmeticOperator {
+    Plus,
+    Minus,
+    Multiply,
+    Divide,
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct Condition {
-    pub column: String, // Left-hand side, always a column for now
-    pub operator: String, // e.g., "=", "!=", "<", ">", "IS NULL", "IS NOT NULL"
-    pub value: AstExpressionValue, // Right-hand side - CHANGED
+pub enum AstLogicalOperator { // For AND, OR in condition trees if we make them explicit ops
+    And,
+    Or,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum AstComparisonOperator { // For =, !=, <, >, etc.
+    Equals,
+    NotEquals,
+    LessThan,
+    LessThanOrEquals,
+    GreaterThan,
+    GreaterThanOrEquals,
+    IsNull,
+    IsNotNull,
+    // Add others like LIKE, BETWEEN, IN if needed by this enum
+}
+
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum AstExpression {
+    Literal(AstLiteralValue),
+    ColumnIdentifier(String),
+    // UnaryOp { // Example for unary minus, etc.
+    //     op: AstUnaryOperator, // e.g. Minus, Not
+    //     expr: Box<AstExpression>,
+    // },
+    BinaryOp {
+        left: Box<AstExpression>,
+        op: AstArithmeticOperator, // Using specific enum for arithmetic
+        right: Box<AstExpression>,
+    },
+    FunctionCall { // Moved from SelectColumn for general expression usage
+        name: String,
+        args: Vec<AstFunctionArg>, // AstFunctionArg might need to take AstExpression
+        // over_clause: Option<AstOverClause>,
+    },
+    UnaryOp {
+        op: AstUnaryOperator,
+        expr: Box<AstExpression>,
+    },
+    // Case { .. }
+    // Subquery(Box<SelectStatement>) // For IN (SELECT ...), etc.
+    // Exists(Box<SelectStatement>)
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum AstUnaryOperator {
+    Plus,
+    Minus,
+    // Not, // Logical NOT - Handled by ConditionTree::Not for boolean logic for now
+}
+
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Condition { // This might simplify or change if ConditionTree uses AstExpression directly
+    // pub column: String, // LHS could become an AstExpression
+    // pub operator: String, // Could become AstComparisonOperator
+    // pub value: AstExpressionValue, // RHS could become an AstExpression
+    // For now, keeping it simple for initial refactor, will adjust if ConditionTree changes significantly
+    pub left: AstExpression, // Generalizing LHS
+    pub operator: AstComparisonOperator, // Using enum
+    pub right: AstExpression, // Generalizing RHS
 }
 
 /// Represents a tree of conditions for WHERE clauses.
@@ -33,23 +96,45 @@ pub enum ConditionTree {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Assignment {
     pub column: String,
-    pub value: AstLiteralValue,
+    pub value: AstExpression, // Changed to AstExpression
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum AstFunctionArg {
+    Asterisk, // For COUNT(*)
+    Expression(AstExpression), // Changed to AstExpression
+    Distinct(Box<AstExpression>), // Changed to AstExpression
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum SelectColumn {
-    ColumnName(String),
-    Asterisk, // For SELECT *
+    // ColumnName(String), // Replaced by Expression(AstExpression::ColumnIdentifier(...))
+    // Asterisk, // Remains, or could be a special AstExpression variant if desired
+    // FunctionCall { ... }, // Replaced by Expression(AstExpression::FunctionCall{...})
+    Expression(AstExpression), // Represents a single expression in the select list
+    Asterisk, // For SELECT * specifically, as it's not really an expression in the same way
 }
+
+
+// Placeholder for OVER clause if window functions are implemented later
+// #[derive(Debug, PartialEq, Clone)]
+// pub struct AstOverClause {
+//     pub partition_by: Option<Vec<AstExpressionValue>>,
+//     pub order_by: Option<Vec<OrderByExpr>>,
+//     // Add frame specification (ROWS/RANGE BETWEEN ...) if needed
+// }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SelectStatement {
+    pub distinct: bool, // Added for SELECT DISTINCT
     pub columns: Vec<SelectColumn>,
     pub from_clause: TableReference,
     pub joins: Vec<JoinClause>,
     pub condition: Option<ConditionTree>,
     pub order_by: Option<Vec<OrderByExpr>>,
     pub limit: Option<AstLiteralValue>,
+    pub group_by: Option<Vec<AstExpression>>, // Changed to AstExpression
+    pub having: Option<ConditionTree>,            // Added for HAVING
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -76,7 +161,7 @@ pub struct JoinClause {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct OrderByExpr {
-    pub expression: String,
+    pub expression: AstExpression, // Changed to AstExpression
     pub direction: Option<OrderDirection>,
 }
 

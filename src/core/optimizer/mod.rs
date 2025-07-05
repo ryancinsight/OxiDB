@@ -59,7 +59,32 @@ impl Optimizer {
                     .columns
                     .iter()
                     .map(|col| match col {
-                        AstSqlSelectColumn::ColumnName(name) => name.clone(),
+                        AstSqlSelectColumn::Expression(expr) => {
+                            // TODO: Translate AstExpression to a String representation for projection.
+                            // This is a placeholder and needs proper handling based on expression type.
+                            // For now, just a debug representation or a simple column name if possible.
+                            match expr {
+                                crate::core::query::sql::ast::AstExpression::ColumnIdentifier(name) => name.clone(),
+                                crate::core::query::sql::ast::AstExpression::Literal(lit) => format!("{:?}", lit),
+                                crate::core::query::sql::ast::AstExpression::FunctionCall { name, args } => {
+                                    let args_str: Vec<String> = args.iter().map(|arg| {
+                                        match arg {
+                                            crate::core::query::sql::ast::AstFunctionArg::Asterisk => "*".to_string(),
+                                            crate::core::query::sql::ast::AstFunctionArg::Expression(e) => format!("{:?}", e), // Recursive debug
+                                            crate::core::query::sql::ast::AstFunctionArg::Distinct(e_box) => format!("DISTINCT {:?}", e_box), // Recursive debug
+                                        }
+                                    }).collect();
+                                    format!("{}({})", name, args_str.join(", "))
+                                }
+                                crate::core::query::sql::ast::AstExpression::BinaryOp { left, op, right } => {
+                                    format!("({:?} {:?} {:?})", left, op, right) // Simple debug format
+                                }
+                                crate::core::query::sql::ast::AstExpression::UnaryOp { op, expr } => {
+                                    format!("({:?} {:?})", op, expr) // Simple debug format
+                                }
+                                // Add other AstExpression variants as they are implemented
+                            }
+                        }
                         AstSqlSelectColumn::Asterisk => "*".to_string(),
                     })
                     .collect();
@@ -124,51 +149,98 @@ impl Optimizer {
         }
     }
 
+    fn ast_expression_to_optimizer_expression(
+        &self,
+        ast_expr: &crate::core::query::sql::ast::AstExpression,
+    ) -> Result<Expression, OxidbError> {
+        match ast_expr {
+            crate::core::query::sql::ast::AstExpression::Literal(literal_val) => {
+                match literal_val {
+                    AstSqlLiteralValue::String(s) => Ok(Expression::Literal(DataType::String(s.clone()))),
+                    AstSqlLiteralValue::Number(n_str) => {
+                        if let Ok(i_val) = n_str.parse::<i64>() {
+                            Ok(Expression::Literal(DataType::Integer(i_val)))
+                        } else if let Ok(f_val) = n_str.parse::<f64>() {
+                            Ok(Expression::Literal(DataType::Float(f_val)))
+                        } else {
+                            Err(OxidbError::SqlParsing(format!(
+                                "Cannot parse numeric literal '{}' in optimizer",
+                                n_str
+                            )))
+                        }
+                    }
+                    AstSqlLiteralValue::Boolean(b) => Ok(Expression::Literal(DataType::Boolean(*b))),
+                    AstSqlLiteralValue::Null => Ok(Expression::Literal(DataType::Null)),
+                    AstSqlLiteralValue::Vector(_) => Err(OxidbError::NotImplemented {
+                        feature: "Vector literals in optimizer expressions".to_string(),
+                    }),
+                }
+            }
+            crate::core::query::sql::ast::AstExpression::ColumnIdentifier(col_name) => {
+                Ok(Expression::Column(col_name.clone()))
+            }
+            crate::core::query::sql::ast::AstExpression::BinaryOp { left, op, right } => {
+                let left_expr = self.ast_expression_to_optimizer_expression(left)?;
+                let right_expr = self.ast_expression_to_optimizer_expression(right)?;
+                let op_str = match op {
+                    crate::core::query::sql::ast::AstArithmeticOperator::Plus => "+".to_string(),
+                    crate::core::query::sql::ast::AstArithmeticOperator::Minus => "-".to_string(),
+                    crate::core::query::sql::ast::AstArithmeticOperator::Multiply => "*".to_string(),
+                    crate::core::query::sql::ast::AstArithmeticOperator::Divide => "/".to_string(),
+                };
+                Ok(Expression::BinaryOp { // Optimizer's BinaryOp is used for arithmetic here
+                    left: Box::new(left_expr),
+                    op: op_str,
+                    right: Box::new(right_expr),
+                })
+            }
+            crate::core::query::sql::ast::AstExpression::UnaryOp { op, expr } => {
+                let inner_expr = self.ast_expression_to_optimizer_expression(expr)?;
+                let op_str = match op {
+                    crate::core::query::sql::ast::AstUnaryOperator::Plus => "+".to_string(),
+                    crate::core::query::sql::ast::AstUnaryOperator::Minus => "-".to_string(),
+                };
+                Ok(Expression::UnaryOp {
+                    op: op_str,
+                    expr: Box::new(inner_expr),
+                })
+            }
+            crate::core::query::sql::ast::AstExpression::FunctionCall { name, args } => {
+                Err(OxidbError::NotImplemented {
+                    feature: format!("Function call '{}' in optimizer expressions", name),
+                })
+            }
+        }
+    }
+
     fn ast_sql_condition_to_optimizer_expression(
         &self,
         ast_cond_tree: &crate::core::query::sql::ast::ConditionTree,
     ) -> Result<Expression, OxidbError> {
         match ast_cond_tree {
-            crate::core::query::sql::ast::ConditionTree::Comparison(ast_simple_cond) => {
-                // ast_simple_cond.value is now AstExpressionValue
-                // The optimizer currently expects to compare columns with literals.
-                // If it's ColumnIdentifier vs ColumnIdentifier, this translation needs enhancement.
-                let right_expr_operand = match &ast_simple_cond.value {
-                    crate::core::query::sql::ast::AstExpressionValue::Literal(literal_val) => {
-                        match literal_val {
-                            AstSqlLiteralValue::String(s) => Expression::Literal(DataType::String(s.clone())),
-                            AstSqlLiteralValue::Number(n_str) => {
-                                if let Ok(i_val) = n_str.parse::<i64>() {
-                                    Expression::Literal(DataType::Integer(i_val))
-                                } else if let Ok(f_val) = n_str.parse::<f64>() {
-                                    Expression::Literal(DataType::Float(f_val))
-                                } else {
-                                    return Err(OxidbError::SqlParsing(format!(
-                                        "Cannot parse numeric literal '{}'",
-                                        n_str
-                                    )));
-                                }
-                            }
-                            AstSqlLiteralValue::Boolean(b) => Expression::Literal(DataType::Boolean(*b)),
-                            AstSqlLiteralValue::Null => Expression::Literal(DataType::Null),
-                            AstSqlLiteralValue::Vector(_) => {
-                                return Err(OxidbError::NotImplemented {
-                                    feature: "Vector comparison in optimizer expressions".to_string(),
-                                });
-                            }
-                        }
-                    }
-                    crate::core::query::sql::ast::AstExpressionValue::ColumnIdentifier(col_name) => {
-                        // Optimizer's Expression::CompareOp expects Box<Expression> for right.
-                        // So, wrap the column name in Expression::Column.
-                        Expression::Column(col_name.clone())
-                    }
+            crate::core::query::sql::ast::ConditionTree::Comparison(ast_condition) => {
+                // ast_condition fields are: left: AstExpression, operator: AstComparisonOperator, right: AstExpression
+                let left_optimizer_expr = self.ast_expression_to_optimizer_expression(&ast_condition.left)?;
+                let right_optimizer_expr = self.ast_expression_to_optimizer_expression(&ast_condition.right)?;
+
+                let op_str = match ast_condition.operator {
+                    crate::core::query::sql::ast::AstComparisonOperator::Equals => "=".to_string(),
+                    crate::core::query::sql::ast::AstComparisonOperator::NotEquals => "!=".to_string(),
+                    crate::core::query::sql::ast::AstComparisonOperator::LessThan => "<".to_string(),
+                    crate::core::query::sql::ast::AstComparisonOperator::LessThanOrEquals => "<=".to_string(),
+                    crate::core::query::sql::ast::AstComparisonOperator::GreaterThan => ">".to_string(),
+                    crate::core::query::sql::ast::AstComparisonOperator::GreaterThanOrEquals => ">=".to_string(),
+                    crate::core::query::sql::ast::AstComparisonOperator::IsNull => "IS NULL".to_string(),
+                    crate::core::query::sql::ast::AstComparisonOperator::IsNotNull => "IS NOT NULL".to_string(),
                 };
 
+                // IS NULL and IS NOT NULL are special in optimizer::Expression, might need specific handling
+                // or ensure the optimizer Expression can model them with CompareOp.
+                // For IS NULL, right_optimizer_expr would be Literal(Null).
                 Ok(Expression::CompareOp {
-                    left: Box::new(Expression::Column(ast_simple_cond.column.clone())),
-                    op: ast_simple_cond.operator.clone(),
-                    right: Box::new(right_expr_operand),
+                    left: Box::new(left_optimizer_expr),
+                    op: op_str,
+                    right: Box::new(right_optimizer_expr),
                 })
             }
             crate::core::query::sql::ast::ConditionTree::And(left_ast, right_ast) => {

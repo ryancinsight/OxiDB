@@ -24,6 +24,8 @@ pub enum Token {
     Asc,    // Added Asc Token
     Desc,   // Added Desc Token
     Limit,  // Added Limit Token
+    Group,  // Added Group Token for GROUP BY
+    Having, // Added Having Token for HAVING clause
 
     // Join-related keywords
     Join,
@@ -79,6 +81,8 @@ impl fmt::Debug for Token {
             Token::Asc => write!(f, "Asc"),       // Added for Asc Token
             Token::Desc => write!(f, "Desc"),     // Added for Desc Token
             Token::Limit => write!(f, "Limit"),   // Added for Limit Token
+            Token::Group => write!(f, "Group"),   // Added for Group Token
+            Token::Having => write!(f, "Having"), // Added for Having Token
             Token::Join => write!(f, "Join"),
             Token::On => write!(f, "On"),
             Token::Inner => write!(f, "Inner"),
@@ -168,6 +172,8 @@ impl<'a> Tokenizer<'a> {
             "ASC" => Token::Asc,       // Added for Asc Token
             "DESC" => Token::Desc,     // Added for Desc Token
             "LIMIT" => Token::Limit,   // Added for Limit Token
+            "GROUP" => Token::Group,   // Added for GROUP BY
+            "HAVING" => Token::Having, // Added for HAVING
             "JOIN" => Token::Join,
             "ON" => Token::On,
             "INNER" => Token::Inner,
@@ -272,23 +278,93 @@ impl<'a> Tokenizer<'a> {
             self.skip_whitespace();
             self.current_pos = self.chars.peek().map_or(self.input.len(), |(idx, _)| *idx);
 
+            // Check for comments after skipping whitespace
+            if self.chars.peek().is_some() {
+                let (current_idx, current_char) = *self.chars.peek().unwrap();
+                if current_char == '-' {
+                    let mut lookahead = self.chars.clone();
+                    lookahead.next(); // Consume '-'
+                    if lookahead.peek().is_some_and(|&(_, next_char)| next_char == '-') {
+                        // Single-line comment
+                        self.chars.next(); // Consume first '-'
+                        self.chars.next(); // Consume second '-'
+                        while let Some((_, ch_comment)) = self.chars.peek() {
+                            if *ch_comment == '\n' {
+                                self.chars.next(); // Consume newline
+                                break;
+                            }
+                            self.chars.next(); // Consume comment character
+                        }
+                        continue; // Restart loop to skip whitespace and find next token
+                    }
+                } else if current_char == '/' {
+                    let mut lookahead = self.chars.clone();
+                    lookahead.next(); // Consume '/'
+                    if lookahead.peek().is_some_and(|&(_, next_char)| next_char == '*') {
+                        // Multi-line comment
+                        self.chars.next(); // Consume '/'
+                        self.chars.next(); // Consume '*'
+                        let comment_start_idx = current_idx;
+                        loop {
+                            match self.chars.next() {
+                                Some((_, '*')) => {
+                                    if self.chars.peek().is_some_and(|&(_, next_ch)| next_ch == '/') {
+                                        self.chars.next(); // Consume '/'
+                                        break; // End of multi-line comment
+                                    }
+                                    // Just a star, continue
+                                }
+                                Some((_, _)) => { /* Consume other comment character */ }
+                                None => {
+                                    return Err(SqlTokenizerError::UnterminatedComment(comment_start_idx));
+                                }
+                            }
+                        }
+                        continue; // Restart loop
+                    }
+                }
+            }
+
+
+            // If not a comment, proceed with normal tokenization
+            self.current_pos = self.chars.peek().map_or(self.input.len(), |(idx, _)| *idx);
             match self.chars.peek().cloned() {
                 Some((idx, ch)) => {
                     match ch {
-                        '=' | '<' | '>' | '!' => {
-                            // Potential multi-char operators later
-                            self.chars.next();
-                            // Basic for now, extend for !=, <=, >=
-                            if ch == '!'
-                                && self.chars.peek().is_some_and(|&(_, next_ch)| next_ch == '=')
-                            {
-                                self.chars.next();
+                        '=' | '<' | '>' | '!' | '+' | '-' | '/' => { // Added +, -, /
+                            self.chars.next(); // Consume the operator character
+                            // Check for multi-char operators like !=, <=, >=, <>
+                            if ch == '!' && self.chars.peek().is_some_and(|&(_, next_ch)| next_ch == '=') {
+                                self.chars.next(); // Consume '='
                                 tokens.push(Token::Operator("!=".to_string()));
-                            } else {
+                            } else if ch == '<' && self.chars.peek().is_some_and(|&(_, next_ch)| next_ch == '=') {
+                                self.chars.next(); // Consume '='
+                                tokens.push(Token::Operator("<=".to_string()));
+                            } else if ch == '>' && self.chars.peek().is_some_and(|&(_, next_ch)| next_ch == '=') {
+                                self.chars.next(); // Consume '='
+                                tokens.push(Token::Operator(">=".to_string()));
+                            } else if ch == '<' && self.chars.peek().is_some_and(|&(_, next_ch)| next_ch == '>') {
+                                self.chars.next(); // Consume '>'
+                                tokens.push(Token::Operator("<>".to_string()));
+                            }
+                            // For single char operators like =, <, >, +, -, / (if not part of multi-char)
+                            else {
                                 tokens.push(Token::Operator(ch.to_string()));
                             }
-                            self.current_pos = idx + 1; // Update position
+                            self.current_pos = idx + 1; // Update position based on the first char of operator
                         }
+                        // Note: '*' is already handled separately for Token::Asterisk.
+                        // If '*' is also to be used as a multiplication operator, the logic needs to differentiate.
+                        // For now, assuming Token::Asterisk is for SELECT * and Token::Operator("*") for multiplication.
+                        // The current Asterisk token is fine for SELECT *, but for multiplication, we need Operator("*")
+                        // This means the '*' case needs to be more nuanced or Operator("*") needs to be added.
+                        // Let's adjust the '*' specific case to allow it as an operator too if not SELECT *.
+                        // This is tricky. For now, let's add '*' to the operator list and see.
+                        // The parser will then have to distinguish SELECT * from expr * expr.
+                        // A common way is to have a dedicated Multiply token, or parse '*' as Operator("*")
+                        // and let the parser figure it out.
+                        // The current Asterisk token is fine, parser will handle context.
+                        // Adding specific case for '*' as operator below.
                         '(' => {
                             self.chars.next();
                             tokens.push(Token::LParen);
@@ -334,18 +410,14 @@ impl<'a> Tokenizer<'a> {
                             tokens.push(self.read_numeric_literal(idx)?);
                         }
                         '.' => {
-                            // Peek ahead: if the next char is a digit, it's a numeric literal like .5
                             if self.chars.clone().nth(1).map_or(false, |(_, next_ch)| next_ch.is_ascii_digit()) {
                                 tokens.push(self.read_numeric_literal(idx)?);
                             } else {
-                                // Otherwise, it's a Dot token for qualified names (e.g. table.column)
-                                self.chars.next(); // Consume the dot
+                                self.chars.next();
                                 tokens.push(Token::Dot);
                                 self.current_pos = idx + 1;
                             }
                         }
-                        // Use self.current_pos which was set at the start of the loop iteration
-                        // based on the peek that gave us 'ch' and 'idx'.
                         _ => return Err(SqlTokenizerError::InvalidCharacter(ch, self.current_pos)),
                     }
                 }
@@ -513,8 +585,7 @@ mod tests {
                 Token::RParen,
                 Token::Semicolon,
                 Token::Operator("!=".to_string()),
-                Token::Operator("<".to_string()), // This will be tokenized as < and then >
-                Token::Operator(">".to_string()),
+                Token::Operator("<>".to_string()), // Corrected based on new logic
                 Token::EOF,
             ]
         );
@@ -645,6 +716,200 @@ mod tests {
                 Token::Dot,
                 Token::Identifier("id".to_string()),
                 Token::Semicolon,
+                Token::EOF,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_single_line_comment_at_start() {
+        let mut tokenizer = Tokenizer::new("-- This is a comment\nSELECT name;");
+        let tokens = tokenizer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Select,
+                Token::Identifier("name".to_string()),
+                Token::Semicolon,
+                Token::EOF,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_single_line_comment_in_middle() {
+        let mut tokenizer = Tokenizer::new("SELECT name -- a comment\nFROM users;");
+        let tokens = tokenizer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Select,
+                Token::Identifier("name".to_string()),
+                Token::From,
+                Token::Identifier("users".to_string()),
+                Token::Semicolon,
+                Token::EOF,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_single_line_comment_at_end_of_input() {
+        let mut tokenizer = Tokenizer::new("SELECT name; -- a comment");
+        let tokens = tokenizer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Select,
+                Token::Identifier("name".to_string()),
+                Token::Semicolon,
+                Token::EOF,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_multiple_single_line_comments() {
+        let mut tokenizer = Tokenizer::new("-- com1\nSELECT name; -- com2\n--com3");
+        let tokens = tokenizer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Select,
+                Token::Identifier("name".to_string()),
+                Token::Semicolon,
+                Token::EOF,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_no_newline_after_single_line_comment() {
+        let mut tokenizer = Tokenizer::new("SELECT name -- comment");
+        let tokens = tokenizer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Select,
+                Token::Identifier("name".to_string()),
+                Token::EOF,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_multi_line_comment_at_start() {
+        let mut tokenizer = Tokenizer::new("/* This is a multi-line comment */SELECT name;");
+        let tokens = tokenizer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Select,
+                Token::Identifier("name".to_string()),
+                Token::Semicolon,
+                Token::EOF,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_multi_line_comment_in_middle() {
+        let mut tokenizer = Tokenizer::new("SELECT /* comment */ name FROM users;");
+        let tokens = tokenizer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Select,
+                Token::Identifier("name".to_string()),
+                Token::From,
+                Token::Identifier("users".to_string()),
+                Token::Semicolon,
+                Token::EOF,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_multi_line_comment_spanning_lines() {
+        let mut tokenizer = Tokenizer::new("SELECT name\n/* multi\nline\ncomment */\nFROM users;");
+        let tokens = tokenizer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Select,
+                Token::Identifier("name".to_string()),
+                Token::From,
+                Token::Identifier("users".to_string()),
+                Token::Semicolon,
+                Token::EOF,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_multi_line_comment_at_end_of_input() {
+        let mut tokenizer = Tokenizer::new("SELECT name;/* multi-line\ncomment */");
+        let tokens = tokenizer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Select,
+                Token::Identifier("name".to_string()),
+                Token::Semicolon,
+                Token::EOF,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_unterminated_multi_line_comment() {
+        let mut tokenizer = Tokenizer::new("SELECT name; /* this comment never ends");
+        let result = tokenizer.tokenize();
+        assert!(matches!(result, Err(SqlTokenizerError::UnterminatedComment(_))));
+        if let Err(SqlTokenizerError::UnterminatedComment(pos)) = result {
+             assert_eq!(pos, 13); // Position where '/*' starts
+        } else {
+            panic!("Expected UnterminatedComment error, got {:?}", result);
+        }
+    }
+
+    #[test]
+    fn test_mixed_comments() {
+        let sql = "-- initial comment\nSELECT /* block comment \n another line */ name, -- EOL comment\n value FROM test_table;";
+        let mut tokenizer = Tokenizer::new(sql);
+        let tokens = tokenizer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Select,
+                Token::Identifier("name".to_string()),
+                Token::Comma,
+                Token::Identifier("value".to_string()),
+                Token::From,
+                Token::Identifier("test_table".to_string()),
+                Token::Semicolon,
+                Token::EOF,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_operators_extended() { // Renamed to avoid conflict, includes <=, >=, <>
+        let mut tokenizer = Tokenizer::new("= , * ( ) ; != <> <= >=");
+        let tokens = tokenizer.tokenize().unwrap();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Operator("=".to_string()),
+                Token::Comma,
+                Token::Asterisk,
+                Token::LParen,
+                Token::RParen,
+                Token::Semicolon,
+                Token::Operator("!=".to_string()),
+                Token::Operator("<>".to_string()),
+                Token::Operator("<=".to_string()),
+                Token::Operator(">=".to_string()),
                 Token::EOF,
             ]
         );

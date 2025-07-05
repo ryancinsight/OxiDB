@@ -301,6 +301,13 @@ impl SqlParser {
 
     pub(super) fn parse_select_statement(&mut self) -> Result<Statement, SqlParseError> {
         self.consume(Token::Select)?;
+
+        let mut distinct = false;
+        if self.peek_is_identifier_str("DISTINCT") {
+            self.consume_any().ok_or(SqlParseError::UnexpectedEOF)?; // Consume DISTINCT token
+            distinct = true;
+        }
+
         let columns = self.parse_select_column_list()?;
         self.consume(Token::From)?;
         let from_table_name = self.expect_identifier("Expected table name after FROM")?;
@@ -394,6 +401,56 @@ impl SqlParser {
             None
         };
 
+        // Parse GROUP BY
+        let group_by_clause = if self.match_token(Token::Group) {
+            self.consume(Token::Group)?;
+            self.consume(Token::By)?;
+            let mut group_exprs = Vec::new();
+            if !matches!(self.peek(), Some(Token::Identifier(_))) { // Must have at least one grouping expr
+                return Err(SqlParseError::UnexpectedToken {
+                    expected: "column name for GROUP BY clause".to_string(),
+                    found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
+                    position: self.current_token_pos(),
+                });
+            }
+            loop {
+                let expr = self.parse_expression()?; // Parse expression for GROUP BY
+                group_exprs.push(expr);
+                if !self.match_token(Token::Comma) {
+                    break;
+                }
+                self.consume(Token::Comma)?;
+                 // Ensure not a trailing comma before next clause
+                if !matches!(self.peek(), Some(Token::Identifier(_))) {
+                     return Err(SqlParseError::UnexpectedToken {
+                        expected: "column name after comma in GROUP BY".to_string(),
+                        found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
+                        position: self.current_token_pos(),
+                    });
+                }
+            }
+            Some(group_exprs)
+        } else {
+            None
+        };
+
+        // Parse HAVING
+        let having_clause = if self.match_token(Token::Having) {
+            if group_by_clause.is_none() && !self.dialect_allows_having_without_group_by() { // Assuming a helper or direct check
+                 // Standard SQL typically requires GROUP BY if HAVING is used, though some dialects are lenient.
+                 // For now, let's be strict. This check could be moved to a semantic analysis phase too.
+                return Err(SqlParseError::UnexpectedToken { // Or a more specific semantic error
+                    expected: "GROUP BY clause before HAVING".to_string(),
+                    found: "HAVING".to_string(),
+                    position: self.current_token_pos() -1, // Position of HAVING token
+                });
+            }
+            self.consume(Token::Having)?;
+            Some(self.parse_condition_expr()?)
+        } else {
+            None
+        };
+
         // Parse ORDER BY
         let order_by = if self.match_token(Token::Order) {
             self.consume(Token::Order)?;
@@ -446,10 +503,13 @@ impl SqlParser {
 
         // Semicolon handled by main parse()
         Ok(Statement::Select(SelectStatement {
+            distinct, // Pass the distinct flag
             columns,
             from_clause, // Use the new from_clause
             joins,       // Add the parsed joins
             condition,
+            group_by: group_by_clause, // Added group_by
+            having: having_clause,     // Added having
             order_by,
             limit: limit_val,
         }))
@@ -467,7 +527,7 @@ impl SqlParser {
         }
 
         loop {
-            let expr_name = self.expect_identifier("Expected column name for ORDER BY clause")?;
+            let expr = self.parse_expression()?; // Parse expression for ORDER BY
             let mut direction: Option<OrderDirection> = None;
 
             if self.match_token(Token::Asc) {
@@ -478,7 +538,7 @@ impl SqlParser {
                 direction = Some(OrderDirection::Desc);
             }
 
-            order_expressions.push(OrderByExpr { expression: expr_name, direction });
+            order_expressions.push(OrderByExpr { expression: expr, direction });
 
             if !self.match_token(Token::Comma) {
                 break;

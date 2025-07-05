@@ -58,7 +58,6 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 Some(sql_cond_tree) => {
                     Some(super::select_execution::command_condition_tree_to_ast_condition_tree(
                         sql_cond_tree,
-                        self,
                     )?)
                 }
                 None => None,
@@ -66,6 +65,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
         let ast_statement_for_select =
             AstStatement::Select(crate::core::query::sql::ast::SelectStatement {
+                distinct: false, // Added default
                 columns: ast_select_items,
                 from_clause: crate::core::query::sql::ast::TableReference {
                     name: source_table_name.clone(),
@@ -73,6 +73,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 },
                 joins: Vec::new(),
                 condition: ast_condition_tree_opt, // Changed
+                group_by: None,                    // Added default
+                having: None,                      // Added default
                 order_by: None,                    // Added
                 limit: None,                       // Added
             });

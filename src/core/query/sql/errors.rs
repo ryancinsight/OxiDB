@@ -10,6 +10,8 @@ pub enum SqlTokenizerError {
     InvalidNumber(usize),
     #[error("Unexpected end of input at position {0}")]
     UnexpectedEOF(usize), // Added variant
+    #[error("Unterminated multi-line comment starting at position {0}")]
+    UnterminatedComment(usize),
 }
 
 #[derive(Debug, Error, PartialEq)]
