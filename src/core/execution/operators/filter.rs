@@ -129,22 +129,17 @@ impl FilterOperator {
                     Ok(Cow::Borrowed(&tuple[column_index]))
                 } else {
                     // If not a usize, assume it's a named column for a map.
-                    // This is specific to how UPDATE works: the SELECT sub-query for UPDATE
-                    // should yield full DataType::Map rows if filtering by name is intended.
-                    // We assume the map is the first (and likely only) element in the tuple.
-                    // If not a usize, assume it's a named column for a map.
-                    // The TableScanOperator now produces: vec![key_data_type, row_data_type]
-                    // So, the actual row data (e.g., a map) is at tuple[1].
+                    // This is specific to how UPDATE works.
                     if tuple.len() < 2 {
                         return Err(OxidbError::Internal(format!(
                             "Tuple too short ({}) for named column lookup ('{}'). Expected at least 2 elements (key, map).",
                             tuple.len(), col_name
                         )));
                     }
-                    match &tuple[1] { // Check tuple[1] for the map
+                    match &tuple[1] {
                         DataType::Map(map_data) => {
                             let key_bytes = col_name.as_bytes().to_vec();
-                            match map_data.0.get(&key_bytes) { // map_data is JsonSafeMap
+                            match map_data.0.get(&key_bytes) {
                                 Some(data_type_value) => Ok(Cow::Borrowed(data_type_value)),
                                 None => Err(OxidbError::InvalidInput { message: format!(
                                     "Column '{}' not found in map at tuple[1].",
@@ -159,9 +154,51 @@ impl FilterOperator {
                     }
                 }
             }
+            Expression::FunctionCall { name, args } => {
+                let upper_name = name.to_uppercase();
+                match upper_name.as_str() {
+                    "COSINE_SIMILARITY" | "DOT_PRODUCT" => {
+                        if args.len() != 2 {
+                            return Err(OxidbError::ExecutionError(format!(
+                                "Runtime: Incorrect number of arguments for {}: expected 2, got {}",
+                                upper_name,
+                                args.len()
+                            )));
+                        }
+                        let arg1_val_cow = Self::evaluate_expression_to_datatype(tuple, &args[0])?;
+                        let arg2_val_cow = Self::evaluate_expression_to_datatype(tuple, &args[1])?;
+
+                        let v1 = match &*arg1_val_cow {
+                            DataType::Vector(Some(vec_data_val)) => { // Assuming DataType::Vector(Some(Vec<f32>))
+                                // This part is tricky. DataType::Vector(Option<usize>) stores dimension.
+                                // We need the actual Vec<f32> which is in Value enum, not directly in DataType.
+                                // This indicates a mismatch: evaluate_expression_to_datatype returns DataType,
+                                // but for vector functions, we need the actual vector data (Value::Vector).
+                                // This function should probably return Result<Cow<'a, Value>, OxidbError>
+                                // For now, this will fail. This is a design flaw to be addressed.
+                                // Placeholder: This needs to be refactored to work with Value.
+                                return Err(OxidbError::ExecutionError("evaluate_expression_to_datatype needs to return Value for vector functions".to_string()));
+                            },
+                            other => return Err(OxidbError::ExecutionError(format!(
+                                "Runtime: Argument 1 of {} must be a Vector. Got {:?}",
+                                upper_name, other
+                            ))),
+                        };
+                        // let v2 = match &*arg2_val_cow { ... similar logic ... }
+
+                        // For now, returning a dummy Float64 to make the structure compile
+                        // This will be replaced once evaluate_expression_to_datatype is refactored.
+                        Ok(Cow::Owned(DataType::Float64(0.0)))
+                    }
+                    _ => Err(OxidbError::ExecutionError(format!(
+                        "Runtime: Unknown function call '{}'",
+                        name
+                    ))),
+                }
+            }
             _ => Err(OxidbError::NotImplemented {
                 feature:
-                    "Expression type not supported for direct DataType evaluation in predicate."
+                    "This Expression type is not supported for direct DataType evaluation in predicate."
                         .to_string(),
             }),
         }

@@ -2202,6 +2202,155 @@ fn test_parse_vector_literal_unclosed_error() {
     }
 }
 
+// --- Tests for Vector Functions ---
+
+#[test]
+fn test_parse_select_cosine_similarity() {
+    let sql = "SELECT COSINE_SIMILARITY(v1, v2) FROM my_vectors;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.columns.len(), 1);
+            match &select_stmt.columns[0] {
+                SelectColumn::Expression(ast::AstExpression::FunctionCall { name, args }) => {
+                    assert_eq!(name.to_uppercase(), "COSINE_SIMILARITY");
+                    assert_eq!(args.len(), 2);
+                    match &args[0] {
+                        ast::AstFunctionArg::Expression(ast::AstExpression::ColumnIdentifier(col)) => {
+                            assert_eq!(col, "v1");
+                        }
+                        _ => panic!("Expected AstFunctionArg::Expression(ColumnIdentifier) for arg1"),
+                    }
+                    match &args[1] {
+                        ast::AstFunctionArg::Expression(ast::AstExpression::ColumnIdentifier(col)) => {
+                            assert_eq!(col, "v2");
+                        }
+                        _ => panic!("Expected AstFunctionArg::Expression(ColumnIdentifier) for arg2"),
+                    }
+                }
+                _ => panic!("Expected SelectColumn::Expression(FunctionCall) for COSINE_SIMILARITY"),
+            }
+            assert_eq!(select_stmt.from_clause.name, "my_vectors");
+        }
+        _ => panic!("Expected SelectStatement"),
+    }
+}
+
+#[test]
+fn test_parse_select_dot_product_with_literals() {
+    let sql = "SELECT DOT_PRODUCT([1.0, 2.0], my_vector_col) FROM data;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.columns.len(), 1);
+            match &select_stmt.columns[0] {
+                SelectColumn::Expression(ast::AstExpression::FunctionCall { name, args }) => {
+                    assert_eq!(name.to_uppercase(), "DOT_PRODUCT");
+                    assert_eq!(args.len(), 2);
+                    match &args[0] {
+                        ast::AstFunctionArg::Expression(ast::AstExpression::Literal(AstLiteralValue::Vector(vec_val))) => {
+                            assert_eq!(vec_val.len(), 2);
+                            assert_eq!(vec_val[0], AstLiteralValue::Number("1.0".to_string()));
+                            assert_eq!(vec_val[1], AstLiteralValue::Number("2.0".to_string()));
+                        }
+                        _ => panic!("Expected AstFunctionArg::Expression(Literal(Vector)) for arg1. Got {:?}", args[0]),
+                    }
+                    match &args[1] {
+                        ast::AstFunctionArg::Expression(ast::AstExpression::ColumnIdentifier(col)) => {
+                            assert_eq!(col, "my_vector_col");
+                        }
+                        _ => panic!("Expected AstFunctionArg::Expression(ColumnIdentifier) for arg2. Got {:?}", args[1]),
+                    }
+                }
+                _ => panic!("Expected SelectColumn::Expression(FunctionCall) for DOT_PRODUCT"),
+            }
+        }
+        _ => panic!("Expected SelectStatement"),
+    }
+}
+
+#[test]
+fn test_parse_vector_function_in_where_clause() {
+    let sql = "SELECT id FROM items WHERE DOT_PRODUCT(feature_vec, query_vec) > 0.9;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Select(select_stmt) => {
+            assert!(select_stmt.condition.is_some());
+            match select_stmt.condition.unwrap() {
+                ConditionTree::Comparison(cond) => {
+                    assert_eq!(cond.operator, ast::AstComparisonOperator::GreaterThan);
+                    assert_eq!(cond.right, ast::AstExpression::Literal(AstLiteralValue::Number("0.9".to_string())));
+                    match cond.left {
+                        ast::AstExpression::FunctionCall { name, args } => {
+                            assert_eq!(name.to_uppercase(), "DOT_PRODUCT");
+                            assert_eq!(args.len(), 2);
+                            // Simplified check for args, can be more detailed
+                            assert!(matches!(&args[0], ast::AstFunctionArg::Expression(ast::AstExpression::ColumnIdentifier(_))));
+                            assert!(matches!(&args[1], ast::AstFunctionArg::Expression(ast::AstExpression::ColumnIdentifier(_))));
+                        }
+                        _ => panic!("Expected FunctionCall on the left side of comparison. Got {:?}", cond.left),
+                    }
+                }
+                _ => panic!("Expected Comparison condition for WHERE clause"),
+            }
+        }
+        _ => panic!("Expected SelectStatement"),
+    }
+}
+
+#[test]
+fn test_parse_vector_function_incorrect_arg_count_error() {
+    // Test with COSINE_SIMILARITY(v1) - too few args
+    let sql_too_few = "SELECT COSINE_SIMILARITY(v1) FROM my_vectors;";
+    let tokens_too_few = tokenize_str(sql_too_few);
+    let mut parser_too_few = SqlParser::new(tokens_too_few);
+    let ast_too_few = parser_too_few.parse().unwrap(); // Parser allows it syntactically
+    match ast_too_few {
+        Statement::Select(select_stmt) => {
+            match &select_stmt.columns[0] {
+                SelectColumn::Expression(ast::AstExpression::FunctionCall { name, args }) => {
+                    assert_eq!(name.to_uppercase(), "COSINE_SIMILARITY");
+                    assert_eq!(args.len(), 1, "Parser should accept one arg syntactically");
+                }
+                _ => panic!("Expected FunctionCall"),
+            }
+        }
+        _ => panic!("Expected SelectStatement"),
+    }
+
+    // Test with DOT_PRODUCT(v1, v2, v3) - too many args
+    // The parser will consume the first two, then hit an error at the third comma or RPAREN.
+    // If "DOT_PRODUCT(v1, v2, v3)"
+    // It parses "DOT_PRODUCT(v1, v2". Then it expects ")". Finds ",".
+    // Then it parses "v3)". Then expects end of statement or another select column.
+    // This is complex. Simpler to say parser will likely handle it as it does other functions.
+    // The current parser's function argument loop `loop { arg ... if match RParen break; consume Comma}`
+    // will correctly parse all three arguments. Semantic analysis would catch arg count errors.
+    let sql_too_many = "SELECT DOT_PRODUCT(v1, v2, v3) FROM my_vectors;";
+    let tokens_too_many = tokenize_str(sql_too_many);
+    let mut parser_too_many = SqlParser::new(tokens_too_many);
+    let ast_too_many = parser_too_many.parse().unwrap();
+     match ast_too_many {
+        Statement::Select(select_stmt) => {
+            match &select_stmt.columns[0] {
+                SelectColumn::Expression(ast::AstExpression::FunctionCall { name, args }) => {
+                    assert_eq!(name.to_uppercase(), "DOT_PRODUCT");
+                    assert_eq!(args.len(), 3, "Parser should accept three args syntactically");
+                }
+                _ => panic!("Expected FunctionCall"),
+            }
+        }
+        _ => panic!("Expected SelectStatement"),
+    }
+}
+
+
 // --- Tests for specific error handling improvements from previous step ---
 
 #[test]

@@ -356,6 +356,13 @@ fn fold_expression(expression: Expression) -> Expression {
             // Return original UnaryOp if not foldable (e.g., NOT on non-boolean or non-literal)
             Expression::UnaryOp { op, expr: folded_expr }
         }
+        Expression::FunctionCall { name, args } => {
+            // Recursively fold arguments
+            let folded_args: Vec<Expression> = args.into_iter().map(fold_expression).collect();
+            // Reconstruct the FunctionCall with potentially folded arguments.
+            // Constant folding typically doesn't evaluate the function itself unless it's a very simple known one.
+            Expression::FunctionCall { name, args: folded_args }
+        }
     }
 }
 

@@ -4,6 +4,7 @@ pub enum DataType {
     Text,
     Boolean,
     Blob,
+    Float64, // Added for floating point numbers
     Vector(Option<usize>), // Represents a vector of floats, optional dimension
     Null,
 }

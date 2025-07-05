@@ -70,19 +70,36 @@ impl Optimizer {
                                     let args_str: Vec<String> = args.iter().map(|arg| {
                                         match arg {
                                             crate::core::query::sql::ast::AstFunctionArg::Asterisk => "*".to_string(),
-                                            crate::core::query::sql::ast::AstFunctionArg::Expression(e) => format!("{:?}", e), // Recursive debug
-                                            crate::core::query::sql::ast::AstFunctionArg::Distinct(e_box) => format!("DISTINCT {:?}", e_box), // Recursive debug
+                                crate::core::query::sql::ast::AstFunctionArg::Expression(e) => {
+                                    // Attempt to translate to optimizer expression for better representation if possible
+                                    // This is a bit of a hack due to Project taking Vec<String>
+                                    // A full solution would involve Project taking Vec<optimizer::Expression>
+                                    self.ast_expression_to_optimizer_expression(e).map_or_else(
+                                        |_| format!("{:?}", e), // Fallback to debug on error
+                                        |opt_expr| format!("{:?}", opt_expr) // Use debug of optimizer::Expression
+                                    )
+                                },
+                                crate::core::query::sql::ast::AstFunctionArg::Distinct(e_box) => {
+                                     self.ast_expression_to_optimizer_expression(e_box).map_or_else(
+                                        |_| format!("DISTINCT {:?}", e_box),
+                                        |opt_expr| format!("DISTINCT {:?}", opt_expr)
+                                    )
+                                },
                                         }
                                     }).collect();
+                        // For the projection string, we use the original name, not necessarily upper_name
                                     format!("{}({})", name, args_str.join(", "))
                                 }
                                 crate::core::query::sql::ast::AstExpression::BinaryOp { left, op, right } => {
-                                    format!("({:?} {:?} {:?})", left, op, right) // Simple debug format
+                        // Similar to above, try to get a better representation
+                        let left_s = self.ast_expression_to_optimizer_expression(left).map_or_else(|_| format!("{:?}", left), |e| format!("{:?}",e));
+                        let right_s = self.ast_expression_to_optimizer_expression(right).map_or_else(|_| format!("{:?}", right), |e| format!("{:?}",e));
+                        format!("({} {:?} {})", left_s, op, right_s)
                                 }
                                 crate::core::query::sql::ast::AstExpression::UnaryOp { op, expr } => {
-                                    format!("({:?} {:?})", op, expr) // Simple debug format
+                        let expr_s = self.ast_expression_to_optimizer_expression(expr).map_or_else(|_| format!("{:?}", expr), |e| format!("{:?}",e));
+                        format!("({:?} {})", op, expr_s)
                                 }
-                                // Add other AstExpression variants as they are implemented
                             }
                         }
                         AstSqlSelectColumn::Asterisk => "*".to_string(),
@@ -99,12 +116,14 @@ impl Optimizer {
 
                 plan_node = QueryPlanNode::Project {
                     input: Box::new(plan_node),
-                    columns: projection_columns,
+            columns: projection_columns, // Still Vec<String>, but strings are now more representative
                 };
 
                 Ok(plan_node)
             }
             AstStatement::Update(update_ast) => {
+        // For UPDATE, the projection is internal and doesn't need complex stringification for user output.
+        // The key part is that the WHERE clause (filter predicate) uses the proper optimizer::Expression.
                 let mut plan_node =
                     QueryPlanNode::TableScan { table_name: update_ast.source.clone(), alias: None };
 
@@ -114,9 +133,12 @@ impl Optimizer {
                     plan_node =
                         QueryPlanNode::Filter { input: Box::new(plan_node), predicate: expression };
                 }
+        // The projection for UPDATE is just a placeholder to ensure the pipeline structure.
+        // It might project necessary columns for the update operation itself (e.g., primary key).
+        // For now, "0" might mean "all relevant internal columns" or just a dummy.
                 plan_node = QueryPlanNode::Project {
                     input: Box::new(plan_node),
-                    columns: vec!["0".to_string()],
+            columns: vec!["__ROWID__".to_string()], // Example: project internal row identifier
                 };
                 Ok(plan_node)
             }
@@ -180,8 +202,8 @@ impl Optimizer {
                 Ok(Expression::Column(col_name.clone()))
             }
             crate::core::query::sql::ast::AstExpression::BinaryOp { left, op, right } => {
-                let left_expr = self.ast_expression_to_optimizer_expression(left)?;
-                let right_expr = self.ast_expression_to_optimizer_expression(right)?;
+                let left_expr = self.ast_expression_to_optimizer_expression(&**left)?;
+                let right_expr = self.ast_expression_to_optimizer_expression(&**right)?;
                 let op_str = match op {
                     crate::core::query::sql::ast::AstArithmeticOperator::Plus => "+".to_string(),
                     crate::core::query::sql::ast::AstArithmeticOperator::Minus => "-".to_string(),
@@ -195,7 +217,7 @@ impl Optimizer {
                 })
             }
             crate::core::query::sql::ast::AstExpression::UnaryOp { op, expr } => {
-                let inner_expr = self.ast_expression_to_optimizer_expression(expr)?;
+                let inner_expr = self.ast_expression_to_optimizer_expression(&**expr)?;
                 let op_str = match op {
                     crate::core::query::sql::ast::AstUnaryOperator::Plus => "+".to_string(),
                     crate::core::query::sql::ast::AstUnaryOperator::Minus => "-".to_string(),
@@ -205,10 +227,83 @@ impl Optimizer {
                     expr: Box::new(inner_expr),
                 })
             }
+            // Corrected path from query/sql to query::sql
             crate::core::query::sql::ast::AstExpression::FunctionCall { name, args } => {
-                Err(OxidbError::NotImplemented {
-                    feature: format!("Function call '{}' in optimizer expressions", name),
-                })
+                let upper_name = name.to_uppercase();
+                match upper_name.as_str() {
+                    "COSINE_SIMILARITY" | "DOT_PRODUCT" => {
+                        if args.len() != 2 {
+                            return Err(OxidbError::SqlParsing(format!(
+                                "Incorrect number of arguments for {}: expected 2, got {}",
+                                upper_name,
+                                args.len()
+                            )));
+                        }
+                        let mut bound_args_expr = Vec::new();
+                        for arg in args {
+                            match arg {
+                                crate::core::query::sql::ast::AstFunctionArg::Expression(expr) => {
+                                    bound_args_expr.push(self.ast_expression_to_optimizer_expression(expr)?); // Pass by ref
+                                }
+                                _ => return Err(OxidbError::SqlParsing(format!(
+                                    "Unsupported argument type in {} (only direct expressions supported for now)",
+                                    upper_name
+                                ))),
+                            }
+                        }
+
+                        // Limited type checking at this stage (without full binder integration)
+                        for (i, arg_expr) in bound_args_expr.iter().enumerate() {
+                            match arg_expr {
+                                Expression::Literal(DataType::Vector(_)) => {}, // Good
+                                Expression::Column(_) => {}, // Assume column is of correct type for now
+                                _ => return Err(OxidbError::SqlParsing(format!(
+                                    "Argument {} of {} must be a vector column or vector literal. Got: {:?}",
+                                    i + 1, upper_name, arg_expr
+                                ))),
+                            }
+                        }
+                        // Dimension check would require schema access or literal value inspection,
+                        // which is complex here. Defer to execution or a later optimizer pass.
+
+                        Ok(Expression::FunctionCall {
+                            name: upper_name,
+                            args: bound_args_expr,
+                        })
+                    }
+                    "COUNT" | "SUM" | "AVG" | "MIN" | "MAX" => {
+                        let mut translated_args = Vec::new();
+                        for arg_ast in args {
+                            match arg_ast {
+                                crate::core::query::sql::ast::AstFunctionArg::Expression(expr_ast) => {
+                                    translated_args.push(self.ast_expression_to_optimizer_expression(expr_ast)?); // Pass by ref
+                                }
+                                crate::core::query::sql::ast::AstFunctionArg::Asterisk => {
+                                    if upper_name != "COUNT" {
+                                        return Err(OxidbError::SqlParsing(format!("Asterisk argument only valid for COUNT function, not {}", upper_name)));
+                                    }
+                                    if args.len() == 1 && matches!(args[0], crate::core::query::sql::ast::AstFunctionArg::Asterisk) {
+                                        // Args remain empty for COUNT(*) representation in logical plan
+                                    } else {
+                                         return Err(OxidbError::SqlParsing("COUNT(*) is the only valid form of COUNT with asterisk.".to_string()));
+                                    }
+                                }
+                                crate::core::query::sql::ast::AstFunctionArg::Distinct(expr_ast) => {
+                                    // Pass by ref for inner expression
+                                    // translated_args.push(self.ast_expression_to_optimizer_expression(expr_ast)?);
+                                    return Err(OxidbError::NotImplemented{ feature: format!("DISTINCT in function {} for optimizer expression translation", upper_name)});
+                                }
+                            }
+                        }
+                         Ok(Expression::FunctionCall {
+                            name: upper_name,
+                            args: translated_args,
+                        })
+                    }
+                    _ => Err(OxidbError::NotImplemented {
+                        feature: format!("Function call '{}' in optimizer expressions", name),
+                    }),
+                }
             }
         }
     }
@@ -446,6 +541,11 @@ pub enum Expression {
         // Added for NOT
         op: String, // e.g., "NOT"
         expr: Box<Expression>,
+    },
+    FunctionCall { // Added for function calls
+        name: String,
+        args: Vec<Expression>,
+        // Return type can be inferred or stored if needed, for now determined at execution/planning
     },
 }
 

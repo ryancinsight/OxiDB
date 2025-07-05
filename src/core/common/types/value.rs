@@ -7,7 +7,9 @@ pub enum Value {
     Text(String),
     Boolean(bool),
     Blob(Vec<u8>),
+    Float64(f64),      // Added for floating point numbers
     Vector(Vec<f32>), // Represents a vector of f32
+    Map(std::collections::HashMap<String, Value>), // Added for structured data/rows
     Null,
 }
 
@@ -18,7 +20,14 @@ impl Value {
             Value::Text(_) => DataType::Text,
             Value::Boolean(_) => DataType::Boolean,
             Value::Blob(_) => DataType::Blob,
-            Value::Vector(_) => DataType::Vector(None), // Or determine dimension if stored
+            Value::Float64(_) => DataType::Float64,
+            Value::Vector(v) => DataType::Vector(Some(v.len())),
+            // DataType::Map is DataType::Map(JsonSafeMap), which is different.
+            // This implies we might need a DataType::Record or similar if we want a direct type mapping.
+            // For now, a Value::Map will likely correspond to a DataType::Map(None) or a generic object type.
+            // Let's assume for now it corresponds to a generic Map type for simplicity during this refactor.
+            // The actual DataType::Map(JsonSafeMap) is a storage format.
+            Value::Map(_) => DataType::Map(None), // Placeholder: This mapping needs refinement.
             Value::Null => DataType::Null,
         }
     }
