@@ -82,6 +82,29 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                         }
                     }
 
+                    // Auto-increment processing: Generate values for auto-increment columns that are NULL or missing
+                    for col_def in &schema.columns {
+                        if col_def.is_auto_increment {
+                            let current_value = row_map_data
+                                .get(col_def.name.as_bytes())
+                                .cloned()
+                                .unwrap_or(DataType::Null);
+
+                            // Only generate auto-increment value if no explicit value was provided (NULL or missing)
+                            if current_value == DataType::Null {
+                                let next_id = executor.get_next_auto_increment_value(table_name, &col_def.name);
+                                let auto_value = match col_def.data_type {
+                                    DataType::Integer(_) => DataType::Integer(next_id),
+                                    _ => return Err(OxidbError::Execution(
+                                        format!("AUTOINCREMENT is only supported for INTEGER columns, but column '{}' is {:?}",
+                                               col_def.name, col_def.data_type)
+                                    )),
+                                };
+                                row_map_data.insert(col_def.name.as_bytes().to_vec(), auto_value);
+                            }
+                        }
+                    }
+
                     // Constraint Checks
                     for col_def in &schema.columns {
                         let value_for_column = row_map_data

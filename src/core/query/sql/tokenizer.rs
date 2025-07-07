@@ -24,6 +24,7 @@ pub enum Token {
     Asc,    // Added Asc Token
     Desc,   // Added Desc Token
     Limit,  // Added Limit Token
+    Autoincrement, // Added Autoincrement Token
 
     // Join-related keywords
     Join,
@@ -101,6 +102,7 @@ impl fmt::Debug for Token {
             Token::LBracket => write!(f, "LBracket"),
             Token::RBracket => write!(f, "RBracket"),
             Token::Dot => write!(f, "Dot"),
+            Token::Autoincrement => write!(f, "Autoincrement"),
             Token::EOF => write!(f, "EOF"),
         }
     }
@@ -168,6 +170,7 @@ impl<'a> Tokenizer<'a> {
             "ASC" => Token::Asc,       // Added for Asc Token
             "DESC" => Token::Desc,     // Added for Desc Token
             "LIMIT" => Token::Limit,   // Added for Limit Token
+            "AUTOINCREMENT" => Token::Autoincrement, // Added for Autoincrement Token
             "JOIN" => Token::Join,
             "ON" => Token::On,
             "INNER" => Token::Inner,

@@ -97,6 +97,7 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
                 let mut is_primary_key = false;
                 let mut is_unique = false;
                 let mut is_nullable = true; // Default to nullable
+                let mut is_auto_increment = false;
 
                 for constraint in ast_col_def.constraints {
                     match constraint {
@@ -109,6 +110,11 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
                             is_unique = true;
                         }
                         ast::AstColumnConstraint::NotNull => {
+                            is_nullable = false;
+                        }
+                        ast::AstColumnConstraint::AutoIncrement => {
+                            is_auto_increment = true;
+                            // AUTOINCREMENT typically implies NOT NULL
                             is_nullable = false;
                         }
                     }
@@ -125,6 +131,7 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
                     is_primary_key,
                     is_unique,
                     is_nullable,
+                    is_auto_increment,
                 });
             }
             Ok(Command::CreateTable { table_name: create_ast.table_name, columns: command_columns })

@@ -98,6 +98,7 @@ pub enum AstColumnConstraint {
     NotNull,
     Unique,
     PrimaryKey,
+    AutoIncrement,
 }
 
 #[derive(Debug, PartialEq, Clone)]

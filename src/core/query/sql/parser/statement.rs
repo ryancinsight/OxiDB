@@ -202,6 +202,9 @@ impl SqlParser {
                 } else if self.peek_is_identifier_str("UNIQUE") {
                     self.consume_any(); // Consume UNIQUE
                     constraints.push(ast::AstColumnConstraint::Unique);
+                } else if self.match_token(Token::Autoincrement) {
+                    self.consume(Token::Autoincrement)?; // Consume AUTOINCREMENT
+                    constraints.push(ast::AstColumnConstraint::AutoIncrement);
                 } else {
                     break; // No more constraint keywords for this column
                 }

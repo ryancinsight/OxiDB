@@ -6,6 +6,9 @@ use crate::core::query::sql::ast::{
 use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::parser::SqlParser; // The struct being tested
 use crate::core::query::sql::tokenizer::{Token, Tokenizer}; // For tokenizing test strings // Error type for assertions
+use crate::core::query::sql::translator::translate_ast_to_command;
+use crate::core::query::commands::Command;
+use crate::core::types::DataType;
 
 // Helper function to tokenize a string for tests
 fn tokenize_str(input: &str) -> Vec<Token> {
@@ -374,6 +377,40 @@ fn test_parse_create_table_primary_key_not_null_variants() {
             }
             _ => panic!("Expected CreateTableStatement for: {}", sql),
         }
+    }
+}
+
+#[test]
+fn test_parse_create_table_with_autoincrement() {
+    let sql = "CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL
+    );";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+
+    match ast {
+        Statement::CreateTable(create_stmt) => {
+            assert_eq!(create_stmt.table_name, "users");
+            assert_eq!(create_stmt.columns.len(), 2);
+
+            // id INTEGER PRIMARY KEY AUTOINCREMENT
+            let id_col = &create_stmt.columns[0];
+            assert_eq!(id_col.name, "id");
+            assert_eq!(id_col.data_type, AstDataType::Integer);
+            assert_eq!(id_col.constraints.len(), 2);
+            assert!(id_col.constraints.contains(&AstColumnConstraint::PrimaryKey));
+            assert!(id_col.constraints.contains(&AstColumnConstraint::AutoIncrement));
+
+            // name TEXT NOT NULL
+            let name_col = &create_stmt.columns[1];
+            assert_eq!(name_col.name, "name");
+            assert_eq!(name_col.data_type, AstDataType::Text);
+            assert_eq!(name_col.constraints.len(), 1);
+            assert!(name_col.constraints.contains(&AstColumnConstraint::NotNull));
+        }
+        _ => panic!("Expected CreateTableStatement"),
     }
 }
 
@@ -2056,4 +2093,96 @@ fn test_parse_limit_non_numeric_value() {
     } else {
         panic!("Wrong error: {:?}", result);
     }
+}
+
+#[test]
+fn test_translate_create_table_with_autoincrement() {
+    let sql = "CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL
+    );";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    let command = translate_ast_to_command(ast).unwrap();
+
+    match command {
+        Command::CreateTable { table_name, columns } => {
+            assert_eq!(table_name, "users");
+            assert_eq!(columns.len(), 2);
+
+            // id INTEGER PRIMARY KEY AUTOINCREMENT
+            let id_col = &columns[0];
+            assert_eq!(id_col.name, "id");
+            assert_eq!(id_col.data_type, DataType::Integer(0));
+            assert!(id_col.is_primary_key);
+            assert!(id_col.is_unique);
+            assert!(!id_col.is_nullable);
+            assert!(id_col.is_auto_increment);
+
+            // name TEXT NOT NULL
+            let name_col = &columns[1];
+            assert_eq!(name_col.name, "name");
+            assert_eq!(name_col.data_type, DataType::String("".to_string()));
+            assert!(!name_col.is_primary_key);
+            assert!(!name_col.is_unique);
+            assert!(!name_col.is_nullable);
+            assert!(!name_col.is_auto_increment);
+        }
+        _ => panic!("Expected CreateTable command"),
+    }
+}
+
+#[test]
+fn test_autoincrement_insert_functionality() {
+    use crate::core::query::executor::QueryExecutor;
+    use crate::core::storage::engine::InMemoryKvStore;
+    use crate::core::wal::writer::{WalWriter, WalWriterConfig};
+    use crate::core::wal::log_manager::LogManager;
+    use std::sync::Arc;
+    use tempfile::TempDir;
+
+    // Create a temporary directory for the test
+    let temp_dir = TempDir::new().unwrap();
+    let temp_path = temp_dir.path().to_path_buf();
+
+    // Create WAL writer and log manager
+    let wal_config = WalWriterConfig::default();
+    let wal_writer = WalWriter::new(temp_path.join("test.wal"), wal_config);
+    let log_manager = Arc::new(LogManager::new());
+
+    // Create executor with in-memory store
+    let store = InMemoryKvStore::new();
+    let mut executor = QueryExecutor::new(store, temp_path.clone(), wal_writer, log_manager).unwrap();
+
+    // Create table with auto-increment column
+    let create_sql = "CREATE TABLE test_table (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL
+    );";
+    let tokens = tokenize_str(create_sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    let command = translate_ast_to_command(ast).unwrap();
+
+    // Execute CREATE TABLE
+    executor.execute_command(command).unwrap();
+
+    // Insert rows without specifying ID (should auto-generate)
+    let insert_sql1 = "INSERT INTO test_table (name) VALUES ('Alice');";
+    let tokens1 = tokenize_str(insert_sql1);
+    let mut parser1 = SqlParser::new(tokens1);
+    let ast1 = parser1.parse().unwrap();
+    let command1 = translate_ast_to_command(ast1).unwrap();
+    executor.execute_command(command1).unwrap();
+
+    let insert_sql2 = "INSERT INTO test_table (name) VALUES ('Bob');";
+    let tokens2 = tokenize_str(insert_sql2);
+    let mut parser2 = SqlParser::new(tokens2);
+    let ast2 = parser2.parse().unwrap();
+    let command2 = translate_ast_to_command(ast2).unwrap();
+    executor.execute_command(command2).unwrap();
+
+    // Verify auto-increment state
+    assert_eq!(executor.get_next_auto_increment_value("test_table", "id"), 3);
 }

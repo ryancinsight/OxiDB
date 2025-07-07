@@ -9,6 +9,7 @@ pub struct ColumnDef {
     pub is_primary_key: bool,
     pub is_unique: bool,
     pub is_nullable: bool,
+    pub is_auto_increment: bool,
     // Add other constraints like default_value later
 }
 
@@ -33,6 +34,7 @@ impl Schema {
             is_primary_key: false,
             is_unique: false,
             is_nullable: true, // Default to nullable
+            is_auto_increment: false, // Default to no auto-increment
         }
     }
 

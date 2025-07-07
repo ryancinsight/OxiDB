@@ -1121,6 +1121,7 @@ fn test_physical_wal_lsn_integration() {
                 is_primary_key: true,
                 is_unique: true,
                 is_nullable: false,
+                is_auto_increment: false,
             },
             crate::core::types::schema::ColumnDef {
                 name: "name".to_string(),
@@ -1128,6 +1129,7 @@ fn test_physical_wal_lsn_integration() {
                 is_primary_key: false,
                 is_unique: false,
                 is_nullable: true,
+                is_auto_increment: false,
             },
         ],
     })

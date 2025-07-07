@@ -28,6 +28,10 @@ pub struct IndexManager {
 
 impl IndexManager {
     pub fn new(base_path: PathBuf) -> Result<Self, OxidbError> {
+        Self::new_with_auto_discovery(base_path, true)
+    }
+
+    pub fn new_with_auto_discovery(base_path: PathBuf, auto_discover: bool) -> Result<Self, OxidbError> {
         if !base_path.exists() {
             std::fs::create_dir_all(&base_path).map_err(OxidbError::Io)?;
         } else if !base_path.is_dir() {
@@ -36,7 +40,15 @@ impl IndexManager {
                 "Base path for indexes must be a directory.",
             )));
         }
-        Ok(IndexManager { indexes: HashMap::new(), base_path })
+
+        let mut manager = IndexManager { indexes: HashMap::new(), base_path };
+
+        // Load existing indexes from disk only if auto_discover is enabled
+        if auto_discover {
+            manager.discover_and_load_existing_indexes()?;
+        }
+
+        Ok(manager)
     }
 
     pub fn create_index(&mut self, index_name: String, index_type: &str) -> Result<(), OxidbError> {
@@ -220,6 +232,44 @@ impl IndexManager {
                 .load()
                 .map_err(|e| OxidbError::Index(format!("Error loading index {}: {}", name, e)))?;
         }
+        Ok(())
+    }
+
+    /// Discovers and loads existing index files from the base directory
+    fn discover_and_load_existing_indexes(&mut self) -> Result<(), OxidbError> {
+        let entries = std::fs::read_dir(&self.base_path).map_err(OxidbError::Io)?;
+
+        for entry in entries {
+            let entry = entry.map_err(OxidbError::Io)?;
+            let path = entry.path();
+
+            if path.is_file() {
+                if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                    // Parse index files: name.idx (e.g., "idx_users_id.idx")
+                    if let Some(dot_pos) = file_name.rfind('.') {
+                        let index_name = &file_name[..dot_pos];
+                        let extension = &file_name[dot_pos + 1..];
+
+                        // Only load .idx files (which are hash indexes by default)
+                        if extension == "idx" {
+                            // Skip if already loaded
+                            if !self.indexes.contains_key(index_name) {
+                                match self.create_index(index_name.to_string(), "hash") {
+                                    Ok(_) => {
+                                        eprintln!("[IndexManager] Loaded existing index: {}", index_name);
+                                    }
+                                    Err(e) => {
+                                        eprintln!("[IndexManager] Failed to load index {}: {}", index_name, e);
+                                        // Continue loading other indexes instead of failing completely
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 }
@@ -461,7 +511,8 @@ mod tests {
             pre_index.save()?; // Ensure data is written to file
         }
 
-        let mut manager = IndexManager::new(base_path_for_hash.to_path_buf())?;
+        // Disable auto-discovery to avoid loading the existing index file automatically
+        let mut manager = IndexManager::new_with_auto_discovery(base_path_for_hash.to_path_buf(), false)?;
         // This should load the existing hash index file
         manager.create_index(index_name.clone(), "hash")?;
 
