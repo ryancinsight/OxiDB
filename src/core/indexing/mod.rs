@@ -1,9 +1,15 @@
-pub mod btree; // Added
-pub mod hash_index;
+pub mod btree;
+pub mod hash;
+pub mod blink_tree; // Blink tree implementation
+pub mod hnsw; // HNSW (Hierarchical Navigable Small World) implementation
+// pub mod rtree; // R-tree implementation (commented out to avoid export conflicts for now)
 pub mod manager;
 pub mod traits;
 
-// Re-export IndexManager for convenience if other top-level modules use it.
+pub use btree::*;
+pub use hash::*;
+pub use blink_tree::*; // Export Blink tree types
+pub use hnsw::*; // Export HNSW types
+// pub use rtree::*; // Export R-tree types (commented out to avoid conflicts)
 pub use manager::IndexManager;
-// Re-export the Index trait from traits.rs for convenience.
-pub use traits::Index;
+pub use traits::*;

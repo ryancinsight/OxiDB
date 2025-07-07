@@ -4,6 +4,7 @@ pub mod execution; // Added execution module
 pub mod indexing;
 pub mod optimizer; // Added optimizer module
 pub mod query;
+pub mod recovery; // Added recovery module
 pub mod storage;
 pub mod transaction;
 pub mod types;

@@ -156,6 +156,78 @@ impl Page {
 
         Ok(Page { header, data })
     }
+
+    /// Get the LSN (Log Sequence Number) of this page
+    pub fn get_lsn(&self) -> Lsn {
+        self.header.lsn
+    }
+
+    /// Set the LSN (Log Sequence Number) of this page
+    pub fn set_lsn(&mut self, lsn: Lsn) {
+        self.header.lsn = lsn;
+    }
+
+    /// Apply an update operation to the page
+    /// This is a simplified implementation for recovery purposes
+    pub fn apply_update(&mut self, after_image: &[u8]) -> Result<(), OxidbError> {
+        if after_image.len() > self.data.len() {
+            return Err(OxidbError::InvalidInput {
+                message: "Update data exceeds page capacity".to_string()
+            });
+        }
+        
+        // For simplicity, we'll replace the beginning of the page data with the after_image
+        // In a real implementation, this would be more sophisticated based on the specific
+        // storage format and the nature of the update
+        self.data[..after_image.len()].copy_from_slice(after_image);
+        
+        Ok(())
+    }
+
+    /// Apply an insert operation to the page
+    /// This is a simplified implementation for recovery purposes
+    pub fn apply_insert(&mut self, data: &[u8]) -> Result<(), OxidbError> {
+        if data.len() > self.data.len() {
+            return Err(OxidbError::InvalidInput {
+                message: "Insert data exceeds page capacity".to_string()
+            });
+        }
+        
+        // For simplicity, we'll append the data to the page
+        // In a real implementation, this would involve proper slot management
+        // and free space tracking
+        let mut insert_offset = 0;
+        
+        // Find the first available space (simplified approach)
+        while insert_offset + data.len() <= self.data.len() {
+            if self.data[insert_offset..insert_offset + data.len()].iter().all(|&b| b == 0) {
+                self.data[insert_offset..insert_offset + data.len()].copy_from_slice(data);
+                return Ok(());
+            }
+            insert_offset += 1;
+        }
+        
+        Err(OxidbError::InvalidInput {
+            message: "No space available for insert".to_string()
+        })
+    }
+
+    /// Apply a delete operation to the page
+    /// This is a simplified implementation for recovery purposes
+    pub fn apply_delete(&mut self) -> Result<(), OxidbError> {
+        // For simplicity, we'll zero out the first non-zero data
+        // In a real implementation, this would involve proper slot management
+        // and record identification
+        for byte in &mut self.data {
+            if *byte != 0 {
+                *byte = 0;
+                return Ok(());
+            }
+        }
+        
+        // If no non-zero data found, the delete is a no-op
+        Ok(())
+    }
 }
 
 #[cfg(test)]

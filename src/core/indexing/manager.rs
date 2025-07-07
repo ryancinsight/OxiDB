@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::core::common::OxidbError;
 use crate::core::indexing::btree::BPlusTreeIndex; // Import BPlusTreeIndex
-use crate::core::indexing::hash_index::HashIndex;
+use crate::core::indexing::hash::HashIndex;
 use crate::core::indexing::traits::Index; // Assumes Index trait uses common::OxidbError
 use crate::core::query::commands::{Key as PrimaryKey, Value};
 

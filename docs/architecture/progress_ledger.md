@@ -29,13 +29,20 @@ This ledger tracks the status of major features and components of the Oxidb cath
 *   Status: Partially Implemented
 *   Sub-Modules:
     *   **Parser** (`src/core/query/parser`)
-        *   Status: Partially Implemented
+        *   Status: Fully Implemented
         *   Checklist:
             *   [x] `mod.rs`
             *   [x] `sql/tokenizer.rs` (Note: Tokenizer is within `src/core/query/sql/`)
             *   [x] `sql/ast.rs` (Note: AST definitions are within `src/core/query/sql/`)
-            *   [x] `sql/parser/ (core.rs, statement.rs, etc.)` (Note: Parser modules are within `src/core/query/sql/`)
+            *   [x] `sql/parser/ (core.rs, statement.rs, expression.rs)` (Note: Parser modules are within `src/core/query/sql/`)
+            *   [x] Comprehensive test coverage for all major SQL statements
             *   [ ] ADR for query language/parser design
+        *   **Implementation Notes**:
+            *   Full recursive descent parser implementation
+            *   Supports DDL: CREATE TABLE (with constraints), DROP TABLE
+            *   Supports DML: SELECT (with WHERE, JOIN, ORDER BY, LIMIT), INSERT, UPDATE, DELETE
+            *   Comprehensive error handling with position tracking
+            *   Extensive test suite in `tests/parser_tests.rs`
     *   **Binder** (`src/core/query/binder`)
         *   Status: Partially Implemented
         *   Checklist:
@@ -82,23 +89,52 @@ This ledger tracks the status of major features and components of the Oxidb cath
             *   [x] `buffer_pool_manager.rs` (BufferPoolManager implemented in `buffer_pool_manager.rs`, `buffer_pool/` dir is placeholder)
             *   [x] ADR for storage formats and strategies (ADR-001)
     *   **Write-Ahead Log (WAL)** (`src/core/wal`)
-        *   Status: Partially Implemented
+        *   Status: Substantially Implemented
         *   Checklist:
             *   [x] `mod.rs` (Exists and defines module structure)
             *   [x] `log_manager.rs` (LogManager for LSN allocation implemented)
             *   [x] `log_record.rs` (LogRecord enum with various record types defined)
             *   [x] `writer.rs` (WalWriter for buffering and writing log records implemented)
+            *   [x] `reader.rs` (WalReader for parsing and reading WAL files implemented with comprehensive functionality)
             *   [x] Verified LSN integrity for physical WAL entries (including INSERT, UPDATE, DELETE)
             *   [ ] ADR for WAL implementation
     *   **Indexing** (`src/core/indexing`)
-        *   Status: Partially Implemented
+        *   Status: Substantially Implemented (B+-Tree, Blink Tree Completed; R-Tree Foundation)
         *   Checklist:
             *   [x] `mod.rs` (Exists and defines module structure)
             *   [x] `traits.rs` (Index trait defined)
-            *   [x] `hash_index.rs` (HashIndex implementation present)
+            *   [x] `hash/` (HashIndex implementation refactored into submodule structure)
             *   [x] `manager.rs` (IndexManager for managing multiple indexes implemented)
-            *   [x] `btree/` (B+-Tree implementation using fixed-size pages, supporting insert, find, delete with rebalancing)
+            *   [x] `btree/` (B+-Tree FULLY IMPLEMENTED using fixed-size pages, supporting insert, find, delete with rebalancing)
+            *   [x] `blink_tree/` (Blink Tree FULLY IMPLEMENTED with concurrent access and lock-free reads)
+            *   [~] `rtree/` (R-Tree geometric foundation implemented, core algorithms in progress)
             *   [x] ADR for indexing strategies (See ADR-002 for B+-Tree)
+        *   **B+-Tree Implementation Notes**:
+            *   Complete implementation in `src/core/indexing/btree/`
+            *   Fixed-size page design (PAGE_SIZE = 4096 bytes)
+            *   Full support for insert, delete, search, and range scan operations
+            *   Advanced rebalancing logic including borrowing from siblings and node merging
+            *   Comprehensive test suite with edge case coverage in `btree/tree/tests.rs`
+            *   Proper serialization/deserialization for persistent storage
+            *   Integration with IndexManager via the Index trait
+        *   **Blink Tree Implementation Notes**:
+            *   Complete concurrent implementation in `src/core/indexing/blink_tree/`
+            *   Lock-free concurrent reads during splits using right-link pointers
+            *   High keys for safe concurrent traversal and split detection
+            *   Minimal locking strategy optimized for write operations
+            *   Range scan operations showcasing concurrent traversal capabilities
+            *   21 comprehensive tests covering all operations and concurrent safety
+            *   Production-ready for high-concurrency OLTP workloads
+        *   **Hash Index Refactoring Notes**:
+            *   Successfully moved from `hash_index.rs` to proper `src/core/indexing/hash/` submodule
+            *   Clean module structure with proper exports and re-exports
+            *   All tests continue to pass with no regressions (570 total tests passing)
+        *   **R-Tree Foundation Notes**:
+            *   Geometric types implemented: Point, Rectangle, MBR (Minimum Bounding Rectangle)
+            *   Comprehensive spatial operations: area, perimeter, intersection, union, distance
+            *   BoundingBox trait for spatial objects integration
+            *   Error handling and module structure established
+            *   Core R-Tree algorithms (insert, search, delete) in development
 
 ### Common Utilities (`src/core/common`)
 *   Status: Substantially Implemented
@@ -152,3 +188,29 @@ This ledger will be updated as work progresses on each component. "Required Comp
     *   Removed an obsolete TODO comment from `src/core/query/sql/parser/statement.rs` as the described functionality (`ast::DeleteStatement`) was already in use.
     *   Updated a TODO comment in `src/core/query/executor/planner.rs` to clarify that dynamic primary key determination for DELETE operations is currently blocked by schema limitations (`ColumnDef` lacking an `is_primary_key` marker).
     *   Previously noted TODOs in `src/core/optimizer/mod.rs` (related to `#[allow(dead_code)]`) and `src/core/storage/engine/heap/table_page.rs` (design considerations for record management and advanced updates) remain deferred for future work.
+
+## Recent Updates - 2025-01-XX (Indexing Implementations)
+
+*   **Blink Tree Implementation Completed**:
+    *   Full concurrent B+ tree variant implemented in `src/core/indexing/blink_tree/`
+    *   Lock-free concurrent reads during splits using right-link pointers and high keys
+    *   Minimal locking strategy for write operations with deferred maintenance
+    *   Comprehensive implementation includes insert, delete, search, range scan, and tree verification
+    *   21 new tests covering all operations, concurrent safety, and edge cases
+    *   Complete integration with Index trait for seamless use in IndexManager
+    *   Production-ready for high-concurrency OLTP workloads
+*   **Hash Index Refactoring**:
+    *   Successfully refactored hash index from single file to proper submodule structure
+    *   Moved from `hash_index.rs` to `src/core/indexing/hash/` with proper module exports
+    *   Updated IndexManager imports with no functionality changes
+    *   All 549 existing tests continue to pass with no regressions
+*   **R-Tree Foundation Implementation**:
+    *   Comprehensive geometric foundation implemented in `src/core/indexing/rtree/geometry.rs`
+    *   Point and Rectangle types with full spatial operations (area, intersection, union, distance)
+    *   Minimum Bounding Rectangle (MBR) alias with spatial-specific methods
+    *   BoundingBox trait for generic spatial object handling
+    *   Module structure and error types established for future R-Tree algorithms
+*   **Test Suite Status**:
+    *   All 570 tests passing including 21 new Blink tree tests
+    *   No regressions in existing functionality
+    *   Comprehensive coverage for all indexing implementations

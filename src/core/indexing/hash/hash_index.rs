@@ -180,11 +180,7 @@ impl Index for HashIndex {
         // If the preceding calls were successful, this function implicitly returns Ok(()).
         // However, to be explicit and match the signature, ensure Ok is returned if all ops succeed.
         // The current structure where update calls insert/delete which return Result means this should be fine.
-        // Let's ensure an explicit Ok(()) if all paths succeed without early return.
-        // No, delete and insert already return Result<(), OxidbError>.
-        // If they succeed, they return Ok(()). If they error, update errors.
-        // So, this is fine. The last operation's Result is returned.
-        // For clarity, can add explicit Ok(()) if needed, but it's not strictly necessary if last expr is Ok.
+        // Let's ensure an explicit Ok(()) if needed, but it's not strictly necessary if last expr is Ok.
         // The issue is that self.insert and self.delete now return Result.
         // The original structure was:
         // self.delete(...)?; self.insert(...)?; Ok(())
@@ -565,4 +561,4 @@ mod tests {
 
         Ok(())
     }
-}
+} 
