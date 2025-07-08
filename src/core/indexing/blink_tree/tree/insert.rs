@@ -1,6 +1,8 @@
-use crate::core::indexing::blink_tree::error::BlinkTreeError;
-use crate::core::indexing::blink_tree::node::{BlinkTreeNode, KeyType, PageId, PrimaryKey, InsertValue};
 use super::BlinkTreeIndex;
+use crate::core::indexing::blink_tree::error::BlinkTreeError;
+use crate::core::indexing::blink_tree::node::{
+    BlinkTreeNode, InsertValue, KeyType, PageId, PrimaryKey,
+};
 
 impl BlinkTreeIndex {
     /// Insert a key-value pair into the Blink tree
@@ -14,25 +16,25 @@ impl BlinkTreeIndex {
         // Find the leaf node where this key should be inserted
         let mut path = Vec::new();
         let leaf_page_id = self.find_leaf_for_insertion(&key, &mut path)?;
-        
+
         // Insert into the leaf node
         self.insert_into_leaf(leaf_page_id, key, value, path)?;
-        
+
         Ok(())
     }
 
     /// Find the leaf node where a key should be inserted, recording the path
     fn find_leaf_for_insertion(
-        &self, 
-        key: &KeyType, 
-        path: &mut Vec<PageId>
+        &self,
+        key: &KeyType,
+        path: &mut Vec<PageId>,
     ) -> Result<PageId, BlinkTreeError> {
         let mut current_page_id = self.root_page_id;
-        
+
         loop {
             path.push(current_page_id);
             let current_node = self.read_node(current_page_id)?;
-            
+
             if current_node.is_leaf() {
                 return Ok(current_page_id);
             } else {
@@ -46,10 +48,10 @@ impl BlinkTreeIndex {
     fn find_child_for_insertion(
         &self,
         internal_node: &BlinkTreeNode,
-        key: &KeyType
+        key: &KeyType,
     ) -> Result<PageId, BlinkTreeError> {
         match internal_node {
-            BlinkTreeNode::Internal { keys, children, right_link, .. } => {
+            BlinkTreeNode::Internal { children, right_link, .. } => {
                 // Check if this node is safe for our key
                 if !internal_node.is_safe_for_key(key) {
                     // Key might belong in right sibling due to concurrent split
@@ -58,7 +60,7 @@ impl BlinkTreeIndex {
                         return self.find_child_for_insertion(&right_node, key);
                     }
                 }
-                
+
                 // Find the appropriate child
                 let child_index = internal_node.find_child_index(key)?;
                 Ok(children[child_index])
@@ -73,10 +75,10 @@ impl BlinkTreeIndex {
         leaf_page_id: PageId,
         key: KeyType,
         value: PrimaryKey,
-        mut path: Vec<PageId>
+        path: Vec<PageId>,
     ) -> Result<(), BlinkTreeError> {
         let mut leaf_node = self.read_node(leaf_page_id)?;
-        
+
         // Check if the key already exists and update it
         if let BlinkTreeNode::Leaf { keys, values, .. } = &mut leaf_node {
             for (i, existing_key) in keys.iter().enumerate() {
@@ -93,7 +95,7 @@ impl BlinkTreeIndex {
         let insert_result = leaf_node.insert_key_value(
             key.clone(),
             InsertValue::PrimaryKeys(vec![value.clone()]),
-            self.order
+            self.order,
         );
 
         match insert_result {
@@ -115,29 +117,29 @@ impl BlinkTreeIndex {
         mut leaf_node: BlinkTreeNode,
         key: KeyType,
         value: PrimaryKey,
-        path: Vec<PageId>
+        path: Vec<PageId>,
     ) -> Result<(), BlinkTreeError> {
         // Get a new page for the right split
         let new_page_id = self.allocate_new_page_id()?;
-        
+
         // Determine where to insert the key (left or right split)
         let should_insert_in_left = self.should_insert_in_left_split(&leaf_node, &key)?;
-        
+
         // Insert the key before splitting to ensure it's included
         if should_insert_in_left {
             // Force insert into left node (we'll handle overflow in split)
             self.force_insert_into_leaf(&mut leaf_node, key.clone(), value.clone())?;
         }
-        
+
         // Perform the split
         let (split_key, mut new_right_node) = leaf_node.split(self.order, new_page_id)?;
-        
+
         // If key should go in right split, insert it there
         if !should_insert_in_left {
             new_right_node.insert_key_value(
                 key,
                 InsertValue::PrimaryKeys(vec![value]),
-                self.order
+                self.order,
             )?;
         }
 
@@ -153,7 +155,7 @@ impl BlinkTreeIndex {
     fn should_insert_in_left_split(
         &self,
         leaf_node: &BlinkTreeNode,
-        key: &KeyType
+        key: &KeyType,
     ) -> Result<bool, BlinkTreeError> {
         match leaf_node {
             BlinkTreeNode::Leaf { keys, .. } => {
@@ -170,7 +172,7 @@ impl BlinkTreeIndex {
         &mut self,
         leaf_node: &mut BlinkTreeNode,
         key: KeyType,
-        value: PrimaryKey
+        value: PrimaryKey,
     ) -> Result<(), BlinkTreeError> {
         match leaf_node {
             BlinkTreeNode::Leaf { keys, values, .. } => {
@@ -186,7 +188,7 @@ impl BlinkTreeIndex {
                         return Ok(());
                     }
                 }
-                
+
                 // Insert the new key-value pair
                 keys.insert(insert_pos, key);
                 values.insert(insert_pos, vec![value]);
@@ -201,7 +203,7 @@ impl BlinkTreeIndex {
         &mut self,
         split_key: KeyType,
         new_page_id: PageId,
-        mut path: Vec<PageId>
+        mut path: Vec<PageId>,
     ) -> Result<(), BlinkTreeError> {
         // Remove the leaf page from the path (we already handled it)
         path.pop();
@@ -219,7 +221,7 @@ impl BlinkTreeIndex {
         let insert_result = parent_node.insert_key_value(
             split_key.clone(),
             InsertValue::Page(new_page_id),
-            self.order
+            self.order,
         );
 
         match insert_result {
@@ -241,14 +243,14 @@ impl BlinkTreeIndex {
         mut internal_node: BlinkTreeNode,
         key: KeyType,
         child_page_id: PageId,
-        path: Vec<PageId>
+        path: Vec<PageId>,
     ) -> Result<(), BlinkTreeError> {
         // Get a new page for the right split
         let new_page_id = self.allocate_new_page_id()?;
-        
+
         // Force insert the key before splitting
         self.force_insert_into_internal(&mut internal_node, key, child_page_id)?;
-        
+
         // Perform the split
         let (split_key, new_right_node) = internal_node.split(self.order, new_page_id)?;
 
@@ -268,7 +270,7 @@ impl BlinkTreeIndex {
         &mut self,
         internal_node: &mut BlinkTreeNode,
         key: KeyType,
-        child_page_id: PageId
+        child_page_id: PageId,
     ) -> Result<(), BlinkTreeError> {
         match internal_node {
             BlinkTreeNode::Internal { keys, children, .. } => {
@@ -280,7 +282,7 @@ impl BlinkTreeIndex {
                         break;
                     }
                 }
-                
+
                 // Insert the new key and child pointer
                 keys.insert(insert_pos, key);
                 children.insert(insert_pos + 1, child_page_id);
@@ -291,7 +293,10 @@ impl BlinkTreeIndex {
     }
 
     /// Update parent pointers for all children of a node
-    fn update_children_parent_pointers(&mut self, node: &BlinkTreeNode) -> Result<(), BlinkTreeError> {
+    fn update_children_parent_pointers(
+        &mut self,
+        node: &BlinkTreeNode,
+    ) -> Result<(), BlinkTreeError> {
         match node {
             BlinkTreeNode::Internal { children, page_id, .. } => {
                 for child_page_id in children {
@@ -310,17 +315,17 @@ impl BlinkTreeIndex {
         &mut self,
         split_key: KeyType,
         left_child_id: PageId,
-        right_child_id: PageId
+        right_child_id: PageId,
     ) -> Result<(), BlinkTreeError> {
         let new_root_page_id = self.allocate_new_page_id()?;
-        
+
         let new_root = BlinkTreeNode::Internal {
             page_id: new_root_page_id,
             parent_page_id: None,
             keys: vec![split_key],
             children: vec![left_child_id, right_child_id],
-            right_link: None,  // Root has no siblings
-            high_key: None,    // Root has no high key
+            right_link: None, // Root has no siblings
+            high_key: None,   // Root has no high key
         };
 
         // Update parent pointers for the children
@@ -348,67 +353,67 @@ impl BlinkTreeIndex {
 mod tests {
     use super::*;
     use tempfile::TempDir;
-    
+
     fn k(s: &str) -> KeyType {
         s.as_bytes().to_vec()
     }
-    
+
     fn pk(s: &str) -> PrimaryKey {
         s.as_bytes().to_vec()
     }
-    
+
     fn setup_tree(test_name: &str) -> (BlinkTreeIndex, TempDir) {
         let temp_dir = TempDir::new().unwrap();
         let tree_path = temp_dir.path().join(format!("{}.blink", test_name));
         let tree = BlinkTreeIndex::new("test_blink".to_string(), tree_path, 5).unwrap();
         (tree, temp_dir)
     }
-    
+
     #[test]
     fn test_insert_into_empty_tree() {
         let (mut tree, _temp_dir) = setup_tree("test_insert_empty");
-        
+
         // Insert a key-value pair
         assert!(tree.insert(k("apple"), pk("pk1")).is_ok());
-        
+
         // Verify it can be found
         let result = tree.find_primary_keys(&k("apple")).unwrap();
         assert!(result.is_some());
         assert_eq!(result.unwrap(), vec![pk("pk1")]);
-        
+
         // Verify tree structure is still valid
         assert!(tree.verify_structure().is_ok());
     }
-    
+
     #[test]
     fn test_insert_multiple_keys() {
         let (mut tree, _temp_dir) = setup_tree("test_insert_multiple");
-        
+
         // Insert several keys
         let keys = ["apple", "banana", "cherry", "date"];
         for (i, key) in keys.iter().enumerate() {
             assert!(tree.insert(k(key), pk(&format!("pk{}", i))).is_ok());
         }
-        
+
         // Verify all keys can be found
         for (i, key) in keys.iter().enumerate() {
             let result = tree.find_primary_keys(&k(key)).unwrap();
             assert!(result.is_some());
             assert_eq!(result.unwrap(), vec![pk(&format!("pk{}", i))]);
         }
-        
+
         // Verify tree structure
         assert!(tree.verify_structure().is_ok());
     }
-    
+
     #[test]
     fn test_insert_duplicate_key() {
         let (mut tree, _temp_dir) = setup_tree("test_insert_duplicate");
-        
+
         // Insert same key with different values
         assert!(tree.insert(k("apple"), pk("pk1")).is_ok());
         assert!(tree.insert(k("apple"), pk("pk2")).is_ok());
-        
+
         // Should find both values
         let result = tree.find_primary_keys(&k("apple")).unwrap();
         assert!(result.is_some());
@@ -416,34 +421,34 @@ mod tests {
         assert_eq!(values.len(), 2);
         assert!(values.contains(&pk("pk1")));
         assert!(values.contains(&pk("pk2")));
-        
+
         // Verify tree structure
         assert!(tree.verify_structure().is_ok());
     }
-    
+
     #[test]
     fn test_insert_causing_split() {
         let (mut tree, _temp_dir) = setup_tree("test_insert_split");
-        
+
         // Insert enough keys to force a split (order = 5, so leaf can hold 5 keys)
         let keys = ["a", "b", "c", "d", "e", "f"]; // 6 keys should cause split
         for (i, key) in keys.iter().enumerate() {
             assert!(tree.insert(k(key), pk(&format!("pk{}", i))).is_ok());
         }
-        
+
         // Verify all keys can still be found
         for (i, key) in keys.iter().enumerate() {
             let result = tree.find_primary_keys(&k(key)).unwrap();
             assert!(result.is_some());
             assert_eq!(result.unwrap(), vec![pk(&format!("pk{}", i))]);
         }
-        
+
         // Verify tree structure after split
         assert!(tree.verify_structure().is_ok());
-        
+
         // Root should no longer be a leaf (it should have split)
-        let root_node = tree.read_node(tree.root_page_id).unwrap();
+        let _root_node = tree.read_node(tree.root_page_id).unwrap();
         // Depending on implementation, root might still be leaf if only one split occurred
         // The important thing is that structure is valid
     }
-} 
+}

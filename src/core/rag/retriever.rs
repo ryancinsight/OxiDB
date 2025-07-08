@@ -1,9 +1,9 @@
 // src/core/rag/retriever.rs
 
-use async_trait::async_trait;
-use crate::core::common::error::OxidbError;
 use super::core_components::{Document, Embedding};
-use crate::core::vector::similarity::{cosine_similarity, dot_product}; // Assuming these are pub
+use crate::core::common::error::OxidbError;
+use crate::core::vector::similarity::{cosine_similarity, dot_product};
+use async_trait::async_trait; // Assuming these are pub
 
 /// Defines the type of similarity metric to use for retrieval.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,9 +94,9 @@ mod tests {
     async fn setup_retriever() -> InMemoryRetriever {
         let model = MockEmbeddingModel { dimension: 2, fixed_embedding_value: None };
         let docs_content = vec![
-            ("doc1", "apple banana"),    // len 12 -> emb [0.12, 0.12]
-            ("doc2", "apple orange"),    // len 12 -> emb [0.12, 0.12] (same as doc1 for this mock)
-            ("doc3", "banana grape"),    // len 12 -> emb [0.12, 0.12] (same as doc1 for this mock)
+            ("doc1", "apple banana"),      // len 12 -> emb [0.12, 0.12]
+            ("doc2", "apple orange"), // len 12 -> emb [0.12, 0.12] (same as doc1 for this mock)
+            ("doc3", "banana grape"), // len 12 -> emb [0.12, 0.12] (same as doc1 for this mock)
             ("doc4", "totally different"), // len 17 -> emb [0.17, 0.17]
         ];
 
@@ -108,10 +108,10 @@ mod tests {
         }
 
         // Manually set one embedding to be distinct for better testing
-        if let Some(doc_to_change) = documents.get_mut(2) { // doc3
-             doc_to_change.embedding = Some(Embedding::from(vec![0.5, 0.5]));
+        if let Some(doc_to_change) = documents.get_mut(2) {
+            // doc3
+            doc_to_change.embedding = Some(Embedding::from(vec![0.5, 0.5]));
         }
-
 
         InMemoryRetriever::new(documents)
     }
@@ -130,10 +130,13 @@ mod tests {
             }
         }
 
-        let results = retriever.retrieve(&query_embedding, 2, SimilarityMetric::Cosine).await.unwrap();
+        let results =
+            retriever.retrieve(&query_embedding, 2, SimilarityMetric::Cosine).await.unwrap();
 
-        println!("Retrieved results: {:?}", results.iter().map(|d| d.id.as_str()).collect::<Vec<&str>>());
-
+        println!(
+            "Retrieved results: {:?}",
+            results.iter().map(|d| d.id.as_str()).collect::<Vec<&str>>()
+        );
 
         assert_eq!(results.len(), 2);
         // Based on program's output and re-verified calculations:
@@ -144,7 +147,10 @@ mod tests {
         // Doc4 has the highest score. Doc1, Doc2, Doc3 are tied.
         // Due to stable sort, their original relative order (doc1, doc2, doc3) is maintained for the tie.
         assert_eq!(results[0].id, "doc4");
-        assert_eq!(results[1].id, "doc1", "Second document should be doc1 due to tie-breaking with stable sort.");
+        assert_eq!(
+            results[1].id, "doc1",
+            "Second document should be doc1 due to tie-breaking with stable sort."
+        );
     }
 
     #[tokio::test]
@@ -155,7 +161,8 @@ mod tests {
         // doc3:       [0.5, 0.5]   -> dot: 0.5
         // doc4:       [0.17, 0.17] -> dot: 0.17
         let query_embedding = Embedding::from(vec![1.0, 0.0]);
-        let results = retriever.retrieve(&query_embedding, 2, SimilarityMetric::DotProduct).await.unwrap();
+        let results =
+            retriever.retrieve(&query_embedding, 2, SimilarityMetric::DotProduct).await.unwrap();
 
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].id, "doc3"); // Highest dot product
@@ -166,7 +173,8 @@ mod tests {
     async fn test_retrieve_top_k_zero() {
         let retriever = setup_retriever().await;
         let query_embedding = Embedding::from(vec![0.1, 0.1]);
-        let results = retriever.retrieve(&query_embedding, 0, SimilarityMetric::Cosine).await.unwrap();
+        let results =
+            retriever.retrieve(&query_embedding, 0, SimilarityMetric::Cosine).await.unwrap();
         assert!(results.is_empty());
     }
 
@@ -174,26 +182,30 @@ mod tests {
     async fn test_retrieve_more_than_available() {
         let retriever = setup_retriever().await; // Has 4 documents
         let query_embedding = Embedding::from(vec![0.1, 0.1]);
-        let results = retriever.retrieve(&query_embedding, 10, SimilarityMetric::Cosine).await.unwrap();
+        let results =
+            retriever.retrieve(&query_embedding, 10, SimilarityMetric::Cosine).await.unwrap();
         assert_eq!(results.len(), 4); // Returns all available documents
     }
 
     #[tokio::test]
     async fn test_retrieve_no_documents_with_embeddings() {
-        let retriever = InMemoryRetriever::new(vec![
-            Document::new("doc1".to_string(), "no embedding here".to_string()),
-        ]);
+        let retriever = InMemoryRetriever::new(vec![Document::new(
+            "doc1".to_string(),
+            "no embedding here".to_string(),
+        )]);
         let query_embedding = Embedding::from(vec![0.1, 0.1]);
-        let results = retriever.retrieve(&query_embedding, 1, SimilarityMetric::Cosine).await.unwrap();
+        let results =
+            retriever.retrieve(&query_embedding, 1, SimilarityMetric::Cosine).await.unwrap();
         assert!(results.is_empty());
     }
-     #[tokio::test]
+    #[tokio::test]
     async fn test_in_memory_retriever_cosine_similarity_identical_query() {
         let retriever = setup_retriever().await;
         // Query with an embedding identical to doc3's
         let query_embedding = Embedding::from(vec![0.5, 0.5]);
 
-        let results = retriever.retrieve(&query_embedding, 1, SimilarityMetric::Cosine).await.unwrap();
+        let results =
+            retriever.retrieve(&query_embedding, 1, SimilarityMetric::Cosine).await.unwrap();
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].id, "doc3");
@@ -201,7 +213,7 @@ mod tests {
         // We can't directly check the score from the retrieve API, but this implies it's the highest.
 
         // Verify score calculation for self-similarity
-        let score = cosine_similarity(&[0.5,0.5], &[0.5,0.5]).unwrap();
+        let score = cosine_similarity(&[0.5, 0.5], &[0.5, 0.5]).unwrap();
         assert_relative_eq!(score, 1.0, epsilon = 1e-6);
     }
 }

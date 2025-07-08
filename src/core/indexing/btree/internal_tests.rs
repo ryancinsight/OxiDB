@@ -13,7 +13,6 @@ use tempfile::{tempdir, TempDir};
 fn k(s: &str) -> KeyType {
     s.as_bytes().to_vec()
 }
-
 fn pk(s: &str) -> PrimaryKey {
     s.as_bytes().to_vec()
 }
@@ -449,13 +448,13 @@ fn test_internal_merge_with_left_sibling_new() -> Result<(), OxidbError> {
         Leaf { next_leaf, .. } => assert_eq!(next_leaf, Some(L4_PID)),
         _ => panic!(),
     }; // Removed &
-    // Verify that the deallocated page (IL1_PID) is reused when allocating new pages
-        // Only IL1_PID gets deallocated during the merge operation
-        let reused_page_1 = tree.allocate_new_page_id()?;
-        let reused_page_2 = tree.allocate_new_page_id()?;
+       // Verify that the deallocated page (IL1_PID) is reused when allocating new pages
+       // Only IL1_PID gets deallocated during the merge operation
+    let reused_page_1 = tree.allocate_new_page_id()?;
+    let reused_page_2 = tree.allocate_new_page_id()?;
 
-        // Both allocations return the same page ID due to the page allocation implementation
-        assert_eq!(reused_page_1, IL1_PID);
-        assert_eq!(reused_page_2, IL1_PID);
+    // Both allocations return the same page ID due to the page allocation implementation
+    assert_eq!(reused_page_1, IL1_PID);
+    assert_eq!(reused_page_2, IL1_PID);
     Ok(())
 }

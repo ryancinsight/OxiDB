@@ -12,16 +12,16 @@
 //! - Handle nested transactions and savepoints if supported
 
 use crate::core::common::types::{Lsn, PageId, TransactionId};
-use crate::core::recovery::tables::{TransactionTable, DirtyPageTable};
-use crate::core::recovery::types::{RecoveryError, RecoveryState, TransactionInfo, TransactionState};
+use crate::core::recovery::tables::TransactionTable;
+use crate::core::recovery::types::{RecoveryError, RecoveryState, TransactionInfo};
 use crate::core::storage::engine::page::{Page, PageType};
 use crate::core::wal::log_record::LogRecord;
-use crate::core::wal::reader::{WalReader, WalReaderError};
+use crate::core::wal::reader::WalReader;
 use crate::core::wal::writer::{WalWriter, WalWriterConfig};
-use std::collections::{HashMap, VecDeque};
+use log::{debug, info};
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use log::{info, warn, debug};
 
 /// Statistics collected during the Undo phase.
 #[derive(Debug, Clone)]
@@ -94,7 +94,8 @@ impl UndoPhase {
         self.initialize_wal_writer(&wal_path)?;
 
         // Get all active transactions that need to be undone
-        let active_transactions: Vec<TransactionInfo> = self.transaction_table
+        let active_transactions: Vec<TransactionInfo> = self
+            .transaction_table
             .active_transactions()
             .map(|(_, tx_info)| tx_info.clone())
             .collect();
@@ -119,13 +120,14 @@ impl UndoPhase {
 
         // Flush any remaining CLRs
         if let Some(ref mut writer) = self.wal_writer {
-            writer.flush()
+            writer
+                .flush()
                 .map_err(|e| RecoveryError::UndoError(format!("Failed to flush WAL: {}", e)))?;
         }
 
         self.state = RecoveryState::Completed;
         self.statistics.state = RecoveryState::Completed;
-        
+
         info!("Undo phase completed successfully. Undone {} transactions, processed {} records, generated {} CLRs",
               self.statistics.transactions_undone,
               self.statistics.records_processed,
@@ -135,16 +137,21 @@ impl UndoPhase {
     }
 
     /// Undoes a single transaction by traversing its log records backwards.
-    fn undo_transaction(&mut self, reader: &WalReader, tx_info: &TransactionInfo) -> Result<(), RecoveryError> {
+    fn undo_transaction(
+        &mut self,
+        reader: &WalReader,
+        tx_info: &TransactionInfo,
+    ) -> Result<(), RecoveryError> {
         debug!("Undoing transaction {} starting from LSN {}", tx_info.tx_id.0, tx_info.last_lsn);
 
         let mut current_lsn = Some(tx_info.last_lsn);
         let mut undo_next_lsn: Option<Lsn> = None;
 
         // Read all records to build a lookup map
-        let all_records = reader.read_all_records()
+        let all_records = reader
+            .read_all_records()
             .map_err(|e| RecoveryError::UndoError(format!("Failed to read WAL records: {}", e)))?;
-        
+
         let mut record_map: HashMap<Lsn, LogRecord> = HashMap::new();
         for record in all_records {
             let lsn = self.extract_lsn(&record);
@@ -170,7 +177,9 @@ impl UndoPhase {
                             current_lsn = prev_lsn;
                             // Only count records that actually need undo operations (not BeginTransaction)
                             match record {
-                                LogRecord::InsertRecord { .. } | LogRecord::DeleteRecord { .. } | LogRecord::UpdateRecord { .. } => {
+                                LogRecord::InsertRecord { .. }
+                                | LogRecord::DeleteRecord { .. }
+                                | LogRecord::UpdateRecord { .. } => {
                                     self.statistics.records_processed += 1;
                                 }
                                 _ => {} // Don't count BeginTransaction and other non-undoable records
@@ -196,22 +205,48 @@ impl UndoPhase {
     }
 
     /// Undoes a specific log record and generates a CLR.
-    fn undo_log_record(&mut self, record: &LogRecord, undo_next_lsn: Option<Lsn>) -> Result<Option<Lsn>, RecoveryError> {
+    fn undo_log_record(
+        &mut self,
+        record: &LogRecord,
+        undo_next_lsn: Option<Lsn>,
+    ) -> Result<Option<Lsn>, RecoveryError> {
         debug!("undo_log_record called for: {:?}", record);
         match record {
             LogRecord::InsertRecord { lsn, tx_id, page_id, slot_id, prev_lsn, .. } => {
                 // Undo insert by deleting the record
-                self.undo_insert(*lsn, *tx_id, *page_id, *slot_id, Some(*prev_lsn), undo_next_lsn)?;
+                self.undo_insert(*lsn, *tx_id, *page_id, *slot_id, undo_next_lsn)?;
                 Ok(Some(*prev_lsn))
             }
             LogRecord::DeleteRecord { lsn, tx_id, page_id, slot_id, old_record_data, prev_lsn } => {
                 // Undo delete by reinserting the record
-                self.undo_delete(*lsn, *tx_id, *page_id, *slot_id, old_record_data.clone(), Some(*prev_lsn), undo_next_lsn)?;
+                self.undo_delete(
+                    *lsn,
+                    *tx_id,
+                    *page_id,
+                    *slot_id,
+                    old_record_data.clone(),
+                    undo_next_lsn,
+                )?;
                 Ok(Some(*prev_lsn))
             }
-            LogRecord::UpdateRecord { lsn, tx_id, page_id, slot_id, old_record_data, prev_lsn, .. } => {
-                // Undo update by restoring the old data
-                self.undo_update(*lsn, *tx_id, *page_id, *slot_id, old_record_data.clone(), Some(*prev_lsn), undo_next_lsn)?;
+            LogRecord::UpdateRecord {
+                lsn,
+                tx_id,
+                page_id,
+                slot_id,
+                old_record_data,
+                prev_lsn,
+                ..
+            } => {
+                // Undo update by restoring the old record data
+                self.undo_update(
+                    *lsn,
+                    *tx_id,
+                    *page_id,
+                    *slot_id,
+                    old_record_data.clone(),
+                    undo_next_lsn,
+                )?;
                 Ok(Some(*prev_lsn))
             }
             LogRecord::NewPage { prev_lsn, .. } => {
@@ -219,7 +254,7 @@ impl UndoPhase {
                 // as the page allocation will be handled by the storage manager
                 Ok(Some(*prev_lsn))
             }
-            LogRecord::BeginTransaction { tx_id, .. } => {
+            LogRecord::BeginTransaction { .. } => {
                 // Reached the beginning of the transaction
                 Ok(None) // BeginTransaction doesn't have prev_lsn, so return None
             }
@@ -237,14 +272,13 @@ impl UndoPhase {
         tx_id: TransactionId,
         page_id: PageId,
         slot_id: crate::core::common::types::ids::SlotId,
-        _prev_lsn: Option<Lsn>,
         undo_next_lsn: Option<Lsn>,
     ) -> Result<(), RecoveryError> {
         debug!("Undoing insert: LSN {}, page {}, slot {}", original_lsn, page_id.0, slot_id.0);
 
         // Load the page (in a real implementation, this would interact with the buffer pool)
         let page = self.load_page(page_id)?;
-        
+
         // Remove the record from the page
         {
             let _page_guard = page.lock().unwrap();
@@ -267,14 +301,13 @@ impl UndoPhase {
         page_id: PageId,
         slot_id: crate::core::common::types::ids::SlotId,
         record_data: Vec<u8>,
-        _prev_lsn: Option<Lsn>,
         undo_next_lsn: Option<Lsn>,
     ) -> Result<(), RecoveryError> {
         debug!("Undoing delete: LSN {}, page {}, slot {}", original_lsn, page_id.0, slot_id.0);
 
         // Load the page
         let page = self.load_page(page_id)?;
-        
+
         // Reinsert the record
         {
             let _page_guard = page.lock().unwrap();
@@ -283,7 +316,14 @@ impl UndoPhase {
         }
 
         // Generate a CLR for the undo operation
-        self.write_clr_for_delete_undo(tx_id, page_id, slot_id, record_data, original_lsn, undo_next_lsn)?;
+        self.write_clr_for_delete_undo(
+            tx_id,
+            page_id,
+            slot_id,
+            record_data,
+            original_lsn,
+            undo_next_lsn,
+        )?;
 
         Ok(())
     }
@@ -296,14 +336,13 @@ impl UndoPhase {
         page_id: PageId,
         slot_id: crate::core::common::types::ids::SlotId,
         old_record_data: Vec<u8>,
-        prev_lsn: Option<Lsn>,
         undo_next_lsn: Option<Lsn>,
     ) -> Result<(), RecoveryError> {
         debug!("Undoing update: LSN {}, page {}, slot {}", original_lsn, page_id.0, slot_id.0);
 
         // Load the page
         let page = self.load_page(page_id)?;
-        
+
         // Restore the old record data
         {
             let _page_guard = page.lock().unwrap();
@@ -312,7 +351,14 @@ impl UndoPhase {
         }
 
         // Generate a CLR for the undo operation
-        self.write_clr_for_update_undo(tx_id, page_id, slot_id, old_record_data, original_lsn, undo_next_lsn)?;
+        self.write_clr_for_update_undo(
+            tx_id,
+            page_id,
+            slot_id,
+            old_record_data,
+            original_lsn,
+            undo_next_lsn,
+        )?;
 
         Ok(())
     }
@@ -334,13 +380,14 @@ impl UndoPhase {
                 slot_id: Some(slot_id),
                 undone_lsn: original_lsn,
                 data_for_redo_of_undo: vec![], // No additional data needed for delete
-                prev_lsn: 0, // Will be set by the writer
+                prev_lsn: 0,                   // Will be set by the writer
                 next_undo_lsn: undo_next_lsn,
             };
-            
-            writer.add_record(clr)
+
+            writer
+                .add_record(clr)
                 .map_err(|e| RecoveryError::UndoError(format!("Failed to write CLR: {}", e)))?;
-            
+
             self.statistics.clrs_generated += 1;
             debug!("Generated CLR for insert undo on page {}, slot {}", page_id.0, slot_id.0);
         }
@@ -368,10 +415,11 @@ impl UndoPhase {
                 prev_lsn: 0, // Will be set by the writer
                 next_undo_lsn: undo_next_lsn,
             };
-            
-            writer.add_record(clr)
+
+            writer
+                .add_record(clr)
                 .map_err(|e| RecoveryError::UndoError(format!("Failed to write CLR: {}", e)))?;
-            
+
             self.statistics.clrs_generated += 1;
             debug!("Generated CLR for delete undo on page {}, slot {}", page_id.0, slot_id.0);
         }
@@ -399,10 +447,11 @@ impl UndoPhase {
                 prev_lsn: 0, // Will be set by the writer
                 next_undo_lsn: undo_next_lsn,
             };
-            
-            writer.add_record(clr)
+
+            writer
+                .add_record(clr)
                 .map_err(|e| RecoveryError::UndoError(format!("Failed to write CLR: {}", e)))?;
-            
+
             self.statistics.clrs_generated += 1;
             debug!("Generated CLR for update undo on page {}, slot {}", page_id.0, slot_id.0);
         }
@@ -417,10 +466,11 @@ impl UndoPhase {
                 tx_id,
                 prev_lsn: 0, // This will be the last record for the transaction
             };
-            
-            writer.add_record(abort_record)
-                .map_err(|e| RecoveryError::UndoError(format!("Failed to write abort record: {}", e)))?;
-            
+
+            writer.add_record(abort_record).map_err(|e| {
+                RecoveryError::UndoError(format!("Failed to write abort record: {}", e))
+            })?;
+
             debug!("Generated abort record for transaction {}", tx_id.0);
         }
         Ok(())
@@ -457,7 +507,9 @@ impl UndoPhase {
             | LogRecord::DeleteRecord { tx_id: record_tx_id, .. }
             | LogRecord::UpdateRecord { tx_id: record_tx_id, .. }
             | LogRecord::NewPage { tx_id: record_tx_id, .. }
-            | LogRecord::CompensationLogRecord { tx_id: record_tx_id, .. } => *record_tx_id == tx_id,
+            | LogRecord::CompensationLogRecord { tx_id: record_tx_id, .. } => {
+                *record_tx_id == tx_id
+            }
             LogRecord::CheckpointBegin { .. } | LogRecord::CheckpointEnd { .. } => false,
         }
     }
@@ -515,11 +567,10 @@ mod tests {
     use super::*;
     use crate::core::common::types::ids::{PageId, SlotId};
     use crate::core::common::types::TransactionId;
-    use crate::core::recovery::types::{TransactionInfo, TransactionState};
+    use crate::core::recovery::types::TransactionInfo;
     use crate::core::wal::log_record::LogRecord;
     use crate::core::wal::writer::{WalWriter, WalWriterConfig};
     use tempfile::NamedTempFile;
-    use tokio;
 
     fn create_test_wal_with_records(records: Vec<LogRecord>) -> NamedTempFile {
         let temp_file = NamedTempFile::new().unwrap();
@@ -541,7 +592,7 @@ mod tests {
         transaction_table.insert(tx_info);
 
         let undo_phase = UndoPhase::new(transaction_table);
-        
+
         assert_eq!(undo_phase.get_state(), &RecoveryState::NotStarted);
         assert_eq!(undo_phase.cache_size(), 0);
         assert_eq!(undo_phase.get_statistics().transactions_undone, 0);
@@ -551,10 +602,10 @@ mod tests {
     fn test_undo_phase_no_active_transactions() {
         let transaction_table = TransactionTable::new(); // Empty table
         let mut undo_phase = UndoPhase::new(transaction_table);
-        
+
         let temp_file = create_test_wal_with_records(vec![]);
         let result = undo_phase.undo(temp_file.path());
-        
+
         assert!(result.is_ok());
         assert_eq!(undo_phase.get_state(), &RecoveryState::Completed);
         assert_eq!(undo_phase.get_statistics().transactions_undone, 0);
@@ -565,12 +616,12 @@ mod tests {
         let tx_id = TransactionId(1);
         let page_id = PageId(100);
         let slot_id = SlotId(1);
-        
+
         // Create a transaction table with one active transaction
         let mut transaction_table = TransactionTable::new();
         let tx_info = TransactionInfo::new_active(tx_id, 3); // Last LSN is 3
         transaction_table.insert(tx_info);
-        
+
         // Create WAL records for the transaction
         let records = vec![
             LogRecord::BeginTransaction { lsn: 1, tx_id },
@@ -592,14 +643,14 @@ mod tests {
                 prev_lsn: 2,
             },
         ];
-        
+
         let temp_file = create_test_wal_with_records(records);
         let mut undo_phase = UndoPhase::new(transaction_table);
-        
+
         let result = undo_phase.undo(temp_file.path());
-        
+
         // Test assertions
-        
+
         assert!(result.is_ok());
         assert_eq!(undo_phase.get_state(), &RecoveryState::Completed);
         assert_eq!(undo_phase.get_statistics().transactions_undone, 1);
@@ -611,10 +662,10 @@ mod tests {
     fn test_record_belongs_to_transaction() {
         let transaction_table = TransactionTable::new();
         let undo_phase = UndoPhase::new(transaction_table);
-        
+
         let tx_id = TransactionId(1);
         let other_tx_id = TransactionId(2);
-        
+
         let record = LogRecord::InsertRecord {
             lsn: 1,
             tx_id,
@@ -623,7 +674,7 @@ mod tests {
             record_data: vec![1, 2, 3],
             prev_lsn: 0,
         };
-        
+
         assert!(undo_phase.record_belongs_to_transaction(&record, tx_id));
         assert!(!undo_phase.record_belongs_to_transaction(&record, other_tx_id));
     }
@@ -632,7 +683,7 @@ mod tests {
     fn test_extract_lsn() {
         let transaction_table = TransactionTable::new();
         let undo_phase = UndoPhase::new(transaction_table);
-        
+
         let record = LogRecord::InsertRecord {
             lsn: 42,
             tx_id: TransactionId(1),
@@ -641,7 +692,7 @@ mod tests {
             record_data: vec![1, 2, 3],
             prev_lsn: 0,
         };
-        
+
         assert_eq!(undo_phase.extract_lsn(&record), 42);
     }
 
@@ -649,7 +700,7 @@ mod tests {
     fn test_extract_prev_lsn() {
         let transaction_table = TransactionTable::new();
         let undo_phase = UndoPhase::new(transaction_table);
-        
+
         let record_with_prev = LogRecord::InsertRecord {
             lsn: 42,
             tx_id: TransactionId(1),
@@ -658,12 +709,9 @@ mod tests {
             record_data: vec![1, 2, 3],
             prev_lsn: 41,
         };
-        
-        let record_without_prev = LogRecord::BeginTransaction {
-            lsn: 1,
-            tx_id: TransactionId(1),
-        };
-        
+
+        let record_without_prev = LogRecord::BeginTransaction { lsn: 1, tx_id: TransactionId(1) };
+
         assert_eq!(undo_phase.extract_prev_lsn(&record_with_prev), Some(41));
         assert_eq!(undo_phase.extract_prev_lsn(&record_without_prev), None);
     }
@@ -671,7 +719,7 @@ mod tests {
     #[test]
     fn test_undo_statistics() {
         let stats = UndoStatistics::new();
-        
+
         assert_eq!(stats.transactions_undone, 0);
         assert_eq!(stats.records_processed, 0);
         assert_eq!(stats.clrs_generated, 0);

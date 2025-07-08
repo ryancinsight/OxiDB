@@ -1,8 +1,8 @@
 // src/core/rag/embedder.rs
 
-use async_trait::async_trait;
-use crate::core::common::error::OxidbError;
 use super::core_components::{Document, Embedding};
+use crate::core::common::error::OxidbError;
+use async_trait::async_trait;
 
 /// Trait for models that can generate embeddings for documents.
 #[async_trait]
@@ -81,11 +81,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_mock_embedding_model_default_batch_via_single() {
-        struct TestModel { dimension: usize }
+        struct TestModel {
+            dimension: usize,
+        }
         #[async_trait]
         impl EmbeddingModel for TestModel {
             async fn embed_document(&self, document: &Document) -> Result<Embedding, OxidbError> {
-                Ok(Embedding::from(vec![(document.id.chars().last().unwrap_or('0').to_digit(10).unwrap_or(0) % 10) as f32; self.dimension]))
+                Ok(Embedding::from(vec![
+                    (document.id.chars().last().unwrap_or('0').to_digit(10).unwrap_or(0) % 10)
+                        as f32;
+                    self.dimension
+                ]))
             }
         }
 

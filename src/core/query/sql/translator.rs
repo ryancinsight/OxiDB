@@ -15,13 +15,11 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
                 None => None,
             };
             let order_by_cmd = match select_ast.order_by {
-                Some(order_by_ast_list) => {
-                    order_by_ast_list
-                        .iter()
-                        .map(translate_order_by_expr)
-                        .collect::<Result<Vec<commands::SqlOrderByExpr>, OxidbError>>()
-                        .map(Some)?
-                }
+                Some(order_by_ast_list) => order_by_ast_list
+                    .iter()
+                    .map(translate_order_by_expr)
+                    .collect::<Result<Vec<commands::SqlOrderByExpr>, OxidbError>>()
+                    .map(Some)?,
                 None => None,
             };
 
@@ -519,10 +517,7 @@ mod tests {
     fn test_translate_ast_select_simple() {
         let ast_stmt = TestStatement::Select(TestSelectStatement {
             columns: vec![TestSelectColumn::Asterisk],
-            from_clause: ast::TableReference {
-                name: "users".to_string(),
-                alias: None,
-            },
+            from_clause: ast::TableReference { name: "users".to_string(), alias: None },
             joins: Vec::new(),
             condition: None,
             order_by: None, // Added
@@ -546,7 +541,8 @@ mod tests {
     fn test_translate_ast_select_with_condition() {
         let ast_stmt = TestStatement::Select(TestSelectStatement {
             columns: vec![TestSelectColumn::ColumnName("email".to_string())],
-            from_clause: ast::TableReference { // Corrected
+            from_clause: ast::TableReference {
+                // Corrected
                 name: "customers".to_string(),
                 alias: None,
             },

@@ -600,7 +600,10 @@ mod tests {
             Err(OxidbError::SqlParsing(msg)) => {
                 // Changed
                 // Check for the specific error message propagated from the new parser logic
-                assert!(msg.contains("Expected literal or column identifier for RHS of condition") || msg.contains("Expected identifier"));
+                assert!(
+                    msg.contains("Expected literal or column identifier for RHS of condition")
+                        || msg.contains("Expected identifier")
+                );
             }
             Ok(cmd) => {
                 panic!("Expected SqlParsing error for SQL syntax error, got Ok({:?})", cmd)

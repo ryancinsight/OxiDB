@@ -969,7 +969,7 @@ fn test_delete_atomicity_wal_failure() {
             Some(value.clone())
         );
     } // Ensure store is dropped before cleanup
-    
+
     // Clean up the WAL file if it exists
     if wal_path.exists() {
         // Remove read-only permission before deletion

@@ -1,6 +1,6 @@
+use crate::core::query::commands::Key as PrimaryKey;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use crate::core::query::commands::Key as PrimaryKey;
 
 /// Node identifier type
 pub type NodeId = usize;
@@ -13,38 +13,27 @@ pub type Vector = Vec<f32>;
 pub struct HnswNode {
     /// Unique identifier for this node
     pub id: NodeId,
-    
+
     /// The vector data stored in this node
     pub vector: Vector,
-    
+
     /// Primary key for the original data
     pub primary_key: PrimaryKey,
-    
+
     /// Connections for each layer (layer 0 is base layer)
     /// connections[i] contains neighbor node IDs for layer i
     pub connections: Vec<HashSet<NodeId>>,
-    
+
     /// Maximum layer this node exists in
     pub layer: usize,
 }
 
 impl HnswNode {
     /// Create a new HNSW node
-    pub fn new(
-        id: NodeId,
-        vector: Vector,
-        primary_key: PrimaryKey,
-        layer: usize,
-    ) -> Self {
+    pub fn new(id: NodeId, vector: Vector, primary_key: PrimaryKey, layer: usize) -> Self {
         let connections = (0..=layer).map(|_| HashSet::new()).collect();
-        
-        Self {
-            id,
-            vector,
-            primary_key,
-            connections,
-            layer,
-        }
+
+        Self { id, vector, primary_key, connections, layer }
     }
 
     /// Get connections for a specific layer
@@ -77,16 +66,12 @@ impl HnswNode {
 
     /// Get the number of connections at a specific layer
     pub fn connection_count_at_layer(&self, layer: usize) -> usize {
-        self.connections_at_layer(layer)
-            .map(|conns| conns.len())
-            .unwrap_or(0)
+        self.connections_at_layer(layer).map(|conns| conns.len()).unwrap_or(0)
     }
 
     /// Check if this node has a connection to another node at a specific layer
     pub fn has_connection(&self, layer: usize, neighbor_id: NodeId) -> bool {
-        self.connections_at_layer(layer)
-            .map(|conns| conns.contains(&neighbor_id))
-            .unwrap_or(false)
+        self.connections_at_layer(layer).map(|conns| conns.contains(&neighbor_id)).unwrap_or(false)
     }
 
     /// Get the dimension of the vector
@@ -110,12 +95,8 @@ pub fn euclidean_distance(a: &Vector, b: &Vector) -> f32 {
     if a.len() != b.len() {
         return f32::INFINITY;
     }
-    
-    a.iter()
-        .zip(b.iter())
-        .map(|(x, y)| (x - y).powi(2))
-        .sum::<f32>()
-        .sqrt()
+
+    a.iter().zip(b.iter()).map(|(x, y)| (x - y).powi(2)).sum::<f32>().sqrt()
 }
 
 /// Calculate cosine similarity between two vectors
@@ -123,11 +104,11 @@ pub fn cosine_similarity(a: &Vector, b: &Vector) -> f32 {
     if a.len() != b.len() {
         return 0.0;
     }
-    
+
     let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
     let norm_a: f32 = a.iter().map(|x| x.powi(2)).sum::<f32>().sqrt();
     let norm_b: f32 = b.iter().map(|x| x.powi(2)).sum::<f32>().sqrt();
-    
+
     if norm_a == 0.0 || norm_b == 0.0 {
         0.0
     } else {
@@ -216,9 +197,9 @@ mod tests {
         let vector1 = vec![1.0, 0.0, 0.0];
         let vector2 = vec![0.0, 1.0, 0.0];
         let pk = b"test".to_vec();
-        
+
         let node = HnswNode::new(0, vector1, pk, 0);
-        
+
         assert!((node.distance_to(&vector2) - 1.414_214).abs() < 0.001);
         assert!(node.cosine_similarity_to(&vector2).abs() < 0.001);
     }
@@ -234,4 +215,4 @@ mod tests {
         assert!((euclidean.calculate(&vec1, &vec2) - 1.414_214).abs() < 0.001);
         assert!((cosine.calculate(&vec1, &vec2) - 1.0).abs() < 0.001); // 1 - 0 (orthogonal)
     }
-} 
+}

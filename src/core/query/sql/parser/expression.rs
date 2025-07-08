@@ -5,7 +5,10 @@ use crate::core::query::sql::tokenizer::Token; // For matching specific tokens
 
 impl SqlParser {
     // Helper to parse a simple or qualified identifier (e.g., column or table.column)
-    pub(super) fn parse_qualified_identifier(&mut self, context_msg: &str) -> Result<String, SqlParseError> {
+    pub(super) fn parse_qualified_identifier(
+        &mut self,
+        context_msg: &str,
+    ) -> Result<String, SqlParseError> {
         let mut parts = Vec::new();
         parts.push(self.expect_identifier(context_msg)?);
         while self.match_token(Token::Dot) {
@@ -25,12 +28,15 @@ impl SqlParser {
             // but standard SQL usually doesn't mix '*' with specific columns in the main list this way
             // (though some dialects might allow `SELECT *, col1 FROM ...`).
             // For now, if it's just "*", we return. If it's part of a list, the loop handles it.
-            if !self.match_token(Token::Comma) { // If just "SELECT *", return early
-                 return Ok(columns);
+            if !self.match_token(Token::Comma) {
+                // If just "SELECT *", return early
+                return Ok(columns);
             }
         }
 
-        if !matches!(self.peek(), Some(Token::Identifier(_))) && !self.match_token(Token::Asterisk) && columns.is_empty()
+        if !matches!(self.peek(), Some(Token::Identifier(_)))
+            && !self.match_token(Token::Asterisk)
+            && columns.is_empty()
         {
             return Err(SqlParseError::UnexpectedToken {
                 expected: "column name or '*'".to_string(),
@@ -44,7 +50,8 @@ impl SqlParser {
                 self.consume(Token::Asterisk)?;
                 columns.push(SelectColumn::Asterisk);
             } else {
-                let qualified_col_name = self.parse_qualified_identifier("Expected column name or '*'")?;
+                let qualified_col_name =
+                    self.parse_qualified_identifier("Expected column name or '*'")?;
                 columns.push(SelectColumn::ColumnName(qualified_col_name));
             }
 
@@ -53,7 +60,8 @@ impl SqlParser {
             }
             self.consume(Token::Comma)?;
             match self.peek() {
-                Some(Token::Identifier(_)) | Some(Token::Asterisk) => { /* Good, loop will continue */ }
+                Some(Token::Identifier(_)) | Some(Token::Asterisk) => { /* Good, loop will continue */
+                }
                 Some(next_token) => {
                     return Err(SqlParseError::UnexpectedToken {
                         expected: "column name or '*' after comma".to_string(),
@@ -132,10 +140,11 @@ impl SqlParser {
     // Returns Ok(None) if not a literal, Ok(Some(value)) if a literal, Err if parsing starts but fails.
     fn try_parse_literal_value(&mut self) -> Result<Option<AstLiteralValue>, SqlParseError> {
         match self.peek() {
-            Some(Token::StringLiteral(_)) |
-            Some(Token::NumericLiteral(_)) |
-            Some(Token::BooleanLiteral(_)) |
-            Some(Token::LBracket) => { // For vector literals
+            Some(Token::StringLiteral(_))
+            | Some(Token::NumericLiteral(_))
+            | Some(Token::BooleanLiteral(_))
+            | Some(Token::LBracket) => {
+                // For vector literals
                 // These are definitively literals.
                 self.parse_literal_value("literal value").map(Some)
             }
@@ -166,8 +175,8 @@ impl SqlParser {
             self.consume(Token::RParen)?;
             Ok(condition)
         } else {
-            let column =
-                self.parse_qualified_identifier("Expected column name, 'NOT', or '(' for condition")?;
+            let column = self
+                .parse_qualified_identifier("Expected column name, 'NOT', or '(' for condition")?;
 
             if self.peek_is_identifier_str("IS") {
                 self.consume_any().ok_or(SqlParseError::UnexpectedEOF)?; // Consume IS
@@ -196,7 +205,9 @@ impl SqlParser {
                 Some(literal_val) => ast::AstExpressionValue::Literal(literal_val),
                 None => {
                     // Not a literal, try parsing as a qualified identifier
-                    let col_ident = self.parse_qualified_identifier("Expected literal or column identifier for RHS of condition")?;
+                    let col_ident = self.parse_qualified_identifier(
+                        "Expected literal or column identifier for RHS of condition",
+                    )?;
                     ast::AstExpressionValue::ColumnIdentifier(col_ident)
                 }
             };
@@ -273,8 +284,7 @@ impl SqlParser {
                         Ok(AstLiteralValue::Boolean(true)) // Allow TRUE/FALSE as identifiers to become literals
                     } else if upper_ident == "FALSE" {
                         Ok(AstLiteralValue::Boolean(false))
-                    }
-                     else {
+                    } else {
                         Err(SqlParseError::UnexpectedToken {
                             expected: error_msg_context.to_string(),
                             found: format!("Identifier({})", ident),

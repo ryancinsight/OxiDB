@@ -7,6 +7,9 @@
 #![warn(clippy::cast_possible_wrap)]
 #![warn(clippy::cast_precision_loss)]
 #![warn(clippy::cast_sign_loss)]
+#![forbid(unsafe_code)]
+#![deny(unused)]
+#![warn(clippy::missing_const_for_fn, clippy::approx_constant, clippy::all)]
 //! # Oxidb: A Simple Key-Value Store
 //!
 //! `oxidb` is a learning project implementing a basic file-based key-value store

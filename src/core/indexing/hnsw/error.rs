@@ -59,4 +59,4 @@ mod tests {
         let hnsw_error: HnswError = io_error.into();
         assert!(matches!(hnsw_error, HnswError::Io(_)));
     }
-} 
+}

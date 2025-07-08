@@ -1,19 +1,17 @@
 use std::path::PathBuf;
 
 use crate::core::indexing::blink_tree::error::BlinkTreeError;
-use crate::core::indexing::blink_tree::node::{BlinkTreeNode, KeyType, PageId, PrimaryKey, InsertValue};
+use crate::core::indexing::blink_tree::node::{BlinkTreeNode, KeyType, PageId, PrimaryKey};
 use crate::core::indexing::blink_tree::page_io::{BlinkPageManager, SENTINEL_PAGE_ID};
 
-mod search;
-mod insert;
 mod delete;
+mod insert;
+mod search;
 
-pub use search::*;
-pub use insert::*;
 pub use delete::*;
 
 /// Blink Tree Index implementation with concurrent access support
-/// 
+///
 /// Key features:
 /// - Lock-free reads during splits using right-link pointers
 /// - High keys for safe concurrent traversal
@@ -39,13 +37,7 @@ impl BlinkTreeIndex {
         let page_manager = BlinkPageManager::new(&path, order, true)?;
         let root_page_id = page_manager.get_root_page_id();
 
-        let mut tree = BlinkTreeIndex {
-            name,
-            path,
-            order,
-            root_page_id,
-            page_manager,
-        };
+        let mut tree = BlinkTreeIndex { name, path, order, root_page_id, page_manager };
 
         // If this is a new tree (no root), create the initial root leaf node
         if tree.root_page_id == SENTINEL_PAGE_ID {
@@ -58,14 +50,14 @@ impl BlinkTreeIndex {
     /// Create the initial root node (leaf node)
     fn create_initial_root(&mut self) -> Result<(), BlinkTreeError> {
         let new_page_id = self.allocate_new_page_id()?;
-        
+
         let root_node = BlinkTreeNode::Leaf {
             page_id: new_page_id,
             parent_page_id: None,
             keys: Vec::new(),
             values: Vec::new(),
-            right_link: None,     // No right sibling initially
-            high_key: None,       // No high key for root
+            right_link: None, // No right sibling initially
+            high_key: None,   // No high key for root
         };
 
         self.write_node(&root_node)?;
@@ -76,19 +68,22 @@ impl BlinkTreeIndex {
     }
 
     /// Lock-free search for primary keys (NEW for Blink tree)
-    /// This is the core concurrent access feature - readers can traverse 
+    /// This is the core concurrent access feature - readers can traverse
     /// the tree without locks even during splits
-    pub fn find_primary_keys(&self, key: &KeyType) -> Result<Option<Vec<PrimaryKey>>, BlinkTreeError> {
+    pub fn find_primary_keys(
+        &self,
+        key: &KeyType,
+    ) -> Result<Option<Vec<PrimaryKey>>, BlinkTreeError> {
         if self.root_page_id == SENTINEL_PAGE_ID {
             return Ok(None);
         }
 
         // Start from root and traverse down
         let mut current_page_id = self.root_page_id;
-        
+
         loop {
             let current_node = self.read_node(current_page_id)?;
-            
+
             if current_node.is_leaf() {
                 // We've reached a leaf node - search for the key
                 return self.search_leaf_node(&current_node, key);
@@ -101,9 +96,9 @@ impl BlinkTreeIndex {
 
     /// Search within a leaf node for a specific key
     fn search_leaf_node(
-        &self, 
-        leaf_node: &BlinkTreeNode, 
-        search_key: &KeyType
+        &self,
+        leaf_node: &BlinkTreeNode,
+        search_key: &KeyType,
     ) -> Result<Option<Vec<PrimaryKey>>, BlinkTreeError> {
         match leaf_node {
             BlinkTreeNode::Leaf { keys, values, right_link, .. } => {
@@ -118,14 +113,14 @@ impl BlinkTreeIndex {
                         return Ok(None);
                     }
                 }
-                
+
                 // Search within this node
                 for (i, key) in keys.iter().enumerate() {
                     if key == search_key {
                         return Ok(Some(values[i].clone()));
                     }
                 }
-                
+
                 Ok(None)
             }
             _ => Err(BlinkTreeError::UnexpectedNodeType),
@@ -134,12 +129,12 @@ impl BlinkTreeIndex {
 
     /// Find the next page to search in an internal node (with right-link following)
     fn find_next_page_in_internal(
-        &self, 
-        internal_node: &BlinkTreeNode, 
-        search_key: &KeyType
+        &self,
+        internal_node: &BlinkTreeNode,
+        search_key: &KeyType,
     ) -> Result<PageId, BlinkTreeError> {
         match internal_node {
-            BlinkTreeNode::Internal { keys, children, right_link, .. } => {
+            BlinkTreeNode::Internal { children, right_link, .. } => {
                 // Check if this node is safe for our search key
                 if !internal_node.is_safe_for_key(search_key) {
                     // Key might be in right sibling due to concurrent split
@@ -151,7 +146,7 @@ impl BlinkTreeIndex {
                         return Ok(children[children.len() - 1]);
                     }
                 }
-                
+
                 // Find appropriate child to follow
                 let child_index = internal_node.find_child_index(search_key)?;
                 Ok(children[child_index])
@@ -204,53 +199,49 @@ impl BlinkTreeIndex {
 mod tests {
     use super::*;
     use tempfile::TempDir;
-    
+
     fn k(s: &str) -> KeyType {
         s.as_bytes().to_vec()
     }
-    
-    fn pk(s: &str) -> PrimaryKey {
-        s.as_bytes().to_vec()
-    }
-    
+
     fn setup_tree(test_name: &str) -> (BlinkTreeIndex, PathBuf, TempDir) {
         let temp_dir = TempDir::new().unwrap();
         let tree_path = temp_dir.path().join(format!("{}.blink", test_name));
         let tree = BlinkTreeIndex::new("test_blink".to_string(), tree_path.clone(), 5).unwrap();
         (tree, tree_path, temp_dir)
     }
-    
+
     #[test]
     fn test_new_blink_tree_creation() {
         let (tree, _path, _temp_dir) = setup_tree("test_new_creation");
-        
+
         assert_eq!(tree.name, "test_blink");
         assert_eq!(tree.order, 5);
         assert_ne!(tree.root_page_id, SENTINEL_PAGE_ID);
-        
+
         // Root should be a leaf node initially
         let root_node = tree.read_node(tree.root_page_id).unwrap();
         assert!(root_node.is_leaf());
         assert_eq!(root_node.get_keys().len(), 0);
     }
-    
+
     #[test]
     fn test_search_empty_tree() {
         let (tree, _path, _temp_dir) = setup_tree("test_search_empty");
-        
+
         let result = tree.find_primary_keys(&k("nonexistent")).unwrap();
         assert!(result.is_none());
     }
-    
+
     #[test]
     fn test_concurrent_safety_methods() {
         let (tree, _path, _temp_dir) = setup_tree("test_concurrent_safety");
-        
+
         // Test that search works on empty tree
         assert!(tree.find_primary_keys(&k("test")).unwrap().is_none());
-        
+
         // Test node safety checking
         let root_node = tree.read_node(tree.root_page_id).unwrap();
         assert!(root_node.is_safe_for_key(&k("any_key"))); // Should be safe since no high key
     }
-} 
+}

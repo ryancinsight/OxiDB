@@ -76,32 +76,17 @@ pub struct TransactionInfo {
 impl TransactionInfo {
     /// Creates a new TransactionInfo for an active transaction.
     pub fn new_active(tx_id: TransactionId, last_lsn: Lsn) -> Self {
-        Self {
-            tx_id,
-            state: TransactionState::Active,
-            last_lsn,
-            undo_next_lsn: Some(last_lsn),
-        }
+        Self { tx_id, state: TransactionState::Active, last_lsn, undo_next_lsn: Some(last_lsn) }
     }
 
     /// Creates a new TransactionInfo for a committed transaction.
     pub fn new_committed(tx_id: TransactionId, last_lsn: Lsn) -> Self {
-        Self {
-            tx_id,
-            state: TransactionState::Committed,
-            last_lsn,
-            undo_next_lsn: None,
-        }
+        Self { tx_id, state: TransactionState::Committed, last_lsn, undo_next_lsn: None }
     }
 
     /// Creates a new TransactionInfo for an aborted transaction.
     pub fn new_aborted(tx_id: TransactionId, last_lsn: Lsn) -> Self {
-        Self {
-            tx_id,
-            state: TransactionState::Aborted,
-            last_lsn,
-            undo_next_lsn: None,
-        }
+        Self { tx_id, state: TransactionState::Aborted, last_lsn, undo_next_lsn: None }
     }
 
     /// Updates the last LSN for this transaction.
@@ -177,7 +162,7 @@ impl From<std::io::Error> for RecoveryError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::common::types::{TransactionId};
+    use crate::core::common::types::TransactionId;
 
     #[test]
     fn test_transaction_info_creation() {
@@ -247,7 +232,7 @@ mod tests {
     fn test_recovery_error_from_io_error() {
         let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "File not found");
         let recovery_error = RecoveryError::from(io_error);
-        
+
         match recovery_error {
             RecoveryError::IoError(msg) => assert!(msg.contains("File not found")),
             _ => panic!("Expected IoError"),

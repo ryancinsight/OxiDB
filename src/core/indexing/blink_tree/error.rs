@@ -1,5 +1,5 @@
+use crate::core::indexing::blink_tree::node::{PageId, SerializationError};
 use std::io;
-use crate::core::indexing::blink_tree::node::{SerializationError, PageId};
 
 #[derive(Debug)]
 pub enum BlinkTreeError {
@@ -54,4 +54,4 @@ impl From<SerializationError> for BlinkTreeError {
     fn from(err: SerializationError) -> Self {
         BlinkTreeError::Serialization(err)
     }
-} 
+}

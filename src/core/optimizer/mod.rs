@@ -136,7 +136,9 @@ impl Optimizer {
                 let right_expr_operand = match &ast_simple_cond.value {
                     crate::core::query::sql::ast::AstExpressionValue::Literal(literal_val) => {
                         match literal_val {
-                            AstSqlLiteralValue::String(s) => Expression::Literal(DataType::String(s.clone())),
+                            AstSqlLiteralValue::String(s) => {
+                                Expression::Literal(DataType::String(s.clone()))
+                            }
                             AstSqlLiteralValue::Number(n_str) => {
                                 if let Ok(i_val) = n_str.parse::<i64>() {
                                     Expression::Literal(DataType::Integer(i_val))
@@ -149,16 +151,21 @@ impl Optimizer {
                                     )));
                                 }
                             }
-                            AstSqlLiteralValue::Boolean(b) => Expression::Literal(DataType::Boolean(*b)),
+                            AstSqlLiteralValue::Boolean(b) => {
+                                Expression::Literal(DataType::Boolean(*b))
+                            }
                             AstSqlLiteralValue::Null => Expression::Literal(DataType::Null),
                             AstSqlLiteralValue::Vector(_) => {
                                 return Err(OxidbError::NotImplemented {
-                                    feature: "Vector comparison in optimizer expressions".to_string(),
+                                    feature: "Vector comparison in optimizer expressions"
+                                        .to_string(),
                                 });
                             }
                         }
                     }
-                    crate::core::query::sql::ast::AstExpressionValue::ColumnIdentifier(col_name) => {
+                    crate::core::query::sql::ast::AstExpressionValue::ColumnIdentifier(
+                        col_name,
+                    ) => {
                         // Optimizer's Expression::CompareOp expects Box<Expression> for right.
                         // So, wrap the column name in Expression::Column.
                         Expression::Column(col_name.clone())

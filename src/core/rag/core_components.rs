@@ -19,12 +19,7 @@ pub struct Document {
 impl Document {
     /// Creates a new document.
     pub fn new(id: String, content: String) -> Self {
-        Self {
-            id,
-            content,
-            metadata: None,
-            embedding: None,
-        }
+        Self { id, content, metadata: None, embedding: None }
     }
 
     /// Adds metadata to the document.
@@ -83,7 +78,10 @@ mod tests {
         let doc = Document::new("doc2".to_string(), "Another doc.".to_string())
             .with_metadata(metadata.clone());
 
-        assert_eq!(doc.metadata.unwrap().get("source").unwrap(), &Value::Text("website".to_string()));
+        assert_eq!(
+            doc.metadata.unwrap().get("source").unwrap(),
+            &Value::Text("website".to_string())
+        );
     }
 
     #[test]

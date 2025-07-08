@@ -29,11 +29,8 @@ pub use tables::{DirtyPageTable, TransactionTable};
 pub use types::{RecoveryError, RecoveryState, TransactionState};
 pub use undo::UndoPhase;
 
-use crate::core::wal::reader::{WalReader, WalReaderConfig};
-use crate::core::wal::log_record::LogRecord;
-use crate::core::common::types::{Lsn, TransactionId};
+use crate::core::wal::reader::WalReader;
 use std::path::Path;
-use std::collections::HashMap;
 
 /// The main recovery manager that orchestrates the ARIES recovery process.
 ///
@@ -47,10 +44,7 @@ pub struct RecoveryManager {
 impl RecoveryManager {
     /// Creates a new recovery manager with the specified WAL reader.
     pub fn new<P: AsRef<Path>>(wal_reader: WalReader, wal_file_path: P) -> Self {
-        Self { 
-            wal_reader,
-            wal_file_path: wal_file_path.as_ref().to_path_buf(),
-        }
+        Self { wal_reader, wal_file_path: wal_file_path.as_ref().to_path_buf() }
     }
 
     /// Creates a new recovery manager from a WAL file path.
@@ -68,13 +62,13 @@ impl RecoveryManager {
     pub async fn recover(&mut self) -> Result<(), RecoveryError> {
         // Phase 1: Analysis
         let analysis_result = self.run_analysis_phase().await?;
-        
+
         // Phase 2: Redo
         self.run_redo_phase(&analysis_result)?;
-        
+
         // Phase 3: Undo
         self.run_undo_phase(&analysis_result)?;
-        
+
         Ok(())
     }
 
@@ -100,14 +94,14 @@ impl RecoveryManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::wal::{WalReader, WalReaderConfig};
+    use crate::core::wal::WalReader;
     use tempfile::NamedTempFile;
 
     #[tokio::test]
     async fn test_recovery_manager_creation() {
         let temp_file = NamedTempFile::new().unwrap();
         let wal_reader = WalReader::with_defaults(temp_file.path());
-        
+
         let recovery_manager = RecoveryManager::new(wal_reader, temp_file.path());
         assert!(recovery_manager.wal_reader.get_statistics().unwrap().total_records == 0);
     }

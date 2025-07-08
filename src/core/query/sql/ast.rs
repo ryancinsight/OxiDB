@@ -8,15 +8,16 @@ pub enum AstLiteralValue {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum AstExpressionValue { // ADDED
+pub enum AstExpressionValue {
+    // ADDED
     Literal(AstLiteralValue),
     ColumnIdentifier(String),
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Condition {
-    pub column: String, // Left-hand side, always a column for now
-    pub operator: String, // e.g., "=", "!=", "<", ">", "IS NULL", "IS NOT NULL"
+    pub column: String,            // Left-hand side, always a column for now
+    pub operator: String,          // e.g., "=", "!=", "<", ">", "IS NULL", "IS NOT NULL"
     pub value: AstExpressionValue, // Right-hand side - CHANGED
 }
 

@@ -1,4 +1,5 @@
 // Imports needed for the tests
+use crate::core::query::commands::Command;
 use crate::core::query::sql::ast::{
     self, AstColumnConstraint, AstDataType, AstLiteralValue, ConditionTree, OrderDirection,
     SelectColumn, Statement,
@@ -7,7 +8,6 @@ use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::parser::SqlParser; // The struct being tested
 use crate::core::query::sql::tokenizer::{Token, Tokenizer}; // For tokenizing test strings // Error type for assertions
 use crate::core::query::sql::translator::translate_ast_to_command;
-use crate::core::query::commands::Command;
 use crate::core::types::DataType;
 
 // Helper function to tokenize a string for tests
@@ -177,8 +177,10 @@ fn test_update_missing_value_in_condition() {
     );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert!(
-            expected.to_lowercase().contains("expected literal or column identifier for rhs of condition")
-            || expected.to_lowercase().contains("expected identifier") // If parse_qualified_identifier fails early
+            expected
+                .to_lowercase()
+                .contains("expected literal or column identifier for rhs of condition")
+                || expected.to_lowercase().contains("expected identifier") // If parse_qualified_identifier fails early
         );
         assert!(found.to_lowercase().contains("semicolon"));
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
@@ -520,7 +522,12 @@ fn test_parse_delete_simple() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "id");
                     assert_eq!(cond.operator, "=");
-                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("100".to_string())));
+                    assert_eq!(
+                        cond.value,
+                        ast::AstExpressionValue::Literal(AstLiteralValue::Number(
+                            "100".to_string()
+                        ))
+                    );
                 }
                 _ => panic!("Expected simple comparison in DELETE"),
             }
@@ -647,7 +654,12 @@ fn test_parse_select_with_where_clause() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "price");
                     assert_eq!(cond.operator, "=");
-                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("10.99".to_string())));
+                    assert_eq!(
+                        cond.value,
+                        ast::AstExpressionValue::Literal(AstLiteralValue::Number(
+                            "10.99".to_string()
+                        ))
+                    );
                 }
                 _ => panic!("Expected ConditionTree::Comparison for price condition"),
             }
@@ -682,7 +694,9 @@ fn test_parse_select_with_complex_where_clause_and_or_not_parens() {
                                     assert_eq!(cond.operator, "=");
                                     assert_eq!(
                                         cond.value,
-                                        ast::AstExpressionValue::Literal(AstLiteralValue::Number("10".to_string()))
+                                        ast::AstExpressionValue::Literal(AstLiteralValue::Number(
+                                            "10".to_string()
+                                        ))
                                     );
                                 }
                                 _ => panic!("Expected Comparison for col1=10"),
@@ -693,7 +707,9 @@ fn test_parse_select_with_complex_where_clause_and_or_not_parens() {
                                     assert_eq!(cond.operator, "=");
                                     assert_eq!(
                                         cond.value,
-                                        ast::AstExpressionValue::Literal(AstLiteralValue::String("test".to_string()))
+                                        ast::AstExpressionValue::Literal(AstLiteralValue::String(
+                                            "test".to_string()
+                                        ))
                                     );
                                 }
                                 _ => panic!("Expected Comparison for col2='test'"),
@@ -708,7 +724,12 @@ fn test_parse_select_with_complex_where_clause_and_or_not_parens() {
                             ConditionTree::Comparison(cond) => {
                                 assert_eq!(cond.column, "col3");
                                 assert_eq!(cond.operator, "<");
-                                assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("5.5".to_string())));
+                                assert_eq!(
+                                    cond.value,
+                                    ast::AstExpressionValue::Literal(AstLiteralValue::Number(
+                                        "5.5".to_string()
+                                    ))
+                                );
                             }
                             _ => panic!("Expected Comparison for col3<5.5 inside NOT"),
                         },
@@ -740,7 +761,12 @@ fn test_parse_select_where_precedence() {
                         ConditionTree::Comparison(cond) => {
                             assert_eq!(cond.column, "a");
                             assert_eq!(cond.operator, "="); // Added operator check
-                            assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string())));
+                            assert_eq!(
+                                cond.value,
+                                ast::AstExpressionValue::Literal(AstLiteralValue::Number(
+                                    "1".to_string()
+                                ))
+                            );
                             // Added value check
                         }
                         _ => panic!("Expected comparison for 'a=1'"),
@@ -753,7 +779,9 @@ fn test_parse_select_where_precedence() {
                                     assert_eq!(cond.operator, "="); // Added operator check
                                     assert_eq!(
                                         cond.value,
-                                        ast::AstExpressionValue::Literal(AstLiteralValue::Number("2".to_string()))
+                                        ast::AstExpressionValue::Literal(AstLiteralValue::Number(
+                                            "2".to_string()
+                                        ))
                                     ); // Added value check
                                 }
                                 _ => panic!("Expected comparison for 'b=2'"),
@@ -764,7 +792,9 @@ fn test_parse_select_where_precedence() {
                                     assert_eq!(cond.operator, "="); // Added operator check
                                     assert_eq!(
                                         cond.value,
-                                        ast::AstExpressionValue::Literal(AstLiteralValue::Number("3".to_string()))
+                                        ast::AstExpressionValue::Literal(AstLiteralValue::Number(
+                                            "3".to_string()
+                                        ))
                                     ); // Added value check
                                 }
                                 _ => panic!("Expected comparison for 'c=3'"),
@@ -798,7 +828,10 @@ fn test_parse_select_where_is_null_and_is_not_null() {
                         ConditionTree::Comparison(cond) => {
                             assert_eq!(cond.column, "name");
                             assert_eq!(cond.operator, "IS NULL");
-                            assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Null));
+                            assert_eq!(
+                                cond.value,
+                                ast::AstExpressionValue::Literal(AstLiteralValue::Null)
+                            );
                         }
                         _ => panic!("Expected Comparison for name IS NULL"),
                     }
@@ -806,7 +839,10 @@ fn test_parse_select_where_is_null_and_is_not_null() {
                         ConditionTree::Comparison(cond) => {
                             assert_eq!(cond.column, "description");
                             assert_eq!(cond.operator, "IS NOT NULL");
-                            assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Null));
+                            assert_eq!(
+                                cond.value,
+                                ast::AstExpressionValue::Literal(AstLiteralValue::Null)
+                            );
                         }
                         _ => panic!("Expected Comparison for description IS NOT NULL"),
                     }
@@ -837,7 +873,10 @@ fn test_parse_update_simple() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "id");
                     assert_eq!(cond.operator, "=");
-                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string())));
+                    assert_eq!(
+                        cond.value,
+                        ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string()))
+                    );
                 }
                 _ => panic!("Expected ConditionTree::Comparison for id condition"),
             }
@@ -873,7 +912,12 @@ fn test_parse_update_multiple_assignments() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "category");
                     assert_eq!(cond.operator, "=");
-                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::String("electronics".to_string())));
+                    assert_eq!(
+                        cond.value,
+                        ast::AstExpressionValue::Literal(AstLiteralValue::String(
+                            "electronics".to_string()
+                        ))
+                    );
                 }
                 _ => panic!("Expected ConditionTree::Comparison for category condition"),
             }
@@ -1063,8 +1107,10 @@ fn test_select_missing_value_in_condition() {
     );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert!(
-            expected.to_lowercase().contains("expected literal or column identifier for rhs of condition")
-            || expected.to_lowercase().contains("expected identifier") // If parse_qualified_identifier fails early
+            expected
+                .to_lowercase()
+                .contains("expected literal or column identifier for rhs of condition")
+                || expected.to_lowercase().contains("expected identifier") // If parse_qualified_identifier fails early
         );
         assert!(found.to_lowercase().contains("semicolon"));
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
@@ -1147,7 +1193,10 @@ fn test_select_empty_string_literal() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "name");
                     assert_eq!(cond.operator, "=");
-                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::String("".to_string())));
+                    assert_eq!(
+                        cond.value,
+                        ast::AstExpressionValue::Literal(AstLiteralValue::String("".to_string()))
+                    );
                 }
                 _ => panic!("Expected ConditionTree::Comparison for name condition"),
             }
@@ -1169,7 +1218,10 @@ fn test_update_set_null_value() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "id");
                     assert_eq!(cond.operator, "=");
-                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string())));
+                    assert_eq!(
+                        cond.value,
+                        ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string()))
+                    );
                 }
                 _ => panic!("Expected ConditionTree::Comparison for id condition"),
             }
@@ -1214,7 +1266,10 @@ fn test_identifier_as_substring_of_keyword() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "selector_id");
                     assert_eq!(cond.operator, "="); // Added operator check, was missing
-                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string())));
+                    assert_eq!(
+                        cond.value,
+                        ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string()))
+                    );
                 }
                 _ => panic!("Expected ConditionTree::Comparison for selector_id condition"),
             }
@@ -1356,7 +1411,10 @@ fn test_mixed_case_keywords() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "value");
                     assert_eq!(cond.operator, "="); // Added operator check
-                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Boolean(true)));
+                    assert_eq!(
+                        cond.value,
+                        ast::AstExpressionValue::Literal(AstLiteralValue::Boolean(true))
+                    );
                 }
                 _ => panic!("Expected simple comparison"),
             }
@@ -1451,7 +1509,10 @@ fn test_parse_vector_literal_empty() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "tags");
                     assert_eq!(cond.operator, "=");
-                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Vector(vec![])));
+                    assert_eq!(
+                        cond.value,
+                        ast::AstExpressionValue::Literal(AstLiteralValue::Vector(vec![]))
+                    );
                 }
                 _ => panic!("Expected simple comparison for empty vector"),
             }
@@ -1718,7 +1779,10 @@ fn test_parse_select_simple_inner_join() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "t1.id");
                     assert_eq!(cond.operator, "=");
-                    assert_eq!(cond.value, ast::AstExpressionValue::ColumnIdentifier("t2.t1_id".to_string()));
+                    assert_eq!(
+                        cond.value,
+                        ast::AstExpressionValue::ColumnIdentifier("t2.t1_id".to_string())
+                    );
                 }
                 _ => panic!("Expected Comparison condition for ON clause"),
             }
@@ -1735,7 +1799,11 @@ fn test_parse_select_simple_inner_join_original_on_fails() {
     let tokens = tokenize_str(sql);
     let mut parser = SqlParser::new(tokens);
     let ast_result = parser.parse();
-    assert!(ast_result.is_ok(), "Parse failed for 'col = col' ON condition: {:?}", ast_result.err());
+    assert!(
+        ast_result.is_ok(),
+        "Parse failed for 'col = col' ON condition: {:?}",
+        ast_result.err()
+    );
     let ast = ast_result.unwrap();
 
     match ast {
@@ -1752,7 +1820,10 @@ fn test_parse_select_simple_inner_join_original_on_fails() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "t1.id");
                     assert_eq!(cond.operator, "=");
-                    assert_eq!(cond.value, ast::AstExpressionValue::ColumnIdentifier("t2.t1_id".to_string()));
+                    assert_eq!(
+                        cond.value,
+                        ast::AstExpressionValue::ColumnIdentifier("t2.t1_id".to_string())
+                    );
                 }
                 _ => panic!("Expected Comparison condition for ON clause"),
             }
@@ -1760,7 +1831,6 @@ fn test_parse_select_simple_inner_join_original_on_fails() {
         _ => panic!("Expected SelectStatement"),
     }
 }
-
 
 #[test]
 fn test_parse_select_left_outer_join() {
@@ -1780,7 +1850,10 @@ fn test_parse_select_left_outer_join() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "tableA.id");
                     assert_eq!(cond.operator, "=");
-                    assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("10".to_string())));
+                    assert_eq!(
+                        cond.value,
+                        ast::AstExpressionValue::Literal(AstLiteralValue::Number("10".to_string()))
+                    );
                 }
                 _ => panic!("Expected Comparison condition for ON clause"),
             }
@@ -1808,7 +1881,6 @@ fn test_parse_select_right_join() {
     }
 }
 
-
 #[test]
 fn test_parse_select_full_outer_join() {
     let sql = "SELECT * FROM tableA FULL OUTER JOIN tableB ON tableA.flag = TRUE;"; // Using literal
@@ -1827,7 +1899,6 @@ fn test_parse_select_full_outer_join() {
         _ => panic!("Expected SelectStatement with FULL OUTER JOIN"),
     }
 }
-
 
 #[test]
 fn test_parse_select_cross_join() {
@@ -1863,8 +1934,11 @@ fn test_parse_select_multiple_joins() {
             assert_eq!(join1.join_type, ast::JoinType::Inner);
             assert_eq!(join1.right_source.name, "t2");
             assert!(join1.on_condition.is_some());
-             match join1.on_condition.as_ref().unwrap() {
-                ConditionTree::Comparison(cond) => assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string()))),
+            match join1.on_condition.as_ref().unwrap() {
+                ConditionTree::Comparison(cond) => assert_eq!(
+                    cond.value,
+                    ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string()))
+                ),
                 _ => panic!("Expected Comparison for first ON"),
             }
 
@@ -1873,14 +1947,16 @@ fn test_parse_select_multiple_joins() {
             assert_eq!(join2.right_source.name, "t3");
             assert!(join2.on_condition.is_some());
             match join2.on_condition.as_ref().unwrap() {
-                ConditionTree::Comparison(cond) => assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Number("2".to_string()))),
+                ConditionTree::Comparison(cond) => assert_eq!(
+                    cond.value,
+                    ast::AstExpressionValue::Literal(AstLiteralValue::Number("2".to_string()))
+                ),
                 _ => panic!("Expected Comparison for second ON"),
             }
         }
         _ => panic!("Expected SelectStatement with multiple JOINs"),
     }
 }
-
 
 #[test]
 fn test_parse_join_missing_on_condition_for_inner_join() {
@@ -1889,7 +1965,7 @@ fn test_parse_join_missing_on_condition_for_inner_join() {
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
     assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
-     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert_eq!(expected.to_lowercase(), "on"); // Parser expects ON after table name for non-CROSS joins
         assert!(found.to_lowercase().contains("semicolon") || found.to_lowercase().contains("eof"));
     } else {
@@ -1904,7 +1980,7 @@ fn test_parse_join_missing_table_name_after_on() {
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
     assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
-    if let Err(SqlParseError::UnexpectedToken {expected, found, ..}) = result {
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert_eq!(expected.to_lowercase(), "expected table name after join clause");
         assert_eq!(found.to_lowercase(), "on");
     } else {
@@ -1912,18 +1988,17 @@ fn test_parse_join_missing_table_name_after_on() {
     }
 }
 
-
 #[test]
 fn test_parse_join_cross_join_with_on_error() {
     let sql = "SELECT * FROM t1 CROSS JOIN t2 ON t1.id = 1;"; // Using literal for ON
     let tokens = tokenize_str(sql);
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse(); // Should error because CROSS JOIN cannot have ON
-                                  // The current parser consumes ON even for CROSS JOIN if it's there,
-                                  // then fails later if it's not expecting more tokens.
-                                  // A more specific error would be better.
+                                 // The current parser consumes ON even for CROSS JOIN if it's there,
+                                 // then fails later if it's not expecting more tokens.
+                                 // A more specific error would be better.
     assert!(matches!(result, Err(SqlParseError::UnexpectedToken { .. })));
-    if let Err(SqlParseError::UnexpectedToken {expected, found, ..}) = result {
+    if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         // After "CROSS JOIN t2", it expects WHERE/ORDER/LIMIT/EOF. "ON" is unexpected.
         assert_eq!(expected.to_lowercase(), "end of statement or eof");
         assert_eq!(found.to_lowercase(), "on");
@@ -1931,7 +2006,6 @@ fn test_parse_join_cross_join_with_on_error() {
         panic!("CROSS JOIN with ON should be an error: {:?}", result);
     }
 }
-
 
 // --- Tests for ORDER BY and LIMIT ---
 
@@ -2137,8 +2211,8 @@ fn test_translate_create_table_with_autoincrement() {
 fn test_autoincrement_insert_functionality() {
     use crate::core::query::executor::QueryExecutor;
     use crate::core::storage::engine::InMemoryKvStore;
-    use crate::core::wal::writer::{WalWriter, WalWriterConfig};
     use crate::core::wal::log_manager::LogManager;
+    use crate::core::wal::writer::{WalWriter, WalWriterConfig};
     use std::sync::Arc;
     use tempfile::TempDir;
 
@@ -2153,7 +2227,8 @@ fn test_autoincrement_insert_functionality() {
 
     // Create executor with in-memory store
     let store = InMemoryKvStore::new();
-    let mut executor = QueryExecutor::new(store, temp_path.clone(), wal_writer, log_manager).unwrap();
+    let mut executor =
+        QueryExecutor::new(store, temp_path.clone(), wal_writer, log_manager).unwrap();
 
     // Create table with auto-increment column
     let create_sql = "CREATE TABLE test_table (

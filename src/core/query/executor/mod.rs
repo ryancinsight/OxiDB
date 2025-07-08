@@ -29,7 +29,7 @@ use crate::core::types::DataType;
 use crate::core::wal::log_manager::LogManager; // Added LogManager
 use crate::core::wal::writer::WalWriter;
 use std::collections::{HashMap, HashSet}; // Added HashMap and HashSet import
-// For base64 decoding - using a simple approach since we know the format
+                                          // For base64 decoding - using a simple approach since we know the format
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
@@ -90,7 +90,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             lock_manager: LockManager::new(),
             optimizer: Optimizer::new(index_manager_arc.clone()), // Initialize optimizer
             index_manager: index_manager_arc,
-            log_manager, // Store log_manager
+            log_manager,                          // Store log_manager
             auto_increment_state: HashMap::new(), // Initialize auto-increment state
         };
 
@@ -742,7 +742,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     // handle_select, handle_update - these are in select_execution.rs and update_execution.rs respectively.
 
     /// Gets the next auto-increment value for a table.column combination
-    pub(crate) fn get_next_auto_increment_value(&mut self, table_name: &str, column_name: &str) -> i64 {
+    pub(crate) fn get_next_auto_increment_value(
+        &mut self,
+        table_name: &str,
+        column_name: &str,
+    ) -> i64 {
         let key = format!("{}_{}", table_name, column_name);
         let current_value = self.auto_increment_state.get(&key).copied().unwrap_or(0);
         let next_value = current_value + 1;
@@ -757,21 +761,35 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     }
 
     /// Sets the auto-increment value for a table.column combination (used during recovery)
-    pub(crate) fn set_auto_increment_value(&mut self, table_name: &str, column_name: &str, value: i64) {
+    #[allow(dead_code)]
+    pub(crate) fn set_auto_increment_value(
+        &mut self,
+        table_name: &str,
+        column_name: &str,
+        value: i64,
+    ) {
         let key = format!("{}_{}", table_name, column_name);
         self.auto_increment_state.insert(key, value);
     }
 
     /// Saves auto-increment value to persistent storage
-    fn save_auto_increment_value(&mut self, table_name: &str, column_name: &str, value: i64) -> Result<(), OxidbError> {
+    fn save_auto_increment_value(
+        &mut self,
+        table_name: &str,
+        column_name: &str,
+        value: i64,
+    ) -> Result<(), OxidbError> {
         let key = format!("_auto_increment_{}_{}", table_name, column_name);
         let value_bytes = value.to_le_bytes().to_vec();
 
         // Create a dummy transaction for this operation
-        let dummy_tx = crate::core::transaction::Transaction::new(crate::core::common::types::ids::TransactionId(0));
+        let dummy_tx = crate::core::transaction::Transaction::new(
+            crate::core::common::types::ids::TransactionId(0),
+        );
         let dummy_lsn = 0;
 
-        let mut store = self.store.write().map_err(|_| OxidbError::Lock("Failed to lock store".to_string()))?;
+        let mut store =
+            self.store.write().map_err(|_| OxidbError::Lock("Failed to lock store".to_string()))?;
         store.put(key.as_bytes().to_vec(), value_bytes, &dummy_tx, dummy_lsn)?;
         Ok(())
     }
@@ -790,7 +808,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
     /// Loads persisted auto-increment values from storage
     fn load_persisted_auto_increment_values(&mut self) -> Result<(), OxidbError> {
-        let _store = self.store.read().map_err(|_| OxidbError::Lock("Failed to lock store".to_string()))?;
+        let _store =
+            self.store.read().map_err(|_| OxidbError::Lock("Failed to lock store".to_string()))?;
 
         // We need to scan for keys that start with "_auto_increment_"
         // This is a simplified approach - in a production system, we'd have a proper metadata table
@@ -802,7 +821,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     /// Scans existing data to determine the current maximum auto-increment values
     fn scan_and_update_auto_increment_state(&mut self) -> Result<(), OxidbError> {
         // Get all table schemas to find auto-increment columns
-        let store = self.store.read().map_err(|_| OxidbError::Lock("Failed to lock store".to_string()))?;
+        let store =
+            self.store.read().map_err(|_| OxidbError::Lock("Failed to lock store".to_string()))?;
 
         // Scan for schema keys
         let _schema_prefix = "_schema_";
@@ -813,12 +833,16 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         let snapshot_id = 0;
 
         // For now, let's scan the users table specifically since that's what we're testing
-        if let Ok(schema_data) = store.get(&b"_schema_users".to_vec(), snapshot_id, &committed_ids) {
+        if let Ok(schema_data) = store.get(&b"_schema_users".to_vec(), snapshot_id, &committed_ids)
+        {
             if let Some(data) = schema_data {
-                if let Ok(schema) = serde_json::from_slice::<crate::core::types::schema::Schema>(&data) {
+                if let Ok(schema) =
+                    serde_json::from_slice::<crate::core::types::schema::Schema>(&data)
+                {
                     for column in &schema.columns {
                         if column.is_auto_increment {
-                            let max_value = self.find_max_value_for_column("users", &column.name)?;
+                            let max_value =
+                                self.find_max_value_for_column("users", &column.name)?;
                             let key = format!("users_{}", column.name);
                             self.auto_increment_state.insert(key, max_value);
                         }
@@ -828,12 +852,17 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         }
 
         // Scan user_files table as well
-        if let Ok(schema_data) = store.get(&b"_schema_user_files".to_vec(), snapshot_id, &committed_ids) {
+        if let Ok(schema_data) =
+            store.get(&b"_schema_user_files".to_vec(), snapshot_id, &committed_ids)
+        {
             if let Some(data) = schema_data {
-                if let Ok(schema) = serde_json::from_slice::<crate::core::types::schema::Schema>(&data) {
+                if let Ok(schema) =
+                    serde_json::from_slice::<crate::core::types::schema::Schema>(&data)
+                {
                     for column in &schema.columns {
                         if column.is_auto_increment {
-                            let max_value = self.find_max_value_for_column("user_files", &column.name)?;
+                            let max_value =
+                                self.find_max_value_for_column("user_files", &column.name)?;
                             let key = format!("user_files_{}", column.name);
                             self.auto_increment_state.insert(key, max_value);
                         }
@@ -846,8 +875,13 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     }
 
     /// Finds the maximum value for an auto-increment column by scanning existing data
-    fn find_max_value_for_column(&self, table_name: &str, column_name: &str) -> Result<i64, OxidbError> {
-        let store = self.store.read().map_err(|_| OxidbError::Lock("Failed to lock store".to_string()))?;
+    fn find_max_value_for_column(
+        &self,
+        table_name: &str,
+        column_name: &str,
+    ) -> Result<i64, OxidbError> {
+        let store =
+            self.store.read().map_err(|_| OxidbError::Lock("Failed to lock store".to_string()))?;
         let mut max_value = 0i64;
 
         // Scan all rows in the table to find the maximum value
@@ -862,12 +896,17 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
         // For now, we'll use a heuristic: scan through potential primary key values
         // This assumes primary keys are sequential integers starting from 1
-        for i in 1..=10000 { // Scan up to 10000 records
+        for i in 1..=10000 {
+            // Scan up to 10000 records
             let pk_key = format!("{}{}", table_prefix, i);
-            if let Ok(Some(row_data)) = store.get(&pk_key.as_bytes().to_vec(), snapshot_id, &committed_ids) {
+            if let Ok(Some(row_data)) =
+                store.get(&pk_key.as_bytes().to_vec(), snapshot_id, &committed_ids)
+            {
                 // Parse the row data to extract the column value
                 // The data is stored as {"Map": {"base64_encoded_column_name": value, ...}}
-                if let Ok(data_type) = serde_json::from_slice::<crate::core::types::DataType>(&row_data) {
+                if let Ok(data_type) =
+                    serde_json::from_slice::<crate::core::types::DataType>(&row_data)
+                {
                     if let crate::core::types::DataType::Map(map) = data_type {
                         // Look for the column by matching the key directly
                         for (key_bytes, value) in map.0.iter() {

@@ -15,10 +15,7 @@ use crate::core::common::error::OxidbError;
 ///   the vectors have different dimensions.
 pub fn dot_product(v1: &[f32], v2: &[f32]) -> Result<f32, OxidbError> {
     if v1.len() != v2.len() {
-        return Err(OxidbError::VectorDimensionMismatch {
-            dim1: v1.len(),
-            dim2: v2.len(),
-        });
+        return Err(OxidbError::VectorDimensionMismatch { dim1: v1.len(), dim2: v2.len() });
     }
     Ok(v1.iter().zip(v2.iter()).map(|(x, y)| x * y).sum())
 }
@@ -36,10 +33,7 @@ pub fn dot_product(v1: &[f32], v2: &[f32]) -> Result<f32, OxidbError> {
 ///   the vectors have different dimensions or if either vector has a magnitude of zero.
 pub fn cosine_similarity(v1: &[f32], v2: &[f32]) -> Result<f32, OxidbError> {
     if v1.len() != v2.len() {
-        return Err(OxidbError::VectorDimensionMismatch {
-            dim1: v1.len(),
-            dim2: v2.len(),
-        });
+        return Err(OxidbError::VectorDimensionMismatch { dim1: v1.len(), dim2: v2.len() });
     }
 
     let dot_prod = dot_product(v1, v2)?;
@@ -99,13 +93,12 @@ mod tests {
         assert_relative_eq!(cosine_similarity(&v1, &v2).unwrap(), 1.0, epsilon = 1e-6);
     }
 
-     #[test]
+    #[test]
     fn test_cosine_similarity_success_collinear_opposite_direction() {
         let v1 = [1.0, 2.0, 3.0];
         let v2 = [-1.0, -2.0, -3.0];
         assert_relative_eq!(cosine_similarity(&v1, &v2).unwrap(), -1.0, epsilon = 1e-6);
     }
-
 
     #[test]
     fn test_cosine_similarity_general_case() {
@@ -155,7 +148,7 @@ mod tests {
     fn test_cosine_similarity_empty_vectors() {
         let v1: [f32; 0] = [];
         let v2: [f32; 0] = [];
-         match cosine_similarity(&v1, &v2) {
+        match cosine_similarity(&v1, &v2) {
             Err(OxidbError::VectorMagnitudeZero) => {} // Or handle as 1.0 or error, depending on definition for empty vectors
             _ => panic!("Expected VectorMagnitudeZero for empty vectors or specific handling"),
         }

@@ -132,6 +132,7 @@ mod tests {
     // use super::*; // This brings BPlusTreeIndex, OxidbError etc. from this mod.rs
     // use crate::core::indexing::traits::Index;
     use crate::core::query::commands::{Key as TestKey, Value as TestValue};
+    use crate::core::indexing::btree::node::PrimaryKey;
 
     #[allow(dead_code)]
     fn trait_val(s: &str) -> TestValue {
@@ -139,6 +140,11 @@ mod tests {
     }
     #[allow(dead_code)]
     fn trait_pk(s: &str) -> TestKey {
+        s.as_bytes().to_vec()
+    }
+
+    #[allow(dead_code)]
+    fn pk(s: &str) -> PrimaryKey {
         s.as_bytes().to_vec()
     }
 

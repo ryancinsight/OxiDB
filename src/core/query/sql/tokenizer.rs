@@ -17,13 +17,13 @@ pub enum Token {
     Values,
     True,
     False,
-    Delete, // Added Delete Token
-    Drop,   // Added Drop Token
-    Order,  // Added Order Token
-    By,     // Added By Token
-    Asc,    // Added Asc Token
-    Desc,   // Added Desc Token
-    Limit,  // Added Limit Token
+    Delete,        // Added Delete Token
+    Drop,          // Added Drop Token
+    Order,         // Added Order Token
+    By,            // Added By Token
+    Asc,           // Added Asc Token
+    Desc,          // Added Desc Token
+    Limit,         // Added Limit Token
     Autoincrement, // Added Autoincrement Token
 
     // Join-related keywords
@@ -338,7 +338,12 @@ impl<'a> Tokenizer<'a> {
                         }
                         '.' => {
                             // Peek ahead: if the next char is a digit, it's a numeric literal like .5
-                            if self.chars.clone().nth(1).map_or(false, |(_, next_ch)| next_ch.is_ascii_digit()) {
+                            if self
+                                .chars
+                                .clone()
+                                .nth(1)
+                                .map_or(false, |(_, next_ch)| next_ch.is_ascii_digit())
+                            {
                                 tokens.push(self.read_numeric_literal(idx)?);
                             } else {
                                 // Otherwise, it's a Dot token for qualified names (e.g. table.column)

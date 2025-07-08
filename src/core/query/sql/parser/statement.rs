@@ -312,11 +312,32 @@ impl SqlParser {
         if self.match_token(Token::As) {
             self.consume(Token::As)?;
             from_alias = Some(self.expect_identifier("Expected alias after AS")?);
-        } else if let Some(Token::Identifier(ident_str)) = self.peek().cloned() { // Cloned to avoid double borrow
+        } else if let Some(Token::Identifier(ident_str)) = self.peek().cloned() {
+            // Cloned to avoid double borrow
             // Check if ident_str is not a keyword that starts the next clause
             let uc_ident_str = ident_str.to_uppercase();
-            if !matches!(uc_ident_str.as_str(), "JOIN" | "INNER" | "LEFT" | "RIGHT" | "FULL" | "CROSS" | "WHERE" | "ORDER" | "LIMIT" | "ON" | "GROUP" | "BY" | "SET" | "VALUES" | "TABLE" | "INTO" | "ASC" | "DESC")
-                && !self.match_token(Token::Semicolon) && self.peek() != Some(&Token::EOF)
+            if !matches!(
+                uc_ident_str.as_str(),
+                "JOIN"
+                    | "INNER"
+                    | "LEFT"
+                    | "RIGHT"
+                    | "FULL"
+                    | "CROSS"
+                    | "WHERE"
+                    | "ORDER"
+                    | "LIMIT"
+                    | "ON"
+                    | "GROUP"
+                    | "BY"
+                    | "SET"
+                    | "VALUES"
+                    | "TABLE"
+                    | "INTO"
+                    | "ASC"
+                    | "DESC"
+            ) && !self.match_token(Token::Semicolon)
+                && self.peek() != Some(&Token::EOF)
             {
                 // It's likely an alias, consume it.
                 // We need to be careful not to consume keywords. A simple identifier here is taken as an alias.
@@ -324,51 +345,82 @@ impl SqlParser {
             }
         }
 
-        let from_clause = ast::TableReference {
-            name: from_table_name,
-            alias: from_alias,
-        };
+        let from_clause = ast::TableReference { name: from_table_name, alias: from_alias };
 
         let mut joins = Vec::new();
         // Loop to parse JOIN clauses
         loop {
             let current_join_type: ast::JoinType;
 
-            match self.peek().cloned() { // Cloned to allow further peeking/consuming inside match arms or after
-                Some(Token::Join) => { self.consume(Token::Join)?; current_join_type = ast::JoinType::Inner; }
-                Some(Token::Inner) => { self.consume(Token::Inner)?; self.consume(Token::Join)?; current_join_type = ast::JoinType::Inner; }
+            match self.peek().cloned() {
+                // Cloned to allow further peeking/consuming inside match arms or after
+                Some(Token::Join) => {
+                    self.consume(Token::Join)?;
+                    current_join_type = ast::JoinType::Inner;
+                }
+                Some(Token::Inner) => {
+                    self.consume(Token::Inner)?;
+                    self.consume(Token::Join)?;
+                    current_join_type = ast::JoinType::Inner;
+                }
                 Some(Token::Left) => {
                     self.consume(Token::Left)?;
-                    if self.match_token(Token::Outer) { self.consume(Token::Outer)?; }
+                    if self.match_token(Token::Outer) {
+                        self.consume(Token::Outer)?;
+                    }
                     self.consume(Token::Join)?;
                     current_join_type = ast::JoinType::LeftOuter;
                 }
                 Some(Token::Right) => {
                     self.consume(Token::Right)?;
-                    if self.match_token(Token::Outer) { self.consume(Token::Outer)?; }
+                    if self.match_token(Token::Outer) {
+                        self.consume(Token::Outer)?;
+                    }
                     self.consume(Token::Join)?;
                     current_join_type = ast::JoinType::RightOuter;
                 }
                 Some(Token::Full) => {
                     self.consume(Token::Full)?;
-                    if self.match_token(Token::Outer) { self.consume(Token::Outer)?; }
+                    if self.match_token(Token::Outer) {
+                        self.consume(Token::Outer)?;
+                    }
                     self.consume(Token::Join)?;
                     current_join_type = ast::JoinType::FullOuter;
                 }
-                Some(Token::Cross) => { self.consume(Token::Cross)?; self.consume(Token::Join)?; current_join_type = ast::JoinType::Cross; }
-                _ => { break; } // Not a JOIN keyword
+                Some(Token::Cross) => {
+                    self.consume(Token::Cross)?;
+                    self.consume(Token::Join)?;
+                    current_join_type = ast::JoinType::Cross;
+                }
+                _ => {
+                    break;
+                } // Not a JOIN keyword
             }
 
-            let right_table_name = self.expect_identifier("Expected table name after JOIN clause")?;
+            let right_table_name =
+                self.expect_identifier("Expected table name after JOIN clause")?;
             let mut right_alias: Option<String> = None;
             if self.match_token(Token::As) {
                 self.consume(Token::As)?;
-                right_alias = Some(self.expect_identifier("Expected alias after AS for joined table")?);
+                right_alias =
+                    Some(self.expect_identifier("Expected alias after AS for joined table")?);
             } else if let Some(Token::Identifier(ident_str)) = self.peek().cloned() {
                 let uc_ident_str = ident_str.to_uppercase();
                 // Keywords that can follow a JOIN table [alias] are ON, WHERE, another JOIN, ORDER, LIMIT, etc.
-                if !matches!(uc_ident_str.as_str(), "ON" | "WHERE" | "JOIN" | "INNER" | "LEFT" | "RIGHT" | "FULL" | "CROSS" | "ORDER" | "LIMIT" | "GROUP")
-                    && !self.match_token(Token::Semicolon) && self.peek() != Some(&Token::EOF)
+                if !matches!(
+                    uc_ident_str.as_str(),
+                    "ON" | "WHERE"
+                        | "JOIN"
+                        | "INNER"
+                        | "LEFT"
+                        | "RIGHT"
+                        | "FULL"
+                        | "CROSS"
+                        | "ORDER"
+                        | "LIMIT"
+                        | "GROUP"
+                ) && !self.match_token(Token::Semicolon)
+                    && self.peek() != Some(&Token::EOF)
                 {
                     right_alias = Some(self.expect_identifier("Expected alias for joined table")?);
                 }
@@ -377,16 +429,16 @@ impl SqlParser {
 
             let on_condition = if current_join_type != ast::JoinType::Cross {
                 self.consume(Token::On)?;
-                    Some(self.parse_condition_expr()?)
-                } else {
-                    None // CROSS JOIN does not have ON condition
-                };
+                Some(self.parse_condition_expr()?)
+            } else {
+                None // CROSS JOIN does not have ON condition
+            };
 
-                joins.push(ast::JoinClause {
-                    join_type: current_join_type,
-                    right_source,
-                    on_condition,
-                });
+            joins.push(ast::JoinClause {
+                join_type: current_join_type,
+                right_source,
+                on_condition,
+            });
             // The incorrect else block was here and has been removed.
         }
 

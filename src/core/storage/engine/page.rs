@@ -172,15 +172,15 @@ impl Page {
     pub fn apply_update(&mut self, after_image: &[u8]) -> Result<(), OxidbError> {
         if after_image.len() > self.data.len() {
             return Err(OxidbError::InvalidInput {
-                message: "Update data exceeds page capacity".to_string()
+                message: "Update data exceeds page capacity".to_string(),
             });
         }
-        
+
         // For simplicity, we'll replace the beginning of the page data with the after_image
         // In a real implementation, this would be more sophisticated based on the specific
         // storage format and the nature of the update
         self.data[..after_image.len()].copy_from_slice(after_image);
-        
+
         Ok(())
     }
 
@@ -189,15 +189,15 @@ impl Page {
     pub fn apply_insert(&mut self, data: &[u8]) -> Result<(), OxidbError> {
         if data.len() > self.data.len() {
             return Err(OxidbError::InvalidInput {
-                message: "Insert data exceeds page capacity".to_string()
+                message: "Insert data exceeds page capacity".to_string(),
             });
         }
-        
+
         // For simplicity, we'll append the data to the page
         // In a real implementation, this would involve proper slot management
         // and free space tracking
         let mut insert_offset = 0;
-        
+
         // Find the first available space (simplified approach)
         while insert_offset + data.len() <= self.data.len() {
             if self.data[insert_offset..insert_offset + data.len()].iter().all(|&b| b == 0) {
@@ -206,10 +206,8 @@ impl Page {
             }
             insert_offset += 1;
         }
-        
-        Err(OxidbError::InvalidInput {
-            message: "No space available for insert".to_string()
-        })
+
+        Err(OxidbError::InvalidInput { message: "No space available for insert".to_string() })
     }
 
     /// Apply a delete operation to the page
@@ -224,7 +222,7 @@ impl Page {
                 return Ok(());
             }
         }
-        
+
         // If no non-zero data found, the delete is a no-op
         Ok(())
     }

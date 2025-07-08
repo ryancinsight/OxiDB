@@ -33,7 +33,7 @@ impl Schema {
             data_type,
             is_primary_key: false,
             is_unique: false,
-            is_nullable: true, // Default to nullable
+            is_nullable: true,        // Default to nullable
             is_auto_increment: false, // Default to no auto-increment
         }
     }

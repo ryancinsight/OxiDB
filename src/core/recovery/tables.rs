@@ -6,7 +6,7 @@
 
 use crate::core::common::types::ids::PageId;
 use crate::core::common::types::{Lsn, TransactionId};
-use crate::core::recovery::types::{TransactionInfo, TransactionState};
+use crate::core::recovery::types::TransactionInfo;
 use std::collections::HashMap;
 
 /// The Transaction Table tracks the state of all transactions during recovery.
@@ -22,9 +22,7 @@ pub struct TransactionTable {
 impl TransactionTable {
     /// Creates a new empty transaction table.
     pub fn new() -> Self {
-        Self {
-            transactions: HashMap::new(),
-        }
+        Self { transactions: HashMap::new() }
     }
 
     /// Adds or updates a transaction in the table.
@@ -127,10 +125,7 @@ pub struct DirtyPageInfo {
 impl DirtyPageInfo {
     /// Creates a new DirtyPageInfo.
     pub fn new(page_id: PageId, recovery_lsn: Lsn) -> Self {
-        Self {
-            page_id,
-            recovery_lsn,
-        }
+        Self { page_id, recovery_lsn }
     }
 }
 
@@ -147,9 +142,7 @@ pub struct DirtyPageTable {
 impl DirtyPageTable {
     /// Creates a new empty dirty page table.
     pub fn new() -> Self {
-        Self {
-            pages: HashMap::new(),
-        }
+        Self { pages: HashMap::new() }
     }
 
     /// Adds or updates a dirty page in the table.
@@ -233,6 +226,7 @@ mod tests {
     use super::*;
     use crate::core::common::types::ids::PageId;
     use crate::core::common::types::TransactionId;
+    use crate::core::recovery::types::TransactionState;
 
     #[test]
     fn test_transaction_table_basic_operations() {
@@ -291,15 +285,15 @@ mod tests {
     #[test]
     fn test_transaction_table_active_transactions() {
         let mut table = TransactionTable::new();
-        
+
         // Add active transaction
         let active_tx = TransactionId(1);
         table.insert(TransactionInfo::new_active(active_tx, 100));
-        
+
         // Add committed transaction
         let committed_tx = TransactionId(2);
         table.insert(TransactionInfo::new_committed(committed_tx, 200));
-        
+
         // Add aborted transaction
         let aborted_tx = TransactionId(3);
         table.insert(TransactionInfo::new_aborted(aborted_tx, 300));
@@ -369,7 +363,7 @@ mod tests {
     #[test]
     fn test_dirty_page_table_pages_to_redo() {
         let mut table = DirtyPageTable::new();
-        
+
         table.insert(PageId(1), 100);
         table.insert(PageId(2), 200);
         table.insert(PageId(3), 300);

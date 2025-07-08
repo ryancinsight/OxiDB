@@ -3,8 +3,8 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use crate::core::indexing::blink_tree::node::{BlinkTreeNode, PageId};
 use crate::core::indexing::blink_tree::error::BlinkTreeError;
+use crate::core::indexing::blink_tree::node::{BlinkTreeNode, PageId};
 
 /// Page size for Blink tree (4KB, same as B+ tree)
 pub const PAGE_SIZE: u64 = 4096;
@@ -37,18 +37,10 @@ impl BlinkPageManager {
     ) -> Result<Self, BlinkTreeError> {
         let file = if path.exists() {
             // File exists, open for read/write
-            OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(path)?
+            OpenOptions::new().read(true).write(true).open(path)?
         } else if create_new_if_not_exists {
             // File doesn't exist, create it
-            OpenOptions::new()
-                .read(true)
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(path)?
+            OpenOptions::new().read(true).write(true).create(true).truncate(true).open(path)?
         } else {
             return Err(BlinkTreeError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
@@ -85,16 +77,16 @@ impl BlinkPageManager {
 
         let order = u32::from_le_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]) as usize;
         let root_page_id = u64::from_le_bytes([
-            buffer[4], buffer[5], buffer[6], buffer[7], 
-            buffer[8], buffer[9], buffer[10], buffer[11]
+            buffer[4], buffer[5], buffer[6], buffer[7], buffer[8], buffer[9], buffer[10],
+            buffer[11],
         ]);
         let next_available_page_id = u64::from_le_bytes([
-            buffer[12], buffer[13], buffer[14], buffer[15], 
-            buffer[16], buffer[17], buffer[18], buffer[19]
+            buffer[12], buffer[13], buffer[14], buffer[15], buffer[16], buffer[17], buffer[18],
+            buffer[19],
         ]);
         let free_list_head_page_id = u64::from_le_bytes([
-            buffer[20], buffer[21], buffer[22], buffer[23], 
-            buffer[24], buffer[25], buffer[26], buffer[27]
+            buffer[20], buffer[21], buffer[22], buffer[23], buffer[24], buffer[25], buffer[26],
+            buffer[27],
         ]);
 
         self.order = order;
@@ -111,19 +103,19 @@ impl BlinkPageManager {
         file_guard.seek(SeekFrom::Start(0))?;
 
         let mut buffer = [0u8; METADATA_SIZE as usize];
-        
+
         // Write order
         let order_bytes = (self.order as u32).to_le_bytes();
         buffer[0..4].copy_from_slice(&order_bytes);
-        
+
         // Write root_page_id
         let root_bytes = self.root_page_id.to_le_bytes();
         buffer[4..12].copy_from_slice(&root_bytes);
-        
+
         // Write next_available_page_id
         let next_bytes = self.next_available_page_id.to_le_bytes();
         buffer[12..20].copy_from_slice(&next_bytes);
-        
+
         // Write free_list_head_page_id
         let free_bytes = self.free_list_head_page_id.to_le_bytes();
         buffer[20..28].copy_from_slice(&free_bytes);
@@ -139,6 +131,7 @@ impl BlinkPageManager {
     }
 
     /// Get the order of the Blink tree
+    #[allow(dead_code)]
     pub fn get_order(&self) -> usize {
         self.order
     }
@@ -158,7 +151,7 @@ impl BlinkPageManager {
     pub fn allocate_new_page_id(&mut self) -> Result<PageId, BlinkTreeError> {
         // TODO: Implement free list management for better page recycling
         // For now, just use next_available_page_id
-        
+
         if self.free_list_head_page_id != SENTINEL_PAGE_ID {
             // Reuse a page from free list (simplified implementation)
             let reused_page_id = self.free_list_head_page_id;
@@ -181,12 +174,12 @@ impl BlinkPageManager {
         // Simplified free list implementation
         // In a full implementation, we would write the current free_list_head to the freed page
         // and then update free_list_head to point to the freed page
-        
+
         if self.free_list_head_page_id == SENTINEL_PAGE_ID {
             self.free_list_head_page_id = page_id_to_free;
         }
         // For now, we don't chain freed pages together
-        
+
         self.write_metadata()?;
         Ok(())
     }
@@ -203,10 +196,11 @@ impl BlinkPageManager {
         // Find the actual data (skip any padding)
         // First 4 bytes should contain the actual data length
         let data_length = u32::from_le_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]) as usize;
-        
+
         if data_length == 0 || data_length > (PAGE_SIZE as usize - 4) {
             return Err(BlinkTreeError::Generic(format!(
-                "Invalid data length {} for page {}", data_length, page_id
+                "Invalid data length {} for page {}",
+                data_length, page_id
             )));
         }
 
@@ -218,7 +212,7 @@ impl BlinkPageManager {
     pub fn write_node(&mut self, node: &BlinkTreeNode) -> Result<(), BlinkTreeError> {
         let page_id = node.get_page_id();
         let serialized_data = node.to_bytes().map_err(BlinkTreeError::Serialization)?;
-        
+
         if serialized_data.len() > (PAGE_SIZE as usize - 4) {
             return Err(BlinkTreeError::PageFull(format!(
                 "Serialized node data ({} bytes) exceeds page capacity ({} bytes)",
@@ -234,10 +228,10 @@ impl BlinkPageManager {
         // Write data length first
         let data_length = serialized_data.len() as u32;
         file_guard.write_all(&data_length.to_le_bytes())?;
-        
+
         // Write the actual data
         file_guard.write_all(&serialized_data)?;
-        
+
         // Pad the rest of the page with zeros if necessary
         let remaining_space = PAGE_SIZE as usize - 4 - serialized_data.len();
         if remaining_space > 0 {
@@ -250,8 +244,9 @@ impl BlinkPageManager {
     }
 
     /// Sync all files to disk
+    #[allow(dead_code)]
     pub fn sync_all_files(&self) -> Result<(), BlinkTreeError> {
         let file_guard = self.file_handle.lock().unwrap();
         file_guard.sync_all().map_err(BlinkTreeError::Io)
     }
-} 
+}

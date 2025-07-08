@@ -15,7 +15,7 @@ pub enum BlinkTreeNode {
         page_id: PageId,
         parent_page_id: Option<PageId>,
         keys: Vec<KeyType>,
-        children: Vec<PageId>, // Pointers to child nodes
+        children: Vec<PageId>,      // Pointers to child nodes
         right_link: Option<PageId>, // NEW: Link to right sibling
         high_key: Option<KeyType>,  // NEW: Highest key in subtree
     },
@@ -24,7 +24,7 @@ pub enum BlinkTreeNode {
         parent_page_id: Option<PageId>,
         keys: Vec<KeyType>,
         values: Vec<Vec<PrimaryKey>>, // For leaf nodes, values are lists of PKs
-        right_link: Option<PageId>,   // NEW: Link to right sibling  
+        right_link: Option<PageId>,   // NEW: Link to right sibling
         high_key: Option<KeyType>,    // NEW: Highest key in this node
     },
 }
@@ -144,7 +144,7 @@ impl BlinkTreeNode {
         } else {
             (order - 1 + 1) / 2 // Ceiling division for internal nodes
         };
-        
+
         self.get_keys().len() <= min_keys
     }
 
@@ -189,7 +189,7 @@ impl BlinkTreeNode {
                             break;
                         }
                     }
-                    
+
                     keys.insert(insert_pos, key);
                     children.insert(insert_pos + 1, page_id);
                     Ok(())
@@ -211,7 +211,7 @@ impl BlinkTreeNode {
                             return Ok(());
                         }
                     }
-                    
+
                     keys.insert(insert_pos, key);
                     values.insert(insert_pos, pk_list);
                     Ok(())
@@ -229,53 +229,60 @@ impl BlinkTreeNode {
         new_page_id: PageId,
     ) -> Result<(KeyType, BlinkTreeNode), &'static str> {
         match self {
-            BlinkTreeNode::Internal { keys, children, page_id, parent_page_id, right_link, high_key, .. } => {
+            BlinkTreeNode::Internal {
+                keys,
+                children,
+                parent_page_id,
+                right_link,
+                high_key,
+                ..
+            } => {
                 let mid = keys.len() / 2;
                 let split_key = keys[mid].clone();
-                
+
                 // Split keys and children
                 let right_keys = keys.split_off(mid + 1);
                 let right_children = children.split_off(mid + 1);
                 keys.pop(); // Remove the split key from left node
-                
+
                 // Create new right node
                 let new_right_node = BlinkTreeNode::Internal {
                     page_id: new_page_id,
                     parent_page_id: *parent_page_id,
                     keys: right_keys,
                     children: right_children,
-                    right_link: *right_link,    // New node gets old right link
+                    right_link: *right_link, // New node gets old right link
                     high_key: high_key.clone(), // New node gets the high key
                 };
-                
+
                 // Update current node's right link and high key
                 *right_link = Some(new_page_id);
                 *high_key = Some(split_key.clone());
-                
+
                 Ok((split_key, new_right_node))
             }
-            BlinkTreeNode::Leaf { keys, values, page_id, parent_page_id, right_link, high_key, .. } => {
+            BlinkTreeNode::Leaf { keys, values, parent_page_id, right_link, high_key, .. } => {
                 let mid = keys.len() / 2;
-                
+
                 // Split keys and values
                 let right_keys = keys.split_off(mid);
                 let right_values = values.split_off(mid);
                 let split_key = right_keys[0].clone(); // First key of right node goes up
-                
-                // Create new right node  
+
+                // Create new right node
                 let new_right_node = BlinkTreeNode::Leaf {
                     page_id: new_page_id,
                     parent_page_id: *parent_page_id,
                     keys: right_keys,
                     values: right_values,
-                    right_link: *right_link,    // New node gets old right link
+                    right_link: *right_link, // New node gets old right link
                     high_key: high_key.clone(), // New node gets the high key
                 };
-                
+
                 // Update current node's right link and high key
                 *right_link = Some(new_page_id);
                 *high_key = Some(split_key.clone());
-                
+
                 Ok((split_key, new_right_node))
             }
         }
@@ -284,84 +291,87 @@ impl BlinkTreeNode {
     /// Serialize the node to bytes
     pub fn to_bytes(&self) -> Result<Vec<u8>, SerializationError> {
         let mut buffer = Vec::new();
-        
+
         match self {
-            BlinkTreeNode::Internal { 
-                page_id, parent_page_id, keys, children, right_link, high_key 
+            BlinkTreeNode::Internal {
+                page_id,
+                parent_page_id,
+                keys,
+                children,
+                right_link,
+                high_key,
             } => {
                 // Write node type (0 = Internal)
                 buffer.write_all(&[0u8])?;
-                
+
                 // Write page_id
                 buffer.write_all(&page_id.to_le_bytes())?;
-                
+
                 // Write parent_page_id
                 buffer.write_all(&[if parent_page_id.is_some() { 1 } else { 0 }])?;
                 if let Some(parent_id) = parent_page_id {
                     buffer.write_all(&parent_id.to_le_bytes())?;
                 }
-                
+
                 // Write right_link
                 buffer.write_all(&[if right_link.is_some() { 1 } else { 0 }])?;
                 if let Some(link) = right_link {
                     buffer.write_all(&link.to_le_bytes())?;
                 }
-                
+
                 // Write high_key
                 buffer.write_all(&[if high_key.is_some() { 1 } else { 0 }])?;
                 if let Some(hkey) = high_key {
                     buffer.write_all(&(hkey.len() as u32).to_le_bytes())?;
                     buffer.write_all(hkey)?;
                 }
-                
+
                 // Write keys
                 buffer.write_all(&(keys.len() as u32).to_le_bytes())?;
                 for key in keys {
                     buffer.write_all(&(key.len() as u32).to_le_bytes())?;
                     buffer.write_all(key)?;
                 }
-                
+
                 // Write children
                 buffer.write_all(&(children.len() as u32).to_le_bytes())?;
                 for &child in children {
                     buffer.write_all(&child.to_le_bytes())?;
                 }
             }
-            BlinkTreeNode::Leaf { 
-                page_id, parent_page_id, keys, values, right_link, high_key 
-            } => {
+            BlinkTreeNode::Leaf { page_id, parent_page_id, keys, values, right_link, high_key } => {
                 // Write node type (1 = Leaf)
                 buffer.write_all(&[1u8])?;
-                
+
                 // Write page_id
                 buffer.write_all(&page_id.to_le_bytes())?;
-                
+
                 // Write parent_page_id
                 buffer.write_all(&[if parent_page_id.is_some() { 1 } else { 0 }])?;
                 if let Some(parent_id) = parent_page_id {
                     buffer.write_all(&parent_id.to_le_bytes())?;
                 }
-                
+
                 // Write right_link
                 buffer.write_all(&[if right_link.is_some() { 1 } else { 0 }])?;
                 if let Some(link) = right_link {
                     buffer.write_all(&link.to_le_bytes())?;
                 }
-                
+
                 // Write high_key
                 buffer.write_all(&[if high_key.is_some() { 1 } else { 0 }])?;
                 if let Some(hkey) = high_key {
                     buffer.write_all(&(hkey.len() as u32).to_le_bytes())?;
                     buffer.write_all(hkey)?;
                 }
-                
+
                 // Write keys
                 buffer.write_all(&(keys.len() as u32).to_le_bytes())?;
                 for key in keys {
                     buffer.write_all(&(key.len() as u32).to_le_bytes())?;
                     buffer.write_all(key)?;
                 }
-                
+
                 // Write values
                 buffer.write_all(&(values.len() as u32).to_le_bytes())?;
                 for value_list in values {
@@ -373,36 +383,28 @@ impl BlinkTreeNode {
                 }
             }
         }
-        
+
         Ok(buffer)
     }
 
     /// Deserialize a node from bytes
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, SerializationError> {
         let mut cursor = Cursor::new(bytes);
-        
+
         // Read node type
         let node_type = read_u8(&mut cursor)?;
-        
+
         // Read page_id
         let page_id = read_u64(&mut cursor)?;
-        
+
         // Read parent_page_id
         let has_parent = read_u8(&mut cursor)? != 0;
-        let parent_page_id = if has_parent {
-            Some(read_u64(&mut cursor)?)
-        } else {
-            None
-        };
-        
+        let parent_page_id = if has_parent { Some(read_u64(&mut cursor)?) } else { None };
+
         // Read right_link
         let has_right_link = read_u8(&mut cursor)? != 0;
-        let right_link = if has_right_link {
-            Some(read_u64(&mut cursor)?)
-        } else {
-            None
-        };
-        
+        let right_link = if has_right_link { Some(read_u64(&mut cursor)?) } else { None };
+
         // Read high_key
         let has_high_key = read_u8(&mut cursor)? != 0;
         let high_key = if has_high_key {
@@ -411,7 +413,7 @@ impl BlinkTreeNode {
         } else {
             None
         };
-        
+
         match node_type {
             0 => {
                 // Internal node
@@ -422,14 +424,14 @@ impl BlinkTreeNode {
                     let key_len = read_u32(&mut cursor)?;
                     keys.push(read_vec_u8(&mut cursor, key_len as usize)?);
                 }
-                
+
                 // Read children
                 let children_count = read_u32(&mut cursor)?;
                 let mut children = Vec::with_capacity(children_count as usize);
                 for _ in 0..children_count {
                     children.push(read_u64(&mut cursor)?);
                 }
-                
+
                 Ok(BlinkTreeNode::Internal {
                     page_id,
                     parent_page_id,
@@ -448,7 +450,7 @@ impl BlinkTreeNode {
                     let key_len = read_u32(&mut cursor)?;
                     keys.push(read_vec_u8(&mut cursor, key_len as usize)?);
                 }
-                
+
                 // Read values
                 let values_count = read_u32(&mut cursor)?;
                 let mut values = Vec::with_capacity(values_count as usize);
@@ -461,7 +463,7 @@ impl BlinkTreeNode {
                     }
                     values.push(pk_list);
                 }
-                
+
                 Ok(BlinkTreeNode::Leaf {
                     page_id,
                     parent_page_id,
@@ -501,10 +503,7 @@ fn read_u64(cursor: &mut Cursor<&[u8]>) -> Result<u64, SerializationError> {
     Ok(u64::from_le_bytes(buf))
 }
 
-fn read_vec_u8(
-    cursor: &mut Cursor<&[u8]>,
-    len: usize,
-) -> Result<Vec<u8>, SerializationError> {
+fn read_vec_u8(cursor: &mut Cursor<&[u8]>, len: usize) -> Result<Vec<u8>, SerializationError> {
     let mut buf = vec![0u8; len];
     cursor.read_exact(&mut buf)?;
     Ok(buf)
@@ -513,15 +512,15 @@ fn read_vec_u8(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     fn k(s: &str) -> KeyType {
         s.as_bytes().to_vec()
     }
-    
+
     fn pk(s: &str) -> PrimaryKey {
         s.as_bytes().to_vec()
     }
-    
+
     #[test]
     fn test_blink_internal_node_creation_and_props() {
         let node = BlinkTreeNode::Internal {
@@ -532,7 +531,7 @@ mod tests {
             right_link: Some(2),
             high_key: Some(k("key2")),
         };
-        
+
         assert_eq!(node.get_page_id(), 1);
         assert_eq!(node.get_parent_page_id(), None);
         assert!(!node.is_leaf());
@@ -541,7 +540,7 @@ mod tests {
         assert!(node.is_safe_for_key(&k("key1")));
         assert!(!node.is_safe_for_key(&k("key3")));
     }
-    
+
     #[test]
     fn test_blink_leaf_node_creation_and_props() {
         let node = BlinkTreeNode::Leaf {
@@ -552,7 +551,7 @@ mod tests {
             right_link: Some(3),
             high_key: Some(k("banana")),
         };
-        
+
         assert_eq!(node.get_page_id(), 1);
         assert_eq!(node.get_parent_page_id(), Some(5));
         assert!(node.is_leaf());
@@ -561,7 +560,7 @@ mod tests {
         assert!(node.is_safe_for_key(&k("apple")));
         assert!(!node.is_safe_for_key(&k("cherry")));
     }
-    
+
     #[test]
     fn test_blink_serialization_deserialization() {
         let original = BlinkTreeNode::Internal {
@@ -572,17 +571,17 @@ mod tests {
             right_link: Some(43),
             high_key: Some(k("gamma")),
         };
-        
+
         let serialized = original.to_bytes().unwrap();
         let deserialized = BlinkTreeNode::from_bytes(&serialized).unwrap();
-        
+
         assert_eq!(original.get_page_id(), deserialized.get_page_id());
         assert_eq!(original.get_parent_page_id(), deserialized.get_parent_page_id());
         assert_eq!(original.get_right_link(), deserialized.get_right_link());
         assert_eq!(original.get_high_key(), deserialized.get_high_key());
         assert_eq!(original.get_keys(), deserialized.get_keys());
     }
-    
+
     #[test]
     fn test_concurrent_safety_with_high_key() {
         let mut node = BlinkTreeNode::Leaf {
@@ -593,16 +592,16 @@ mod tests {
             right_link: Some(2),
             high_key: Some(k("elephant")),
         };
-        
+
         // Keys within range should be safe
         assert!(node.is_safe_for_key(&k("dog")));
         assert!(node.is_safe_for_key(&k("elephant")));
-        
+
         // Keys beyond high_key should not be safe
         assert!(!node.is_safe_for_key(&k("fox")));
-        
+
         // Test with no high key (rightmost node)
         node.set_high_key(None);
         assert!(node.is_safe_for_key(&k("zebra"))); // Should be safe now
     }
-} 
+}

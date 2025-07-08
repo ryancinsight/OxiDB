@@ -31,7 +31,10 @@ impl IndexManager {
         Self::new_with_auto_discovery(base_path, true)
     }
 
-    pub fn new_with_auto_discovery(base_path: PathBuf, auto_discover: bool) -> Result<Self, OxidbError> {
+    pub fn new_with_auto_discovery(
+        base_path: PathBuf,
+        auto_discover: bool,
+    ) -> Result<Self, OxidbError> {
         if !base_path.exists() {
             std::fs::create_dir_all(&base_path).map_err(OxidbError::Io)?;
         } else if !base_path.is_dir() {
@@ -256,10 +259,16 @@ impl IndexManager {
                             if !self.indexes.contains_key(index_name) {
                                 match self.create_index(index_name.to_string(), "hash") {
                                     Ok(_) => {
-                                        eprintln!("[IndexManager] Loaded existing index: {}", index_name);
+                                        eprintln!(
+                                            "[IndexManager] Loaded existing index: {}",
+                                            index_name
+                                        );
                                     }
                                     Err(e) => {
-                                        eprintln!("[IndexManager] Failed to load index {}: {}", index_name, e);
+                                        eprintln!(
+                                            "[IndexManager] Failed to load index {}: {}",
+                                            index_name, e
+                                        );
                                         // Continue loading other indexes instead of failing completely
                                     }
                                 }
@@ -512,7 +521,8 @@ mod tests {
         }
 
         // Disable auto-discovery to avoid loading the existing index file automatically
-        let mut manager = IndexManager::new_with_auto_discovery(base_path_for_hash.to_path_buf(), false)?;
+        let mut manager =
+            IndexManager::new_with_auto_discovery(base_path_for_hash.to_path_buf(), false)?;
         // This should load the existing hash index file
         manager.create_index(index_name.clone(), "hash")?;
 

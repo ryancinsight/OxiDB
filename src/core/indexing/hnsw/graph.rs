@@ -1,9 +1,9 @@
-use std::collections::{HashMap, BinaryHeap};
-use std::cmp::Ordering;
 use rand::Rng;
+use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap};
 
-use super::node::{HnswNode, NodeId, Vector, DistanceFunction};
 use super::error::{HnswError, HnswResult};
+use super::node::{DistanceFunction, HnswNode, NodeId, Vector};
 
 /// Priority queue item for distance-based searches
 #[derive(Debug, Clone, PartialEq)]
@@ -32,31 +32,31 @@ impl PartialOrd for SearchCandidate {
 pub struct HnswGraph {
     /// All nodes in the graph
     nodes: HashMap<NodeId, HnswNode>,
-    
+
     /// Entry point node ID (highest layer node)
     entry_point: Option<NodeId>,
-    
+
     /// Next node ID to assign
     next_node_id: NodeId,
-    
+
     /// Vector dimension
     dimension: usize,
-    
+
     /// Maximum connections per layer (M parameter)
     max_connections: usize,
-    
+
     /// Maximum connections for layer 0 (M_L parameter, typically 2*M)
     max_connections_layer0: usize,
-    
+
     /// Construction parameter (ef_construction)
     ef_construction: usize,
-    
+
     /// Distance function to use
     distance_function: DistanceFunction,
-    
+
     /// Maximum layer level
     max_layer: usize,
-    
+
     /// Layer assignment probability multiplier (ml parameter)
     ml: f64,
 }
@@ -104,6 +104,7 @@ impl HnswGraph {
     }
 
     /// Get a mutable node by ID
+    #[allow(dead_code)]
     pub fn get_node_mut(&mut self, node_id: NodeId) -> Option<&mut HnswNode> {
         self.nodes.get_mut(&node_id)
     }
@@ -145,7 +146,7 @@ impl HnswGraph {
 
         // Search for closest nodes starting from top layer
         let mut current_closest = vec![self.entry_point.unwrap()];
-        
+
         // Search from top layer down to node's layer + 1
         for lc in (layer + 1..=self.max_layer).rev() {
             current_closest = self.search_layer(&vector, &current_closest, 1, lc)?;
@@ -153,25 +154,26 @@ impl HnswGraph {
 
         // Insert and connect from node's layer down to 0
         for lc in (0..=layer).rev() {
-            let candidates = self.search_layer(&vector, &current_closest, self.ef_construction, lc)?;
-            
+            let candidates =
+                self.search_layer(&vector, &current_closest, self.ef_construction, lc)?;
+
             // Select neighbors
             let max_conn = if lc == 0 { self.max_connections_layer0 } else { self.max_connections };
             let neighbors = self.select_neighbors_simple(&vector, &candidates, max_conn)?;
-            
+
             // Add connections
             for &neighbor_id in &neighbors {
                 new_node.add_connection(lc, neighbor_id);
-                
+
                 // Add bidirectional connection
                 if let Some(neighbor) = self.nodes.get_mut(&neighbor_id) {
                     neighbor.add_connection(lc, node_id);
-                    
+
                     // Prune connections if needed
                     self.prune_connections(neighbor_id, lc, max_conn)?;
                 }
             }
-            
+
             current_closest = neighbors;
         }
 
@@ -209,7 +211,7 @@ impl HnswGraph {
         // Search layer 0 with ef = max(ef_construction, k)
         let ef = self.ef_construction.max(k);
         let candidates = self.search_layer(query, &current_closest, ef, 0)?;
-        
+
         // Return top k candidates
         Ok(candidates.into_iter().take(k).collect())
     }
@@ -230,10 +232,7 @@ impl HnswGraph {
         for &ep in entry_points {
             if let Some(node) = self.get_node(ep) {
                 let distance = self.distance(query, &node.vector);
-                candidates.push(SearchCandidate {
-                    node_id: ep,
-                    distance,
-                });
+                candidates.push(SearchCandidate { node_id: ep, distance });
                 w.push(SearchCandidate {
                     node_id: ep,
                     distance: -distance, // Negative for max-heap behavior
@@ -245,7 +244,7 @@ impl HnswGraph {
         while let Some(candidate) = candidates.pop() {
             // Get furthest point in w
             let furthest = w.peek().map(|c| -c.distance).unwrap_or(f32::INFINITY);
-            
+
             if candidate.distance > furthest {
                 break;
             }
@@ -256,15 +255,13 @@ impl HnswGraph {
                     for &neighbor_id in connections {
                         if !visited.contains(&neighbor_id) {
                             visited.insert(neighbor_id);
-                            
+
                             if let Some(neighbor) = self.get_node(neighbor_id) {
                                 let distance = self.distance(query, &neighbor.vector);
-                                
+
                                 if w.len() < num_closest {
-                                    candidates.push(SearchCandidate {
-                                        node_id: neighbor_id,
-                                        distance,
-                                    });
+                                    candidates
+                                        .push(SearchCandidate { node_id: neighbor_id, distance });
                                     w.push(SearchCandidate {
                                         node_id: neighbor_id,
                                         distance: -distance,
@@ -292,7 +289,7 @@ impl HnswGraph {
         // Convert max-heap to sorted result (closest first)
         let mut result: Vec<_> = w.into_vec();
         result.sort_by(|a, b| (-a.distance).partial_cmp(&(-b.distance)).unwrap_or(Ordering::Equal));
-        
+
         Ok(result.into_iter().map(|c| c.node_id).collect())
     }
 
@@ -313,17 +310,19 @@ impl HnswGraph {
             })
             .collect();
 
-        scored_candidates.sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(Ordering::Equal));
-        
-        Ok(scored_candidates
-            .into_iter()
-            .take(max_neighbors)
-            .map(|c| c.node_id)
-            .collect())
+        scored_candidates
+            .sort_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(Ordering::Equal));
+
+        Ok(scored_candidates.into_iter().take(max_neighbors).map(|c| c.node_id).collect())
     }
 
     /// Prune connections for a node if it exceeds maximum
-    fn prune_connections(&mut self, node_id: NodeId, layer: usize, max_connections: usize) -> HnswResult<()> {
+    fn prune_connections(
+        &mut self,
+        node_id: NodeId,
+        layer: usize,
+        max_connections: usize,
+    ) -> HnswResult<()> {
         if let Some(node) = self.nodes.get(&node_id) {
             if node.connection_count_at_layer(layer) <= max_connections {
                 return Ok(());
@@ -336,25 +335,24 @@ impl HnswGraph {
                 .iter()
                 .cloned()
                 .collect();
-            
+
             let node_vector = node.vector.clone();
-            
+
             // Find closest connections to keep
-            let to_keep = self.select_neighbors_simple(&node_vector, &connections, max_connections)?;
-            
+            let to_keep =
+                self.select_neighbors_simple(&node_vector, &connections, max_connections)?;
+
             // Remove connections not in the keep list
-            let to_remove: Vec<NodeId> = connections
-                .into_iter()
-                .filter(|id| !to_keep.contains(id))
-                .collect();
-            
+            let to_remove: Vec<NodeId> =
+                connections.into_iter().filter(|id| !to_keep.contains(id)).collect();
+
             // Update connections
             if let Some(node) = self.nodes.get_mut(&node_id) {
                 for &remove_id in &to_remove {
                     node.remove_connection(layer, remove_id);
                 }
             }
-            
+
             // Remove bidirectional connections
             for remove_id in to_remove {
                 if let Some(neighbor) = self.nodes.get_mut(&remove_id) {
@@ -362,7 +360,7 @@ impl HnswGraph {
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -410,8 +408,8 @@ impl HnswGraph {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::node::DistanceFunction;
+    use super::*;
 
     #[test]
     fn test_graph_creation() {
@@ -442,13 +440,8 @@ mod tests {
     #[test]
     fn test_multiple_node_insertion() {
         let mut graph = HnswGraph::new(2, 4, 10, DistanceFunction::Euclidean);
-        
-        let vectors = vec![
-            vec![1.0, 0.0],
-            vec![0.0, 1.0],
-            vec![-1.0, 0.0],
-            vec![0.0, -1.0],
-        ];
+
+        let vectors = vec![vec![1.0, 0.0], vec![0.0, 1.0], vec![-1.0, 0.0], vec![0.0, -1.0]];
 
         for (i, vector) in vectors.iter().enumerate() {
             let pk = format!("pk_{}", i).as_bytes().to_vec();
@@ -463,13 +456,8 @@ mod tests {
     #[test]
     fn test_search() {
         let mut graph = HnswGraph::new(2, 4, 10, DistanceFunction::Euclidean);
-        
-        let vectors = vec![
-            vec![1.0, 0.0],
-            vec![0.0, 1.0],
-            vec![2.0, 0.0],
-            vec![0.0, 2.0],
-        ];
+
+        let vectors = vec![vec![1.0, 0.0], vec![0.0, 1.0], vec![2.0, 0.0], vec![0.0, 2.0]];
 
         for (i, vector) in vectors.iter().enumerate() {
             let pk = format!("pk_{}", i).as_bytes().to_vec();
@@ -479,7 +467,7 @@ mod tests {
         // Search for closest to [1.1, 0.0] (should be node 0: [1.0, 0.0])
         let query = vec![1.1, 0.0];
         let results = graph.search(&query, 2).unwrap();
-        
+
         assert!(!results.is_empty());
         assert!(results.contains(&0)); // Should contain the closest vector
     }
@@ -487,11 +475,11 @@ mod tests {
     #[test]
     fn test_node_removal() {
         let mut graph = HnswGraph::new(2, 4, 10, DistanceFunction::Euclidean);
-        
+
         let vector = vec![1.0, 0.0];
         let pk = b"test".to_vec();
         let node_id = graph.insert_node(vector, pk).unwrap();
-        
+
         assert_eq!(graph.len(), 1);
         assert!(graph.remove_node(node_id).unwrap());
         assert_eq!(graph.len(), 0);
@@ -507,4 +495,4 @@ mod tests {
         let result = graph.insert_node(wrong_vector, pk);
         assert!(matches!(result, Err(HnswError::DimensionMismatch { .. })));
     }
-} 
+}

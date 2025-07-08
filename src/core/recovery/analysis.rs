@@ -11,12 +11,11 @@
 //! - Transaction Table: tracks the state of all transactions
 //! - Dirty Page Table: tracks pages that may need redo operations
 
-use crate::core::common::types::{Lsn, TransactionId};
+use crate::core::common::types::Lsn;
 use crate::core::recovery::tables::{DirtyPageTable, TransactionTable};
 use crate::core::recovery::types::{RecoveryError, TransactionInfo};
 use crate::core::wal::log_record::{ActiveTransactionInfo, DirtyPageInfo, LogRecord};
-use crate::core::wal::reader::{WalReader, WalReaderError};
-use std::collections::HashMap;
+use crate::core::wal::reader::WalReader;
 
 /// Result of the Analysis phase containing the built tables and recovery information.
 #[derive(Debug, Clone)]
@@ -78,10 +77,7 @@ pub struct AnalysisPhase<'a> {
 impl<'a> AnalysisPhase<'a> {
     /// Creates a new Analysis phase with the given WAL reader.
     pub fn new(wal_reader: &'a mut WalReader) -> Self {
-        Self {
-            wal_reader,
-            result: AnalysisResult::new(),
-        }
+        Self { wal_reader, result: AnalysisResult::new() }
     }
 
     /// Performs the Analysis phase of recovery.
@@ -111,7 +107,11 @@ impl<'a> AnalysisPhase<'a> {
                 // Extract LSN from the checkpoint end record
                 let checkpoint_lsn = match checkpoint_end {
                     LogRecord::CheckpointEnd { lsn, .. } => lsn,
-                    _ => return Err(RecoveryError::WalError("Invalid checkpoint end record".to_string())),
+                    _ => {
+                        return Err(RecoveryError::WalError(
+                            "Invalid checkpoint end record".to_string(),
+                        ))
+                    }
                 };
                 self.result.last_checkpoint_lsn = Some(checkpoint_lsn);
             }
@@ -139,12 +139,7 @@ impl<'a> AnalysisPhase<'a> {
                 .map_err(|e| RecoveryError::WalError(format!("Failed to read records: {}", e)))?;
 
             for record in records {
-                if let LogRecord::CheckpointEnd {
-                    lsn,
-                    active_transactions,
-                    dirty_pages,
-                } = record
-                {
+                if let LogRecord::CheckpointEnd { lsn, active_transactions, dirty_pages } = record {
                     if lsn == checkpoint_lsn {
                         self.initialize_transaction_table_from_checkpoint(&active_transactions);
                         self.initialize_dirty_page_table_from_checkpoint(&dirty_pages);
@@ -170,9 +165,7 @@ impl<'a> AnalysisPhase<'a> {
     /// Initializes the dirty page table from checkpoint data.
     fn initialize_dirty_page_table_from_checkpoint(&mut self, dirty_pages: &[DirtyPageInfo]) {
         for page_info in dirty_pages {
-            self.result
-                .dirty_page_table
-                .insert(page_info.page_id, page_info.recovery_lsn);
+            self.result.dirty_page_table.insert(page_info.page_id, page_info.recovery_lsn);
         }
     }
 
@@ -209,47 +202,22 @@ impl<'a> AnalysisPhase<'a> {
             LogRecord::AbortTransaction { tx_id, .. } => {
                 self.result.transaction_table.abort_transaction(tx_id);
             }
-            LogRecord::InsertRecord {
-                lsn,
-                tx_id,
-                page_id,
-                ..
-            }
-            | LogRecord::DeleteRecord {
-                lsn,
-                tx_id,
-                page_id,
-                ..
-            }
-            | LogRecord::UpdateRecord {
-                lsn,
-                tx_id,
-                page_id,
-                ..
-            }
-            | LogRecord::NewPage {
-                lsn,
-                tx_id,
-                page_id,
-                ..
-            } => {
+            LogRecord::InsertRecord { lsn, tx_id, page_id, .. }
+            | LogRecord::DeleteRecord { lsn, tx_id, page_id, .. }
+            | LogRecord::UpdateRecord { lsn, tx_id, page_id, .. }
+            | LogRecord::NewPage { lsn, tx_id, page_id, .. } => {
                 // Update transaction table
                 self.result.transaction_table.update_transaction(*tx_id, *lsn);
-                
+
                 // Add page to dirty page table if not already present
                 if !self.result.dirty_page_table.contains(page_id) {
                     self.result.dirty_page_table.insert(*page_id, *lsn);
                 }
             }
-            LogRecord::CompensationLogRecord {
-                lsn,
-                tx_id,
-                page_id,
-                ..
-            } => {
+            LogRecord::CompensationLogRecord { lsn, tx_id, page_id, .. } => {
                 // Update transaction table
                 self.result.transaction_table.update_transaction(*tx_id, *lsn);
-                
+
                 // CLRs also dirty pages
                 if !self.result.dirty_page_table.contains(page_id) {
                     self.result.dirty_page_table.insert(*page_id, *lsn);
@@ -314,10 +282,10 @@ mod tests {
         let temp_file = create_test_wal_with_records(vec![]).await;
         let config = WalReaderConfig::default();
         let mut wal_reader = WalReader::new(temp_file.path(), config);
-        
+
         let mut analysis = AnalysisPhase::new(&mut wal_reader);
         let result = analysis.analyze().await.unwrap();
-        
+
         assert_eq!(result.transaction_table.len(), 0);
         assert_eq!(result.dirty_page_table.len(), 0);
         assert_eq!(result.redo_lsn, None);
@@ -330,7 +298,7 @@ mod tests {
         let tx_id = TransactionId(1);
         let page_id = PageId(100);
         let slot_id = SlotId(1);
-        
+
         let records = vec![
             LogRecord::BeginTransaction { lsn: 1, tx_id },
             LogRecord::InsertRecord {
@@ -341,30 +309,26 @@ mod tests {
                 record_data: vec![1, 2, 3],
                 prev_lsn: 1,
             },
-            LogRecord::CommitTransaction {
-                lsn: 3,
-                tx_id,
-                prev_lsn: 2,
-            },
+            LogRecord::CommitTransaction { lsn: 3, tx_id, prev_lsn: 2 },
         ];
-        
+
         let temp_file = create_test_wal_with_records(records).await;
         let config = WalReaderConfig::default();
         let mut wal_reader = WalReader::new(temp_file.path(), config);
-        
+
         let mut analysis = AnalysisPhase::new(&mut wal_reader);
         let result = analysis.analyze().await.unwrap();
-        
+
         assert_eq!(result.transaction_table.len(), 1);
         assert_eq!(result.dirty_page_table.len(), 1);
         assert_eq!(result.redo_lsn, Some(2)); // LSN of the insert record
         assert_eq!(result.records_processed, 3);
-        
+
         // Transaction should be committed
         let tx_info = result.transaction_table.get(&tx_id).unwrap();
         assert_eq!(tx_info.state, crate::core::recovery::types::TransactionState::Committed);
         assert!(!tx_info.needs_undo());
-        
+
         // Page should be in dirty page table
         let page_info = result.dirty_page_table.get(&page_id).unwrap();
         assert_eq!(page_info.recovery_lsn, 2);
@@ -375,7 +339,7 @@ mod tests {
         let tx_id = TransactionId(1);
         let page_id = PageId(100);
         let slot_id = SlotId(1);
-        
+
         let records = vec![
             LogRecord::BeginTransaction { lsn: 1, tx_id },
             LogRecord::InsertRecord {
@@ -388,17 +352,17 @@ mod tests {
             },
             // No commit record - transaction is still active
         ];
-        
+
         let temp_file = create_test_wal_with_records(records).await;
         let config = WalReaderConfig::default();
         let mut wal_reader = WalReader::new(temp_file.path(), config);
-        
+
         let mut analysis = AnalysisPhase::new(&mut wal_reader);
         let result = analysis.analyze().await.unwrap();
-        
+
         assert_eq!(result.active_transaction_count(), 1);
         assert!(result.recovery_needed());
-        
+
         // Transaction should be active and need undo
         let tx_info = result.transaction_table.get(&tx_id).unwrap();
         assert_eq!(tx_info.state, crate::core::recovery::types::TransactionState::Active);
@@ -409,24 +373,14 @@ mod tests {
     async fn test_analysis_with_checkpoint() {
         let tx_id = TransactionId(1);
         let page_id = PageId(100);
-        
-        let active_transactions = vec![ActiveTransactionInfo {
-            tx_id,
-            last_lsn: 5,
-        }];
-        
-        let dirty_pages = vec![DirtyPageInfo {
-            page_id,
-            recovery_lsn: 3,
-        }];
-        
+
+        let active_transactions = vec![ActiveTransactionInfo { tx_id, last_lsn: 5 }];
+
+        let dirty_pages = vec![DirtyPageInfo { page_id, recovery_lsn: 3 }];
+
         let records = vec![
             LogRecord::CheckpointBegin { lsn: 10 },
-            LogRecord::CheckpointEnd {
-                lsn: 11,
-                active_transactions,
-                dirty_pages,
-            },
+            LogRecord::CheckpointEnd { lsn: 11, active_transactions, dirty_pages },
             LogRecord::UpdateRecord {
                 lsn: 12,
                 tx_id,
@@ -437,19 +391,19 @@ mod tests {
                 prev_lsn: 5,
             },
         ];
-        
+
         let temp_file = create_test_wal_with_records(records).await;
         let config = WalReaderConfig::default();
         let mut wal_reader = WalReader::new(temp_file.path(), config);
-        
+
         let mut analysis = AnalysisPhase::new(&mut wal_reader);
         let result = analysis.analyze().await.unwrap();
-        
+
         assert_eq!(result.last_checkpoint_lsn, Some(11));
         assert_eq!(result.transaction_table.len(), 1);
         assert_eq!(result.dirty_page_table.len(), 1);
         assert_eq!(result.redo_lsn, Some(3)); // From checkpoint dirty page info
-        
+
         // Transaction should be updated with new LSN
         let tx_info = result.transaction_table.get(&tx_id).unwrap();
         assert_eq!(tx_info.last_lsn, 12); // Updated by the UpdateRecord

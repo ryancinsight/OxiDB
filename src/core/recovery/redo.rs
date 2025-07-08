@@ -15,11 +15,11 @@ use crate::core::recovery::tables::DirtyPageTable;
 use crate::core::recovery::types::{RecoveryError, RecoveryState};
 use crate::core::storage::engine::page::{Page, PageType};
 use crate::core::wal::log_record::LogRecord;
-use crate::core::wal::reader::{WalReader, WalReaderConfig};
+use crate::core::wal::reader::WalReader;
+use log;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use log;
 
 /// The Redo phase of ARIES recovery.
 ///
@@ -40,7 +40,7 @@ impl RedoPhase {
     /// Creates a new RedoPhase with the given dirty page table.
     pub fn new(dirty_page_table: DirtyPageTable) -> Self {
         let redo_lsn = dirty_page_table.min_recovery_lsn();
-        
+
         Self {
             dirty_page_table,
             page_cache: HashMap::new(),
@@ -59,7 +59,7 @@ impl RedoPhase {
     /// * `Err(RecoveryError)` if an error occurred during redo
     pub fn redo<P: AsRef<Path>>(&mut self, wal_path: P) -> Result<(), RecoveryError> {
         self.state = RecoveryState::Redo;
-        
+
         // If there's no redo LSN, no redo is needed
         let redo_lsn = match self.redo_lsn {
             Some(lsn) => lsn,
@@ -73,12 +73,15 @@ impl RedoPhase {
 
         // Create WAL reader from path
         let reader = WalReader::with_defaults(wal_path.as_ref());
-        let mut iterator = reader.iter_records()
-            .map_err(|e| RecoveryError::WalError(format!("Failed to create WAL iterator: {}", e)))?;
+        let mut iterator = reader.iter_records().map_err(|e| {
+            RecoveryError::WalError(format!("Failed to create WAL iterator: {}", e))
+        })?;
 
         // Read all records and process those from redo LSN forward
         while let Some(result) = iterator.next() {
-            let log_record = result.map_err(|e| RecoveryError::WalError(format!("Failed to read WAL record: {}", e)))?;
+            let log_record = result.map_err(|e| {
+                RecoveryError::WalError(format!("Failed to read WAL record: {}", e))
+            })?;
             let record_lsn = self.get_record_lsn(&log_record);
             if record_lsn >= redo_lsn {
                 self.process_log_record(&log_record)?;
@@ -99,22 +102,20 @@ impl RedoPhase {
     /// * `Err(RecoveryError)` if an error occurred
     fn process_log_record(&mut self, log_record: &LogRecord) -> Result<(), RecoveryError> {
         match log_record {
-            LogRecord::UpdateRecord { lsn, page_id, old_record_data: _, new_record_data, .. } => {
-                self.redo_update(*lsn, *page_id, new_record_data)?
-            }
+            LogRecord::UpdateRecord {
+                lsn, page_id, old_record_data: _, new_record_data, ..
+            } => self.redo_update(*lsn, *page_id, new_record_data)?,
             LogRecord::InsertRecord { lsn, page_id, record_data, .. } => {
                 self.redo_insert(*lsn, *page_id, record_data)?
             }
-            LogRecord::DeleteRecord { lsn, page_id, .. } => {
-                self.redo_delete(*lsn, *page_id)?
-            }
-            LogRecord::BeginTransaction { .. } |
-            LogRecord::CommitTransaction { .. } |
-            LogRecord::AbortTransaction { .. } |
-            LogRecord::CheckpointBegin { .. } |
-            LogRecord::CheckpointEnd { .. } |
-            LogRecord::NewPage { .. } |
-            LogRecord::CompensationLogRecord { .. } => {
+            LogRecord::DeleteRecord { lsn, page_id, .. } => self.redo_delete(*lsn, *page_id)?,
+            LogRecord::BeginTransaction { .. }
+            | LogRecord::CommitTransaction { .. }
+            | LogRecord::AbortTransaction { .. }
+            | LogRecord::CheckpointBegin { .. }
+            | LogRecord::CheckpointEnd { .. }
+            | LogRecord::NewPage { .. }
+            | LogRecord::CompensationLogRecord { .. } => {
                 // These record types don't require redo operations
             }
         }
@@ -127,7 +128,12 @@ impl RedoPhase {
     /// * `lsn` - LSN of the log record
     /// * `page_id` - ID of the page to update
     /// * `after_image` - The data to apply to the page
-    fn redo_update(&mut self, lsn: Lsn, page_id: PageId, after_image: &[u8]) -> Result<(), RecoveryError> {
+    fn redo_update(
+        &mut self,
+        lsn: Lsn,
+        page_id: PageId,
+        after_image: &[u8],
+    ) -> Result<(), RecoveryError> {
         // Only redo if the page was dirty at crash time
         if !self.dirty_page_table.contains(&page_id) {
             return Ok(());
@@ -138,9 +144,13 @@ impl RedoPhase {
 
         // Only redo if page LSN < log record LSN
         if page_guard.get_lsn() < lsn {
-            page_guard.apply_update(after_image)
-                .map_err(|e| RecoveryError::RedoError(format!("Failed to apply update to page {}: {}", page_id.0, e)))?;
-            
+            page_guard.apply_update(after_image).map_err(|e| {
+                RecoveryError::RedoError(format!(
+                    "Failed to apply update to page {}: {}",
+                    page_id.0, e
+                ))
+            })?;
+
             page_guard.set_lsn(lsn);
             log::debug!("Redid update on page {} with LSN {}", page_id.0, lsn);
         }
@@ -165,9 +175,13 @@ impl RedoPhase {
 
         // Only redo if page LSN < log record LSN
         if page_guard.get_lsn() < lsn {
-            page_guard.apply_insert(data)
-                .map_err(|e| RecoveryError::RedoError(format!("Failed to apply insert to page {}: {}", page_id.0, e)))?;
-            
+            page_guard.apply_insert(data).map_err(|e| {
+                RecoveryError::RedoError(format!(
+                    "Failed to apply insert to page {}: {}",
+                    page_id.0, e
+                ))
+            })?;
+
             page_guard.set_lsn(lsn);
             log::debug!("Redid insert on page {} with LSN {}", page_id.0, lsn);
         }
@@ -191,9 +205,13 @@ impl RedoPhase {
 
         // Only redo if page LSN < log record LSN
         if page_guard.get_lsn() < lsn {
-            page_guard.apply_delete()
-                .map_err(|e| RecoveryError::RedoError(format!("Failed to apply delete to page {}: {}", page_id.0, e)))?;
-            
+            page_guard.apply_delete().map_err(|e| {
+                RecoveryError::RedoError(format!(
+                    "Failed to apply delete to page {}: {}",
+                    page_id.0, e
+                ))
+            })?;
+
             page_guard.set_lsn(lsn);
             log::debug!("Redid delete on page {} with LSN {}", page_id.0, lsn);
         }
@@ -218,7 +236,7 @@ impl RedoPhase {
         // For now, we'll create a mock page
         let page = Arc::new(Mutex::new(Page::new(page_id, PageType::Data)));
         self.page_cache.insert(page_id, Arc::clone(&page));
-        
+
         Ok(page)
     }
 
@@ -306,7 +324,7 @@ mod tests {
         dirty_page_table.insert(PageId(200), 75);
 
         let redo_phase = RedoPhase::new(dirty_page_table);
-        
+
         assert_eq!(redo_phase.get_redo_lsn(), Some(50));
         assert_eq!(redo_phase.get_state(), &RecoveryState::NotStarted);
         assert_eq!(redo_phase.cache_size(), 0);
@@ -316,23 +334,23 @@ mod tests {
     fn test_redo_phase_empty_dirty_page_table() {
         let dirty_page_table = DirtyPageTable::new();
         let redo_phase = RedoPhase::new(dirty_page_table);
-        
+
         assert_eq!(redo_phase.get_redo_lsn(), None);
     }
 
     #[test]
     fn test_redo_phase_with_wal() {
         let temp_file = create_test_wal_with_records();
-        
+
         let mut dirty_page_table = DirtyPageTable::new();
         dirty_page_table.insert(PageId(100), 1); // Start redo from LSN 1
-        
+
         let mut redo_phase = RedoPhase::new(dirty_page_table);
-        
+
         // Perform redo
         let result = redo_phase.redo(temp_file.path());
         assert!(result.is_ok());
-        
+
         // Since the test WAL file is empty, no pages should be loaded into cache
         // In a real scenario with actual WAL records, pages would be loaded
         assert_eq!(redo_phase.cache_size(), 0);
@@ -341,14 +359,14 @@ mod tests {
     #[test]
     fn test_redo_phase_no_redo_needed() {
         let temp_file = create_test_wal_with_records();
-        
+
         // Empty dirty page table means no redo needed
         let dirty_page_table = DirtyPageTable::new();
         let mut redo_phase = RedoPhase::new(dirty_page_table);
-        
+
         let result = redo_phase.redo(temp_file.path());
         assert!(result.is_ok());
-        
+
         // No pages should be cached since no redo was needed
         assert_eq!(redo_phase.cache_size(), 0);
     }
@@ -361,7 +379,7 @@ mod tests {
 
         let redo_phase = RedoPhase::new(dirty_page_table);
         let stats = redo_phase.get_statistics();
-        
+
         assert_eq!(stats.redo_lsn, Some(50));
         assert_eq!(stats.dirty_pages_count, 2);
         assert_eq!(stats.cached_pages_count, 0);
@@ -372,18 +390,18 @@ mod tests {
     fn test_cache_operations() {
         let dirty_page_table = DirtyPageTable::new();
         let mut redo_phase = RedoPhase::new(dirty_page_table);
-        
+
         // Load a page into cache
         let page_id = PageId(123);
         let result = redo_phase.get_or_load_page(page_id);
         assert!(result.is_ok());
         assert_eq!(redo_phase.cache_size(), 1);
-        
+
         // Load the same page again (should come from cache)
         let result2 = redo_phase.get_or_load_page(page_id);
         assert!(result2.is_ok());
         assert_eq!(redo_phase.cache_size(), 1); // Still 1, not 2
-        
+
         // Clear cache
         redo_phase.clear_cache();
         assert_eq!(redo_phase.cache_size(), 0);
@@ -394,23 +412,16 @@ mod tests {
         let mut dirty_page_table = DirtyPageTable::new();
         let page_id = PageId(100);
         dirty_page_table.insert(page_id, 1);
-        
+
         let mut redo_phase = RedoPhase::new(dirty_page_table);
         let tx_id = TransactionId(1);
-        
+
         // Test Begin record (should not cause errors)
-        let begin_record = LogRecord::BeginTransaction {
-            lsn: 1,
-            tx_id,
-        };
+        let begin_record = LogRecord::BeginTransaction { lsn: 1, tx_id };
         assert!(redo_phase.process_log_record(&begin_record).is_ok());
-        
+
         // Test Commit record (should not cause errors)
-        let commit_record = LogRecord::CommitTransaction {
-            lsn: 2,
-            tx_id,
-            prev_lsn: 1,
-        };
+        let commit_record = LogRecord::CommitTransaction { lsn: 2, tx_id, prev_lsn: 1 };
         assert!(redo_phase.process_log_record(&commit_record).is_ok());
     }
 }
