@@ -140,71 +140,68 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
     *   [x] **Validation:** SQL queries are correctly parsed into ASTs. (Full SQL parser implemented in `src/core/query/sql/` with tokenizer, AST, and parser modules. Comprehensive test suite covers all major SQL statements and edge cases.)
 
 8.  **Implement Query Planner and Optimizer:**
-    *   [ ] Convert AST to a logical query plan.
-        *   [ ] Subtask: Define logical plan operators (e.g., Scan, Filter, Join, Project).
-            *   [ ] Sub-subtask: Implement Rust structs/enums for each logical operator, storing relevant information (e.g., Filter operator stores the filter predicate).
-        *   [ ] Subtask: Write unit tests for AST to logical plan conversion.
-            *   [ ] Sub-subtask: Test conversion for simple SELECT queries.
-            *   [ ] Sub-subtask: Test conversion for queries with WHERE clauses (AST predicate to Filter operator).
-            *   [ ] Sub-subtask: Test conversion for queries with JOIN clauses.
-    *   [ ] Implement basic query optimization rules (e.g., predicate pushdown, constant folding).
-        *   [ ] Subtask: Implement transformation rules for the logical plan.
-            *   [ ] Sub-subtask: Implement a rule for pushing Filter operators closer to Scan operators.
-            *   [ ] Sub-subtask: Implement a rule for evaluating constant expressions (e.g., `1+2` becomes `3`).
-        *   [ ] Subtask: Write unit tests to verify optimization rule correctness.
-            *   [ ] Sub-subtask: Test predicate pushdown: ensure filter is applied correctly after pushdown.
-            *   [ ] Sub-subtask: Test constant folding: ensure expressions are correctly simplified.
-    *   [ ] Convert logical query plan to a physical query plan.
-        *   [ ] Subtask: Define physical plan operators (e.g., TableScan, IndexScan, HashJoin, NestedLoopJoin).
-            *   [ ] Sub-subtask: Implement Rust structs/enums for physical operators, detailing how they will be executed.
-        *   [ ] Subtask: Write unit tests for logical to physical plan conversion.
-            *   [ ] Sub-subtask: Test conversion of LogicalScan to PhysicalTableScan.
-            *   [ ] Sub-subtask: Test conversion of LogicalFilter to PhysicalFilter.
+    *   [x] Convert AST to a logical query plan.
+        *   [x] Subtask: Define logical plan operators (e.g., Scan, Filter, Join, Project).
+            *   [x] Sub-subtask: Implement Rust structs/enums for each logical operator, storing relevant information (e.g., Filter operator stores the filter predicate).
+        *   [x] Subtask: Write unit tests for AST to logical plan conversion.
+            *   [x] Sub-subtask: Test conversion for simple SELECT queries.
+            *   [x] Sub-subtask: Test conversion for queries with WHERE clauses (AST predicate to Filter operator).
+            *   [x] Sub-subtask: Test conversion for queries with JOIN clauses.
+    *   [~] Implement basic query optimization rules (e.g., predicate pushdown, constant folding).
+        *   [x] Subtask: Implement transformation rules for the logical plan.
+            *   [x] Sub-subtask: Implement a rule for pushing Filter operators closer to Scan operators.
+            *   [x] Sub-subtask: Implement a rule for evaluating constant expressions (e.g., `1+2` becomes `3`).
+        *   [x] Subtask: Write unit tests to verify optimization rule correctness.
+            *   [x] Sub-subtask: Test predicate pushdown: ensure filter is applied correctly after pushdown.
+            *   [x] Sub-subtask: Test constant folding: ensure expressions are correctly simplified.
+    *   [~] Convert logical query plan to a physical query plan.
+        *   [x] Subtask: Define physical plan operators (e.g., TableScan, IndexScan, HashJoin, NestedLoopJoin).
+            *   [x] Sub-subtask: Implement Rust structs/enums for physical operators, detailing how they will be executed.
+        *   [~] Subtask: Write unit tests for logical to physical plan conversion.
+            *   [x] Sub-subtask: Test conversion of LogicalScan to PhysicalTableScan.
+            *   [x] Sub-subtask: Test conversion of LogicalFilter to PhysicalFilter.
             *   [ ] Sub-subtask: Test selection of appropriate join algorithms (e.g., HashJoin vs. NestedLoopJoin based on heuristics or statistics if available).
-    *   [ ] **Validation:** Optimized physical query plans are generated.
+    *   [~] **Validation:** Optimized physical query plans are generated. (Basic plans are generated and tested; advanced cost-based optimization and full index scan integration are planned.)
 
 9.  **Implement Query Execution Engine (Volcano/Iterator Model):**
-    *   [ ] Implement executor for each physical plan operator.
-        *   [ ] Subtask: Each operator should implement a `next()` method returning tuples.
-            *   [ ] Sub-subtask: Implement `TableScanExecutor` to read rows from a table.
-            *   [ ] Sub-subtask: Implement `FilterExecutor` to apply predicates.
-            *   [ ] Sub-subtask: Implement `ProjectionExecutor` to select specific columns.
-            *   [ ] Sub-subtask: Implement `LimitExecutor` to restrict the number of output rows.
-            *   [ ] Sub-subtask: Implement `InsertExecutor` to insert rows into a table.
-            *   [ ] Sub-subtask: Implement `UpdateExecutor` to modify existing rows.
-            *   [ ] Sub-subtask: Implement `DeleteExecutor` to remove rows.
-        *   [ ] Subtask: Write unit tests for each individual operator.
-            *   [ ] Sub-subtask: Test `TableScanExecutor` by reading all rows from a known table.
-            *   [ ] Sub-subtask: Test `FilterExecutor` with various predicates.
-            *   [ ] Sub-subtask: Test `ProjectionExecutor` with different column selections.
-    *   [ ] Implement query execution context.
-        *   [ ] Subtask: Manage transaction context and other execution-time state.
-            *   [ ] Sub-subtask: Design struct for `ExecutionContext` holding transaction ID, buffer pool manager instance, catalog access, etc.
-    *   [ ] **Validation:** Queries are executed correctly, and results match expectations. Test with various SELECT, INSERT, UPDATE, DELETE statements.
+    *   [~] Implement executor for each physical plan operator.
+        *   [x] Subtask: Each operator should implement a `next()` method returning tuples.
+            *   [x] Sub-subtask: Implement `TableScanExecutor` to read rows from a table.
+            *   [x] Sub-subtask: Implement `FilterExecutor` to apply predicates.
+            *   [x] Sub-subtask: Implement `ProjectionExecutor` to select specific columns.
+            *   [x] Sub-subtask: Implement `LimitExecutor` to restrict the number of output rows.
+            *   [x] Sub-subtask: Implement `InsertExecutor` to insert rows into a table.
+            *   [x] Sub-subtask: Implement `UpdateExecutor` to modify existing rows.
+            *   [x] Sub-subtask: Implement `DeleteExecutor` to remove rows.
+        *   [x] Subtask: Write unit tests for each individual operator.
+            *   [x] Sub-subtask: Test `TableScanExecutor` by reading all rows from a known table.
+            *   [x] Sub-subtask: Test `FilterExecutor` with various predicates.
+            *   [x] Sub-subtask: Test `ProjectionExecutor` with different column selections.
+    *   [~] Implement query execution context.
+        *   [x] Subtask: Manage transaction context and other execution-time state.
+            *   [x] Sub-subtask: Design struct for `ExecutionContext` holding transaction ID, buffer pool manager instance, catalog access, etc.
+    *   [~] **Validation:** Queries are executed correctly, and results match expectations. Test with various SELECT, INSERT, UPDATE, DELETE statements. (Core execution is robust and tested; advanced features and full index scan integration are planned.)
 
 ## Phase 4: Concurrency and Indexing
 
 10. **Implement Transaction Management:**
-    *   [ ] Implement transaction begin, commit, and abort.
-        *   [ ] Subtask: Define transaction states and transitions. (e.g., ACTIVE, COMMITTED, ABORTED).
-        *   [ ] Subtask: Implement `BEGIN TRANSACTION`, `COMMIT`, `ROLLBACK` commands.
-    *   [ ] Implement concurrency control mechanisms (e.g., Two-Phase Locking - 2PL, MVCC).
-        *   [ ] Subtask: Design lock manager or versioning system.
-            *   [ ] Sub-subtask: If 2PL: Design lock table, lock modes (shared, exclusive), deadlock detection/prevention.
-            *   [ ] Sub-subtask: If MVCC: Design version storage, read/write protocols for different transaction timestamps/IDs.
-        *   [ ] Subtask: Write unit tests for concurrent transaction scenarios (e.g., deadlocks, serializability).
-            *   [ ] Sub-subtask: Test concurrent reads of the same data.
-            *   [ ] Sub-subtask: Test concurrent writes to different data.
-            *   [ ] Sub-subtask: Test concurrent write to the same data (should block or error depending on isolation).
-            *   [ ] Sub-subtask: Test for deadlock detection and resolution (e.g., one transaction aborted).
-    *   [ ] Implement isolation levels (e.g., Read Committed, Serializable).
-        *   [ ] Subtask: Ensure transaction operations respect the chosen isolation levels.
-            *   [ ] Sub-subtask: Modify read/write operations to acquire locks or read appropriate versions according to the current transaction's isolation level.
-        *   [ ] Subtask: Write unit tests to verify isolation level guarantees.
-            *   [ ] Sub-subtask: Test for dirty reads (should not occur in Read Committed).
-            *   [ ] Sub-subtask: Test for non-repeatable reads (may occur in Read Committed, should not in Serializable).
-            *   [ ] Sub-subtask: Test for phantom reads (may occur in Read Committed, should not in Serializable).
-    *   [ ] **Validation:** Transactions are ACID compliant.
+    *   [x] Implement transaction begin, commit, and abort.
+        *   [x] Define transaction states and transitions (`Active`, `Committed`, `Aborted`).
+        *   [x] Implement `BEGIN TRANSACTION`, `COMMIT`, `ROLLBACK` commands.
+    *   [x] Implement concurrency control mechanisms (Two-Phase Locking - 2PL).
+        *   [x] Design lock manager with lock table, lock modes (shared, exclusive).
+        *   [x] Lock conflict detection and error reporting.
+        *   [x] Unit tests for lock manager and basic concurrency.
+        *   [ ] Deadlock detection/prevention (**not implemented**).
+        *   [ ] MVCC/versioning system (**not implemented**).
+    *   [~] Write unit tests for concurrent transaction scenarios.
+        *   [x] Test concurrent reads/writes and lock conflicts.
+        *   [ ] Test for deadlock detection and resolution (**not implemented**).
+        *   [ ] Test for serializability and isolation anomalies (**not implemented**).
+    *   [ ] Implement isolation levels (**not implemented**).
+        *   [ ] Ensure operations respect isolation levels.
+        *   [ ] Write tests for dirty/non-repeatable/phantom reads.
+    *   [~] **Validation:** Transactions are ACID compliant (atomicity, consistency, durability are present; isolation is basic, not formally specified).
 
 11. **Implement Indexing Structures:** ✅ (B+ Tree, Blink Tree Completed; R-Tree Foundation)
     *   [x] Implement B+ Tree index.
