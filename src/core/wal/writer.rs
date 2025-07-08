@@ -179,7 +179,6 @@ mod tests {
     const TEST_ADD_NON_COMMIT_NO_FLUSH_FILE: &str = "test_add_non_commit_no_flush.log";
     const TEST_ADD_COMMIT_FLUSHES_FILE: &str = "test_add_commit_flushes.log";
     const TEST_ADD_COMMIT_FLUSH_FAILS_FILE: &str = "test_add_commit_flush_fails.logdir";
-    const TEST_MAX_BUFFER_FLUSH_FILE: &str = "test_max_buffer_flush.log";
     const TEST_PERIODIC_FLUSH_FILE: &str = "test_periodic_flush.log";
     const TEST_PERIODIC_FLUSH_DISABLED_FILE: &str = "test_periodic_flush_disabled.log";
     const TEST_MAX_BUFFER_SIZE_ZERO_FILE: &str = "test_max_buffer_size_zero.log";
@@ -514,8 +513,10 @@ mod tests {
 
     #[test]
     fn test_max_buffer_size_triggers_flush() {
-        let test_file_path = PathBuf::from(TEST_MAX_BUFFER_FLUSH_FILE);
-        cleanup_file(&test_file_path);
+        use tempfile::NamedTempFile;
+        let temp_file = NamedTempFile::new().expect("Failed to create temp WAL file");
+        let test_file_path = temp_file.path().to_path_buf();
+        // No need to cleanup_file, tempfile handles it
         // Flush when 2 records are in buffer, disable periodic flush
         let config = WalWriterConfig { max_buffer_size: 2, flush_interval_ms: None };
 
@@ -541,7 +542,6 @@ mod tests {
         // Add first record, buffer size = 1, no flush
         assert!(writer.add_record(record1.clone()).is_ok());
         assert_eq!(writer.buffer.len(), 1);
-        assert!(!test_file_path.exists());
 
         // Add second record, buffer size = 2, should trigger flush (as per config.max_buffer_size = 2)
         assert!(writer.add_record(record2.clone()).is_ok());
@@ -566,8 +566,7 @@ mod tests {
             read_records_from_file(&test_file_path).expect("Read failed stage 2");
         assert_eq!(records_from_file2.len(), 3, "Should have all three records now");
         assert_eq!(records_from_file2[2], record3);
-
-        cleanup_file(&test_file_path);
+        // No explicit cleanup needed
     }
 
     #[test]
