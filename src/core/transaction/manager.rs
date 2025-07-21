@@ -65,7 +65,7 @@ impl TransactionManager {
         };
         transaction.prev_lsn = lsn;
 
-        self.wal_writer.add_record(begin_log_record)?; // This can fail
+        self.wal_writer.add_record(&begin_log_record)?; // This can fail
         self.wal_writer.flush()?; // Ensure WAL is written for tests
 
         self.active_transactions.insert(id, transaction.clone());
@@ -95,7 +95,7 @@ impl TransactionManager {
             let lsn = self.log_manager.next_lsn();
             let begin_log_record = LogRecord::BeginTransaction { lsn, tx_id: transaction.id };
             transaction.prev_lsn = lsn;
-            self.wal_writer.add_record(begin_log_record)?;
+            self.wal_writer.add_record(&begin_log_record)?;
         } else {
             // For Tx0 (auto-commit), its conceptual "begin" doesn't need a log record in TM's WAL.
             // Its operations will be logged, then a Commit/Rollback for Tx0.
@@ -164,7 +164,7 @@ impl TransactionManager {
         };
 
         // Attempt to write to WAL.
-        self.wal_writer.add_record(commit_log_record.clone())?;
+        self.wal_writer.add_record(&commit_log_record)?;
 
         // If WAL write is successful, then proceed to update transaction state
         transaction.prev_lsn = lsn; // Update transaction's prev_lsn to this commit record's LSN
@@ -203,7 +203,7 @@ impl TransactionManager {
 
         // Attempt to write to WAL. If this fails, the transaction is still considered aborted locally.
         // The recovery process would handle inconsistencies if the abort record isn't durable.
-        self.wal_writer.add_record(abort_log_record.clone())?;
+        self.wal_writer.add_record(&abort_log_record)?;
         self.wal_writer.flush()?; // Ensure WAL is written for tests
 
         transaction.prev_lsn = lsn; // Update transaction's prev_lsn to this abort record's LSN

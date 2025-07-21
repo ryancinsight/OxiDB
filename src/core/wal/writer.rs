@@ -1,8 +1,8 @@
 use bincode;
 use std::fs::OpenOptions;
-use std::io::{BufWriter, Error as IoError, ErrorKind as IoErrorKind, Write};
+use std::io::{Error as IoError, ErrorKind as IoErrorKind, Write};
 use std::path::PathBuf;
-use std::time::{Duration, Instant}; // Added for periodic flush
+use std::time::Instant;
 
 use crate::core::wal::log_record::LogRecord;
 
@@ -14,159 +14,179 @@ pub struct WalWriterConfig {
 
 impl Default for WalWriterConfig {
     fn default() -> Self {
-        WalWriterConfig {
-            max_buffer_size: 1024,         // Default max buffer size (number of records)
+        Self {
+            max_buffer_size: 100,         // Default max buffer size (number of records)
             flush_interval_ms: Some(1000), // Default 1 second interval
         }
     }
 }
 
+/// Write-Ahead Log writer for reliable durability guarantees.
+/// 
+/// The `WalWriter` buffers log records in memory and flushes them to disk
+/// based on configurable policies including commit-based flushing,
+/// buffer size limits, and periodic intervals.
 #[derive(Debug)]
 pub struct WalWriter {
+    /// Buffer holding log records until flush
     buffer: Vec<LogRecord>,
+    /// Path to the WAL file on disk
     wal_file_path: PathBuf,
+    /// Configuration for flush behavior
     config: WalWriterConfig,
+    /// Timestamp of the last flush operation
     last_flush_time: Option<Instant>,
 }
 
 impl WalWriter {
+    /// Create a new WAL writer.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `wal_file_path` - Path where the WAL file will be stored
+    /// * `config` - Configuration for flush behavior
+    #[must_use]
     pub fn new(wal_file_path: PathBuf, config: WalWriterConfig) -> Self {
-        eprintln!(
-            "[core::wal::writer::WalWriter::new] Initialized with wal_file_path: {:?}, config: {:?}",
-            &wal_file_path, &config
-        );
-        let last_flush_time =
-            if config.flush_interval_ms.is_some() { Some(Instant::now()) } else { None };
-        WalWriter { buffer: Vec::new(), wal_file_path, config, last_flush_time }
+        let last_flush_time = if config.flush_interval_ms.is_some() {
+            Some(Instant::now())
+        } else {
+            None
+        };
+        
+        Self {
+            buffer: Vec::new(),
+            wal_file_path,
+            config,
+            last_flush_time,
+        }
     }
 
-    pub fn add_record(&mut self, record: LogRecord) -> Result<(), IoError> {
-        eprintln!(
-            "[core::wal::writer::WalWriter::add_record] Adding record: {:?}, current buffer size: {}, max_buffer_size: {}",
-            &record,
-            self.buffer.len(),
-            self.config.max_buffer_size
-        );
-        self.buffer.push(record.clone()); // Clone record to store in buffer
+    /// Add a log record to the buffer and optionally trigger a flush.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns `IoError` if:
+    /// - Automatic flush is triggered and fails
+    /// - File system errors occur during write operations
+    pub fn add_record(&mut self, record: &LogRecord) -> Result<(), IoError> {
+        self.buffer.push(record.clone());
 
-        let mut should_flush = false;
-        let mut flush_reason = String::new();
-
-        // Policy 1: Commit record
-        if let LogRecord::CommitTransaction { .. } = record {
-            flush_reason = "Commit record".to_string();
-            should_flush = true;
-        }
-
-        // Policy 2: Max buffer size exceeded
-        if !should_flush && self.buffer.len() >= self.config.max_buffer_size {
-            flush_reason = format!(
-                "Max buffer size ({}) exceeded (current: {})",
-                self.config.max_buffer_size,
-                self.buffer.len()
-            );
-            should_flush = true;
-        }
-
-        // Policy 3: Periodic flush interval
-        if !should_flush {
-            if let (Some(interval_ms), Some(last_flush)) =
-                (self.config.flush_interval_ms, self.last_flush_time)
-            {
-                if last_flush.elapsed() >= Duration::from_millis(interval_ms) {
-                    flush_reason = format!("Flush interval ({}ms) exceeded", interval_ms);
-                    should_flush = true;
-                }
-            }
-        }
+        // Check if we need to flush based on various criteria
+        let should_flush = match &record {
+            LogRecord::CommitTransaction { .. } => true,
+            _ => self.should_auto_flush(),
+        };
 
         if should_flush {
+            let flush_reason = if matches!(record, LogRecord::CommitTransaction { .. }) {
+                "Commit transaction"
+            } else if self.buffer.len() >= self.config.max_buffer_size {
+                "Buffer size limit reached"
+            } else if self.is_periodic_flush_due() {
+                "Periodic flush interval"
+            } else {
+                "Unknown"
+            };
+
             eprintln!(
-                "[core::wal::writer::WalWriter::add_record] Triggering flush. Reason: {}.",
-                flush_reason
+                "[core::wal::writer::WalWriter::add_record] Triggering flush: {flush_reason}"
             );
-            self.flush()
-        } else {
-            Ok(())
+            self.flush()?;
         }
+
+        Ok(())
     }
 
+    /// Flush all buffered records to disk.
+    /// 
+    /// This operation ensures durability by writing all records to the WAL file
+    /// and calling fsync to guarantee persistence.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns `IoError` if:
+    /// - File creation or opening fails
+    /// - Serialization of records fails
+    /// - Write operations fail
+    /// - Fsync operation fails
     pub fn flush(&mut self) -> Result<(), IoError> {
         if self.buffer.is_empty() {
-            eprintln!("[core::wal::writer::WalWriter::flush] Buffer empty, nothing to flush.");
             return Ok(());
         }
-        eprintln!(
-            "[core::wal::writer::WalWriter::flush] Flushing {} records. Attempting to open/create file: {:?}",
-            self.buffer.len(),
-            &self.wal_file_path
-        );
 
-        // Ensure parent directory exists (SOLID: Single Responsibility - file handling)
-        if let Some(parent) = self.wal_file_path.parent() {
-            if !parent.exists() {
+        let mut file = if self.wal_file_path.exists() {
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&self.wal_file_path)
+                .map_err(|e| {
+                    let error_msg = format!("Failed to open existing WAL file: {e}");
+                    eprintln!("[core::wal::writer::WalWriter::flush] {error_msg}");
+                    IoError::new(IoErrorKind::Other, error_msg)
+                })?
+        } else {
+            // Ensure parent directory exists
+            if let Some(parent) = self.wal_file_path.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| {
-                    let error_msg = format!(
-                        "Failed to create parent directory {:?} for WAL file {:?}. Underlying error: {} (kind: {:?})",
-                        parent, &self.wal_file_path, e, e.kind()
-                    );
-                    eprintln!("[core::wal::writer::WalWriter::flush] {}", error_msg);
+                    let error_msg = format!("Failed to create WAL parent directory: {e}");
+                    eprintln!("[core::wal::writer::WalWriter::flush] {error_msg}");
                     IoError::new(IoErrorKind::Other, error_msg)
                 })?;
             }
-        }
+            
+            std::fs::File::create(&self.wal_file_path).map_err(|e| {
+                let error_msg = format!("Failed to create WAL file: {e}");
+                eprintln!("[core::wal::writer::WalWriter::flush] {error_msg}");
+                IoError::new(IoErrorKind::Other, error_msg)
+            })?
+        };
 
-        let file = OpenOptions::new().create(true).append(true).open(&self.wal_file_path).map_err(
-            |e| {
-                let error_msg = format!(
-                    "Failed to open/create WAL file {:?}. Underlying error: {} (kind: {:?})",
-                    &self.wal_file_path,
-                    e,
-                    e.kind()
-                );
-                eprintln!("[core::wal::writer::WalWriter::flush] {}", error_msg);
-                IoError::new(e.kind(), error_msg)
-            },
-        )?;
-
-        eprintln!(
-            "[core::wal::writer::WalWriter::flush] Successfully opened/created file: {:?}",
-            &self.wal_file_path
-        );
-        let mut writer = BufWriter::new(file);
-
-        for record in self.buffer.iter() {
+        // Write all buffered records with length prefixes
+        for record in &self.buffer {
             let serialized_record = bincode::serialize(record).map_err(|e| {
                 IoError::new(
                     IoErrorKind::InvalidData,
-                    format!("Log record serialization failed: {}", e),
+                    format!("Log record serialization failed: {e}"),
                 )
             })?;
 
-            let len = serialized_record.len() as u32; // Assuming length fits in u32
-            writer.write_all(&len.to_be_bytes())?;
-            writer.write_all(&serialized_record)?;
+            // Use safe conversion for length
+            let len = u32::try_from(serialized_record.len())
+                .map_err(|_| IoError::new(IoErrorKind::InvalidData, "Record too large"))?;
+            
+            file.write_all(&len.to_be_bytes())?;
+            file.write_all(&serialized_record)?;
         }
 
-        writer.flush()?; // Flush BufWriter contents to the OS buffer
-
-        // Get the underlying file back from BufWriter to sync
-        let file = writer.into_inner().map_err(|e| {
-            IoError::new(
-                IoErrorKind::Other,
-                format!("Failed to get file from BufWriter: {}", e.into_error()),
-            )
-        })?;
-        file.sync_all()?; // Ensure OS flushes its buffers to disk
-
+        // Ensure durability
+        file.sync_all()?;
+        
+        // Clear buffer and update flush time
         self.buffer.clear();
-        if self.config.flush_interval_ms.is_some() {
-            // Update last_flush_time only if periodic flushing is enabled
-            self.last_flush_time = Some(Instant::now());
-            eprintln!("[core::wal::writer::WalWriter::flush] Updated last_flush_time.");
-        }
-        eprintln!("[core::wal::writer::WalWriter::flush] Flush successful.");
+        self.last_flush_time = Some(Instant::now());
+        
         Ok(())
+    }
+
+    /// Check if automatic flush should be triggered based on buffer size or time.
+    fn should_auto_flush(&self) -> bool {
+        // Check buffer size limit
+        if self.buffer.len() >= self.config.max_buffer_size {
+            return true;
+        }
+
+        // Check periodic flush interval
+        self.is_periodic_flush_due()
+    }
+
+    /// Check if periodic flush is due based on configuration.
+    fn is_periodic_flush_due(&self) -> bool {
+        self.config.flush_interval_ms.map_or(false, |interval_ms| {
+            self.last_flush_time.map_or(true, |last_flush| {
+                let elapsed_ms = last_flush.elapsed().as_millis();
+                elapsed_ms >= u128::from(interval_ms)
+            })
+        })
     }
 }
 
@@ -250,12 +270,12 @@ mod tests {
 
         let record1 = LogRecord::BeginTransaction { lsn: 0, tx_id: TransactionId(404) };
         // This add_record should be Ok because max_buffer_size is usize::MAX and no periodic flush
-        assert!(writer.add_record(record1.clone()).is_ok());
+        assert!(writer.add_record(&record1.clone()).is_ok());
 
         let record2 =
             LogRecord::CommitTransaction { lsn: 1, tx_id: TransactionId(404), prev_lsn: 0 };
         // This add_record should trigger flush due to Commit, which will fail
-        let result = writer.add_record(record2.clone());
+        let result = writer.add_record(&record2.clone());
 
         assert!(result.is_err(), "add_record with commit should return Err when flush fails");
         assert!(!writer.buffer.is_empty(), "Buffer should not be cleared if flush fails");
@@ -300,13 +320,13 @@ mod tests {
             prev_lsn: 1,
         };
 
-        assert!(writer.add_record(record1.clone()).is_ok());
-        assert!(writer.add_record(record2.clone()).is_ok());
+        assert!(writer.add_record(&record1.clone()).is_ok());
+        assert!(writer.add_record(&record2.clone()).is_ok());
         assert_eq!(writer.buffer.len(), 2, "Buffer should have two records before commit");
         assert!(!test_file_path.exists(), "WAL file should not exist before commit");
 
         // Add commit record - this should trigger flush
-        let result = writer.add_record(record3.clone());
+        let result = writer.add_record(&record3.clone());
         assert!(result.is_ok(), "add_record for commit should return Ok on successful flush");
         assert!(writer.buffer.is_empty(), "Buffer should be empty after commit and flush");
         assert!(test_file_path.exists(), "WAL file should be created after commit and flush");
@@ -332,7 +352,7 @@ mod tests {
         let mut writer = WalWriter::new(test_file_path.clone(), config);
         let record = LogRecord::BeginTransaction { lsn: 0, tx_id: TransactionId(123) };
 
-        let result = writer.add_record(record.clone());
+        let result = writer.add_record(&record.clone());
         assert!(result.is_ok(), "add_record for non-commit should return Ok");
         assert_eq!(writer.buffer.len(), 1, "Buffer should contain the added record");
         assert_eq!(writer.buffer[0], record);
@@ -358,7 +378,7 @@ mod tests {
         };
 
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1) };
-        assert!(writer.add_record(record1.clone()).is_ok());
+        assert!(writer.add_record(&record1.clone()).is_ok());
         assert_eq!(writer.buffer.len(), 1);
         assert_eq!(writer.buffer[0], record1);
         assert!(
@@ -368,7 +388,7 @@ mod tests {
 
         let record2 =
             LogRecord::CommitTransaction { lsn: next_lsn(), tx_id: TransactionId(1), prev_lsn: 0 };
-        assert!(writer.add_record(record2.clone()).is_ok());
+        assert!(writer.add_record(&record2.clone()).is_ok());
         assert!(writer.buffer.is_empty(), "Buffer should be empty after commit record (flush)");
         assert!(test_file_path.exists(), "File should be created by commit record");
 
@@ -445,14 +465,14 @@ mod tests {
         let record2 =
             LogRecord::CommitTransaction { lsn: next_lsn(), tx_id: TransactionId(10), prev_lsn: 1 };
 
-        assert!(writer.add_record(record1.clone()).is_ok());
+        assert!(writer.add_record(&record1.clone()).is_ok());
         assert_eq!(writer.buffer.len(), 1, "Buffer should contain one record before commit");
         assert!(
             !test_file_path.exists(),
             "WAL file should not be created before commit (config dependent)"
         );
 
-        let add_commit_result = writer.add_record(record2.clone()); // auto-flushes on commit
+        let add_commit_result = writer.add_record(&record2.clone()); // auto-flushes on commit
         assert!(add_commit_result.is_ok());
         assert!(
             writer.buffer.is_empty(),
@@ -490,7 +510,7 @@ mod tests {
 
         // First batch - explicit flush
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(20) };
-        assert!(writer.add_record(record1.clone()).is_ok());
+        assert!(writer.add_record(&record1.clone()).is_ok());
         assert_eq!(writer.buffer.len(), 1);
         let flush_result1 = writer.flush(); // Explicit flush
         assert!(flush_result1.is_ok());
@@ -509,9 +529,9 @@ mod tests {
         let record3 =
             LogRecord::CommitTransaction { lsn: next_lsn(), tx_id: TransactionId(20), prev_lsn: 1 };
 
-        assert!(writer.add_record(record2.clone()).is_ok());
+        assert!(writer.add_record(&record2.clone()).is_ok());
         assert_eq!(writer.buffer.len(), 1);
-        let add_commit_result = writer.add_record(record3.clone()); // Auto-flush on commit
+        let add_commit_result = writer.add_record(&record3.clone()); // Auto-flush on commit
         assert!(add_commit_result.is_ok());
         assert!(writer.buffer.is_empty());
 
@@ -558,11 +578,11 @@ mod tests {
         let record3 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(301) };
 
         // Add first record, buffer size = 1, no flush
-        assert!(writer.add_record(record1.clone()).is_ok());
+        assert!(writer.add_record(&record1.clone()).is_ok());
         assert_eq!(writer.buffer.len(), 1);
 
         // Add second record, buffer size = 2, should trigger flush (as per config.max_buffer_size = 2)
-        assert!(writer.add_record(record2.clone()).is_ok());
+        assert!(writer.add_record(&record2.clone()).is_ok());
         assert!(writer.buffer.is_empty(), "Buffer should be empty after max_buffer_size flush");
         assert!(test_file_path.exists(), "WAL file should exist after max_buffer_size flush");
 
@@ -573,7 +593,7 @@ mod tests {
         assert_eq!(records_from_file1[1], record2);
 
         // Add third record, buffer size = 1, no flush
-        assert!(writer.add_record(record3.clone()).is_ok());
+        assert!(writer.add_record(&record3.clone()).is_ok());
         assert_eq!(writer.buffer.len(), 1);
 
         // Explicitly flush the third record for cleanup and verification
@@ -610,7 +630,7 @@ mod tests {
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(400) };
 
         // Add record, buffer should not be empty yet, file should not exist
-        assert!(writer.add_record(record1.clone()).is_ok());
+        assert!(writer.add_record(&record1.clone()).is_ok());
         assert_eq!(writer.buffer.len(), 1);
         assert!(!test_file_path.exists());
         // last_flush_time should not change as no flush condition met yet (other than init)
@@ -629,7 +649,7 @@ mod tests {
             slot_id: crate::core::common::types::ids::SlotId(0),
             record_data: vec![2],
         };
-        assert!(writer.add_record(record2.clone()).is_ok());
+        assert!(writer.add_record(&record2.clone()).is_ok());
 
         assert!(
             writer.buffer.is_empty(),
@@ -671,7 +691,7 @@ mod tests {
         };
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(500) };
 
-        assert!(writer.add_record(record1.clone()).is_ok());
+        assert!(writer.add_record(&record1.clone()).is_ok());
         assert_eq!(writer.buffer.len(), 1);
 
         thread::sleep(StdDuration::from_millis(100)); // Wait for some time
@@ -715,7 +735,7 @@ mod tests {
         };
 
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(600) };
-        assert!(writer.add_record(record1.clone()).is_ok());
+        assert!(writer.add_record(&record1.clone()).is_ok());
         assert!(
             writer.buffer.is_empty(),
             "Buffer should be empty after adding one record with max_buffer_size=0"
@@ -729,7 +749,7 @@ mod tests {
         cleanup_file(&test_file_path); // Clean up before next part of test
 
         let record2 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(601) };
-        assert!(writer.add_record(record2.clone()).is_ok());
+        assert!(writer.add_record(&record2.clone()).is_ok());
         assert!(
             writer.buffer.is_empty(),
             "Buffer should be empty after adding second record with max_buffer_size=0"
@@ -761,7 +781,7 @@ mod tests {
 
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(700) };
         // Add first record, buffer size becomes 1. Since 1 >= 1, it flushes.
-        assert!(writer.add_record(record1.clone()).is_ok());
+        assert!(writer.add_record(&record1.clone()).is_ok());
         assert!(
             writer.buffer.is_empty(),
             "Buffer should be empty after adding one record with max_buffer_size=1"
@@ -776,7 +796,7 @@ mod tests {
 
         let record2 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(701) };
         // Add second record, buffer size becomes 1. Since 1 >= 1, it flushes.
-        assert!(writer.add_record(record2.clone()).is_ok());
+        assert!(writer.add_record(&record2.clone()).is_ok());
         assert!(
             writer.buffer.is_empty(),
             "Buffer should be empty after adding second record with max_buffer_size=1"
@@ -806,7 +826,7 @@ mod tests {
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(800) };
         // Sleep a tiny bit to ensure elapsed time > 0, though Instant::now() should differ.
         thread::sleep(StdDuration::from_micros(10));
-        assert!(writer.add_record(record1.clone()).is_ok());
+        assert!(writer.add_record(&record1.clone()).is_ok());
         assert!(
             writer.buffer.is_empty(),
             "Buffer should be empty after adding one record with interval_ms=0"
@@ -821,7 +841,7 @@ mod tests {
 
         let record2 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(801) };
         thread::sleep(StdDuration::from_micros(10));
-        assert!(writer.add_record(record2.clone()).is_ok());
+        assert!(writer.add_record(&record2.clone()).is_ok());
         assert!(
             writer.buffer.is_empty(),
             "Buffer should be empty after adding second record with interval_ms=0"
@@ -854,11 +874,11 @@ mod tests {
         let record3 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(902) };
 
         // Add records quickly
-        assert!(writer.add_record(record1.clone()).is_ok()); // last_flush_time updated at init
+        assert!(writer.add_record(&record1.clone()).is_ok()); // last_flush_time updated at init
         thread::sleep(StdDuration::from_millis(flush_interval_ms / 3));
-        assert!(writer.add_record(record2.clone()).is_ok()); // Should not flush yet
+        assert!(writer.add_record(&record2.clone()).is_ok()); // Should not flush yet
         thread::sleep(StdDuration::from_millis(flush_interval_ms / 3));
-        assert!(writer.add_record(record3.clone()).is_ok()); // Should not flush yet
+        assert!(writer.add_record(&record3.clone()).is_ok()); // Should not flush yet
 
         assert_eq!(writer.buffer.len(), 3, "Buffer should have 3 records before periodic flush");
 
@@ -868,7 +888,7 @@ mod tests {
         // Add another record to trigger the check
         let record4 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(903) };
         let last_flush_time_before_add = writer.last_flush_time;
-        assert!(writer.add_record(record4.clone()).is_ok());
+        assert!(writer.add_record(&record4.clone()).is_ok());
         // This add_record should have triggered a flush of record1, record2, record3, and record4.
 
         assert!(
@@ -908,7 +928,7 @@ mod tests {
         let initial_last_flush_time = writer.last_flush_time;
 
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1000) };
-        assert!(writer.add_record(record1.clone()).is_ok());
+        assert!(writer.add_record(&record1.clone()).is_ok());
         assert_eq!(writer.buffer.len(), 1);
         // No flush yet, so last_flush_time should be from init
         assert_eq!(writer.last_flush_time, initial_last_flush_time);
@@ -917,7 +937,7 @@ mod tests {
 
         let record2 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1001) };
         // This add_record will add record2 to buffer, then trigger flush of [record1, record2].
-        assert!(writer.add_record(record2.clone()).is_ok());
+        assert!(writer.add_record(&record2.clone()).is_ok());
         assert!(
             writer.buffer.is_empty(),
             "Buffer should be empty after periodic flush of record1 and record2"
@@ -940,7 +960,7 @@ mod tests {
 
         let record3 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1002) };
         // This add_record will add record3 to buffer, then trigger flush of [record3].
-        assert!(writer.add_record(record3.clone()).is_ok());
+        assert!(writer.add_record(&record3.clone()).is_ok());
         assert!(writer.buffer.is_empty(), "Buffer should be empty after periodic flush of record3");
         assert!(
             writer.last_flush_time > last_flush_time_after_r1_r2_flush,
@@ -972,7 +992,7 @@ mod tests {
         };
 
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1100) };
-        assert!(writer.add_record(record1.clone()).is_ok());
+        assert!(writer.add_record(&record1.clone()).is_ok());
         let time_after_record1 = Instant::now();
         writer.last_flush_time = Some(time_after_record1); // Simulate this was the last flush time
 
@@ -988,7 +1008,7 @@ mod tests {
             tx_id: TransactionId(1100),
             prev_lsn: prev_lsn_for_commit,
         };
-        assert!(writer.add_record(record_commit.clone()).is_ok(), "Commit flush failed");
+        assert!(writer.add_record(&record_commit.clone()).is_ok(), "Commit flush failed");
         // Commit should have flushed record1 and record_commit
         assert!(writer.buffer.is_empty(), "Buffer should be empty after commit flush");
         assert!(test_file_path.exists(), "WAL file should exist after commit flush");
@@ -1012,7 +1032,7 @@ mod tests {
 
         // Adding record_after_wait. Since last_flush_time was updated by the commit,
         // and we've waited longer than flush_interval_ms, a periodic flush *will* occur here for record_after_wait.
-        assert!(writer.add_record(record_after_wait.clone()).is_ok());
+        assert!(writer.add_record(&record_after_wait.clone()).is_ok());
         assert!(
             writer.buffer.is_empty(),
             "Buffer should be empty after periodic flush of record_after_wait"
@@ -1052,7 +1072,7 @@ mod tests {
         };
 
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1200) };
-        assert!(writer.add_record(record1.clone()).is_ok());
+        assert!(writer.add_record(&record1.clone()).is_ok());
         let time_after_record1_add = writer.last_flush_time.unwrap_or_else(Instant::now);
 
         // Wait for periodic flush to be due
@@ -1069,7 +1089,7 @@ mod tests {
             tx_id: TransactionId(1200),
             prev_lsn: prev_lsn_for_commit2,
         };
-        assert!(writer.add_record(record_commit.clone()).is_ok(), "Add record commit failed");
+        assert!(writer.add_record(&record_commit.clone()).is_ok(), "Add record commit failed");
 
         // After periodic flush (for record1) and then commit flush (for record_commit)
         assert!(writer.buffer.is_empty(), "Buffer should be empty");
@@ -1109,7 +1129,7 @@ mod tests {
         };
 
         writer
-            .add_record(LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1300) })
+            .add_record(&LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1300) })
             .unwrap();
         assert_eq!(
             writer.last_flush_time, initial_last_flush_time,
@@ -1117,7 +1137,7 @@ mod tests {
         );
 
         writer
-            .add_record(LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1301) })
+            .add_record(&LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1301) })
             .unwrap(); // Triggers size-based flush
         assert!(
             writer.last_flush_time > initial_last_flush_time,
@@ -1145,7 +1165,7 @@ mod tests {
         };
 
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1400) };
-        writer.add_record(record1.clone()).unwrap();
+        writer.add_record(&record1.clone()).unwrap();
         assert_eq!(
             writer.last_flush_time, initial_last_flush_time,
             "last_flush_time should not change for non-commit record"
@@ -1160,7 +1180,7 @@ mod tests {
             tx_id: TransactionId(1400),
             prev_lsn: prev_lsn_for_commit3,
         };
-        writer.add_record(record_commit.clone()).unwrap(); // Triggers commit-based flush
+        writer.add_record(&record_commit.clone()).unwrap(); // Triggers commit-based flush
         assert!(
             writer.last_flush_time > initial_last_flush_time,
             "last_flush_time should update after commit-based flush"

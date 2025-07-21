@@ -144,16 +144,16 @@ impl WalRecordIterator {
     /// Extract LSN from a log record
     fn extract_lsn(&self, record: &LogRecord) -> Lsn {
         match record {
-            LogRecord::BeginTransaction { lsn, .. } => *lsn,
-            LogRecord::CommitTransaction { lsn, .. } => *lsn,
-            LogRecord::AbortTransaction { lsn, .. } => *lsn,
-            LogRecord::InsertRecord { lsn, .. } => *lsn,
-            LogRecord::DeleteRecord { lsn, .. } => *lsn,
-            LogRecord::UpdateRecord { lsn, .. } => *lsn,
-            LogRecord::NewPage { lsn, .. } => *lsn,
-            LogRecord::CompensationLogRecord { lsn, .. } => *lsn,
-            LogRecord::CheckpointBegin { lsn, .. } => *lsn,
-            LogRecord::CheckpointEnd { lsn, .. } => *lsn,
+            LogRecord::BeginTransaction { lsn, .. } 
+            | LogRecord::CommitTransaction { lsn, .. } 
+            | LogRecord::AbortTransaction { lsn, .. }
+            | LogRecord::InsertRecord { lsn, .. } 
+            | LogRecord::DeleteRecord { lsn, .. } 
+            | LogRecord::UpdateRecord { lsn, .. } 
+            | LogRecord::NewPage { lsn, .. }
+            | LogRecord::CompensationLogRecord { lsn, .. }
+            | LogRecord::CheckpointBegin { lsn, .. } 
+            | LogRecord::CheckpointEnd { lsn, .. } => *lsn,
         }
     }
 }
@@ -180,7 +180,7 @@ pub struct WalReader {
 impl WalReader {
     /// Create a new WAL Reader
     pub fn new<P: AsRef<Path>>(wal_file_path: P, config: WalReaderConfig) -> Self {
-        WalReader { wal_file_path: wal_file_path.as_ref().to_path_buf(), config }
+        Self { wal_file_path: wal_file_path.as_ref().to_path_buf(), config }
     }
 
     /// Create a WAL Reader with default configuration
@@ -215,16 +215,15 @@ impl WalReader {
 
         while let Some(record) = iterator.next_record()? {
             let record_tx_id = match &record {
-                LogRecord::BeginTransaction { tx_id: id, .. } => Some(*id),
-                LogRecord::CommitTransaction { tx_id: id, .. } => Some(*id),
-                LogRecord::AbortTransaction { tx_id: id, .. } => Some(*id),
-                LogRecord::InsertRecord { tx_id: id, .. } => Some(*id),
-                LogRecord::DeleteRecord { tx_id: id, .. } => Some(*id),
-                LogRecord::UpdateRecord { tx_id: id, .. } => Some(*id),
-                LogRecord::NewPage { tx_id: id, .. } => Some(*id),
-                LogRecord::CompensationLogRecord { tx_id: id, .. } => Some(*id),
-                LogRecord::CheckpointBegin { .. } => None,
-                LogRecord::CheckpointEnd { .. } => None,
+                LogRecord::BeginTransaction { tx_id: id, .. } 
+                | LogRecord::CommitTransaction { tx_id: id, .. } 
+                | LogRecord::AbortTransaction { tx_id: id, .. }
+                | LogRecord::InsertRecord { tx_id: id, .. } 
+                | LogRecord::DeleteRecord { tx_id: id, .. } 
+                | LogRecord::UpdateRecord { tx_id: id, .. } 
+                | LogRecord::NewPage { tx_id: id, .. }
+                | LogRecord::CompensationLogRecord { tx_id: id, .. } => Some(*id),
+                LogRecord::CheckpointBegin { .. } | LogRecord::CheckpointEnd { .. } => None,
             };
 
             if record_tx_id == Some(tx_id) {
@@ -235,7 +234,15 @@ impl WalReader {
         Ok(tx_records)
     }
 
-    /// Find the last checkpoint in the WAL file
+
+    /// Find the last checkpoint record pair in the WAL.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns `WalReaderError` if:
+    /// - The WAL file cannot be read
+    /// - Record parsing fails
+    /// - I/O errors occur during file operations
     pub fn find_last_checkpoint(&self) -> Result<Option<(LogRecord, LogRecord)>, WalReaderError> {
         let mut last_checkpoint_begin: Option<LogRecord> = None;
         let mut last_checkpoint_end: Option<LogRecord> = None;
@@ -262,34 +269,41 @@ impl WalReader {
         }
     }
 
-    /// Get WAL file statistics
+    /// Get comprehensive statistics about the WAL file.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns `WalReaderError` if:
+    /// - The WAL file cannot be read
+    /// - Record parsing fails during iteration
+    /// - I/O errors occur during file operations
     pub fn get_statistics(&self) -> Result<WalStatistics, WalReaderError> {
         let mut stats = WalStatistics::default();
-        let mut iterator = self.iter_records()?;
-
-        while let Some(record) = iterator.next_record()? {
-            stats.total_records += 1;
-
-            match &record {
-                LogRecord::BeginTransaction { .. } => stats.begin_transaction_count += 1,
-                LogRecord::CommitTransaction { .. } => stats.commit_transaction_count += 1,
-                LogRecord::AbortTransaction { .. } => stats.abort_transaction_count += 1,
-                LogRecord::InsertRecord { .. } => stats.insert_record_count += 1,
-                LogRecord::DeleteRecord { .. } => stats.delete_record_count += 1,
-                LogRecord::UpdateRecord { .. } => stats.update_record_count += 1,
-                LogRecord::NewPage { .. } => stats.new_page_count += 1,
-                LogRecord::CompensationLogRecord { .. } => stats.compensation_log_record_count += 1,
-                LogRecord::CheckpointBegin { .. } => stats.checkpoint_begin_count += 1,
-                LogRecord::CheckpointEnd { .. } => stats.checkpoint_end_count += 1,
+        
+        for record in WalRecordIterator::new(&self.wal_file_path, self.config)? {
+            let record = record?;
+            stats.total_records = stats.total_records.saturating_add(1);
+            
+            match record {
+                LogRecord::BeginTransaction { .. } => stats.begin_transaction_count = stats.begin_transaction_count.saturating_add(1),
+                LogRecord::CommitTransaction { .. } => stats.commit_transaction_count = stats.commit_transaction_count.saturating_add(1),
+                LogRecord::AbortTransaction { .. } => stats.abort_transaction_count = stats.abort_transaction_count.saturating_add(1),
+                LogRecord::InsertRecord { .. } => stats.insert_record_count = stats.insert_record_count.saturating_add(1),
+                LogRecord::DeleteRecord { .. } => stats.delete_record_count = stats.delete_record_count.saturating_add(1),
+                LogRecord::UpdateRecord { .. } => stats.update_record_count = stats.update_record_count.saturating_add(1),
+                LogRecord::NewPage { .. } => stats.new_page_count = stats.new_page_count.saturating_add(1),
+                LogRecord::CompensationLogRecord { .. } => stats.compensation_log_record_count = stats.compensation_log_record_count.saturating_add(1),
+                LogRecord::CheckpointBegin { .. } => stats.checkpoint_begin_count = stats.checkpoint_begin_count.saturating_add(1),
+                LogRecord::CheckpointEnd { .. } => stats.checkpoint_end_count = stats.checkpoint_end_count.saturating_add(1),
             }
         }
-
+        
         Ok(stats)
     }
 }
 
-/// Statistics about a WAL file
-#[derive(Debug, Default, Clone, PartialEq)]
+/// Statistics about WAL file contents.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct WalStatistics {
     pub total_records: usize,
     pub begin_transaction_count: usize,
@@ -346,7 +360,7 @@ mod tests {
         let mut writer = WalWriter::new(wal_path, config);
 
         for record in &test_records {
-            writer.add_record(record.clone()).expect("Failed to add record");
+            writer.add_record(record).expect("Failed to add record");
         }
         writer.flush().expect("Failed to flush WAL");
 
@@ -460,7 +474,7 @@ mod tests {
         let mut writer = WalWriter::new(wal_path, config);
 
         for record in &invalid_records {
-            writer.add_record(record.clone()).expect("Failed to add record");
+            writer.add_record(&record.clone()).expect("Failed to add record");
         }
         writer.flush().expect("Failed to flush WAL");
 
@@ -492,7 +506,7 @@ mod tests {
         let mut writer = WalWriter::new(wal_path, config);
 
         for record in &invalid_records {
-            writer.add_record(record.clone()).expect("Failed to add record");
+            writer.add_record(&record.clone()).expect("Failed to add record");
         }
         writer.flush().expect("Failed to flush WAL");
 
@@ -572,7 +586,7 @@ mod tests {
         let mut writer = WalWriter::new(wal_path, config);
 
         for record in &records_with_checkpoint {
-            writer.add_record(record.clone()).expect("Failed to add record");
+            writer.add_record(&record.clone()).expect("Failed to add record");
         }
         writer.flush().expect("Failed to flush WAL");
 

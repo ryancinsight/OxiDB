@@ -270,7 +270,7 @@ mod tests {
         let mut writer = WalWriter::new(temp_file.path().to_path_buf(), config);
 
         for record in records {
-            writer.add_record(record).unwrap();
+            writer.add_record(&record).unwrap();
         }
         writer.flush().unwrap();
 
