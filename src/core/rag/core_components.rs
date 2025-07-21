@@ -48,7 +48,14 @@ impl From<Vec<f32>> for Embedding {
     }
 }
 
+impl AsRef<[f32]> for Embedding {
+    fn as_ref(&self) -> &[f32] {
+        &self.vector
+    }
+}
+
 impl Embedding {
+    /// Get the embedding as a slice
     pub fn as_slice(&self) -> &[f32] {
         &self.vector
     }
