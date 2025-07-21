@@ -15,12 +15,16 @@ pub struct WalWriterConfig {
 impl Default for WalWriterConfig {
     fn default() -> Self {
         Self {
-            max_buffer_size: 100,         // Default max buffer size (number of records)
+            max_buffer_size: DEFAULT_MAX_BUFFER_SIZE, // Default max buffer size (number of records)
             flush_interval_ms: Some(1000), // Default 1 second interval
         }
     }
 }
 
+/// Default maximum buffer size for the WAL writer.
+/// This value was chosen to balance memory usage and I/O performance.
+/// Users can override this value by modifying the `DEFAULT_MAX_BUFFER_SIZE` constant.
+pub const DEFAULT_MAX_BUFFER_SIZE: usize = 100;
 /// Write-Ahead Log writer for reliable durability guarantees.
 /// 
 /// The `WalWriter` buffers log records in memory and flushes them to disk
