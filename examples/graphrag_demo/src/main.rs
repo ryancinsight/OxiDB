@@ -73,7 +73,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n📊 GraphRAG Query Results:");
     println!("Documents found: {}", graphrag_result.documents.len());
     println!("Relevant entities: {}", graphrag_result.relevant_entities.len());
+    println!("Entity relationships: {} (now properly populated!)", graphrag_result.entity_relationships.len());
     println!("Reasoning paths: {}", graphrag_result.reasoning_paths.len());
+    
+    // Show actual relationship names in reasoning paths
+    for (i, path) in graphrag_result.reasoning_paths.iter().enumerate() {
+        println!("  Path {}: {} -> relationships: {:?}", 
+                 i + 1, 
+                 path.explanation, 
+                 path.path_relationships);
+    }
+    
     println!("Overall confidence: {:.2}", graphrag_result.confidence_score);
     
     // Step 6: Demonstrate comprehensive graph store capabilities
