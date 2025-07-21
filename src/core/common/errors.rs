@@ -21,17 +21,14 @@ pub enum OxidbError {
     /// Transaction related errors
     TransactionError(String),
     TransactionNotFound(String),
-    Transaction(String), // Additional transaction error variant
     
     /// Lock related errors
     LockTimeout(String),
     DeadlockDetected(String),
     LockConflict { message: String },
-    Lock(String), // Additional lock error variant
     
     /// Storage related errors
     StorageError(String),
-    Storage(String), // Additional storage error variant
     
     /// Buffer pool related errors
     BufferPool(String),
@@ -62,11 +59,9 @@ pub enum OxidbError {
     
     /// Index related errors
     Index(String),
-    IndexError(String), // Legacy alias for Index
     
     /// Configuration errors
     ConfigError(String),
-    Configuration(String), // Additional configuration error variant
     
     /// Network related errors
     NetworkError(String),
@@ -103,13 +98,10 @@ impl fmt::Display for OxidbError {
             OxidbError::Json(msg) => write!(f, "JSON Error: {}", msg),
             OxidbError::TransactionError(msg) => write!(f, "Transaction Error: {}", msg),
             OxidbError::TransactionNotFound(msg) => write!(f, "Transaction Not Found: {}", msg),
-            OxidbError::Transaction(msg) => write!(f, "Transaction Error: {}", msg),
             OxidbError::LockTimeout(msg) => write!(f, "Lock Timeout: {}", msg),
             OxidbError::DeadlockDetected(msg) => write!(f, "Deadlock Detected: {}", msg),
             OxidbError::LockConflict { message } => write!(f, "Lock Conflict: {}", message),
-            OxidbError::Lock(msg) => write!(f, "Lock Error: {}", msg),
             OxidbError::StorageError(msg) => write!(f, "Storage Error: {}", msg),
-            OxidbError::Storage(msg) => write!(f, "Storage Error: {}", msg),
             OxidbError::BufferPool(msg) => write!(f, "Buffer Pool Error: {}", msg),
             OxidbError::Internal(msg) => write!(f, "Internal Error: {}", msg),
             OxidbError::QueryError(msg) => write!(f, "Query Error: {}", msg),
@@ -122,9 +114,7 @@ impl fmt::Display for OxidbError {
             OxidbError::TableNotFound(msg) => write!(f, "Table Not Found: {}", msg),
             OxidbError::TableAlreadyExists(msg) => write!(f, "Table Already Exists: {}", msg),
             OxidbError::Index(msg) => write!(f, "Index Error: {}", msg),
-            OxidbError::IndexError(msg) => write!(f, "Index Error: {}", msg),
             OxidbError::ConfigError(msg) => write!(f, "Config Error: {}", msg),
-            OxidbError::Configuration(msg) => write!(f, "Configuration Error: {}", msg),
             OxidbError::NetworkError(msg) => write!(f, "Network Error: {}", msg),
             OxidbError::AuthError(msg) => write!(f, "Auth Error: {}", msg),
             OxidbError::VectorDimensionMismatch { dim1, dim2 } => {

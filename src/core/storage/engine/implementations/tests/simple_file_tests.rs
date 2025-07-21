@@ -364,7 +364,7 @@ fn test_load_from_malformed_file_key_eof() {
     let result = SimpleFileKvStore::new(path);
     assert!(result.is_err());
     match result.unwrap_err() {
-        OxidbError::Storage(msg) => {
+        OxidbError::StorageError(msg) => {
             assert!(msg.contains("Failed to deserialize key"));
             assert!(
                 msg.contains("failed to fill whole buffer")
@@ -391,7 +391,7 @@ fn test_load_from_malformed_file_value_eof() {
     let result = SimpleFileKvStore::new(path);
     assert!(result.is_err());
     match result.unwrap_err() {
-        OxidbError::Storage(msg) => {
+        OxidbError::StorageError(msg) => {
             assert!(msg.contains("Failed to deserialize value for key"));
             assert!(
                 msg.contains("failed to fill whole buffer")

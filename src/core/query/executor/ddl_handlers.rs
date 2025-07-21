@@ -28,7 +28,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             .index_manager
             .read()
             .map_err(|e| {
-                OxidbError::Lock(format!(
+                OxidbError::LockTimeout(format!(
                     "Failed to acquire read lock on index manager for find: {}",
                     e
                 ))
@@ -75,7 +75,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                 .store
                 .read()
                 .map_err(|e| {
-                    OxidbError::Lock(format!(
+                    OxidbError::LockTimeout(format!(
                         "Failed to acquire read lock on store for find by index: {}",
                         e
                     ))
@@ -168,7 +168,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         self.store
             .write()
             .map_err(|e| {
-                OxidbError::Lock(format!(
+                OxidbError::LockTimeout(format!(
                     "Failed to acquire write lock on store for create table: {}",
                     e
                 ))
@@ -191,7 +191,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                     .index_manager
                     .write()
                     .map_err(|e| {
-                        OxidbError::Lock(format!(
+                        OxidbError::LockTimeout(format!(
                             "Failed to acquire write lock on index manager for create index: {}",
                             e
                         ))

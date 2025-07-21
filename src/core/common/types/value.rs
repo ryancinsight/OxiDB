@@ -16,7 +16,7 @@ impl Value {
     pub fn get_type(&self) -> DataType {
         match self {
             Value::Integer(_) => DataType::Integer,
-            Value::Float(_) => DataType::Integer, // For now, map Float to Integer type
+            Value::Float(_) => DataType::Float,
             Value::Text(_) => DataType::Text,
             Value::Boolean(_) => DataType::Boolean,
             Value::Blob(_) => DataType::Blob,

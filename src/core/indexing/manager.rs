@@ -121,7 +121,7 @@ impl IndexManager {
         match self.indexes.get(index_name) {
             Some(index_arc) => {
                 let mut index = index_arc.write().map_err(|_| {
-                    OxidbError::Lock("Failed to acquire write lock on index".to_string())
+                    OxidbError::LockTimeout("Failed to acquire write lock on index".to_string())
                 })?;
                 index.insert(value, primary_key) // This now expects Result<(), common::OxidbError>
             }
@@ -139,7 +139,7 @@ impl IndexManager {
         for (index_name, value) in indexed_values {
             if let Some(index_arc) = self.indexes.get(index_name) {
                 let mut index = index_arc.write().map_err(|_| {
-                    OxidbError::Lock("Failed to acquire write lock on index".to_string())
+                    OxidbError::LockTimeout("Failed to acquire write lock on index".to_string())
                 })?;
                 index.insert(value, primary_key)?;
             } else {
@@ -158,7 +158,7 @@ impl IndexManager {
         match self.indexes.get(index_name) {
             Some(index_arc) => {
                 let mut index = index_arc.write().map_err(|_| {
-                    OxidbError::Lock("Failed to acquire write lock on index".to_string())
+                    OxidbError::LockTimeout("Failed to acquire write lock on index".to_string())
                 })?;
                 index.delete(value, primary_key)
             }
@@ -176,7 +176,7 @@ impl IndexManager {
         for (index_name, value) in indexed_values {
             if let Some(index_arc) = self.indexes.get(index_name) {
                 let mut index = index_arc.write().map_err(|_| {
-                    OxidbError::Lock("Failed to acquire write lock on index".to_string())
+                    OxidbError::LockTimeout("Failed to acquire write lock on index".to_string())
                 })?;
                 index.delete(value, Some(primary_key))?;
             } else {
@@ -197,7 +197,7 @@ impl IndexManager {
                 (old_values_map.get(index_name), new_values_map.get(index_name))
             {
                 let mut index = index_arc.write().map_err(|_| {
-                    OxidbError::Lock(format!(
+                    OxidbError::LockTimeout(format!(
                         "Failed to acquire write lock on index '{}' for update.",
                         index_name
                     ))
@@ -216,7 +216,7 @@ impl IndexManager {
         match self.indexes.get(index_name) {
             Some(index_arc) => {
                 let index = index_arc.read().map_err(|_| {
-                    OxidbError::Lock("Failed to acquire read lock on index".to_string())
+                    OxidbError::LockTimeout("Failed to acquire read lock on index".to_string())
                 })?;
                 index.find(value)
             }
@@ -230,7 +230,7 @@ impl IndexManager {
     pub fn save_all_indexes(&self) -> Result<(), OxidbError> {
         for index_arc in self.indexes.values() {
             let index = index_arc.read().map_err(|_| {
-                OxidbError::Lock("Failed to acquire read lock for saving index".to_string())
+                OxidbError::LockTimeout("Failed to acquire read lock for saving index".to_string())
             })?;
             index.save()?;
         }
@@ -240,7 +240,7 @@ impl IndexManager {
     pub fn load_all_indexes(&mut self) -> Result<(), OxidbError> {
         for (name, index_arc) in &self.indexes {
             let mut index = index_arc.write().map_err(|_| {
-                OxidbError::Lock(format!("Failed to lock index {} for loading", name))
+                OxidbError::LockTimeout(format!("Failed to lock index {} for loading", name))
             })?;
             index
                 .load()

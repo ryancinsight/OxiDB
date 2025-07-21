@@ -107,13 +107,13 @@ impl QueryExecutor<SimpleFileKvStore> {
         self.store
             .read()
             .map_err(|e| {
-                OxidbError::Lock(format!("Failed to acquire read lock on store for persist: {}", e))
+                OxidbError::LockTimeout(format!("Failed to acquire read lock on store for persist: {}", e))
             })?
             .persist()?;
         self.index_manager
             .read()
             .map_err(|e| {
-                OxidbError::Lock(format!(
+                OxidbError::LockTimeout(format!(
                     "Failed to acquire read lock on index manager for persist: {}",
                     e
                 ))
@@ -127,7 +127,7 @@ impl QueryExecutor<SimpleFileKvStore> {
         self.index_manager
             .read()
             .map_err(|e| {
-                OxidbError::Lock(format!(
+                OxidbError::LockTimeout(format!(
                     "Failed to acquire read lock on index manager for base_path: {}",
                     e
                 ))
@@ -167,7 +167,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             .store
             .read()
             .map_err(|e| {
-                OxidbError::Lock(format!(
+                OxidbError::LockTimeout(format!(
                     "Failed to acquire read lock on store for get_table_schema: {}",
                     e
                 ))
@@ -200,7 +200,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             .index_manager
             .read()
             .map_err(|e| {
-                OxidbError::Lock(format!(
+                OxidbError::LockTimeout(format!(
                     "Failed to acquire read lock on index manager for check_uniqueness: {}",
                     e
                 ))
@@ -789,7 +789,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         let dummy_lsn = 0;
 
         let mut store =
-            self.store.write().map_err(|_| OxidbError::Lock("Failed to lock store".to_string()))?;
+            self.store.write().map_err(|_| OxidbError::LockTimeout("Failed to lock store".to_string()))?;
         store.put(key.as_bytes().to_vec(), value_bytes, &dummy_tx, dummy_lsn)?;
         Ok(())
     }
@@ -809,7 +809,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     /// Loads persisted auto-increment values from storage
     fn load_persisted_auto_increment_values(&mut self) -> Result<(), OxidbError> {
         let _store =
-            self.store.read().map_err(|_| OxidbError::Lock("Failed to lock store".to_string()))?;
+            self.store.read().map_err(|_| OxidbError::LockTimeout("Failed to lock store".to_string()))?;
 
         // We need to scan for keys that start with "_auto_increment_"
         // This is a simplified approach - in a production system, we'd have a proper metadata table
@@ -822,7 +822,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     fn scan_and_update_auto_increment_state(&mut self) -> Result<(), OxidbError> {
         // Get all table schemas to find auto-increment columns
         let store =
-            self.store.read().map_err(|_| OxidbError::Lock("Failed to lock store".to_string()))?;
+            self.store.read().map_err(|_| OxidbError::LockTimeout("Failed to lock store".to_string()))?;
 
         // Scan for schema keys
         let _schema_prefix = "_schema_";
@@ -881,7 +881,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         column_name: &str,
     ) -> Result<i64, OxidbError> {
         let store =
-            self.store.read().map_err(|_| OxidbError::Lock("Failed to lock store".to_string()))?;
+            self.store.read().map_err(|_| OxidbError::LockTimeout("Failed to lock store".to_string()))?;
         let mut max_value = 0i64;
 
         // Scan all rows in the table to find the maximum value

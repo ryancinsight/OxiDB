@@ -243,7 +243,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                                         serialize_data_type(&old_value_for_column)?;
                                     self.index_manager
                                         .write()
-                                        .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on index manager for update (delete part): {}", e)))?
+                                        .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for update (delete part): {}", e)))?
                                         .delete_from_index(
                                             &index_name,
                                             &old_serialized_column_value,
@@ -272,7 +272,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                                         serialize_data_type(&new_value_for_column)?;
                                     self.index_manager
                                         .write()
-                                        .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on index manager for update (insert part): {}", e)))?
+                                        .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for update (insert part): {}", e)))?
                                         .insert_into_index(
                                             &index_name,
                                             &new_serialized_column_value,
@@ -371,7 +371,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                         .insert("default_value_index".to_string(), updated_value_bytes.clone());
                     self.index_manager
                         .write()
-                        .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on index manager for default_value_index update: {}", e)))?
+                        .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for default_value_index update: {}", e)))?
                         .on_update_data(
                         // Acquire write lock
                         &old_map_for_index,
@@ -405,7 +405,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 self.store
                     .write()
                     .map_err(|e| {
-                        OxidbError::Lock(format!(
+                        OxidbError::LockTimeout(format!(
                             "Failed to acquire write lock on store for update (put): {}",
                             e
                         ))

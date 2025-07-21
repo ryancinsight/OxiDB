@@ -65,7 +65,7 @@ impl VectorTransaction {
     /// Add an operation to the transaction
     pub fn add_operation(&mut self, operation: VectorOperation) -> Result<(), OxidbError> {
         if self.state != TransactionState::Active {
-            return Err(OxidbError::Transaction(
+            return Err(OxidbError::TransactionError(
                 "Cannot add operations to inactive transaction".to_string(),
             ));
         }
@@ -82,7 +82,7 @@ impl VectorTransaction {
     /// Mark transaction as committed
     pub fn commit(&mut self) -> Result<(), OxidbError> {
         if self.state != TransactionState::Active {
-            return Err(OxidbError::Transaction("Cannot commit inactive transaction".to_string()));
+            return Err(OxidbError::TransactionError("Cannot commit inactive transaction".to_string()));
         }
 
         self.state = TransactionState::Committed;
@@ -92,7 +92,7 @@ impl VectorTransaction {
     /// Mark transaction as aborted
     pub fn abort(&mut self) -> Result<(), OxidbError> {
         if self.state == TransactionState::Committed {
-            return Err(OxidbError::Transaction("Cannot abort committed transaction".to_string()));
+            return Err(OxidbError::TransactionError("Cannot abort committed transaction".to_string()));
         }
 
         self.state = TransactionState::Aborted;
@@ -122,7 +122,7 @@ impl VectorTransactionManager {
         let mut next_id = self
             .next_tx_id
             .lock()
-            .map_err(|_| OxidbError::Lock("Failed to acquire next_tx_id lock".to_string()))?;
+            .map_err(|_| OxidbError::LockTimeout("Failed to acquire next_tx_id lock".to_string()))?;
 
         let tx_id = *next_id;
         *next_id += 1;
@@ -130,7 +130,7 @@ impl VectorTransactionManager {
         let transaction = VectorTransaction::new(tx_id);
 
         let mut active_txs = self.active_transactions.lock().map_err(|_| {
-            OxidbError::Lock("Failed to acquire active_transactions lock".to_string())
+            OxidbError::LockTimeout("Failed to acquire active_transactions lock".to_string())
         })?;
 
         active_txs.insert(tx_id, transaction);
@@ -144,15 +144,15 @@ impl VectorTransactionManager {
         entry: VectorEntry,
     ) -> Result<(), OxidbError> {
         let mut active_txs = self.active_transactions.lock().map_err(|_| {
-            OxidbError::Lock("Failed to acquire active_transactions lock".to_string())
+            OxidbError::LockTimeout("Failed to acquire active_transactions lock".to_string())
         })?;
 
         let transaction = active_txs
             .get_mut(&tx_id)
-            .ok_or_else(|| OxidbError::Transaction(format!("Transaction {} not found", tx_id)))?;
+            .ok_or_else(|| OxidbError::TransactionError(format!("Transaction {} not found", tx_id)))?;
 
         if transaction.state != TransactionState::Active {
-            return Err(OxidbError::Transaction("Transaction is not active".to_string()));
+            return Err(OxidbError::TransactionError("Transaction is not active".to_string()));
         }
 
         let id = entry.id.clone();
@@ -161,7 +161,7 @@ impl VectorTransactionManager {
         let mut store = self
             .store
             .lock()
-            .map_err(|_| OxidbError::Lock("Failed to acquire store lock".to_string()))?;
+            .map_err(|_| OxidbError::LockTimeout("Failed to acquire store lock".to_string()))?;
 
         let existing_entry = store.retrieve(&id)?;
         if let Some(existing) = existing_entry {
@@ -182,21 +182,21 @@ impl VectorTransactionManager {
     /// Delete a vector within a transaction
     pub fn transactional_delete(&self, tx_id: TransactionId, id: &str) -> Result<bool, OxidbError> {
         let mut active_txs = self.active_transactions.lock().map_err(|_| {
-            OxidbError::Lock("Failed to acquire active_transactions lock".to_string())
+            OxidbError::LockTimeout("Failed to acquire active_transactions lock".to_string())
         })?;
 
         let transaction = active_txs
             .get_mut(&tx_id)
-            .ok_or_else(|| OxidbError::Transaction(format!("Transaction {} not found", tx_id)))?;
+            .ok_or_else(|| OxidbError::TransactionError(format!("Transaction {} not found", tx_id)))?;
 
         if transaction.state != TransactionState::Active {
-            return Err(OxidbError::Transaction("Transaction is not active".to_string()));
+            return Err(OxidbError::TransactionError("Transaction is not active".to_string()));
         }
 
         let mut store = self
             .store
             .lock()
-            .map_err(|_| OxidbError::Lock("Failed to acquire store lock".to_string()))?;
+            .map_err(|_| OxidbError::LockTimeout("Failed to acquire store lock".to_string()))?;
 
         // Get existing entry for undo log
         let existing_entry = store.retrieve(id)?;
@@ -218,15 +218,15 @@ impl VectorTransactionManager {
     /// Commit a transaction (Durability)
     pub fn commit_transaction(&self, tx_id: TransactionId) -> Result<(), OxidbError> {
         let mut active_txs = self.active_transactions.lock().map_err(|_| {
-            OxidbError::Lock("Failed to acquire active_transactions lock".to_string())
+            OxidbError::LockTimeout("Failed to acquire active_transactions lock".to_string())
         })?;
 
         let mut transaction = active_txs
             .remove(&tx_id)
-            .ok_or_else(|| OxidbError::Transaction(format!("Transaction {} not found", tx_id)))?;
+            .ok_or_else(|| OxidbError::TransactionError(format!("Transaction {} not found", tx_id)))?;
 
         if transaction.state != TransactionState::Active {
-            return Err(OxidbError::Transaction("Transaction is not active".to_string()));
+            return Err(OxidbError::TransactionError("Transaction is not active".to_string()));
         }
 
         // Mark as committed (all operations already applied)
@@ -241,21 +241,21 @@ impl VectorTransactionManager {
     /// Rollback a transaction (Consistency)
     pub fn rollback_transaction(&self, tx_id: TransactionId) -> Result<(), OxidbError> {
         let mut active_txs = self.active_transactions.lock().map_err(|_| {
-            OxidbError::Lock("Failed to acquire active_transactions lock".to_string())
+            OxidbError::LockTimeout("Failed to acquire active_transactions lock".to_string())
         })?;
 
         let mut transaction = active_txs
             .remove(&tx_id)
-            .ok_or_else(|| OxidbError::Transaction(format!("Transaction {} not found", tx_id)))?;
+            .ok_or_else(|| OxidbError::TransactionError(format!("Transaction {} not found", tx_id)))?;
 
         if transaction.state != TransactionState::Active {
-            return Err(OxidbError::Transaction("Transaction is not active".to_string()));
+            return Err(OxidbError::TransactionError("Transaction is not active".to_string()));
         }
 
         let mut store = self
             .store
             .lock()
-            .map_err(|_| OxidbError::Lock("Failed to acquire store lock".to_string()))?;
+            .map_err(|_| OxidbError::LockTimeout("Failed to acquire store lock".to_string()))?;
 
         // Apply undo operations in reverse order
         for undo_op in transaction.undo_log.iter().rev() {
@@ -276,7 +276,7 @@ impl VectorTransactionManager {
     /// Get active transaction count (for monitoring)
     pub fn active_transaction_count(&self) -> Result<usize, OxidbError> {
         let active_txs = self.active_transactions.lock().map_err(|_| {
-            OxidbError::Lock("Failed to acquire active_transactions lock".to_string())
+            OxidbError::LockTimeout("Failed to acquire active_transactions lock".to_string())
         })?;
 
         Ok(active_txs.len())
@@ -287,7 +287,7 @@ impl VectorTransactionManager {
         let store = self
             .store
             .lock()
-            .map_err(|_| OxidbError::Lock("Failed to acquire store lock".to_string()))?;
+            .map_err(|_| OxidbError::LockTimeout("Failed to acquire store lock".to_string()))?;
 
         store.retrieve(id)
     }

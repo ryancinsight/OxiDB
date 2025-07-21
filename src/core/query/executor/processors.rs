@@ -211,7 +211,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                             executor
                                 .index_manager
                                 .write()
-                                .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on index manager for insert: {}",e)))?
+                                .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for insert: {}",e)))?
                                 .insert_into_index(
                                     &index_name,
                                     &serialized_column_value,

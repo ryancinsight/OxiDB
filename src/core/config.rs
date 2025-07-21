@@ -245,33 +245,33 @@ impl Config {
     /// This method follows the Single Responsibility Principle by focusing only on validation
     pub fn validate(&self) -> Result<(), OxidbError> {
         if self.max_cache_size == 0 {
-            return Err(OxidbError::Configuration(
+            return Err(OxidbError::ConfigError(
                 "max_cache_size must be greater than 0".to_string(),
             ));
         }
 
         if self.max_connections == 0 {
-            return Err(OxidbError::Configuration(
+            return Err(OxidbError::ConfigError(
                 "max_connections must be greater than 0".to_string(),
             ));
         }
 
         if self.query_timeout_ms == 0 {
-            return Err(OxidbError::Configuration(
+            return Err(OxidbError::ConfigError(
                 "query_timeout_ms must be greater than 0".to_string(),
             ));
         }
 
         if self.enable_vector_search {
             if self.vector_dimension == 0 {
-                return Err(OxidbError::Configuration(
+                return Err(OxidbError::ConfigError(
                     "vector_dimension must be greater than 0 when vector search is enabled"
                         .to_string(),
                 ));
             }
 
             if !(0.0..=1.0).contains(&self.similarity_threshold) {
-                return Err(OxidbError::Configuration(
+                return Err(OxidbError::ConfigError(
                     "similarity_threshold must be between 0.0 and 1.0".to_string(),
                 ));
             }
@@ -289,7 +289,7 @@ impl Config {
         match fs::read_to_string(path) {
             Ok(contents) => {
                 let config: Self = toml::from_str(&contents).map_err(|e| {
-                    OxidbError::Configuration(format!(
+                    OxidbError::ConfigError(format!(
                         // Changed
                         "Failed to parse config file '{}': {}",
                         path.display(),
@@ -535,7 +535,7 @@ mod tests {
 
         let result = Config::load_from_file(temp_file.path());
         assert!(result.is_err());
-        if let Err(OxidbError::Configuration(msg)) = result {
+        if let Err(OxidbError::ConfigError(msg)) = result {
             // Changed
             assert!(msg.contains("Failed to parse config file"));
         } else {

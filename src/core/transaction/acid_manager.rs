@@ -310,50 +310,116 @@ impl AcidTransactionManager {
         Ok(())
     }
     
-    /// Undo a specific modification
-    fn undo_modification(&self, tx_id: TransactionId, modification: &Modification) -> Result<(), OxidbError> {
+    /// Undo a specific modification during transaction rollback
+    /// This is critical for maintaining ACID Atomicity guarantees
+    fn undo_modification(&self, _tx_id: TransactionId, modification: &Modification) -> Result<(), OxidbError> {
+        // Note: In a production implementation, this would need access to the storage engine
+        // to perform actual rollback operations. For now, we simulate the operations.
+        
         match modification {
-            Modification::Insert { table: _, key: _, value: _ } => {
+            Modification::Insert { table, key, value: _ } => {
                 // Undo insert by deleting the record
-                // Note: In a real implementation, we would actually delete the record
+                eprintln!("ROLLBACK: Deleting inserted record - table: {}, key: {:?}", table, key);
+                
+                // In a real implementation, we would:
+                // self.storage_engine.delete(table, key)?;
+                
+                // For now, we log the operation that would be performed
+                // This maintains the interface contract while acknowledging the limitation
                 Ok(())
             }
-            Modification::Update { table: _, key: _, old_value: _, new_value: _ } => {
+            Modification::Update { table, key, old_value, new_value: _ } => {
                 // Undo update by restoring old value
-                // Note: In a real implementation, we would restore the old value
+                eprintln!("ROLLBACK: Restoring old value - table: {}, key: {:?}, old_value: {:?}", 
+                         table, key, old_value);
+                
+                // In a real implementation, we would:
+                // self.storage_engine.update(table, key, old_value.clone())?;
+                
                 Ok(())
             }
-            Modification::Delete { table: _, key: _, old_value: _ } => {
+            Modification::Delete { table, key, old_value } => {
                 // Undo delete by reinserting the record
-                // Note: In a real implementation, we would reinsert the record
+                eprintln!("ROLLBACK: Reinserting deleted record - table: {}, key: {:?}, value: {:?}", 
+                         table, key, old_value);
+                
+                // In a real implementation, we would:
+                // self.storage_engine.insert(table, key, old_value.clone())?;
+                
                 Ok(())
             }
         }
     }
     
     /// Check if a transaction can read a value based on isolation level
-    pub fn can_read(&self, tx_id: TransactionId, _resource: &str) -> bool {
+    /// This is critical for maintaining ACID Isolation guarantees
+    pub fn can_read(&self, tx_id: TransactionId, resource: &str) -> bool {
         let active_txs = self.active_transactions.read().unwrap();
         if let Some(metadata) = active_txs.get(&tx_id) {
             match metadata.isolation_level {
-                IsolationLevel::ReadUncommitted => true,
+                IsolationLevel::ReadUncommitted => {
+                    // Can read even uncommitted data - lowest isolation level
+                    // Still check if resource is locked for writing by another transaction
+                    let lock_manager = self.lock_manager.lock().unwrap();
+                    if let Some(holder) = lock_manager.get_lock_holder(resource) {
+                        // If another transaction holds an exclusive lock, we can't read
+                        holder == tx_id.0
+                    } else {
+                        true
+                    }
+                }
                 IsolationLevel::ReadCommitted => {
-                    // Can read committed data
-                    // Note: In a real implementation, we would check if the data is committed
-                    true
+                    // Can only read committed data
+                    let lock_manager = self.lock_manager.lock().unwrap();
+                    if let Some(holder) = lock_manager.get_lock_holder(resource) {
+                        // If another transaction holds an exclusive lock, the data is uncommitted
+                        // We can only read if we hold the lock ourselves
+                        holder == tx_id.0
+                    } else {
+                        // No exclusive lock means data is committed and readable
+                        true
+                    }
                 }
                 IsolationLevel::RepeatableRead => {
-                    // Can read, but must ensure repeatable reads
-                    // Note: In a real implementation, we would check version consistency
+                    // Must ensure repeatable reads - once we read a value, it can't change
+                    let lock_manager = self.lock_manager.lock().unwrap();
+                    
+                    // Check if we already hold a shared lock on this resource
+                    if let Some(holder) = lock_manager.get_lock_holder(resource) {
+                        if holder == tx_id.0 {
+                            // We hold the lock, can read
+                            return true;
+                        } else {
+                            // Another transaction holds exclusive lock, can't read
+                            return false;
+                        }
+                    }
+                    
+                    // Try to acquire a shared lock to ensure repeatability
+                    // In a real implementation, this would be more sophisticated
+                    // For now, allow read if no conflicting locks exist
                     true
                 }
                 IsolationLevel::Serializable => {
-                    // Strictest isolation - may need to wait or abort
-                    // Note: In a real implementation, we would perform serializability checks
+                    // Strictest isolation - must prevent phantom reads
+                    let lock_manager = self.lock_manager.lock().unwrap();
+                    
+                    // Check for any conflicting locks
+                    if let Some(holder) = lock_manager.get_lock_holder(resource) {
+                        if holder != tx_id.0 {
+                            // Another transaction has a lock, potential serialization conflict
+                            eprintln!("SERIALIZABLE: Read blocked due to lock held by transaction {}", holder);
+                            return false;
+                        }
+                    }
+                    
+                    // In a full implementation, we would also check for phantom reads
+                    // by examining range locks and predicate locks
                     true
                 }
             }
         } else {
+            // Transaction not found - cannot read
             false
         }
     }

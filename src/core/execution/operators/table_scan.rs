@@ -49,7 +49,7 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for TableScanOp
 
         // Now self.store is Arc<RwLock<S>>, so we need to lock it for reading.
         let store_guard = self.store.read().map_err(|e| {
-            OxidbError::Lock(format!("Failed to acquire read lock on store: {}", e))
+            OxidbError::LockTimeout(format!("Failed to acquire read lock on store: {}", e))
         })?;
         let all_kvs = store_guard.scan()?; // This can return OxidbError
                                            // Drop the guard explicitly after scan is done if possible, though iterator might hold it implicitly.
