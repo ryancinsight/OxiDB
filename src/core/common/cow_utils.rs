@@ -4,9 +4,9 @@
 //! This module provides utilities to reduce unnecessary cloning and improve performance
 //! by leveraging Rust's `Cow` (Clone on Write) type and other zero-copy techniques.
 
+use crate::core::types::DataType;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use crate::core::types::DataType;
 
 /// Efficient key-value pair that avoids cloning when possible
 #[derive(Debug, Clone)]
@@ -18,18 +18,12 @@ pub struct CowKeyValue<'a> {
 impl<'a> CowKeyValue<'a> {
     /// Creates a new CowKeyValue with borrowed data
     pub fn borrowed(key: &'a [u8], value: &'a DataType) -> Self {
-        Self {
-            key: Cow::Borrowed(key),
-            value: Cow::Borrowed(value),
-        }
+        Self { key: Cow::Borrowed(key), value: Cow::Borrowed(value) }
     }
 
     /// Creates a new CowKeyValue with owned data
     pub fn owned(key: Vec<u8>, value: DataType) -> Self {
-        Self {
-            key: Cow::Owned(key),
-            value: Cow::Owned(value),
-        }
+        Self { key: Cow::Owned(key), value: Cow::Owned(value) }
     }
 
     /// Converts to owned data if not already owned
@@ -62,16 +56,12 @@ pub struct CowString<'a> {
 impl<'a> CowString<'a> {
     /// Creates a CowString from a borrowed string slice
     pub fn borrowed(s: &'a str) -> Self {
-        Self {
-            data: Cow::Borrowed(s),
-        }
+        Self { data: Cow::Borrowed(s) }
     }
 
     /// Creates a CowString from an owned String
     pub fn owned(s: String) -> Self {
-        Self {
-            data: Cow::Owned(s),
-        }
+        Self { data: Cow::Owned(s) }
     }
 
     /// Gets a string slice reference
@@ -107,16 +97,12 @@ pub struct CowBytes<'a> {
 impl<'a> CowBytes<'a> {
     /// Creates CowBytes from a borrowed byte slice
     pub fn borrowed(bytes: &'a [u8]) -> Self {
-        Self {
-            data: Cow::Borrowed(bytes),
-        }
+        Self { data: Cow::Borrowed(bytes) }
     }
 
     /// Creates CowBytes from owned Vec<u8>
     pub fn owned(bytes: Vec<u8>) -> Self {
-        Self {
-            data: Cow::Owned(bytes),
-        }
+        Self { data: Cow::Owned(bytes) }
     }
 
     /// Gets a byte slice reference
@@ -151,16 +137,12 @@ pub struct CowMap<'a> {
 impl<'a> CowMap<'a> {
     /// Creates a CowMap from a borrowed HashMap
     pub fn borrowed(map: &'a HashMap<Vec<u8>, DataType>) -> Self {
-        Self {
-            data: Cow::Borrowed(map),
-        }
+        Self { data: Cow::Borrowed(map) }
     }
 
     /// Creates a CowMap from an owned HashMap
     pub fn owned(map: HashMap<Vec<u8>, DataType>) -> Self {
-        Self {
-            data: Cow::Owned(map),
-        }
+        Self { data: Cow::Owned(map) }
     }
 
     /// Gets a value by key without cloning
@@ -212,9 +194,10 @@ impl CowUtils {
             DataType::Boolean(b) => Cow::Borrowed(if *b { "true" } else { "false" }),
             DataType::Null => Cow::Borrowed("NULL"),
             DataType::RawBytes(bytes) => Cow::Owned(String::from_utf8_lossy(bytes).into_owned()),
-            DataType::Vector(vec) => {
-                Cow::Owned(format!("[{}]", vec.data.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(", ")))
-            }
+            DataType::Vector(vec) => Cow::Owned(format!(
+                "[{}]",
+                vec.data.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(", ")
+            )),
             DataType::Map(_) => Cow::Borrowed("{Map}"),
             DataType::JsonBlob(_) => Cow::Borrowed("{JsonBlob}"),
         }
@@ -230,8 +213,8 @@ impl CowUtils {
             (DataType::Null, DataType::Null) => true,
             (DataType::RawBytes(a), DataType::RawBytes(b)) => a == b,
             (DataType::Vector(a), DataType::Vector(b)) => {
-                a.data.len() == b.data.len() && 
-                a.data.iter().zip(b.data.iter()).all(|(x, y)| (x - y).abs() < f32::EPSILON)
+                a.data.len() == b.data.len()
+                    && a.data.iter().zip(b.data.iter()).all(|(x, y)| (x - y).abs() < f32::EPSILON)
             }
             _ => false,
         }
@@ -259,12 +242,8 @@ impl CowUtils {
     }
 
     /// Creates a vector of CowKeyValue from a slice of tuples without cloning when possible
-    pub fn create_cow_pairs<'a>(
-        pairs: &'a [(Vec<u8>, DataType)]
-    ) -> Vec<CowKeyValue<'a>> {
-        pairs.iter()
-            .map(|(k, v)| CowKeyValue::borrowed(k, v))
-            .collect()
+    pub fn create_cow_pairs<'a>(pairs: &'a [(Vec<u8>, DataType)]) -> Vec<CowKeyValue<'a>> {
+        pairs.iter().map(|(k, v)| CowKeyValue::borrowed(k, v)).collect()
     }
 
     /// Efficiently filters key-value pairs based on a predicate
@@ -275,7 +254,8 @@ impl CowUtils {
     where
         F: Fn(&[u8], &DataType) -> bool,
     {
-        pairs.iter()
+        pairs
+            .iter()
             .filter(|(k, v)| predicate(k, v))
             .map(|(k, v)| CowKeyValue::borrowed(k, v))
             .collect()
@@ -326,7 +306,7 @@ mod tests {
     fn test_cow_key_value() {
         let key = b"test_key";
         let value = DataType::String("test_value".to_string());
-        
+
         let cow_kv = CowKeyValue::borrowed(key, &value);
         assert!(cow_kv.is_borrowed());
         assert_eq!(cow_kv.key(), key);
@@ -337,10 +317,10 @@ mod tests {
     fn test_cow_string() {
         let original = "test string";
         let cow_str = CowString::borrowed(original);
-        
+
         assert!(cow_str.is_borrowed());
         assert_eq!(cow_str.as_str(), original);
-        
+
         let owned_str = cow_str.into_owned();
         assert_eq!(owned_str, original);
     }
@@ -349,10 +329,10 @@ mod tests {
     fn test_cow_bytes() {
         let original = b"test bytes";
         let cow_bytes = CowBytes::borrowed(original);
-        
+
         assert!(cow_bytes.is_borrowed());
         assert_eq!(cow_bytes.as_bytes(), original);
-        
+
         let owned_bytes = cow_bytes.into_owned();
         assert_eq!(owned_bytes, original);
     }
@@ -363,7 +343,7 @@ mod tests {
         let cow_result = CowUtils::datatype_to_string_cow(&dt_string);
         assert!(matches!(cow_result, Cow::Borrowed(_)));
         assert_eq!(cow_result, "hello");
-        
+
         let dt_int = DataType::Integer(42);
         let cow_result = CowUtils::datatype_to_string_cow(&dt_int);
         assert!(matches!(cow_result, Cow::Owned(_)));
@@ -375,7 +355,7 @@ mod tests {
         let dt1 = DataType::String("hello".to_string());
         let dt2 = DataType::String("hello".to_string());
         let dt3 = DataType::String("world".to_string());
-        
+
         assert!(CowUtils::datatype_equals_efficient(&dt1, &dt2));
         assert!(!CowUtils::datatype_equals_efficient(&dt1, &dt3));
     }
@@ -383,15 +363,15 @@ mod tests {
     #[test]
     fn test_cow_metrics() {
         let mut metrics = CowMetrics::new();
-        
+
         metrics.record_borrowed();
         metrics.record_borrowed();
         metrics.record_cloned();
-        
+
         assert_eq!(metrics.borrowed_operations, 2);
         assert_eq!(metrics.cloned_operations, 1);
         assert_eq!(metrics.total_operations, 3);
-        assert!((metrics.efficiency_ratio() - 2.0/3.0).abs() < f64::EPSILON);
+        assert!((metrics.efficiency_ratio() - 2.0 / 3.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -399,12 +379,12 @@ mod tests {
         let mut map = HashMap::new();
         map.insert(b"key1".to_vec(), DataType::String("value1".to_string()));
         map.insert(b"key2".to_vec(), DataType::Integer(42));
-        
+
         let cow_map = CowMap::borrowed(&map);
         assert!(cow_map.is_borrowed());
         assert_eq!(cow_map.len(), 2);
         assert!(cow_map.contains_key(b"key1"));
-        
+
         if let Some(DataType::String(s)) = cow_map.get(b"key1") {
             assert_eq!(s, "value1");
         } else {
@@ -418,7 +398,7 @@ mod tests {
             (b"key1".to_vec(), DataType::String("value1".to_string())),
             (b"key2".to_vec(), DataType::Integer(42)),
         ];
-        
+
         let cow_pairs = CowUtils::create_cow_pairs(&pairs);
         assert_eq!(cow_pairs.len(), 2);
         assert!(cow_pairs[0].is_borrowed());
@@ -432,11 +412,9 @@ mod tests {
             (b"key2".to_vec(), DataType::Integer(42)),
             (b"key3".to_vec(), DataType::String("value3".to_string())),
         ];
-        
-        let filtered = CowUtils::filter_pairs(&pairs, |_k, v| {
-            matches!(v, DataType::String(_))
-        });
-        
+
+        let filtered = CowUtils::filter_pairs(&pairs, |_k, v| matches!(v, DataType::String(_)));
+
         assert_eq!(filtered.len(), 2);
         assert!(filtered.iter().all(|kv| kv.is_borrowed()));
     }

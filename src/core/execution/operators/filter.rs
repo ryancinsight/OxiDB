@@ -144,12 +144,12 @@ impl FilterOperator {
                     match &tuple[1] { // Check tuple[1] for the map
                         DataType::Map(map_data) => {
                             let key_bytes = col_name.as_bytes().to_vec();
-                            
+
                             // First try direct lookup with raw bytes
                             if let Some(data_type_value) = map_data.0.get(&key_bytes) {
                                 return Ok(Cow::Borrowed(data_type_value));
                             }
-                            
+
                             // If direct lookup fails, try to find the key by iterating through all keys
                             // This handles cases where keys might be stored differently
                             for (stored_key, stored_value) in &map_data.0 {
@@ -160,12 +160,12 @@ impl FilterOperator {
                                     }
                                 }
                             }
-                            
+
                             // Debug: Print available keys to help diagnose the issue
                             let available_keys: Vec<String> = map_data.0.keys()
                                 .map(|k| String::from_utf8_lossy(k).to_string())
                                 .collect();
-                            
+
                             Err(OxidbError::InvalidInput { message: format!(
                                 "Column '{}' not found in map at tuple[1]. Available keys: {:?}",
                                 col_name, available_keys

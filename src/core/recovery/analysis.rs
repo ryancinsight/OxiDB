@@ -264,7 +264,7 @@ mod tests {
     use tempfile::NamedTempFile;
     use tokio;
 
-    async fn create_test_wal_with_records(records: Vec<LogRecord>) -> NamedTempFile {
+    fn create_test_wal_with_records(records: Vec<LogRecord>) -> NamedTempFile {
         let temp_file = NamedTempFile::new().unwrap();
         let config = WalWriterConfig::default();
         let mut writer = WalWriter::new(temp_file.path().to_path_buf(), config);
@@ -279,7 +279,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_analysis_empty_wal() {
-        let temp_file = create_test_wal_with_records(vec![]).await;
+        let temp_file = create_test_wal_with_records(vec![]);
         let config = WalReaderConfig::default();
         let mut wal_reader = WalReader::new(temp_file.path(), config);
 
@@ -312,7 +312,7 @@ mod tests {
             LogRecord::CommitTransaction { lsn: 3, tx_id, prev_lsn: 2 },
         ];
 
-        let temp_file = create_test_wal_with_records(records).await;
+        let temp_file = create_test_wal_with_records(records);
         let config = WalReaderConfig::default();
         let mut wal_reader = WalReader::new(temp_file.path(), config);
 
@@ -353,7 +353,7 @@ mod tests {
             // No commit record - transaction is still active
         ];
 
-        let temp_file = create_test_wal_with_records(records).await;
+        let temp_file = create_test_wal_with_records(records);
         let config = WalReaderConfig::default();
         let mut wal_reader = WalReader::new(temp_file.path(), config);
 
@@ -392,7 +392,7 @@ mod tests {
             },
         ];
 
-        let temp_file = create_test_wal_with_records(records).await;
+        let temp_file = create_test_wal_with_records(records);
         let config = WalReaderConfig::default();
         let mut wal_reader = WalReader::new(temp_file.path(), config);
 

@@ -1709,7 +1709,7 @@ mod tests {
         // For UPDATE, handle_update in update_execution.rs is called.
         // It first does a SELECT then a PUT. The PUT is what gets the LSN we're interested in for prev_lsn.
         let _assignments =
-            vec![SqlAssignment { column: "some_field".to_string(), value: val_updated.clone() }];
+            [SqlAssignment { column: "some_field".to_string(), value: val_updated.clone() }];
         // Condition doesn't matter much as we're targeting the key directly for this test's focus on prev_lsn.
         // The handle_update logic uses a SELECT plan based on source and condition.
         // For simplicity, assuming SimpleFileKvStore where source is not strictly table-based for raw key updates.

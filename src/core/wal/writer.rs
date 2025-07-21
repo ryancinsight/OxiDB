@@ -101,7 +101,7 @@ impl WalWriter {
             self.buffer.len(),
             &self.wal_file_path
         );
-        
+
         // Ensure parent directory exists (SOLID: Single Responsibility - file handling)
         if let Some(parent) = self.wal_file_path.parent() {
             if !parent.exists() {
@@ -113,7 +113,7 @@ impl WalWriter {
                 })?;
             }
         }
-        
+
         let file_result = OpenOptions::new().create(true).append(true).open(&self.wal_file_path);
 
         if let Err(e) = &file_result {

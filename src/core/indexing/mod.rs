@@ -7,8 +7,8 @@ pub mod manager;
 pub mod traits;
 
 // Re-export specific, non-conflicting types
-pub use self::manager::IndexManager;
-pub use self::hash::HashIndex;
-pub use self::btree::BPlusTreeIndex;
 pub use self::blink_tree::BlinkTreeIndex;
+pub use self::btree::BPlusTreeIndex;
+pub use self::hash::HashIndex;
 pub use self::hnsw::HnswIndex;
+pub use self::manager::IndexManager;

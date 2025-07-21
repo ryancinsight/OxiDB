@@ -7,7 +7,7 @@ use std::path::Path;
 use std::path::PathBuf; // Import PathBuf for Default impl // For load_from_file argument
 
 /// Configuration for the database.
-/// 
+///
 /// This struct follows the Single Responsibility Principle by focusing only on configuration management.
 /// It implements the Builder pattern for improved usability and follows YAGNI by only including
 /// necessary configuration options.
@@ -15,9 +15,9 @@ use std::path::PathBuf; // Import PathBuf for Default impl // For load_from_file
 pub struct Config {
     #[serde(default = "default_data_dir")]
     pub data_dir: PathBuf,
-    #[serde(default = "default_database_file", alias = "database_file_path")]  // Support both names
-    pub database_file: PathBuf,  // Added to store the specific database file path
-    #[serde(default = "default_index_dir", alias = "index_base_path")]  // Support both names
+    #[serde(default = "default_database_file", alias = "database_file_path")] // Support both names
+    pub database_file: PathBuf, // Added to store the specific database file path
+    #[serde(default = "default_index_dir", alias = "index_base_path")] // Support both names
     pub index_dir: PathBuf,
     #[serde(default = "default_max_cache_size")]
     pub max_cache_size: usize,
@@ -84,7 +84,7 @@ fn default_similarity_threshold() -> f32 {
 }
 
 /// Builder for Config struct implementing the Builder pattern.
-/// 
+///
 /// This follows SOLID principles:
 /// - Single Responsibility: Only responsible for building Config instances
 /// - Open/Closed: Can be extended with new configuration options without modification
@@ -92,7 +92,7 @@ fn default_similarity_threshold() -> f32 {
 #[derive(Debug, Clone)]
 pub struct ConfigBuilder {
     data_dir: Option<PathBuf>,
-    database_file: Option<PathBuf>,  // Added to store the specific database file path
+    database_file: Option<PathBuf>, // Added to store the specific database file path
     index_dir: Option<PathBuf>,
     max_cache_size: Option<usize>,
     wal_enabled: Option<bool>,
@@ -241,7 +241,7 @@ impl Config {
     }
 
     /// Validates the configuration
-    /// 
+    ///
     /// This method follows the Single Responsibility Principle by focusing only on validation
     pub fn validate(&self) -> Result<(), OxidbError> {
         if self.max_cache_size == 0 {
@@ -265,7 +265,8 @@ impl Config {
         if self.enable_vector_search {
             if self.vector_dimension == 0 {
                 return Err(OxidbError::Configuration(
-                    "vector_dimension must be greater than 0 when vector search is enabled".to_string(),
+                    "vector_dimension must be greater than 0 when vector search is enabled"
+                        .to_string(),
                 ));
             }
 
@@ -295,7 +296,7 @@ impl Config {
                         e
                     ))
                 })?;
-                
+
                 // Validate the loaded configuration
                 config.validate()?;
                 Ok(config)
@@ -436,10 +437,7 @@ mod tests {
         assert!(result.is_err());
 
         // Test invalid similarity threshold
-        let result = Config::builder()
-            .enable_vector_search(true)
-            .similarity_threshold(1.5)
-            .build();
+        let result = Config::builder().enable_vector_search(true).similarity_threshold(1.5).build();
         assert!(result.is_err());
 
         // Test valid configuration

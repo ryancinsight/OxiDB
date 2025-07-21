@@ -1,7 +1,7 @@
 use crate::core::query::commands::Key as PrimaryKey;
+use crate::core::vector::similarity::cosine_similarity as core_cosine_similarity;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use crate::core::vector::similarity::cosine_similarity as core_cosine_similarity;
 
 /// Node identifier type
 pub type NodeId = usize;

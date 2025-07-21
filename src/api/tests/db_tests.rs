@@ -3,23 +3,27 @@ use crate::core::common::OxidbError;
 // use crate::core::query::commands::Command; // Removed unused import
 use crate::core::query::executor::ExecutionResult;
 use crate::core::types::{DataType, JsonSafeMap}; // Import JsonSafeMap
-use std::path::{Path, PathBuf};
 use rand;
+use std::path::{Path, PathBuf};
 
 // Helper function to create a NamedTempFile and return its path for tests
 // This avoids repeating NamedTempFile::new().expect("...").path()
 fn get_temp_db_path() -> PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
-    
+
     let counter = COUNTER.fetch_add(1, Ordering::SeqCst);
     let pid = std::process::id();
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    
-    std::env::temp_dir().join(format!("oxidb_test_{}_{}_{}_{}.db", pid, timestamp, counter, rand::random::<u32>()))
+    let timestamp =
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+
+    std::env::temp_dir().join(format!(
+        "oxidb_test_{}_{}_{}_{}.db",
+        pid,
+        timestamp,
+        counter,
+        rand::random::<u32>()
+    ))
 }
 
 #[test]
@@ -640,8 +644,11 @@ fn test_execute_query_str_update_ok() {
                 DataType::RawBytes(b) => Ok(String::from_utf8_lossy(b).into_owned()),
                 DataType::Vector(vec) => {
                     // Convert vector to a readable string representation for tests
-                    Ok(format!("[{}]", vec.data.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(", ")))
-                },
+                    Ok(format!(
+                        "[{}]",
+                        vec.data.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(", ")
+                    ))
+                }
                 // The following Boolean, Float, and Null are unreachable and have been removed.
                 DataType::JsonBlob(json_val) => serde_json::to_string(json_val),
             };

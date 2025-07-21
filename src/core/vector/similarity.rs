@@ -27,12 +27,12 @@ impl SimilarityMetric {
             }
         }
     }
-    
+
     /// Get the name of the similarity metric
     pub fn name(&self) -> &'static str {
         match self {
             SimilarityMetric::Cosine => "cosine",
-            SimilarityMetric::DotProduct => "dot_product", 
+            SimilarityMetric::DotProduct => "dot_product",
             SimilarityMetric::Euclidean => "euclidean",
         }
     }
@@ -100,11 +100,8 @@ pub fn euclidean_distance(v1: &[f32], v2: &[f32]) -> Result<f32, OxidbError> {
         return Err(OxidbError::VectorDimensionMismatch { dim1: v1.len(), dim2: v2.len() });
     }
 
-    let sum_sq_diff: f32 = v1.iter()
-        .zip(v2.iter())
-        .map(|(a, b)| (a - b).powi(2))
-        .sum();
-        
+    let sum_sq_diff: f32 = v1.iter().zip(v2.iter()).map(|(a, b)| (a - b).powi(2)).sum();
+
     Ok(sum_sq_diff.sqrt())
 }
 

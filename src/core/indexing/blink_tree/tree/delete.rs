@@ -31,10 +31,9 @@ impl BlinkTreeIndex {
 
             if current_node.is_leaf() {
                 return Ok(current_page_id);
-            } else {
-                // Follow the appropriate child
-                current_page_id = self.find_next_page_in_internal(&current_node, key)?;
             }
+            // Follow the appropriate child
+            current_page_id = self.find_next_page_in_internal(&current_node, key)?;
         }
     }
 
