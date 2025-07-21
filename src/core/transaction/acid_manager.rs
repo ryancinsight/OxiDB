@@ -149,7 +149,7 @@ impl AcidTransactionManager {
     pub fn begin_transaction(&self, isolation_level: IsolationLevel) -> Result<TransactionId, OxidbError> {
         let mut tx_manager = self.transaction_manager.lock().unwrap();
         let transaction = tx_manager.begin_transaction()
-            .map_err(|e| OxidbError::TransactionError(format!("Failed to begin transaction: {}", e)))?;
+            .map_err(|e| OxidbError::Transaction(format!("Failed to begin transaction: {}", e)))?;
         
         let tx_id = transaction.id;
         
@@ -269,7 +269,7 @@ impl AcidTransactionManager {
         // Commit the transaction
         let mut tx_manager = self.transaction_manager.lock().unwrap();
         tx_manager.commit_transaction()
-            .map_err(|e| OxidbError::TransactionError(format!("Failed to commit transaction: {}", e)))?;
+            .map_err(|e| OxidbError::Transaction(format!("Failed to commit transaction: {}", e)))?;
         
         // Release all locks
         self.lock_manager.lock().unwrap().release_locks(tx_id.0);
@@ -299,7 +299,7 @@ impl AcidTransactionManager {
         // Abort the transaction
         let mut tx_manager = self.transaction_manager.lock().unwrap();
         tx_manager.abort_transaction()
-            .map_err(|e| OxidbError::TransactionError(format!("Failed to abort transaction: {}", e)))?;
+            .map_err(|e| OxidbError::Transaction(format!("Failed to abort transaction: {}", e)))?;
         
         // Release all locks
         self.lock_manager.lock().unwrap().release_locks(tx_id.0);

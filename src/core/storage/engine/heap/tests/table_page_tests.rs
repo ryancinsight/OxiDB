@@ -2,7 +2,7 @@
 
 #![cfg(test)]
 
-use crate::core::common::errors::OxidbError;
+use crate::core::common::error::OxidbError;
 use crate::core::common::types::ids::SlotId;
 use crate::core::storage::engine::heap::table_page::{
     Slot,
@@ -99,7 +99,7 @@ fn test_page_full_on_insert_data() {
 
     let result = TablePage::insert_record(&mut page_data, &large_data);
     assert!(
-        matches!(result, Err(OxidbError::StorageError(msg)) if msg.contains("no space for record data (after considering slot array)"))
+        matches!(result, Err(OxidbError::Storage(msg)) if msg.contains("no space for record data (after considering slot array)"))
     );
 }
 
@@ -117,7 +117,7 @@ fn test_page_full_on_insert_slot_metadata() {
             }
             Err(e) => {
                 assert!(
-                    matches!(e, OxidbError::StorageError(ref msg) if msg.contains("Page full")),
+                    matches!(e, OxidbError::Storage(ref msg) if msg.contains("Page full")),
                     "Test insert {}: Expected 'Page full' error, got {:?}",
                     i,
                     e
@@ -243,7 +243,7 @@ fn test_update_record_larger_size_error() {
     let slot_id = TablePage::insert_record(&mut page_data, old_data).unwrap();
     let result = TablePage::update_record(&mut page_data, slot_id, new_data);
 
-    assert!(matches!(result, Err(OxidbError::StorageError(msg)) if msg.contains("new data is larger")));
+    assert!(matches!(result, Err(OxidbError::Storage(msg)) if msg.contains("new data is larger")));
 
     let retrieved = TablePage::get_record(&page_data, slot_id).unwrap().unwrap();
     assert_eq!(retrieved, old_data);

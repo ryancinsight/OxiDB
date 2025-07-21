@@ -163,7 +163,7 @@ where
     /// Commit transaction with full ACID compliance
     pub async fn commit_transaction(&mut self, tx_id: TransactionId) -> Result<(), OxidbError> {
         let mut tx_context = self.active_transactions.remove(&tx_id)
-            .ok_or_else(|| OxidbError::TransactionError("Transaction not found".to_string()))?;
+            .ok_or_else(|| OxidbError::Transaction("Transaction not found".to_string()))?;
 
         // Ensure durability before committing
         for operation in &tx_context.operations {
@@ -186,7 +186,7 @@ where
     /// Abort transaction with cleanup
     pub async fn abort_transaction(&mut self, tx_id: TransactionId) -> Result<(), OxidbError> {
         let mut tx_context = self.active_transactions.remove(&tx_id)
-            .ok_or_else(|| OxidbError::TransactionError("Transaction not found".to_string()))?;
+            .ok_or_else(|| OxidbError::Transaction("Transaction not found".to_string()))?;
 
         // Abort the transaction
         self.transaction_manager.abort_transaction(&mut tx_context).await?;
@@ -200,11 +200,11 @@ where
     /// Read with transaction isolation
     pub async fn get(&self, key: &[u8], tx_id: TransactionId) -> Result<Option<DataType>, OxidbError> {
         let tx_context = self.active_transactions.get(&tx_id)
-            .ok_or_else(|| OxidbError::TransactionError("Transaction not found".to_string()))?;
+            .ok_or_else(|| OxidbError::Transaction("Transaction not found".to_string()))?;
 
         // Check read permissions
         if !self.transaction_manager.can_read(key, tx_context).await? {
-            return Err(OxidbError::TransactionError("Read not allowed due to isolation level".to_string()));
+            return Err(OxidbError::Transaction("Read not allowed due to isolation level".to_string()));
         }
 
         self.storage_engine.get(key, tx_context).await
@@ -213,11 +213,11 @@ where
     /// Write with transaction isolation and locking
     pub async fn put(&mut self, key: Vec<u8>, value: DataType, tx_id: TransactionId) -> Result<(), OxidbError> {
         let tx_context = self.active_transactions.get_mut(&tx_id)
-            .ok_or_else(|| OxidbError::TransactionError("Transaction not found".to_string()))?;
+            .ok_or_else(|| OxidbError::Transaction("Transaction not found".to_string()))?;
 
         // Check write permissions
         if !self.transaction_manager.can_write(&key, tx_context).await? {
-            return Err(OxidbError::TransactionError("Write not allowed due to isolation level".to_string()));
+            return Err(OxidbError::Transaction("Write not allowed due to isolation level".to_string()));
         }
 
         // Acquire write lock
@@ -236,11 +236,11 @@ where
     /// Delete with transaction isolation and locking
     pub async fn delete(&mut self, key: &[u8], tx_id: TransactionId) -> Result<bool, OxidbError> {
         let tx_context = self.active_transactions.get_mut(&tx_id)
-            .ok_or_else(|| OxidbError::TransactionError("Transaction not found".to_string()))?;
+            .ok_or_else(|| OxidbError::Transaction("Transaction not found".to_string()))?;
 
         // Check write permissions
         if !self.transaction_manager.can_write(key, tx_context).await? {
-            return Err(OxidbError::TransactionError("Write not allowed due to isolation level".to_string()));
+            return Err(OxidbError::Transaction("Write not allowed due to isolation level".to_string()));
         }
 
         // Acquire write lock

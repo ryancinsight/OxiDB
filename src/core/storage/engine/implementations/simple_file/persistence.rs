@@ -36,7 +36,7 @@ pub(super) fn load_data_from_disk(
         match read_data_into_cache_internal(cache, &temp_file_path) {
             Ok(()) => {
                 if let Err(e) = rename(&temp_file_path, file_path) {
-                    return Err(OxidbError::StorageError(format!( // Changed
+                    return Err(OxidbError::Storage(format!( // Changed
                         "Successfully loaded from temporary file {} but failed to rename it to {}: {}",
                         temp_file_path.display(),
                         file_path.display(),
@@ -52,7 +52,7 @@ pub(super) fn load_data_from_disk(
                     load_err
                 );
                 if let Err(remove_err) = std::fs::remove_file(&temp_file_path) {
-                    return Err(OxidbError::StorageError(format!( // Changed
+                    return Err(OxidbError::Storage(format!( // Changed
                         "Corrupted temporary file {} could not be loaded ({}) or deleted ({}). Manual intervention may be required.",
                         temp_file_path.display(),
                         load_err,
@@ -91,7 +91,7 @@ fn read_data_into_cache_internal(
 
         let key =
             <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(&mut reader).map_err(|e| {
-                OxidbError::StorageError(format!(
+                OxidbError::Storage(format!(
                     // Changed
                     "Failed to deserialize key from {}: {}",
                     file_to_load.display(),
@@ -102,7 +102,7 @@ fn read_data_into_cache_internal(
         // Need to check for EOF again before deserializing value, in case file ends after a valid key.
         let buffer_val_check = reader.fill_buf().map_err(|e| OxidbError::Io(e))?;
         if buffer_val_check.is_empty() {
-            return Err(OxidbError::StorageError(format!(
+            return Err(OxidbError::Storage(format!(
                 // Changed
                 "Unexpected EOF after reading key {:?} from {}",
                 String::from_utf8_lossy(&key),
@@ -112,7 +112,7 @@ fn read_data_into_cache_internal(
 
         let value_bytes = <Vec<u8> as DataDeserializer<Vec<u8>>>::deserialize(&mut reader)
             .map_err(|e| {
-                OxidbError::StorageError(format!(
+                OxidbError::Storage(format!(
                     // Changed
                     "Failed to deserialize value for key {:?} from {}: {}",
                     String::from_utf8_lossy(&key),
@@ -175,9 +175,9 @@ pub(super) fn save_data_to_disk(
         if let Some(value_bytes) = value_to_persist {
             // If a live version was found, serialize the key and that version's value.
             <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut writer)
-                .map_err(|e| OxidbError::StorageError(format!("Failed to serialize key: {}", e)))?;
+                .map_err(|e| OxidbError::Storage(format!("Failed to serialize key: {}", e)))?;
             <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(value_bytes, &mut writer)
-                .map_err(|e| OxidbError::StorageError(format!("Failed to serialize value: {}", e)))?;
+                .map_err(|e| OxidbError::Storage(format!("Failed to serialize value: {}", e)))?;
         }
         // If value_to_persist is None (all versions were expired, i.e., key was deleted),
         // then nothing is written for this key, effectively removing it from the new data file.

@@ -65,7 +65,7 @@ impl VectorTransaction {
     /// Add an operation to the transaction
     pub fn add_operation(&mut self, operation: VectorOperation) -> Result<(), OxidbError> {
         if self.state != TransactionState::Active {
-            return Err(OxidbError::TransactionError(
+            return Err(OxidbError::Transaction(
                 "Cannot add operations to inactive transaction".to_string(),
             ));
         }
@@ -82,7 +82,7 @@ impl VectorTransaction {
     /// Mark transaction as committed
     pub fn commit(&mut self) -> Result<(), OxidbError> {
         if self.state != TransactionState::Active {
-            return Err(OxidbError::TransactionError("Cannot commit inactive transaction".to_string()));
+            return Err(OxidbError::Transaction("Cannot commit inactive transaction".to_string()));
         }
 
         self.state = TransactionState::Committed;
@@ -92,7 +92,7 @@ impl VectorTransaction {
     /// Mark transaction as aborted
     pub fn abort(&mut self) -> Result<(), OxidbError> {
         if self.state == TransactionState::Committed {
-            return Err(OxidbError::TransactionError("Cannot abort committed transaction".to_string()));
+            return Err(OxidbError::Transaction("Cannot abort committed transaction".to_string()));
         }
 
         self.state = TransactionState::Aborted;
@@ -149,10 +149,10 @@ impl VectorTransactionManager {
 
         let transaction = active_txs
             .get_mut(&tx_id)
-            .ok_or_else(|| OxidbError::TransactionError(format!("Transaction {} not found", tx_id)))?;
+            .ok_or_else(|| OxidbError::Transaction(format!("Transaction {} not found", tx_id)))?;
 
         if transaction.state != TransactionState::Active {
-            return Err(OxidbError::TransactionError("Transaction is not active".to_string()));
+            return Err(OxidbError::Transaction("Transaction is not active".to_string()));
         }
 
         let id = entry.id.clone();
@@ -187,10 +187,10 @@ impl VectorTransactionManager {
 
         let transaction = active_txs
             .get_mut(&tx_id)
-            .ok_or_else(|| OxidbError::TransactionError(format!("Transaction {} not found", tx_id)))?;
+            .ok_or_else(|| OxidbError::Transaction(format!("Transaction {} not found", tx_id)))?;
 
         if transaction.state != TransactionState::Active {
-            return Err(OxidbError::TransactionError("Transaction is not active".to_string()));
+            return Err(OxidbError::Transaction("Transaction is not active".to_string()));
         }
 
         let mut store = self
@@ -223,10 +223,10 @@ impl VectorTransactionManager {
 
         let mut transaction = active_txs
             .remove(&tx_id)
-            .ok_or_else(|| OxidbError::TransactionError(format!("Transaction {} not found", tx_id)))?;
+            .ok_or_else(|| OxidbError::Transaction(format!("Transaction {} not found", tx_id)))?;
 
         if transaction.state != TransactionState::Active {
-            return Err(OxidbError::TransactionError("Transaction is not active".to_string()));
+            return Err(OxidbError::Transaction("Transaction is not active".to_string()));
         }
 
         // Mark as committed (all operations already applied)
@@ -246,10 +246,10 @@ impl VectorTransactionManager {
 
         let mut transaction = active_txs
             .remove(&tx_id)
-            .ok_or_else(|| OxidbError::TransactionError(format!("Transaction {} not found", tx_id)))?;
+            .ok_or_else(|| OxidbError::Transaction(format!("Transaction {} not found", tx_id)))?;
 
         if transaction.state != TransactionState::Active {
-            return Err(OxidbError::TransactionError("Transaction is not active".to_string()));
+            return Err(OxidbError::Transaction("Transaction is not active".to_string()));
         }
 
         let mut store = self

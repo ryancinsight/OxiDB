@@ -5,7 +5,7 @@
 
 use super::types::{Node, Edge, NodeId, EdgeId, GraphData, Relationship};
 use super::{GraphOperations, GraphQuery, GraphTransaction, TraversalDirection};
-use crate::core::common::errors::OxidbError;
+use crate::core::common::error::OxidbError;
 use crate::core::common::types::Value;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
@@ -372,7 +372,7 @@ impl GraphQuery for InMemoryGraphStore {
 impl GraphTransaction for InMemoryGraphStore {
     fn begin_transaction(&mut self) -> Result<(), OxidbError> {
         if self.transaction_active {
-            return Err(OxidbError::TransactionError("Transaction already active".to_string()));
+            return Err(OxidbError::Transaction("Transaction already active".to_string()));
         }
         
         self.transaction_active = true;
@@ -383,7 +383,7 @@ impl GraphTransaction for InMemoryGraphStore {
 
     fn commit_transaction(&mut self) -> Result<(), OxidbError> {
         if !self.transaction_active {
-            return Err(OxidbError::TransactionError("No active transaction to commit".to_string()));
+            return Err(OxidbError::Transaction("No active transaction to commit".to_string()));
         }
         
         // Apply all transaction changes
@@ -407,7 +407,7 @@ impl GraphTransaction for InMemoryGraphStore {
 
     fn rollback_transaction(&mut self) -> Result<(), OxidbError> {
         if !self.transaction_active {
-            return Err(OxidbError::TransactionError("No active transaction to rollback".to_string()));
+            return Err(OxidbError::Transaction("No active transaction to rollback".to_string()));
         }
         
         // Discard all transaction changes

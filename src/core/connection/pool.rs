@@ -61,16 +61,19 @@ impl Default for PoolConfig {
 pub struct PooledConnection<T: PoolableConnection> {
     /// The actual connection
     connection: Option<T>,
-    /// Reference to the pool for returning the connection
-    pool: Weak<Mutex<PoolInner<T>>>,
+    /// Reference to the pool inner state for returning the connection
+    pool_inner: Weak<Mutex<PoolInner<T>>>,
+    /// Reference to the condition variable for notifications
+    connection_available: Weak<Condvar>,
 }
 
 impl<T: PoolableConnection> PooledConnection<T> {
     /// Create a new pooled connection
-    fn new(connection: T, pool: Weak<Mutex<PoolInner<T>>>) -> Self {
+    fn new(connection: T, pool_inner: Weak<Mutex<PoolInner<T>>>, connection_available: Weak<Condvar>) -> Self {
         Self {
             connection: Some(connection),
-            pool,
+            pool_inner,
+            connection_available,
         }
     }
     
@@ -87,9 +90,15 @@ impl<T: PoolableConnection> PooledConnection<T> {
 
 impl<T: PoolableConnection> Drop for PooledConnection<T> {
     fn drop(&mut self) {
-        if let (Some(connection), Some(pool)) = (self.connection.take(), self.pool.upgrade()) {
-            if let Ok(mut inner) = pool.lock() {
-                inner.return_connection(connection);
+        if let Some(connection) = self.connection.take() {
+            if let Some(pool_inner) = self.pool_inner.upgrade() {
+                if let Ok(mut inner) = pool_inner.lock() {
+                    inner.return_connection(connection);
+                }
+            }
+            // Notify waiting threads that a connection is available
+            if let Some(condvar) = self.connection_available.upgrade() {
+                condvar.notify_one();
             }
         }
     }
@@ -103,7 +112,8 @@ struct PoolInner<T: PoolableConnection> {
     in_use: usize,
     /// Pool configuration
     config: PoolConfig,
-    /// Condition variable for waiting threads
+    /// Condition variable for waiting threads (unused in current implementation)
+    #[allow(dead_code)]
     condvar: Condvar,
 }
 
@@ -132,8 +142,7 @@ impl<T: PoolableConnection> PoolInner<T> {
         debug_assert!(self.in_use > 0, "in_use should always be > 0 when returning a connection");
         self.in_use -= 1;
         
-        // Notify waiting threads
-        self.condvar.notify_one();
+        // This will be notified by the pool when the connection is returned
     }
     
     fn cleanup_idle_connections(&mut self) {
@@ -158,6 +167,8 @@ impl<T: PoolableConnection> PoolInner<T> {
 pub struct ConnectionPool<T: PoolableConnection> {
     /// Internal pool state
     inner: Arc<Mutex<PoolInner<T>>>,
+    /// Condition variable for waiting on available connections
+    connection_available: Arc<Condvar>,
     /// Handle to the cleanup thread
     _cleanup_handle: thread::JoinHandle<()>,
 }
@@ -166,6 +177,7 @@ impl<T: PoolableConnection + 'static> ConnectionPool<T> {
     /// Create a new connection pool with the given configuration
     pub fn new(config: PoolConfig) -> Self {
         let inner = Arc::new(Mutex::new(PoolInner::new(config.clone())));
+        let connection_available = Arc::new(Condvar::new());
         let cleanup_inner = Arc::downgrade(&inner);
         
         // Start cleanup thread
@@ -186,6 +198,7 @@ impl<T: PoolableConnection + 'static> ConnectionPool<T> {
         
         Self {
             inner,
+            connection_available,
             _cleanup_handle: cleanup_handle,
         }
     }
@@ -209,8 +222,12 @@ impl<T: PoolableConnection + 'static> ConnectionPool<T> {
                 if connection.is_valid() {
                     connection.mark_used();
                     inner.in_use += 1;
-                    let pool_ref = Arc::downgrade(&self.inner);
-                    return Ok(PooledConnection::new(connection, pool_ref));
+                    // Connection is valid, return it
+                    return Ok(PooledConnection::new(
+                    connection, 
+                    Arc::downgrade(&self.inner),
+                    Arc::downgrade(&self.connection_available)
+                ));
                 }
                 // Connection is invalid, discard it
             }
@@ -230,11 +247,26 @@ impl<T: PoolableConnection + 'static> ConnectionPool<T> {
                 ));
             }
             
-            // For now, just return a timeout error instead of waiting
-            // TODO: Implement proper condvar waiting without borrow checker issues
-            return Err(OxidbError::Other(
-                "No available connections (waiting not implemented)".to_string()
-            ));
+            // Wait for a connection to become available using proper condvar pattern
+            // This implements the expected connection pool behavior
+            let (guard, timeout_result) = self.connection_available
+                .wait_timeout(inner, timeout - start_time.elapsed())
+                .with_static_context("Failed to wait for connection")?;
+            
+            // Update inner with the guard returned from wait_timeout
+            #[allow(unused_assignments)]
+            {
+                inner = guard;
+            }
+            
+            if timeout_result.timed_out() {
+                return Err(OxidbError::Other(
+                    "Timeout waiting for connection".to_string()
+                ));
+            }
+            
+            // After waking up, try again to get a connection
+            continue;
         }
     }
     
@@ -258,7 +290,7 @@ impl<T: PoolableConnection + 'static> ConnectionPool<T> {
         
         if inner.total_connections() < inner.config.max_connections {
             inner.available.push_back(connection);
-            inner.condvar.notify_one();
+            self.connection_available.notify_one();
             Ok(())
         } else {
             Err(OxidbError::Other(

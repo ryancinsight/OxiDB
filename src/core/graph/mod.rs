@@ -25,7 +25,7 @@ pub use traversal::{GraphTraversal, TraversalDirection, TraversalStrategy};
 pub use algorithms::{GraphAlgorithms, PathFinding};
 pub use types::{NodeId, EdgeId, Node, Edge, GraphData, Relationship};
 
-use crate::core::common::errors::OxidbError;
+use crate::core::common::error::OxidbError;
 use crate::core::common::types::Value;
 // Remove unused import
 

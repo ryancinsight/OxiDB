@@ -364,7 +364,7 @@ fn test_load_from_malformed_file_key_eof() {
     let result = SimpleFileKvStore::new(path);
     assert!(result.is_err());
     match result.unwrap_err() {
-        OxidbError::StorageError(msg) => {
+        OxidbError::Storage(msg) => {
             assert!(msg.contains("Failed to deserialize key"));
             assert!(
                 msg.contains("failed to fill whole buffer")
@@ -391,7 +391,7 @@ fn test_load_from_malformed_file_value_eof() {
     let result = SimpleFileKvStore::new(path);
     assert!(result.is_err());
     match result.unwrap_err() {
-        OxidbError::StorageError(msg) => {
+        OxidbError::Storage(msg) => {
             assert!(msg.contains("Failed to deserialize value for key"));
             assert!(
                 msg.contains("failed to fill whole buffer")
@@ -1187,7 +1187,7 @@ fn test_physical_wal_lsn_integration() {
         Ok(_) => {
             // DELETE succeeded
         }
-        Err(crate::core::common::errors::OxidbError::NotImplemented { feature: _ }) => {
+        Err(crate::core::common::error::OxidbError::NotImplemented { feature: _ }) => {
             // DELETE not implemented in optimizer - this is expected for now
             eprintln!("DELETE statement skipped due to optimizer limitation");
         }

@@ -24,7 +24,7 @@ pub enum OxidbError {
     Execution(String),
 
     #[error("Storage Error: {0}")]
-    Storage(String), // Was StorageError
+    Storage(String), // Unified storage error variant
 
     #[error("Transaction Error: {0}")]
     Transaction(String), // Was TransactionError
@@ -60,10 +60,7 @@ pub enum OxidbError {
     LockAcquisitionTimeout { key: Vec<u8>, current_tx: u64 },
 
     #[error("Configuration error: {0}")]
-    Configuration(String), // Was ConfigError
-
-    #[error("Config error: {0}")]
-    ConfigError(String),
+    Configuration(String), // Unified configuration error variant
 
     #[error("Type Error: {0}")]
     Type(String), // Was TypeError
@@ -82,6 +79,22 @@ pub enum OxidbError {
 
     #[error("Vector magnitude is zero, cannot compute cosine similarity")]
     VectorMagnitudeZero,
+
+    // Additional error variants for compatibility
+    #[error("Other: {0}")]
+    Other(String),
+
+    #[error("Transaction error: {0}")]
+    TransactionError(String), // Deprecated: Use Transaction instead
+
+    #[error("Transaction not found: {0}")]
+    TransactionNotFound(String),
+
+    #[error("Deadlock detected: {0}")]
+    DeadlockDetected(String),
+
+    #[error("Table not found: {0}")]
+    TableNotFound(String),
 }
 
 impl From<crate::core::indexing::btree::OxidbError> for OxidbError {
@@ -110,6 +123,15 @@ impl From<crate::core::indexing::btree::OxidbError> for OxidbError {
                 OxidbError::Internal(format!("BTree Generic Error: {}", s))
             }
         }
+    }
+}
+
+impl OxidbError {
+    /// Create an IO error with a custom message
+    /// This maintains compatibility with existing code
+    pub fn io_error(message: String) -> Self {
+        use std::io::{Error, ErrorKind};
+        OxidbError::Io(Error::new(ErrorKind::Other, message))
     }
 }
 

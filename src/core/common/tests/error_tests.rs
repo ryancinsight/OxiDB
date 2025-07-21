@@ -1,4 +1,4 @@
-use crate::core::common::errors::OxidbError;
+use crate::core::common::error::OxidbError;
 use std::error::Error;
 use std::io; // Import the Error trait
 
@@ -12,14 +12,14 @@ fn test_error_display_and_source() {
     // Test Json variant
     let json_err_str = "{\"a\":"; // Invalid JSON
     let serde_err = serde_json::from_str::<serde_json::Value>(json_err_str).unwrap_err();
-    let json_err = OxidbError::Json(serde_err.to_string());
-    assert!(format!("{}", json_err).contains("JSON Error"));
-    // Since we store String instead of the original error, source() returns None
-    assert!(json_err.source().is_none());
+    let json_err = OxidbError::Json(serde_err);
+    assert!(format!("{}", json_err).contains("JSON"));
+    // Since we store the actual serde_json::Error, source() should return Some
+    assert!(json_err.source().is_some());
 
     // Test other variants (source might be None for these)
-    let parsing_err = OxidbError::ParseError("syntax error".to_string());
-    assert_eq!(format!("{}", parsing_err), "Parse Error: syntax error");
+    let parsing_err = OxidbError::Parsing("syntax error".to_string());
+    assert_eq!(format!("{}", parsing_err), "Parsing Error: syntax error");
     assert!(parsing_err.source().is_none());
 
     let internal_err = OxidbError::Internal("something went wrong".to_string());
@@ -51,7 +51,7 @@ fn test_from_serde_json_error() {
     match oxidb_err {
         OxidbError::Json(e) => {
             // The error is stored as String, check the message contains JSON parsing error
-            assert!(e.contains("EOF") || e.contains("expected"), "Error message should contain JSON parsing error, got: '{}'", e);
+            assert!(e.to_string().contains("EOF") || e.to_string().contains("expected"), "Error message should contain JSON parsing error, got: '{}'", e);
             assert!(original_error_msg.contains("EOF") || original_error_msg.contains("expected"));
         }
         _ => panic!("Expected OxidbError::Json variant"),
@@ -65,8 +65,8 @@ fn test_other_error_variants() {
     let _ = OxidbError::Deserialization("could not deserialize".to_string());
     let _ = OxidbError::SqlParsing("invalid SELECT".to_string());
     let _ = OxidbError::Execution("runtime error".to_string());
-    let _ = OxidbError::StorageError("disk full".to_string());
-    let _ = OxidbError::TransactionError("abort".to_string());
+    let _ = OxidbError::Storage("disk full".to_string());
+    let _ = OxidbError::Transaction("abort".to_string());
     let _ = OxidbError::AlreadyExists { name: "table1".to_string() };
     let _ = OxidbError::NotImplemented { feature: "window functions".to_string() };
     let _ = OxidbError::InvalidInput { message: "negative count".to_string() };
@@ -74,7 +74,7 @@ fn test_other_error_variants() {
     let _ = OxidbError::LockTimeout("deadlock detected".to_string());
     let _ = OxidbError::NoActiveTransaction;
     let _ = OxidbError::LockConflict { message: "lock conflict detected".to_string() };
-    let _ = OxidbError::LockAcquisitionTimeout { key: vec![2], current_tx: 3, timeout: 1000 };
+    let _ = OxidbError::LockAcquisitionTimeout { key: vec![2], current_tx: 3 };
     let _ = OxidbError::Configuration("bad timeout value".to_string());
     let _ = OxidbError::Type("type mismatch".to_string());
 }
