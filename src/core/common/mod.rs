@@ -1,3 +1,4 @@
+pub mod cow_utils; // Performance optimizations using Copy-on-Write
 pub mod error;
 pub use error::OxidbError;
 pub mod serialization;
