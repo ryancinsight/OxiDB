@@ -26,8 +26,7 @@ pub enum VectorOperation {
 #[derive(Debug, Clone)]
 pub enum UndoOperation {
     Delete { id: String },
-    Restore { id: String, entry: VectorEntry },
-    RestoreDelete { id: String, entry: VectorEntry },
+    Restore { entry: VectorEntry },
 }
 
 /// Transaction state
@@ -166,8 +165,7 @@ impl VectorTransactionManager {
 
         let existing_entry = store.retrieve(&id)?;
         if let Some(existing) = existing_entry {
-            transaction
-                .add_undo_operation(UndoOperation::Restore { id: id.clone(), entry: existing });
+            transaction.add_undo_operation(UndoOperation::Restore { entry: existing });
         } else {
             transaction.add_undo_operation(UndoOperation::Delete { id: id.clone() });
         }
@@ -203,10 +201,7 @@ impl VectorTransactionManager {
         // Get existing entry for undo log
         let existing_entry = store.retrieve(id)?;
         if let Some(existing) = existing_entry {
-            transaction.add_undo_operation(UndoOperation::RestoreDelete {
-                id: id.to_string(),
-                entry: existing,
-            });
+            transaction.add_undo_operation(UndoOperation::Restore { entry: existing });
 
             // Perform the deletion
             let deleted = store.delete(id)?;
@@ -268,10 +263,7 @@ impl VectorTransactionManager {
                 UndoOperation::Delete { id } => {
                     store.delete(id)?;
                 }
-                UndoOperation::Restore { id: _, entry } => {
-                    store.store(entry.clone())?;
-                }
-                UndoOperation::RestoreDelete { id: _, entry } => {
+                UndoOperation::Restore { entry } => {
                     store.store(entry.clone())?;
                 }
             }
