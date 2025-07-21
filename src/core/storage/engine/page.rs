@@ -1,4 +1,4 @@
-use crate::core::common::error::OxidbError;
+use crate::core::common::errors::OxidbError;
 use crate::core::common::types::Lsn; // Corrected Lsn import path
 use crate::core::common::types::PageId;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};

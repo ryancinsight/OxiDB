@@ -1,4 +1,4 @@
-use crate::core::common::error::OxidbError;
+use crate::core::common::errors::OxidbError;
 use crate::core::common::types::ids::SlotId;
 use crate::core::storage::engine::page::{PAGE_HEADER_SIZE, PAGE_SIZE};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};

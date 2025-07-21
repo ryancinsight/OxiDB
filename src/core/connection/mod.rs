@@ -4,11 +4,13 @@
 //! This module provides connection pooling and management capabilities for the database.
 //! It ensures efficient resource utilization and follows established design patterns.
 
-// pub mod pool; // TODO: Implement connection pool in future
+pub mod pool; // New connection pool implementation
 
 use crate::core::common::OxidbError;
+use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
+use uuid::Uuid;
 
 /// Represents a unique connection identifier
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

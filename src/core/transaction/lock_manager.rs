@@ -11,6 +11,9 @@ pub enum LockType {
     Exclusive,
 }
 
+/// Alias for LockType for compatibility
+pub type LockMode = LockType;
+
 /// Represents the key for a lock in the lock table.
 pub type LockTableKey = Vec<u8>;
 

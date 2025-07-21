@@ -3,7 +3,7 @@
 //! This module defines the core data structures used in graph operations.
 //! Following SOLID principles with clear, single-purpose types.
 
-use crate::core::types::DataType;
+use crate::core::types::{DataType, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -50,10 +50,11 @@ pub enum RelationshipDirection {
 }
 
 /// Graph data container with properties
+/// Uses Value for actual property values, following SOLID's Single Responsibility Principle
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GraphData {
     pub label: String, // Node/Edge type label
-    pub properties: HashMap<String, DataType>,
+    pub properties: HashMap<String, Value>, // Changed from DataType to Value
 }
 
 impl Node {
@@ -82,17 +83,25 @@ impl Node {
     }
 
     /// Get a property value
-    pub fn get_property(&self, key: &str) -> Option<&DataType> {
+    pub fn get_property(&self, key: &str) -> Option<&Value> {
         self.data.properties.get(key)
     }
 
     /// Set a property value
-    pub fn set_property(&mut self, key: String, value: DataType) {
+    pub fn set_property(&mut self, key: String, value: Value) {
         self.data.properties.insert(key, value);
         self.updated_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
+    }
+    
+    /// Get property as a specific type with type safety
+    pub fn get_property_as<T>(&self, key: &str) -> Option<T> 
+    where 
+        T: for<'a> TryFrom<&'a Value>
+    {
+        self.get_property(key)?.try_into().ok()
     }
 }
 
@@ -191,24 +200,24 @@ impl GraphData {
     }
 
     /// Add a property to the graph data (builder pattern)
-    pub fn with_property(mut self, key: String, value: DataType) -> Self {
+    pub fn with_property(mut self, key: String, value: Value) -> Self {
         self.properties.insert(key, value);
         self
     }
 
     /// Add multiple properties
-    pub fn with_properties(mut self, properties: HashMap<String, DataType>) -> Self {
+    pub fn with_properties(mut self, properties: HashMap<String, Value>) -> Self {
         self.properties.extend(properties);
         self
     }
 
     /// Get a property value
-    pub fn get_property(&self, key: &str) -> Option<&DataType> {
+    pub fn get_property(&self, key: &str) -> Option<&Value> {
         self.properties.get(key)
     }
 
     /// Set a property value
-    pub fn set_property(&mut self, key: String, value: DataType) {
+    pub fn set_property(&mut self, key: String, value: Value) {
         self.properties.insert(key, value);
     }
 
@@ -231,14 +240,14 @@ mod tests {
     #[test]
     fn test_node_creation() {
         let data = GraphData::new("user".to_string())
-            .with_property("name".to_string(), DataType::String("Alice".to_string()))
-            .with_property("age".to_string(), DataType::Integer(30));
+            .with_property("name".to_string(), Value::Text("Alice".to_string()))
+            .with_property("age".to_string(), Value::Integer(30));
         
         let node = Node::new(1, data);
         assert_eq!(node.id, 1);
         assert_eq!(node.data.label, "user");
-        assert_eq!(node.get_property("name"), Some(&DataType::String("Alice".to_string())));
-        assert_eq!(node.get_property("age"), Some(&DataType::Integer(30)));
+        assert_eq!(node.get_property("name"), Some(&Value::Text("Alice".to_string())));
+        assert_eq!(node.get_property("age"), Some(&Value::Integer(30)));
     }
 
     #[test]
@@ -268,9 +277,9 @@ mod tests {
     #[test]
     fn test_graph_data_builder() {
         let data = GraphData::new("product".to_string())
-            .with_property("name".to_string(), DataType::String("iPhone".to_string()))
-            .with_property("price".to_string(), DataType::Float(999.99))
-            .with_property("in_stock".to_string(), DataType::Boolean(true));
+            .with_property("name".to_string(), Value::Text("iPhone".to_string()))
+            .with_property("price".to_string(), Value::Float(999.99))
+            .with_property("in_stock".to_string(), Value::Boolean(true));
         
         assert_eq!(data.label, "product");
         assert_eq!(data.properties.len(), 3);

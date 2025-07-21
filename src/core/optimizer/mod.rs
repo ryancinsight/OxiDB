@@ -1,326 +1,60 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
+//! Query Optimization Module
+//! 
+//! This module provides query optimization capabilities including cost-based
+//! optimization, rule-based optimization, and query planning.
 
-// This is the optimizer module
-// Initially, it will define the QueryPlanNode enum and related structs.
-// More optimization logic will be added here in the future.
+use crate::core::types::DataType;
 
-// Optimizer struct and impl moved here from optimizer.rs
+pub mod planner; // Cost-based query planner
+pub mod rule; // Optimization rule trait
+pub mod rules;
 
-// use crate::core::optimizer::QueryPlanNode; // Not needed: QueryPlanNode defined below in same mod
-// use crate::core::optimizer::{Expression, SimplePredicate}; // Not needed: Expression & SimplePredicate defined below
-use crate::core::common::OxidbError;
-use crate::core::indexing::manager::IndexManager;
-use crate::core::optimizer::rules::apply_constant_folding_rule;
-use crate::core::optimizer::rules::apply_noop_filter_removal_rule;
-use crate::core::query::sql::ast::{
-    AstLiteralValue as AstSqlLiteralValue, // Removed AstSqlCondition
-    SelectColumn as AstSqlSelectColumn,
-    Statement as AstStatement,
-};
-use crate::core::types::DataType; // Unified import
-use std::sync::{Arc, RwLock};
+// Re-exports for easier access
+pub use planner::CostBasedPlanner;
+pub use rule::{OptimizationRule, RuleManager};
 
-/// The `Optimizer` is responsible for transforming an initial query plan
-/// (derived directly from the AST) into a more efficient execution plan.
-/// It applies a series of rules, such as predicate pushdown, index selection,
-/// and constant folding, to achieve this.
-#[derive(Debug)]
+/// Main optimizer interface
+/// Follows SOLID's Single Responsibility Principle - coordinates optimization
 pub struct Optimizer {
-    /// A shared reference to the `IndexManager` to access available indexes.
-    index_manager: Arc<RwLock<IndexManager>>,
+    planner: CostBasedPlanner,
+    rule_manager: RuleManager,
 }
 
 impl Optimizer {
-    pub fn new(index_manager: Arc<RwLock<IndexManager>>) -> Self {
-        Optimizer { index_manager }
-    }
-
-    pub fn build_initial_plan(
-        &self,
-        statement: &AstStatement,
-    ) -> Result<QueryPlanNode, OxidbError> {
-        match statement {
-            AstStatement::Select(select_ast) => {
-                let mut plan_node = QueryPlanNode::TableScan {
-                    table_name: select_ast.from_clause.name.clone(),
-                    alias: select_ast.from_clause.alias.clone(),
-                };
-                // TODO: Incorporate select_ast.joins into the initial plan
-
-                if let Some(ref condition_ast) = select_ast.condition {
-                    let expression =
-                        self.ast_sql_condition_to_optimizer_expression(condition_ast)?;
-                    plan_node =
-                        QueryPlanNode::Filter { input: Box::new(plan_node), predicate: expression };
-                }
-
-                let projection_columns: Vec<String> = select_ast
-                    .columns
-                    .iter()
-                    .map(|col| match col {
-                        AstSqlSelectColumn::ColumnName(name) => name.clone(),
-                        AstSqlSelectColumn::Asterisk => "*".to_string(),
-                    })
-                    .collect();
-
-                if projection_columns.is_empty()
-                    && !select_ast.columns.iter().any(|c| matches!(c, AstSqlSelectColumn::Asterisk))
-                {
-                    return Err(OxidbError::SqlParsing(
-                        "SELECT statement with no columns specified.".to_string(),
-                    ));
-                }
-
-                plan_node = QueryPlanNode::Project {
-                    input: Box::new(plan_node),
-                    columns: projection_columns,
-                };
-
-                Ok(plan_node)
-            }
-            AstStatement::Update(update_ast) => {
-                let mut plan_node =
-                    QueryPlanNode::TableScan { table_name: update_ast.source.clone(), alias: None };
-
-                if let Some(ref condition_ast) = update_ast.condition {
-                    let expression =
-                        self.ast_sql_condition_to_optimizer_expression(condition_ast)?;
-                    plan_node =
-                        QueryPlanNode::Filter { input: Box::new(plan_node), predicate: expression };
-                }
-                plan_node = QueryPlanNode::Project {
-                    input: Box::new(plan_node),
-                    columns: vec!["0".to_string()],
-                };
-                Ok(plan_node)
-            }
-            AstStatement::CreateTable(_) => Err(OxidbError::NotImplemented {
-                feature: "Query planning for CREATE TABLE statements".to_string(),
-            }),
-            AstStatement::Insert(_) => Err(OxidbError::NotImplemented {
-                feature: "Query planning for INSERT statements".to_string(),
-            }),
-            AstStatement::Delete(delete_ast) => {
-                let mut plan_node = QueryPlanNode::TableScan {
-                    table_name: delete_ast.table_name.clone(),
-                    alias: None,
-                };
-
-                if let Some(ref condition_ast) = delete_ast.condition {
-                    let expression =
-                        self.ast_sql_condition_to_optimizer_expression(condition_ast)?;
-                    plan_node =
-                        QueryPlanNode::Filter { input: Box::new(plan_node), predicate: expression };
-                }
-                Ok(QueryPlanNode::DeleteNode {
-                    input: Box::new(plan_node),
-                    table_name: delete_ast.table_name.clone(),
-                })
-            }
-            AstStatement::DropTable(_) => Err(OxidbError::NotImplemented {
-                feature: "Query planning for DROP TABLE statements".to_string(),
-            }),
+    /// Create a new optimizer
+    pub fn new() -> Self {
+        Self {
+            planner: CostBasedPlanner::new(),
+            rule_manager: RuleManager::new(),
         }
     }
-
-    fn ast_sql_condition_to_optimizer_expression(
-        &self,
-        ast_cond_tree: &crate::core::query::sql::ast::ConditionTree,
-    ) -> Result<Expression, OxidbError> {
-        match ast_cond_tree {
-            crate::core::query::sql::ast::ConditionTree::Comparison(ast_simple_cond) => {
-                // ast_simple_cond.value is now AstExpressionValue
-                // The optimizer currently expects to compare columns with literals.
-                // If it's ColumnIdentifier vs ColumnIdentifier, this translation needs enhancement.
-                let right_expr_operand = match &ast_simple_cond.value {
-                    crate::core::query::sql::ast::AstExpressionValue::Literal(literal_val) => {
-                        match literal_val {
-                            AstSqlLiteralValue::String(s) => {
-                                Expression::Literal(DataType::String(s.clone()))
-                            }
-                            AstSqlLiteralValue::Number(n_str) => {
-                                if let Ok(i_val) = n_str.parse::<i64>() {
-                                    Expression::Literal(DataType::Integer(i_val))
-                                } else if let Ok(f_val) = n_str.parse::<f64>() {
-                                    Expression::Literal(DataType::Float(f_val))
-                                } else {
-                                    return Err(OxidbError::SqlParsing(format!(
-                                        "Cannot parse numeric literal '{}'",
-                                        n_str
-                                    )));
-                                }
-                            }
-                            AstSqlLiteralValue::Boolean(b) => {
-                                Expression::Literal(DataType::Boolean(*b))
-                            }
-                            AstSqlLiteralValue::Null => Expression::Literal(DataType::Null),
-                            AstSqlLiteralValue::Vector(_) => {
-                                return Err(OxidbError::NotImplemented {
-                                    feature: "Vector comparison in optimizer expressions"
-                                        .to_string(),
-                                });
-                            }
-                        }
-                    }
-                    crate::core::query::sql::ast::AstExpressionValue::ColumnIdentifier(
-                        col_name,
-                    ) => {
-                        // Optimizer's Expression::CompareOp expects Box<Expression> for right.
-                        // So, wrap the column name in Expression::Column.
-                        Expression::Column(col_name.clone())
-                    }
-                };
-
-                Ok(Expression::CompareOp {
-                    left: Box::new(Expression::Column(ast_simple_cond.column.clone())),
-                    op: ast_simple_cond.operator.clone(),
-                    right: Box::new(right_expr_operand),
-                })
-            }
-            crate::core::query::sql::ast::ConditionTree::And(left_ast, right_ast) => {
-                let left_expr = self.ast_sql_condition_to_optimizer_expression(left_ast)?;
-                let right_expr = self.ast_sql_condition_to_optimizer_expression(right_ast)?;
-                Ok(Expression::BinaryOp {
-                    left: Box::new(left_expr),
-                    op: "AND".to_string(), // Optimizer uses "AND" for BinaryOp
-                    right: Box::new(right_expr),
-                })
-            }
-            crate::core::query::sql::ast::ConditionTree::Or(left_ast, right_ast) => {
-                let left_expr = self.ast_sql_condition_to_optimizer_expression(left_ast)?;
-                let right_expr = self.ast_sql_condition_to_optimizer_expression(right_ast)?;
-                Ok(Expression::BinaryOp {
-                    left: Box::new(left_expr),
-                    op: "OR".to_string(), // Optimizer uses "OR" for BinaryOp
-                    right: Box::new(right_expr),
-                })
-            }
-            crate::core::query::sql::ast::ConditionTree::Not(ast_cond) => {
-                let expr = self.ast_sql_condition_to_optimizer_expression(ast_cond)?;
-                Ok(Expression::UnaryOp { op: "NOT".to_string(), expr: Box::new(expr) })
-            }
-        }
+    
+    /// Get the cost-based planner
+    pub fn planner(&self) -> &CostBasedPlanner {
+        &self.planner
     }
-
-    pub fn optimize(&self, plan: QueryPlanNode) -> Result<QueryPlanNode, OxidbError> {
-        let plan = self.apply_predicate_pushdown(plan);
-        let plan = self.apply_index_selection(plan)?;
-        let plan = apply_constant_folding_rule(plan);
-        let plan = apply_noop_filter_removal_rule(plan);
-        Ok(plan)
+    
+    /// Get the rule manager
+    pub fn rule_manager(&self) -> &RuleManager {
+        &self.rule_manager
     }
-
-    #[allow(clippy::only_used_in_recursion)]
-    fn apply_predicate_pushdown(&self, plan_node: QueryPlanNode) -> QueryPlanNode {
-        match plan_node {
-            QueryPlanNode::Filter { input, predicate } => {
-                let optimized_input = self.apply_predicate_pushdown(*input);
-                match optimized_input {
-                    QueryPlanNode::Project { input: project_input, columns } => {
-                        let pushed_filter = QueryPlanNode::Filter {
-                            input: project_input,
-                            predicate: predicate.clone(),
-                        };
-                        let optimized_pushed_filter = self.apply_predicate_pushdown(pushed_filter);
-                        QueryPlanNode::Project { input: Box::new(optimized_pushed_filter), columns }
-                    }
-                    _ => QueryPlanNode::Filter { input: Box::new(optimized_input), predicate },
-                }
-            }
-            QueryPlanNode::Project { input, columns } => QueryPlanNode::Project {
-                input: Box::new(self.apply_predicate_pushdown(*input)),
-                columns,
-            },
-            QueryPlanNode::NestedLoopJoin { left, right, join_predicate } => {
-                QueryPlanNode::NestedLoopJoin {
-                    left: Box::new(self.apply_predicate_pushdown(*left)),
-                    right: Box::new(self.apply_predicate_pushdown(*right)),
-                    join_predicate,
-                }
-            }
-            QueryPlanNode::TableScan { .. } | QueryPlanNode::IndexScan { .. } => plan_node,
-            QueryPlanNode::DeleteNode { input, table_name } => QueryPlanNode::DeleteNode {
-                input: Box::new(self.apply_predicate_pushdown(*input)),
-                table_name,
-            },
-        }
+    
+    /// Get mutable access to the planner
+    pub fn planner_mut(&mut self) -> &mut CostBasedPlanner {
+        &mut self.planner
     }
-
-    fn apply_index_selection(&self, plan_node: QueryPlanNode) -> Result<QueryPlanNode, OxidbError> {
-        match plan_node {
-            QueryPlanNode::Filter { input, predicate } => {
-                let optimized_input = self.apply_index_selection(*input)?;
-                let mut transformed_to_index_scan = false;
-                let mut new_plan_node = optimized_input.clone();
-
-                if let QueryPlanNode::TableScan { ref table_name, ref alias } = optimized_input {
-                    if let Expression::CompareOp { left, op, right } = &predicate {
-                        if let (
-                            Expression::Column(column_name),
-                            Expression::Literal(literal_value),
-                        ) = (&**left, &**right)
-                        {
-                            let index_name_candidate =
-                                format!("idx_{}_{}", table_name, column_name);
-
-                            if *op == "=" {
-                                let index_manager_guard =
-                                    self.index_manager.read().map_err(|e| {
-                                        OxidbError::Lock(format!(
-                                            "Failed to acquire read lock on index manager: {}",
-                                            e
-                                        ))
-                                    })?;
-                                if index_manager_guard.get_index(&index_name_candidate).is_some() {
-                                    let scan_predicate = SimplePredicate {
-                                        column: column_name.clone(),
-                                        operator: op.clone(),
-                                        value: literal_value.clone(),
-                                    };
-
-                                    new_plan_node = QueryPlanNode::IndexScan {
-                                        index_name: index_name_candidate,
-                                        table_name: table_name.clone(),
-                                        alias: alias.clone(),
-                                        scan_condition: Some(scan_predicate),
-                                    };
-                                    transformed_to_index_scan = true;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if transformed_to_index_scan {
-                    Ok(new_plan_node)
-                } else {
-                    Ok(QueryPlanNode::Filter { input: Box::new(optimized_input), predicate })
-                }
-            }
-            QueryPlanNode::Project { input, columns } => Ok(QueryPlanNode::Project {
-                input: Box::new(self.apply_index_selection(*input)?),
-                columns,
-            }),
-            QueryPlanNode::NestedLoopJoin { left, right, join_predicate } => {
-                Ok(QueryPlanNode::NestedLoopJoin {
-                    left: Box::new(self.apply_index_selection(*left)?),
-                    right: Box::new(self.apply_index_selection(*right)?),
-                    join_predicate,
-                })
-            }
-            node @ QueryPlanNode::TableScan { .. } | node @ QueryPlanNode::IndexScan { .. } => {
-                Ok(node)
-            }
-            QueryPlanNode::DeleteNode { input, table_name } => Ok(QueryPlanNode::DeleteNode {
-                input: Box::new(self.apply_index_selection(*input)?),
-                table_name,
-            }),
-        }
+    
+    /// Get mutable access to the rule manager
+    pub fn rule_manager_mut(&mut self) -> &mut RuleManager {
+        &mut self.rule_manager
     }
 }
 
-pub mod rules;
+impl Default for Optimizer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]

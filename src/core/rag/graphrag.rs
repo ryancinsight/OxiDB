@@ -176,8 +176,8 @@ impl GraphRAGEngineImpl {
                 embedding: document.embedding.clone(),
                 properties: {
                     let mut props = HashMap::new();
-                    props.insert("document_id".to_string(), DataType::String(document.id.clone()));
-                    props.insert("extraction_method".to_string(), DataType::String("keyword".to_string()));
+                            props.insert("document_id".to_string(), Value::Text(document.id.clone()));
+        props.insert("extraction_method".to_string(), Value::Text("keyword".to_string()));
                     props
                 },
                 confidence_score: 0.7, // Default confidence
@@ -247,11 +247,11 @@ impl GraphRAGEngineImpl {
                 
                 // Extract relationship type from node properties or use a default
                 let relationship_type = from_node_data.data.get_property("relationship_type")
-                    .and_then(|v| if let DataType::String(s) = v { Some(s.clone()) } else { None })
+                    .and_then(|v| if let Value::Text(s) = v { Some(s.clone()) } else { None })
                     .unwrap_or_else(|| "RELATED_TO".to_string());
                 
                 let confidence_score = from_node_data.data.get_property("confidence")
-                    .and_then(|v| if let DataType::Float(f) = v { Some(*f) } else { None })
+                    .and_then(|v| if let Value::Float(f) = v { Some(*f) } else { None })
                     .unwrap_or(0.7);
                 
                 return Ok(Some(EdgeInfo {
@@ -381,8 +381,8 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
             // Add entities to graph and build ID mapping
             for entity in &entities {
                 let graph_data = GraphData::new(entity.entity_type.clone())
-                    .with_property("name".to_string(), DataType::String(entity.name.clone()))
-                    .with_property("confidence".to_string(), DataType::Float(entity.confidence_score));
+                    .with_property("name".to_string(), Value::Text(entity.name.clone()))
+                    .with_property("confidence".to_string(), Value::Float(entity.confidence_score));
                 
                 let node_id = self.graph_store.add_node(graph_data)?;
                 
@@ -412,7 +412,7 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
                     ) {
                         let rel = Relationship::new(relationship.relationship_type.clone());
                         let edge_data = GraphData::new("relationship".to_string())
-                            .with_property("confidence".to_string(), DataType::Float(relationship.confidence_score));
+                            .with_property("confidence".to_string(), Value::Float(relationship.confidence_score));
                         
                         self.graph_store.add_edge(
                             from_node_id,
@@ -453,13 +453,13 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
                     id: entity_id,
                     entity_type: node.data.label.clone(),
                     name: node.data.get_property("name")
-                        .and_then(|v| if let DataType::String(s) = v { Some(s.clone()) } else { None })
+                        .and_then(|v| if let Value::Text(s) = v { Some(s.clone()) } else { None })
                         .unwrap_or_else(|| format!("Entity_{}", entity_id)),
                     description: None,
                     embedding: self.entity_embeddings.get(&entity_id).cloned(),
                     properties: node.data.properties.clone(),
                     confidence_score: node.data.get_property("confidence")
-                        .and_then(|v| if let DataType::Float(f) = v { Some(*f) } else { None })
+                        .and_then(|v| if let Value::Float(f) = v { Some(*f) } else { None })
                         .unwrap_or(0.5),
                 };
                 relevant_entities.push(knowledge_node);
@@ -533,8 +533,8 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
 
     async fn add_entity(&mut self, entity: KnowledgeNode) -> Result<NodeId, OxidbError> {
         let graph_data = GraphData::new(entity.entity_type.clone())
-            .with_property("name".to_string(), DataType::String(entity.name.clone()))
-            .with_property("confidence".to_string(), DataType::Float(entity.confidence_score))
+                            .with_property("name".to_string(), Value::Text(entity.name.clone()))
+            .with_property("confidence".to_string(), Value::Float(entity.confidence_score))
             .with_properties(entity.properties);
         
         let node_id = self.graph_store.add_node(graph_data)?;
@@ -570,13 +570,13 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
                         id,
                         entity_type: node.data.label.clone(),
                         name: node.data.get_property("name")
-                            .and_then(|v| if let DataType::String(s) = v { Some(s.clone()) } else { None })
+                            .and_then(|v| if let Value::Text(s) = v { Some(s.clone()) } else { None })
                             .unwrap_or_else(|| format!("Entity_{}", id)),
                         description: None,
                         embedding: self.entity_embeddings.get(&id).cloned(),
                         properties: node.data.properties.clone(),
                         confidence_score: node.data.get_property("confidence")
-                            .and_then(|v| if let DataType::Float(f) = v { Some(*f) } else { None })
+                            .and_then(|v| if let Value::Float(f) = v { Some(*f) } else { None })
                             .unwrap_or(0.5),
                     };
                     related_entities.push(knowledge_node);
