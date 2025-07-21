@@ -144,7 +144,15 @@ impl fmt::Display for OxidbError {
     }
 }
 
-impl std::error::Error for OxidbError {}
+impl std::error::Error for OxidbError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            OxidbError::Io(e) => Some(e),
+            OxidbError::Json(_) => None, // JSON errors are stored as strings, no source
+            _ => None,
+        }
+    }
+}
 
 impl OxidbError {
     /// Create an IO error with a custom message

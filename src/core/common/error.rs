@@ -29,8 +29,8 @@ pub enum OxidbError {
     #[error("Transaction Error: {0}")]
     Transaction(String), // Was TransactionError
 
-    #[error("Key not found: {key}")]
-    NotFound { key: String }, // Was NotFoundError
+    #[error("Not Found: {0}")]
+    NotFound(String), // Was NotFoundError
 
     #[error("Resource already exists: {name}")]
     AlreadyExists { name: String },
@@ -47,17 +47,23 @@ pub enum OxidbError {
     #[error("Lock Error: {0}")]
     Lock(String), // Was LockError
 
+    #[error("Lock Timeout: {0}")]
+    LockTimeout(String),
+
     #[error("No active transaction")]
     NoActiveTransaction,
 
-    #[error("Lock conflict for key {key:?} on transaction {current_tx}. Locked by transaction {locked_by_tx:?}")]
-    LockConflict { key: Vec<u8>, current_tx: u64, locked_by_tx: Option<u64> },
+    #[error("Lock conflict: {message}")]
+    LockConflict { message: String },
 
     #[error("Lock acquisition timeout for key {key:?} on transaction {current_tx}")]
     LockAcquisitionTimeout { key: Vec<u8>, current_tx: u64 },
 
     #[error("Configuration error: {0}")]
     Configuration(String), // Was ConfigError
+
+    #[error("Config error: {0}")]
+    ConfigError(String),
 
     #[error("Type Error: {0}")]
     Type(String), // Was TypeError
@@ -68,8 +74,8 @@ pub enum OxidbError {
     #[error("Buffer Pool Error: {0}")]
     BufferPool(String),
 
-    #[error("ConstraintViolation: {message}")]
-    ConstraintViolation { message: String },
+    #[error("Constraint Violation: {0}")]
+    ConstraintViolation(String),
 
     #[error("Vector dimension mismatch: dim1 = {dim1}, dim2 = {dim2}")]
     VectorDimensionMismatch { dim1: usize, dim2: usize },

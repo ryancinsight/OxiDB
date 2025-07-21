@@ -241,9 +241,8 @@ impl DataDeserializer<WalEntry> for WalEntry {
         match reader.read_exact(&mut operation_type_buffer) {
             Ok(_) => (),
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                // This typically means the WAL file ended cleanly or is empty.
-                // If called when expecting an entry (e.g. mid-recovery), it's an error.
-                return Err(OxidbError::io_error("Reached end of WAL stream while expecting operation type".to_string()));
+                // Return the original EOF error so callers can handle it appropriately
+                return Err(OxidbError::Io(e));
             }
             Err(e) => return Err(OxidbError::Io(e)),
         }
@@ -368,24 +367,15 @@ impl DataDeserializer<WalEntry> for WalEntry {
 
 /// Helper function to map EOF errors encountered during WAL deserialization
 /// to a more context-specific error message.
-fn map_eof_error(e: std::io::Error, context: &str) -> OxidbError {
-    if e.kind() == std::io::ErrorKind::UnexpectedEof {
-        OxidbError::io_error(format!("Reached end of WAL stream while expecting {}", context))
-    } else {
-        OxidbError::Io(e)
-    }
+fn map_eof_error(e: std::io::Error, _context: &str) -> OxidbError {
+    // Always return the original IO error to maintain consistent error handling
+    OxidbError::Io(e)
 }
 
 /// Helper function to specifically handle EOF errors that might occur during
 /// the deserialization of length-prefixed data (like keys or values) within a WAL entry.
 /// It distinguishes general I/O errors from those indicating a truncated entry part.
-fn map_deserialization_eof(e: OxidbError, context: &str) -> OxidbError {
-    // Changed
-    if let OxidbError::Io(io_err) = &e {
-        // Changed
-        if io_err.kind() == std::io::ErrorKind::UnexpectedEof {
-            return OxidbError::io_error(format!("Reached end of WAL stream while expecting {}", context));
-        }
-    }
-    e // Return original error if not an EOF related to Vec<u8> deserialization
+fn map_deserialization_eof(e: OxidbError, _context: &str) -> OxidbError {
+    // Always return the original error to maintain consistent error handling
+    e
 }
