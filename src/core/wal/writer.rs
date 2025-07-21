@@ -101,6 +101,19 @@ impl WalWriter {
             self.buffer.len(),
             &self.wal_file_path
         );
+        
+        // Ensure parent directory exists (SOLID: Single Responsibility - file handling)
+        if let Some(parent) = self.wal_file_path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    IoError::new(
+                        IoErrorKind::Other,
+                        format!("Failed to create parent directory {:?}: {}", parent, e),
+                    )
+                })?;
+            }
+        }
+        
         let file_result = OpenOptions::new().create(true).append(true).open(&self.wal_file_path);
 
         if let Err(e) = &file_result {

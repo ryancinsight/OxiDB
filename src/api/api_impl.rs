@@ -66,6 +66,9 @@ impl Oxidb {
         let db_path = db_path.as_ref();
         let mut config = Config::default();
         
+        // Set the specific database file path
+        config.database_file = db_path.to_path_buf();
+        
         // Set data directory based on the database path
         if let Some(parent) = db_path.parent() {
             config.data_dir = parent.to_path_buf();

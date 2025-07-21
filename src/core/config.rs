@@ -13,16 +13,74 @@ use std::path::PathBuf; // Import PathBuf for Default impl // For load_from_file
 /// necessary configuration options.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Config {
+    #[serde(default = "default_data_dir")]
     pub data_dir: PathBuf,
+    #[serde(default = "default_database_file", alias = "database_file_path")]  // Support both names
+    pub database_file: PathBuf,  // Added to store the specific database file path
+    #[serde(default = "default_index_dir", alias = "index_base_path")]  // Support both names
     pub index_dir: PathBuf,
+    #[serde(default = "default_max_cache_size")]
     pub max_cache_size: usize,
+    #[serde(default = "default_wal_enabled")]
     pub wal_enabled: bool,
+    #[serde(default = "default_auto_checkpoint_interval")]
     pub auto_checkpoint_interval: u64,
+    #[serde(default = "default_max_connections")]
     pub max_connections: u32,
+    #[serde(default = "default_query_timeout_ms")]
     pub query_timeout_ms: u64,
+    #[serde(default = "default_enable_vector_search")]
     pub enable_vector_search: bool,
+    #[serde(default = "default_vector_dimension")]
     pub vector_dimension: usize,
+    #[serde(default = "default_similarity_threshold")]
     pub similarity_threshold: f32,
+}
+
+/// Default functions for Config fields (following DRY principle)
+fn default_data_dir() -> PathBuf {
+    PathBuf::from("data")
+}
+
+/// Default function for database_file field
+fn default_database_file() -> PathBuf {
+    PathBuf::from("oxidb.db")
+}
+
+fn default_index_dir() -> PathBuf {
+    PathBuf::from("oxidb_indexes")
+}
+
+fn default_max_cache_size() -> usize {
+    1024 * 1024 // 1MB
+}
+
+fn default_wal_enabled() -> bool {
+    true
+}
+
+fn default_auto_checkpoint_interval() -> u64 {
+    1000
+}
+
+fn default_max_connections() -> u32 {
+    100
+}
+
+fn default_query_timeout_ms() -> u64 {
+    30000 // 30 seconds
+}
+
+fn default_enable_vector_search() -> bool {
+    false
+}
+
+fn default_vector_dimension() -> usize {
+    128
+}
+
+fn default_similarity_threshold() -> f32 {
+    0.7
 }
 
 /// Builder for Config struct implementing the Builder pattern.
@@ -34,6 +92,7 @@ pub struct Config {
 #[derive(Debug, Clone)]
 pub struct ConfigBuilder {
     data_dir: Option<PathBuf>,
+    database_file: Option<PathBuf>,  // Added to store the specific database file path
     index_dir: Option<PathBuf>,
     max_cache_size: Option<usize>,
     wal_enabled: Option<bool>,
@@ -50,6 +109,7 @@ impl ConfigBuilder {
     pub fn new() -> Self {
         Self {
             data_dir: None,
+            database_file: None,
             index_dir: None,
             max_cache_size: None,
             wal_enabled: None,
@@ -65,6 +125,12 @@ impl ConfigBuilder {
     /// Sets the data directory
     pub fn data_dir<P: Into<PathBuf>>(mut self, path: P) -> Self {
         self.data_dir = Some(path.into());
+        self
+    }
+
+    /// Sets the database file path
+    pub fn database_file<P: Into<PathBuf>>(mut self, path: P) -> Self {
+        self.database_file = Some(path.into());
         self
     }
 
@@ -126,7 +192,8 @@ impl ConfigBuilder {
     pub fn build(self) -> Result<Config, OxidbError> {
         let config = Config {
             data_dir: self.data_dir.unwrap_or_else(|| PathBuf::from("data")),
-            index_dir: self.index_dir.unwrap_or_else(|| PathBuf::from("indexes")),
+            database_file: self.database_file.unwrap_or_else(|| PathBuf::from("oxidb.db")),
+            index_dir: self.index_dir.unwrap_or_else(|| PathBuf::from("oxidb_indexes")),
             max_cache_size: self.max_cache_size.unwrap_or(1024 * 1024), // 1MB default
             wal_enabled: self.wal_enabled.unwrap_or(true),
             auto_checkpoint_interval: self.auto_checkpoint_interval.unwrap_or(1000),
@@ -153,7 +220,8 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             data_dir: PathBuf::from("data"),
-            index_dir: PathBuf::from("indexes"),
+            database_file: PathBuf::from("oxidb.db"), // Default database file path
+            index_dir: PathBuf::from("oxidb_indexes"),
             max_cache_size: 1024 * 1024, // 1MB
             wal_enabled: true,
             auto_checkpoint_interval: 1000,
@@ -265,7 +333,7 @@ impl Config {
 
     /// Legacy compatibility method for database_path
     pub fn database_path(&self) -> PathBuf {
-        self.data_dir.join("oxidb.db")
+        self.database_file.clone()
     }
 
     /// Legacy compatibility method for wal_path
@@ -326,7 +394,7 @@ mod tests {
     fn test_default_config() {
         let config = Config::default();
         assert_eq!(config.data_dir, PathBuf::from("data"));
-        assert_eq!(config.index_dir, PathBuf::from("indexes"));
+        assert_eq!(config.index_dir, PathBuf::from("oxidb_indexes"));
         assert_eq!(config.max_cache_size, 1024 * 1024);
         assert!(config.wal_enabled);
         assert_eq!(config.auto_checkpoint_interval, 1000);
@@ -335,6 +403,7 @@ mod tests {
         assert!(!config.enable_vector_search);
         assert_eq!(config.vector_dimension, 128);
         assert_eq!(config.similarity_threshold, 0.7);
+        assert_eq!(config.database_file, PathBuf::from("oxidb.db"));
     }
 
     #[test]
@@ -357,6 +426,7 @@ mod tests {
         assert!(config.enable_vector_search);
         assert_eq!(config.vector_dimension, 256);
         assert_eq!(config.similarity_threshold, 0.8);
+        assert_eq!(config.database_file, PathBuf::from("oxidb.db"));
     }
 
     #[test]
@@ -388,16 +458,19 @@ mod tests {
         assert!(config.enable_vector_search);
         assert_eq!(config.vector_dimension, 256);
         assert_eq!(config.similarity_threshold, 0.8);
+        assert_eq!(config.database_file, PathBuf::from("oxidb.db"));
 
         // Test high performance config
         let config = Config::for_high_performance().unwrap();
         assert_eq!(config.max_cache_size, 10 * 1024 * 1024);
         assert_eq!(config.max_connections, 500);
+        assert_eq!(config.database_file, PathBuf::from("oxidb.db"));
 
         // Test testing config
         let config = Config::for_testing().unwrap();
         assert_eq!(config.max_cache_size, 64 * 1024);
         assert_eq!(config.max_connections, 10);
+        assert_eq!(config.database_file, PathBuf::from("oxidb.db"));
     }
 
     #[test]
@@ -428,6 +501,7 @@ mod tests {
         assert!(config.enable_vector_search);
         assert_eq!(config.vector_dimension, 256);
         assert_eq!(config.similarity_threshold, 0.8);
+        assert_eq!(config.database_file, PathBuf::from("oxidb.db"));
     }
 
     #[test]
@@ -443,8 +517,9 @@ mod tests {
         assert_eq!(config.data_dir, PathBuf::from("/tmp/test_data"));
         assert_eq!(config.max_cache_size, 2048);
         // Check that defaults are used for missing fields
-        assert_eq!(config.index_dir, PathBuf::from("indexes"));
+        assert_eq!(config.index_dir, PathBuf::from("oxidb_indexes"));
         assert!(config.wal_enabled);
+        assert_eq!(config.database_file, PathBuf::from("oxidb.db"));
     }
 
     #[test]
@@ -488,6 +563,7 @@ mod tests {
         let config = Config::load_or_default(Some(temp_file.path())).unwrap();
         assert_eq!(config.data_dir, PathBuf::from("/custom/data"));
         assert_eq!(config.max_cache_size, 4096);
+        assert_eq!(config.database_file, PathBuf::from("oxidb.db"));
     }
 
     #[test]
@@ -501,6 +577,6 @@ mod tests {
     fn test_path_buf_helpers() {
         let config = Config::default();
         assert_eq!(config.data_dir_path(), &PathBuf::from("data"));
-        assert_eq!(config.index_dir_path(), &PathBuf::from("indexes"));
+        assert_eq!(config.index_dir_path(), &PathBuf::from("oxidb_indexes"));
     }
 }
