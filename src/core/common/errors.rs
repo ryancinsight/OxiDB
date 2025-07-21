@@ -141,7 +141,7 @@ impl From<io::Error> for OxidbError {
 
 impl From<serde_json::Error> for OxidbError {
     fn from(error: serde_json::Error) -> Self {
-        OxidbError::Serialization(error.to_string())
+        OxidbError::Json(error.to_string())
     }
 }
 
