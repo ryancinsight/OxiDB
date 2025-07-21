@@ -192,6 +192,19 @@ impl WalWriter {
     }
 
     /// Check if periodic flush is due based on configuration.
+    ///
+    /// This method determines whether a periodic flush should be triggered
+    /// based on the `flush_interval_ms` configuration and the time elapsed
+    /// since the last flush (`last_flush_time`).
+    ///
+    /// # Behavior
+    /// - If `flush_interval_ms` is `None`, periodic flushes are disabled, and this method returns `false`.
+    /// - If `last_flush_time` is `None`, this method assumes no flush has occurred yet and returns `true`.
+    /// - Otherwise, it calculates the time elapsed since the last flush and compares it to `flush_interval_ms`.
+    ///
+    /// # Returns
+    /// - `true` if a periodic flush is due.
+    /// - `false` otherwise.
     fn is_periodic_flush_due(&self) -> bool {
         self.config.flush_interval_ms.map_or(false, |interval_ms| {
             self.last_flush_time.map_or(true, |last_flush| {
