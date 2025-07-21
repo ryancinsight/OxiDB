@@ -385,7 +385,7 @@ impl UndoPhase {
             };
 
             writer
-                .add_record(clr)
+                .add_record(&clr)
                 .map_err(|e| RecoveryError::UndoError(format!("Failed to write CLR: {}", e)))?;
 
             self.statistics.clrs_generated += 1;
@@ -417,7 +417,7 @@ impl UndoPhase {
             };
 
             writer
-                .add_record(clr)
+                .add_record(&clr)
                 .map_err(|e| RecoveryError::UndoError(format!("Failed to write CLR: {}", e)))?;
 
             self.statistics.clrs_generated += 1;
@@ -449,7 +449,7 @@ impl UndoPhase {
             };
 
             writer
-                .add_record(clr)
+                .add_record(&clr)
                 .map_err(|e| RecoveryError::UndoError(format!("Failed to write CLR: {}", e)))?;
 
             self.statistics.clrs_generated += 1;
@@ -467,7 +467,7 @@ impl UndoPhase {
                 prev_lsn: 0, // This will be the last record for the transaction
             };
 
-            writer.add_record(abort_record).map_err(|e| {
+            writer.add_record(&abort_record).map_err(|e| {
                 RecoveryError::UndoError(format!("Failed to write abort record: {}", e))
             })?;
 
@@ -578,7 +578,7 @@ mod tests {
         let mut writer = WalWriter::new(temp_file.path().to_path_buf(), config);
 
         for record in records {
-            writer.add_record(record).unwrap();
+            writer.add_record(&record).unwrap();
         }
         writer.flush().unwrap();
 
