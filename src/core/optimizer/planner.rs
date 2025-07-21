@@ -114,6 +114,7 @@ pub struct ColumnStats {
 
 /// Cost-based query planner
 /// Follows SOLID's Single Responsibility Principle
+#[derive(Debug)]
 pub struct CostBasedPlanner {
     table_stats: HashMap<String, TableStats>,
     schemas: HashMap<String, Schema>,

@@ -77,14 +77,14 @@ fn read_data_into_cache_internal(
     let file = match File::open(file_to_load) {
         Ok(f) => f,
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(()),
-        Err(e) => return Err(OxidbError::Io(e.to_string())),
+        Err(e) => return Err(OxidbError::Io(e)),
     };
 
     let mut reader = BufReader::new(file);
     loop {
         // Check for EOF before trying to deserialize key length.
         // fill_buf returns an empty slice at EOF.
-        let buffer = reader.fill_buf().map_err(|e| OxidbError::Io(e.to_string()))?;
+        let buffer = reader.fill_buf().map_err(|e| OxidbError::Io(e))?;
         if buffer.is_empty() {
             break; // Clean EOF
         }
@@ -100,7 +100,7 @@ fn read_data_into_cache_internal(
             })?;
 
         // Need to check for EOF again before deserializing value, in case file ends after a valid key.
-        let buffer_val_check = reader.fill_buf().map_err(|e| OxidbError::Io(e.to_string()))?;
+        let buffer_val_check = reader.fill_buf().map_err(|e| OxidbError::Io(e))?;
         if buffer_val_check.is_empty() {
             return Err(OxidbError::StorageError(format!(
                 // Changed
@@ -152,7 +152,7 @@ pub(super) fn save_data_to_disk(
         .create(true)
         .truncate(true)
         .open(&temp_file_path)
-        .map_err(|e| OxidbError::Io(e.to_string()))?;
+        .map_err(|e| OxidbError::Io(e))?;
 
     let mut writer = BufWriter::new(temp_file);
 
@@ -183,12 +183,12 @@ pub(super) fn save_data_to_disk(
         // then nothing is written for this key, effectively removing it from the new data file.
     }
 
-    writer.flush().map_err(|e| OxidbError::Io(e.to_string()))?;
-    writer.get_ref().sync_all().map_err(|e| OxidbError::Io(e.to_string()))?;
+    writer.flush().map_err(|e| OxidbError::Io(e))?;
+    writer.get_ref().sync_all().map_err(|e| OxidbError::Io(e))?;
 
     rename(&temp_file_path, file_path).map_err(|e| {
         let _ = std::fs::remove_file(&temp_file_path);
-        OxidbError::Io(e.to_string())
+        OxidbError::Io(e)
     })?;
 
     // Delete WAL file after successful save to disk

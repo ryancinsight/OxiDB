@@ -198,12 +198,12 @@ impl WalWriter {
                 &self.wal_file_path
             );
         }
-        let file = file_result.map_err(|e| OxidbError::Io(e.to_string()))?;
+        let file = file_result.map_err(|e| OxidbError::Io(e))?;
 
         let mut writer = BufWriter::new(file);
         <WalEntry as DataSerializer<WalEntry>>::serialize(entry, &mut writer)?;
-        writer.flush().map_err(|e| OxidbError::Io(e.to_string()))?;
-        writer.get_ref().sync_all().map_err(|e| OxidbError::Io(e.to_string()))?;
+        writer.flush().map_err(|e| OxidbError::Io(e))?;
+        writer.get_ref().sync_all().map_err(|e| OxidbError::Io(e))?;
 
         Ok(())
     }
@@ -243,9 +243,9 @@ impl DataDeserializer<WalEntry> for WalEntry {
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 // This typically means the WAL file ended cleanly or is empty.
                 // If called when expecting an entry (e.g. mid-recovery), it's an error.
-                return Err(OxidbError::Io("Reached end of WAL stream while expecting operation type".to_string()));
+                return Err(OxidbError::io_error("Reached end of WAL stream while expecting operation type".to_string()));
             }
-            Err(e) => return Err(OxidbError::Io(e.to_string())),
+            Err(e) => return Err(OxidbError::Io(e)),
         }
         let operation_type = operation_type_buffer[0];
 
@@ -370,9 +370,9 @@ impl DataDeserializer<WalEntry> for WalEntry {
 /// to a more context-specific error message.
 fn map_eof_error(e: std::io::Error, context: &str) -> OxidbError {
     if e.kind() == std::io::ErrorKind::UnexpectedEof {
-        OxidbError::Io(format!("Reached end of WAL stream while expecting {}", context))
+        OxidbError::io_error(format!("Reached end of WAL stream while expecting {}", context))
     } else {
-        OxidbError::Io(e.to_string())
+        OxidbError::Io(e)
     }
 }
 
@@ -383,8 +383,8 @@ fn map_deserialization_eof(e: OxidbError, context: &str) -> OxidbError {
     // Changed
     if let OxidbError::Io(io_err) = &e {
         // Changed
-        if io_err.contains("UnexpectedEof") {
-            return OxidbError::Io(format!("Reached end of WAL stream while expecting {}", context));
+        if io_err.kind() == std::io::ErrorKind::UnexpectedEof {
+            return OxidbError::io_error(format!("Reached end of WAL stream while expecting {}", context));
         }
     }
     e // Return original error if not an EOF related to Vec<u8> deserialization

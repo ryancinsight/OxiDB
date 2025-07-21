@@ -3,9 +3,9 @@
 //! This module defines the core data structures used in graph operations.
 //! Following SOLID principles with clear, single-purpose types.
 
-use crate::core::types::Value;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
+use crate::core::common::types::Value;
 
 /// Unique identifier for graph nodes
 pub type NodeId = u64;
@@ -235,7 +235,7 @@ impl GraphData {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::types::DataType;
+    use crate::core::common::types::DataType;
 
     #[test]
     fn test_node_creation() {

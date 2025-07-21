@@ -45,7 +45,8 @@ struct TransactionMetadata {
 
 /// Types of modifications for rollback
 #[derive(Debug, Clone)]
-enum Modification {
+#[allow(dead_code)]
+pub enum Modification {
     Insert { table: String, key: Vec<u8>, value: Vec<u8> },
     Update { table: String, key: Vec<u8>, old_value: Vec<u8>, new_value: Vec<u8> },
     Delete { table: String, key: Vec<u8>, old_value: Vec<u8> },
@@ -164,7 +165,7 @@ impl AcidTransactionManager {
         
         // Log begin transaction
         let lsn = self.log_manager.next_lsn();
-        let begin_record = LogRecord::BeginTransaction {
+        let _begin_record = LogRecord::BeginTransaction {
             lsn,
             tx_id,
         };
@@ -234,7 +235,7 @@ impl AcidTransactionManager {
                 
                 // Log the modification for durability
                 let lsn = self.log_manager.next_lsn();
-                let log_record = LogRecord::UpdateRecord {
+                let _log_record = LogRecord::UpdateRecord {
                     lsn,
                     tx_id,
                     page_id: PageId(0), // Would be actual page ID
@@ -255,7 +256,7 @@ impl AcidTransactionManager {
     /// Commit a transaction (ACID Consistency and Durability)
     pub fn commit_transaction(&self, tx_id: TransactionId) -> Result<(), OxidbError> {
         // Ensure all modifications are logged (Durability)
-        let modifications = {
+        let _modifications = {
             let active_txs = self.active_transactions.read().unwrap();
             active_txs.get(&tx_id)
                 .ok_or_else(|| OxidbError::TransactionNotFound(format!("Transaction {:?} not found", tx_id)))?

@@ -5,8 +5,8 @@
 
 use super::types::{Node, Edge, NodeId, EdgeId, GraphData, Relationship};
 use super::{GraphOperations, GraphQuery, GraphTransaction, TraversalDirection};
-use crate::core::common::OxidbError;
-use crate::core::types::DataType;
+use crate::core::common::errors::OxidbError;
+use crate::core::common::types::Value;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 // Remove unused imports
@@ -232,7 +232,7 @@ impl GraphOperations for InMemoryGraphStore {
 }
 
 impl GraphQuery for InMemoryGraphStore {
-    fn find_nodes_by_property(&self, property: &str, value: &DataType) -> Result<Vec<NodeId>, OxidbError> {
+    fn find_nodes_by_property(&self, property: &str, value: &Value) -> Result<Vec<NodeId>, OxidbError> {
         let mut matching_nodes = Vec::new();
         
         for (node_id, node) in &self.nodes {
@@ -592,7 +592,7 @@ impl GraphOperations for PersistentGraphStore {
 }
 
 impl GraphQuery for PersistentGraphStore {
-    fn find_nodes_by_property(&self, property: &str, value: &DataType) -> Result<Vec<NodeId>, OxidbError> {
+    fn find_nodes_by_property(&self, property: &str, value: &Value) -> Result<Vec<NodeId>, OxidbError> {
         self.memory_store.find_nodes_by_property(property, value)
     }
 
@@ -643,11 +643,11 @@ mod tests {
         
         // Add nodes
         let node1_data = GraphData::new("user".to_string())
-            .with_property("name".to_string(), DataType::String("Alice".to_string()));
+            .with_property("name".to_string(), Value::Text("Alice".to_string()));
         let node1_id = store.add_node(node1_data).unwrap();
         
         let node2_data = GraphData::new("user".to_string())
-            .with_property("name".to_string(), DataType::String("Bob".to_string()));
+            .with_property("name".to_string(), Value::Text("Bob".to_string()));
         let node2_id = store.add_node(node2_data).unwrap();
         
         // Add edge

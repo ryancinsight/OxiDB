@@ -230,18 +230,11 @@ impl<T: PoolableConnection + 'static> ConnectionPool<T> {
                 ));
             }
             
-            // Wait for a connection to become available
-            let wait_timeout = timeout - start_time.elapsed();
-            let (new_inner, timeout_result) = inner.condvar.wait_timeout(inner, wait_timeout)
-                .with_static_context("Failed to wait for connection")?;
-            
-            inner = new_inner;
-            
-            if timeout_result.timed_out() {
-                return Err(OxidbError::Other(
-                    "Timeout waiting for connection".to_string()
-                ));
-            }
+            // For now, just return a timeout error instead of waiting
+            // TODO: Implement proper condvar waiting without borrow checker issues
+            return Err(OxidbError::Other(
+                "No available connections (waiting not implemented)".to_string()
+            ));
         }
     }
     

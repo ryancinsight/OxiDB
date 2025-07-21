@@ -8,10 +8,10 @@ use std::io;
 
 /// Main error type for Oxidb operations
 /// Follows SOLID's Single Responsibility Principle - each variant represents a specific error category
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum OxidbError {
     /// IO related errors
-    Io(String),
+    Io(std::io::Error),
     
     /// Serialization/Deserialization errors
     Serialization(String),
@@ -26,9 +26,12 @@ pub enum OxidbError {
     LockTimeout(String),
     DeadlockDetected(String),
     LockConflict { message: String },
+    Lock(String),
+    LockAcquisitionTimeout { key: Vec<u8>, current_tx: u64, timeout: u64 },
     
     /// Storage related errors
     StorageError(String),
+    Storage(String),
     
     /// Buffer pool related errors
     BufferPool(String),
@@ -57,11 +60,15 @@ pub enum OxidbError {
     TableNotFound(String),
     TableAlreadyExists(String),
     
+    /// General already exists error
+    AlreadyExists { name: String },
+    
     /// Index related errors
     Index(String),
     
     /// Configuration errors
     ConfigError(String),
+    Configuration(String),
     
     /// Network related errors
     NetworkError(String),
@@ -92,7 +99,7 @@ pub enum OxidbError {
 impl fmt::Display for OxidbError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            OxidbError::Io(msg) => write!(f, "IO Error: {}", msg),
+            OxidbError::Io(err) => write!(f, "IO Error: {}", err),
             OxidbError::Serialization(msg) => write!(f, "Serialization Error: {}", msg),
             OxidbError::Deserialization(msg) => write!(f, "Deserialization Error: {}", msg),
             OxidbError::Json(msg) => write!(f, "JSON Error: {}", msg),
@@ -101,7 +108,12 @@ impl fmt::Display for OxidbError {
             OxidbError::LockTimeout(msg) => write!(f, "Lock Timeout: {}", msg),
             OxidbError::DeadlockDetected(msg) => write!(f, "Deadlock Detected: {}", msg),
             OxidbError::LockConflict { message } => write!(f, "Lock Conflict: {}", message),
+            OxidbError::Lock(msg) => write!(f, "Lock Error: {}", msg),
+            OxidbError::LockAcquisitionTimeout { key, current_tx, timeout } => {
+                write!(f, "Lock Acquisition Timeout: key={:?}, tx={}, timeout={}", key, current_tx, timeout)
+            }
             OxidbError::StorageError(msg) => write!(f, "Storage Error: {}", msg),
+            OxidbError::Storage(msg) => write!(f, "Storage Error: {}", msg),
             OxidbError::BufferPool(msg) => write!(f, "Buffer Pool Error: {}", msg),
             OxidbError::Internal(msg) => write!(f, "Internal Error: {}", msg),
             OxidbError::QueryError(msg) => write!(f, "Query Error: {}", msg),
@@ -113,8 +125,10 @@ impl fmt::Display for OxidbError {
             OxidbError::NotImplemented { feature } => write!(f, "Not Implemented: {}", feature),
             OxidbError::TableNotFound(msg) => write!(f, "Table Not Found: {}", msg),
             OxidbError::TableAlreadyExists(msg) => write!(f, "Table Already Exists: {}", msg),
+            OxidbError::AlreadyExists { name } => write!(f, "Already Exists: {}", name),
             OxidbError::Index(msg) => write!(f, "Index Error: {}", msg),
             OxidbError::ConfigError(msg) => write!(f, "Config Error: {}", msg),
+            OxidbError::Configuration(msg) => write!(f, "Configuration Error: {}", msg),
             OxidbError::NetworkError(msg) => write!(f, "Network Error: {}", msg),
             OxidbError::AuthError(msg) => write!(f, "Auth Error: {}", msg),
             OxidbError::VectorDimensionMismatch { dim1, dim2 } => {
@@ -132,10 +146,18 @@ impl fmt::Display for OxidbError {
 
 impl std::error::Error for OxidbError {}
 
+impl OxidbError {
+    /// Create an IO error with a custom message
+    pub fn io_error(message: String) -> Self {
+        use std::io::{Error, ErrorKind};
+        OxidbError::Io(Error::new(ErrorKind::Other, message))
+    }
+}
+
 // Implement From traits for common error types
 impl From<io::Error> for OxidbError {
     fn from(error: io::Error) -> Self {
-        OxidbError::Io(error.to_string())
+        OxidbError::Io(error)
     }
 }
 

@@ -8,7 +8,7 @@ use crate::core::query::sql::ast::ConditionTree;
 
 /// Trait for query optimization rules
 /// Follows SOLID's Open/Closed Principle - rules can be added without modifying existing code
-pub trait OptimizationRule {
+pub trait OptimizationRule: std::fmt::Debug {
     /// Apply the optimization rule to a condition tree
     fn apply(&self, condition: &ConditionTree) -> Result<ConditionTree, OxidbError>;
     
@@ -69,6 +69,14 @@ impl RuleManager {
 impl Default for RuleManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl std::fmt::Debug for RuleManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RuleManager")
+            .field("rules_count", &self.rules.len())
+            .finish()
     }
 }
 
