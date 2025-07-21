@@ -317,10 +317,9 @@ mod tests {
         assert!(result.is_err());
         match result.unwrap_err() {
             crate::OxidbError::Configuration(msg) => {
-                // Changed DbError::ConfigError to OxidbError::Configuration
                 assert!(msg.contains("Failed to parse config file"));
             }
-            e => panic!("Expected OxidbError::Configuration, got {:?}", e), // Changed
+            e => panic!("Expected OxidbError::Configuration, got {:?}", e),
         }
     }
 }

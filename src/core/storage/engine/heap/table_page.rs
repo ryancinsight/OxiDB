@@ -1,4 +1,4 @@
-use crate::core::common::errors::OxidbError;
+use crate::core::common::error::OxidbError;
 use crate::core::common::types::ids::SlotId;
 use crate::core::storage::engine::page::{PAGE_HEADER_SIZE, PAGE_SIZE};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -193,7 +193,7 @@ impl TablePage {
     pub fn init(page_data: &mut [u8]) -> Result<(), OxidbError> {
         if page_data.len() < SLOTS_ARRAY_DATA_OFFSET {
             // Check if page can even hold the basic header
-            return Err(OxidbError::StorageError(
+            return Err(OxidbError::Storage(
                 "Page data too small to initialize as TablePage".to_string(),
             ));
         }
@@ -271,12 +271,12 @@ impl TablePage {
 
         let record_data_write_end =
             record_data_write_offset.checked_add(data_len).ok_or_else(|| {
-                OxidbError::StorageError("Record data offset calculation overflow".to_string())
+                OxidbError::Storage("Record data offset calculation overflow".to_string())
             })?;
 
         // Final space check: does the end of data exceed page capacity?
         if record_data_write_end as usize > page_data.len() {
-            return Err(OxidbError::StorageError(
+            return Err(OxidbError::Storage(
                 "Page full: no space for record data (after considering slot array)".to_string(),
             ));
         }
@@ -399,7 +399,7 @@ impl TablePage {
             // New data is larger. Current simple model: return error.
             // A more complex version might try to "deallocate" the old record (like delete)
             // and then "insert" the new record if space allows.
-            return Err(OxidbError::StorageError(
+            return Err(OxidbError::Storage(
                 "Update failed: new data is larger than old data and in-place update is not supported for larger data.".to_string()
             ));
             // TODO: Advanced update: try to use free space if new_data > old_data.

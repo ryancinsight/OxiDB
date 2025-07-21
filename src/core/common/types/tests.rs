@@ -86,8 +86,8 @@ fn test_row_serialization() {
 fn test_schema_serialization_and_get_column_index() {
     let schema = Schema {
         columns: vec![
-            ColumnDef { name: "id".to_string(), data_type: DataType::Integer },
-            ColumnDef { name: "name".to_string(), data_type: DataType::Text },
+            ColumnDef { name: "id".to_string(), data_type: DataType::Integer, is_nullable: false },
+            ColumnDef { name: "name".to_string(), data_type: DataType::Text, is_nullable: true },
         ],
     };
 
@@ -98,7 +98,7 @@ fn test_schema_serialization_and_get_column_index() {
     let serialized = serde_json::to_string(&schema).unwrap();
     assert_eq!(
         serialized,
-        "{\"columns\":[{\"name\":\"id\",\"data_type\":\"Integer\"},{\"name\":\"name\",\"data_type\":\"Text\"}]}"
+        "{\"columns\":[{\"name\":\"id\",\"data_type\":\"Integer\",\"is_nullable\":false},{\"name\":\"name\",\"data_type\":\"Text\",\"is_nullable\":true}]}"
     );
     let deserialized: Schema = serde_json::from_str(&serialized).unwrap();
     assert_eq!(deserialized, schema);

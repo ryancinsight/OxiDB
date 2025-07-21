@@ -10,7 +10,7 @@ use crate::core::graph::{GraphOperations, GraphQuery, NodeId, EdgeId, GraphData,
 use crate::core::graph::storage::InMemoryGraphStore;
 use crate::core::graph::traversal::TraversalDirection;
 use crate::core::common::OxidbError;
-use crate::core::types::{DataType, Value};
+use crate::core::types::Value;
 use std::collections::{HashMap, HashSet};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -549,7 +549,7 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
     async fn add_relationship(&mut self, relationship: KnowledgeEdge) -> Result<EdgeId, OxidbError> {
         let rel = Relationship::new(relationship.relationship_type.clone());
         let edge_data = GraphData::new("relationship".to_string())
-            .with_property("confidence".to_string(), DataType::Float(relationship.confidence_score));
+            .with_property("confidence".to_string(), Value::Float(relationship.confidence_score));
         
         self.graph_store.add_edge(
             relationship.from_entity,

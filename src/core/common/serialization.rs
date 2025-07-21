@@ -8,7 +8,7 @@ use std::io::{Read, Write}; // Added
 
 /// Serializes a DataType into a Vec<u8> using JSON.
 pub fn serialize_data_type(data_type: &DataType) -> Result<Vec<u8>, OxidbError> {
-    serde_json::to_vec(data_type).map_err(|e| OxidbError::Json(e.to_string()))
+    serde_json::to_vec(data_type).map_err(|e| OxidbError::Json(e))
 }
 
 /// Deserializes a Vec<u8> (expected to be JSON) into a DataType.
@@ -33,7 +33,7 @@ pub fn deserialize_data_type(bytes: &[u8]) -> Result<DataType, OxidbError> {
                     bytes
                 )));
             }
-            Err(OxidbError::Json(e.to_string())) // Propagate original error kind
+            Err(OxidbError::Json(e)) // Propagate original error kind
         }
     }
 }

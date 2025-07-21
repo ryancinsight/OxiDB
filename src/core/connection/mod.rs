@@ -146,19 +146,19 @@ impl PoolConfig {
     /// Validates the configuration
     pub fn validate(&self) -> Result<(), OxidbError> {
         if self.min_connections > self.max_connections {
-            return Err(OxidbError::ConfigError(
+            return Err(OxidbError::Configuration(
                 "min_connections cannot be greater than max_connections".to_string(),
             ));
         }
 
         if self.max_connections == 0 {
-            return Err(OxidbError::ConfigError(
+            return Err(OxidbError::Configuration(
                 "max_connections must be greater than 0".to_string(),
             ));
         }
 
         if self.acquire_timeout.is_zero() {
-            return Err(OxidbError::ConfigError(
+            return Err(OxidbError::Configuration(
                 "acquire_timeout must be greater than 0".to_string(),
             ));
         }

@@ -25,8 +25,8 @@ pub use traversal::{GraphTraversal, TraversalDirection, TraversalStrategy};
 pub use algorithms::{GraphAlgorithms, PathFinding};
 pub use types::{NodeId, EdgeId, Node, Edge, GraphData, Relationship};
 
-use crate::core::common::OxidbError;
-use crate::core::types::DataType;
+use crate::core::common::error::OxidbError;
+use crate::core::common::types::Value;
 // Remove unused import
 
 /// Core graph operations trait following Interface Segregation Principle
@@ -56,7 +56,7 @@ pub trait GraphOperations {
 /// Graph query interface for complex graph operations
 pub trait GraphQuery {
     /// Find nodes by properties
-    fn find_nodes_by_property(&self, property: &str, value: &DataType) -> Result<Vec<NodeId>, OxidbError>;
+    fn find_nodes_by_property(&self, property: &str, value: &Value) -> Result<Vec<NodeId>, OxidbError>;
     
     /// Find shortest path between two nodes
     fn find_shortest_path(&self, from: NodeId, to: NodeId) -> Result<Option<Vec<NodeId>>, OxidbError>;
@@ -100,7 +100,7 @@ impl GraphFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::types::DataType;
+
 
     #[test]
     fn test_graph_factory_memory() {
@@ -114,11 +114,11 @@ mod tests {
         
         // Add nodes
         let node1_data = GraphData::new("user".to_string())
-            .with_property("name".to_string(), DataType::String("Alice".to_string()));
+            .with_property("name".to_string(), Value::Text("Alice".to_string()));
         let node1_id = graph.add_node(node1_data).unwrap();
         
         let node2_data = GraphData::new("user".to_string())
-            .with_property("name".to_string(), DataType::String("Bob".to_string()));
+            .with_property("name".to_string(), Value::Text("Bob".to_string()));
         let node2_id = graph.add_node(node2_data).unwrap();
         
         // Add edge
@@ -142,15 +142,15 @@ mod tests {
         
         // Test GraphOperations - basic CRUD operations
         let node1_data = GraphData::new("person".to_string())
-            .with_property("name".to_string(), DataType::String("Alice".to_string()));
+            .with_property("name".to_string(), Value::Text("Alice".to_string()));
         let node1_id = graph.add_node(node1_data).unwrap();
         
         let node2_data = GraphData::new("person".to_string())
-            .with_property("name".to_string(), DataType::String("Bob".to_string()));
+            .with_property("name".to_string(), Value::Text("Bob".to_string()));
         let node2_id = graph.add_node(node2_data).unwrap();
         
         let node3_data = GraphData::new("person".to_string())
-            .with_property("name".to_string(), DataType::String("Charlie".to_string()));
+            .with_property("name".to_string(), Value::Text("Charlie".to_string()));
         let node3_id = graph.add_node(node3_data).unwrap();
         
         // Add edges to create a path: Alice -> Bob -> Charlie
@@ -160,7 +160,7 @@ mod tests {
         
         // Test GraphQuery - advanced querying capabilities
         // Find nodes by property
-        let alice_nodes = graph.find_nodes_by_property("name", &DataType::String("Alice".to_string())).unwrap();
+        let alice_nodes = graph.find_nodes_by_property("name", &Value::Text("Alice".to_string())).unwrap();
         assert_eq!(alice_nodes.len(), 1);
         assert_eq!(alice_nodes[0], node1_id);
         
@@ -179,7 +179,7 @@ mod tests {
         
         // Add node in transaction
         let node4_data = GraphData::new("person".to_string())
-            .with_property("name".to_string(), DataType::String("Diana".to_string()));
+            .with_property("name".to_string(), Value::Text("Diana".to_string()));
         let node4_id = graph.add_node(node4_data).unwrap();
         
         // Commit transaction
@@ -218,15 +218,15 @@ mod tests {
         
         // Test GraphOperations - basic CRUD operations
         let node1_data = GraphData::new("person".to_string())
-            .with_property("name".to_string(), DataType::String("Alice".to_string()));
+            .with_property("name".to_string(), Value::Text("Alice".to_string()));
         let node1_id = graph.add_node(node1_data).unwrap();
         
         let node2_data = GraphData::new("person".to_string())
-            .with_property("name".to_string(), DataType::String("Bob".to_string()));
+            .with_property("name".to_string(), Value::Text("Bob".to_string()));
         let node2_id = graph.add_node(node2_data).unwrap();
         
         let node3_data = GraphData::new("person".to_string())
-            .with_property("name".to_string(), DataType::String("Charlie".to_string()));
+            .with_property("name".to_string(), Value::Text("Charlie".to_string()));
         let node3_id = graph.add_node(node3_data).unwrap();
         
         // Add edges to create a path: Alice -> Bob -> Charlie
@@ -235,7 +235,7 @@ mod tests {
         graph.add_edge(node2_id, node3_id, friendship, None).unwrap();
         
         // Test GraphQuery - advanced querying capabilities (now accessible!)
-        let alice_nodes = graph.find_nodes_by_property("name", &DataType::String("Alice".to_string())).unwrap();
+        let alice_nodes = graph.find_nodes_by_property("name", &Value::Text("Alice".to_string())).unwrap();
         assert_eq!(alice_nodes.len(), 1);
         assert_eq!(alice_nodes[0], node1_id);
         
@@ -251,7 +251,7 @@ mod tests {
         graph.begin_transaction().unwrap();
         
         let node4_data = GraphData::new("person".to_string())
-            .with_property("name".to_string(), DataType::String("Diana".to_string()));
+            .with_property("name".to_string(), Value::Text("Diana".to_string()));
         let node4_id = graph.add_node(node4_data).unwrap();
         
         graph.commit_transaction().unwrap();

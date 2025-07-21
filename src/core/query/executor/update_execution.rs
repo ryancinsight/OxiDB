@@ -182,12 +182,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
                             // NOT NULL Check
                             if !col_def.is_nullable && *new_value_for_column == DataType::Null {
-                                return Err(OxidbError::ConstraintViolation {
-                                    message: format!(
-                                        "NOT NULL constraint failed for column '{}' in table '{}'",
-                                        col_def.name, source_table_name
-                                    ),
-                                });
+                                return Err(OxidbError::ConstraintViolation(format!(
+                                    "NOT NULL constraint failed for column '{}' in table '{}'",
+                                    col_def.name, source_table_name
+                                )));
                             }
 
                             // UNIQUE / PRIMARY KEY Uniqueness Check

@@ -1,6 +1,6 @@
 use super::disk_manager::DiskManager;
 use super::page::PAGE_SIZE; // PageId removed from here
-use crate::core::common::errors::OxidbError;
+use crate::core::common::error::OxidbError;
 use crate::core::common::types::PageId as CommonPageId; // Using alias to avoid conflict if super::page::PageId is different
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, RwLock};

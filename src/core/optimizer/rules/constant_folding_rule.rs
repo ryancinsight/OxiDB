@@ -13,6 +13,7 @@ use crate::core::query::sql::ast::{ConditionTree, AstLiteralValue, AstExpression
 
 /// Rule that folds constant expressions at compile time
 /// Follows SOLID's Single Responsibility Principle
+#[derive(Debug)]
 pub struct ConstantFoldingRule;
 
 impl OptimizationRule for ConstantFoldingRule {
@@ -111,7 +112,7 @@ impl ConstantFoldingRule {
                 
                 // Double negation elimination: NOT(NOT(x)) -> x
                 if let ConditionTree::Not(inner_inner) = &folded_inner {
-                    return Ok((*inner_inner).clone());
+                    return Ok(inner_inner.as_ref().clone());
                 }
                 
                 Ok(ConditionTree::Not(Box::new(folded_inner)))

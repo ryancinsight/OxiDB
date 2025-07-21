@@ -88,7 +88,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             store: Arc::new(RwLock::new(store)),
             transaction_manager,
             lock_manager: LockManager::new(),
-            optimizer: Optimizer::new(index_manager_arc.clone()), // Initialize optimizer
+            optimizer: Optimizer::new(), // Initialize optimizer
             index_manager: index_manager_arc,
             log_manager,                          // Store log_manager
             auto_increment_state: HashMap::new(), // Initialize auto-increment state
@@ -216,12 +216,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                         None => {
                             // INSERT
                             if !pks.is_empty() {
-                                Err(OxidbError::ConstraintViolation {
-                                    message: format!(
-                                        "UNIQUE constraint failed for column '{}' in table '{}'. Value {:?} already exists.",
-                                        column_to_check.name, table_name, value_to_check
-                                    ),
-                                })
+                                Err(OxidbError::ConstraintViolation(format!(
+                                    "UNIQUE constraint failed for column '{}' in table '{}'. Value {:?} already exists.",
+                                    column_to_check.name, table_name, value_to_check
+                                )))
                             } else {
                                 Ok(())
                             }
@@ -230,12 +228,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                             // UPDATE
                             let current_pk_vec = current_pk.to_vec();
                             if pks.iter().any(|pk_from_index| *pk_from_index != current_pk_vec) {
-                                Err(OxidbError::ConstraintViolation {
-                                    message: format!(
-                                        "UNIQUE constraint failed for column '{}' in table '{}'. Value {:?} already exists in another row.",
-                                        column_to_check.name, table_name, value_to_check
-                                    ),
-                                })
+                                Err(OxidbError::ConstraintViolation(format!(
+                                    "UNIQUE constraint failed for column '{}' in table '{}'. Value {:?} already exists in another row.",
+                                    column_to_check.name, table_name, value_to_check
+                                )))
                             } else {
                                 Ok(())
                             }

@@ -1,7 +1,7 @@
 // src/core/rag/retriever.rs
 
 use super::core_components::{Document, Embedding};
-use crate::core::common::errors::OxidbError;
+use crate::core::common::error::OxidbError;
 use crate::core::vector::similarity::{cosine_similarity, dot_product};
 use async_trait::async_trait; // Assuming these are pub
 

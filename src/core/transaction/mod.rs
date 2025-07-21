@@ -113,4 +113,5 @@ pub mod manager;
 pub use lock_manager::{LockManager, LockType};
 pub use manager::TransactionManager;
 // pub use transaction::{Transaction, TransactionState}; // This line is removed - already defined above
-pub use crate::core::common::errors::TransactionError;
+// TransactionError is now part of the main OxidbError enum
+// pub use crate::core::common::error::TransactionError;

@@ -15,6 +15,7 @@ pub use rule::{OptimizationRule, RuleManager};
 
 /// Main optimizer interface
 /// Follows SOLID's Single Responsibility Principle - coordinates optimization
+#[derive(Debug)]
 pub struct Optimizer {
     planner: CostBasedPlanner,
     rule_manager: RuleManager,
@@ -37,6 +38,32 @@ impl Optimizer {
     /// Get the rule manager
     pub fn rule_manager(&self) -> &RuleManager {
         &self.rule_manager
+    }
+    
+    /// Build an initial logical plan from an AST statement
+    pub fn build_initial_plan(&self, statement: &crate::core::query::sql::ast::Statement) -> Result<QueryPlanNode, crate::core::common::error::OxidbError> {
+        use crate::core::query::sql::ast::Statement;
+        
+        match statement {
+            Statement::Select(select_stmt) => {
+                // Convert from the new PlanNode system to the legacy QueryPlanNode system
+                // Following YAGNI principle - use the simpler system for now
+                Ok(QueryPlanNode::TableScan {
+                    table_name: select_stmt.from_clause.name.clone(),
+                    alias: select_stmt.from_clause.alias.clone(),
+                })
+            }
+            _ => Err(crate::core::common::error::OxidbError::NotImplemented { 
+                feature: "Non-SELECT statements in optimizer".to_string() 
+            })
+        }
+    }
+    
+    /// Optimize a logical plan using optimization rules
+    pub fn optimize(&self, plan: QueryPlanNode) -> Result<QueryPlanNode, crate::core::common::error::OxidbError> {
+        // For now, just return the plan as-is
+        // In the future, this would apply optimization rules
+        Ok(plan)
     }
     
     /// Get mutable access to the planner

@@ -142,7 +142,7 @@ mod tests {
 
         // Try to deserialize again, expecting EOF
         match WalEntry::deserialize(&mut cursor) {
-            Err(OxidbError::Io(e)) if e.contains("UnexpectedEof") => {
+            Err(OxidbError::Io(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 // This is the expected outcome
             }
             Ok(entry) => panic!("Expected EOF error, but got an entry: {:?}", entry),
@@ -198,12 +198,12 @@ impl WalWriter {
                 &self.wal_file_path
             );
         }
-        let file = file_result.map_err(|e| OxidbError::Io(e.to_string()))?;
+        let file = file_result.map_err(|e| OxidbError::Io(e))?;
 
         let mut writer = BufWriter::new(file);
         <WalEntry as DataSerializer<WalEntry>>::serialize(entry, &mut writer)?;
-        writer.flush().map_err(|e| OxidbError::Io(e.to_string()))?;
-        writer.get_ref().sync_all().map_err(|e| OxidbError::Io(e.to_string()))?;
+        writer.flush().map_err(|e| OxidbError::Io(e))?;
+        writer.get_ref().sync_all().map_err(|e| OxidbError::Io(e))?;
 
         Ok(())
     }
@@ -241,11 +241,10 @@ impl DataDeserializer<WalEntry> for WalEntry {
         match reader.read_exact(&mut operation_type_buffer) {
             Ok(_) => (),
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                // This typically means the WAL file ended cleanly or is empty.
-                // If called when expecting an entry (e.g. mid-recovery), it's an error.
-                return Err(OxidbError::Io("Reached end of WAL stream while expecting operation type".to_string()));
+                // Return the original EOF error so callers can handle it appropriately
+                return Err(OxidbError::Io(e));
             }
-            Err(e) => return Err(OxidbError::Io(e.to_string())),
+            Err(e) => return Err(OxidbError::Io(e)),
         }
         let operation_type = operation_type_buffer[0];
 
@@ -368,24 +367,15 @@ impl DataDeserializer<WalEntry> for WalEntry {
 
 /// Helper function to map EOF errors encountered during WAL deserialization
 /// to a more context-specific error message.
-fn map_eof_error(e: std::io::Error, context: &str) -> OxidbError {
-    if e.kind() == std::io::ErrorKind::UnexpectedEof {
-        OxidbError::Io(format!("Reached end of WAL stream while expecting {}", context))
-    } else {
-        OxidbError::Io(e.to_string())
-    }
+fn map_eof_error(e: std::io::Error, _context: &str) -> OxidbError {
+    // Always return the original IO error to maintain consistent error handling
+    OxidbError::Io(e)
 }
 
 /// Helper function to specifically handle EOF errors that might occur during
 /// the deserialization of length-prefixed data (like keys or values) within a WAL entry.
 /// It distinguishes general I/O errors from those indicating a truncated entry part.
-fn map_deserialization_eof(e: OxidbError, context: &str) -> OxidbError {
-    // Changed
-    if let OxidbError::Io(io_err) = &e {
-        // Changed
-        if io_err.contains("UnexpectedEof") {
-            return OxidbError::Io(format!("Reached end of WAL stream while expecting {}", context));
-        }
-    }
-    e // Return original error if not an EOF related to Vec<u8> deserialization
+fn map_deserialization_eof(e: OxidbError, _context: &str) -> OxidbError {
+    // Always return the original error to maintain consistent error handling
+    e
 }

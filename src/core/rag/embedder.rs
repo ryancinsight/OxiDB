@@ -1,7 +1,7 @@
 // src/core/rag/embedder.rs
 
 use super::core_components::{Document, Embedding};
-use crate::core::common::errors::OxidbError;
+use crate::core::common::error::OxidbError;
 use async_trait::async_trait;
 
 /// Trait for models that can generate embeddings for documents.
