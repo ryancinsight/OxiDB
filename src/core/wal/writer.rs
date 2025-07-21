@@ -151,8 +151,16 @@ impl WalWriter {
             })?;
 
             // Use safe conversion for length
-            let len = u32::try_from(serialized_record.len())
-                .map_err(|_| IoError::new(IoErrorKind::InvalidData, "Record too large"))?;
+            let len = u32::try_from(serialized_record.len()).map_err(|_| {
+                let actual_size = serialized_record.len();
+                let max_size = u32::MAX as usize;
+                IoError::new(
+                    IoErrorKind::InvalidData,
+                    format!(
+                        "Record too large: actual size is {actual_size} bytes, but the maximum allowed size is {max_size} bytes"
+                    ),
+                )
+            })?;
             
             file.write_all(&len.to_be_bytes())?;
             file.write_all(&serialized_record)?;
