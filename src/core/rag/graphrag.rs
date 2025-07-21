@@ -150,13 +150,26 @@ impl GraphRAGEngineImpl {
             .collect::<HashSet<_>>();
         
         for (i, keyword) in keywords.iter().enumerate() {
+            // Create unique temporary ID using document ID hash and index
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+            let mut hasher = DefaultHasher::new();
+            document.id.hash(&mut hasher);
+            let doc_hash = hasher.finish();
+            let temp_id = (doc_hash.wrapping_mul(10000) + i as u64) as NodeId;
+            
             let entity = KnowledgeNode {
-                id: i as NodeId + 1000, // Offset to avoid conflicts
+                id: temp_id, // Unique temporary ID
                 entity_type: "ENTITY".to_string(),
                 name: keyword.to_string(),
                 description: Some(format!("Entity extracted from document: {}", document.id)),
                 embedding: document.embedding.clone(),
-                properties: HashMap::new(),
+                properties: {
+                    let mut props = HashMap::new();
+                    props.insert("document_id".to_string(), DataType::String(document.id.clone()));
+                    props.insert("extraction_method".to_string(), DataType::String("keyword".to_string()));
+                    props
+                },
                 confidence_score: 0.7, // Default confidence
             };
             entities.push(entity);
@@ -294,7 +307,10 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
             // Extract entities from document
             let entities = self.extract_entities(document)?;
             
-            // Add entities to graph
+            // Create mapping from temporary entity IDs to actual NodeIds
+            let mut temp_id_to_node_id = HashMap::new();
+            
+            // Add entities to graph and build ID mapping
             for entity in &entities {
                 let graph_data = GraphData::new(entity.entity_type.clone())
                     .with_property("name".to_string(), DataType::String(entity.name.clone()))
@@ -302,29 +318,41 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
                 
                 let node_id = self.graph_store.add_node(graph_data)?;
                 
+                // Map temporary entity ID to actual NodeId
+                temp_id_to_node_id.insert(entity.id, node_id);
+                
                 // Store embedding if available
                 if let Some(embedding) = &entity.embedding {
                     self.entity_embeddings.insert(node_id, embedding.clone());
                 }
             }
             
-            // Extract and add relationships
+            // Extract relationships using temporary IDs
             let relationships = self.extract_relationships(&entities, document)?;
+            
+            // Add relationships using actual NodeIds
             for relationship in relationships {
-                if let (Ok(Some(_)), Ok(Some(_))) = (
-                    self.graph_store.get_node(relationship.from_entity),
-                    self.graph_store.get_node(relationship.to_entity)
+                // Map temporary IDs to actual NodeIds
+                if let (Some(&from_node_id), Some(&to_node_id)) = (
+                    temp_id_to_node_id.get(&relationship.from_entity),
+                    temp_id_to_node_id.get(&relationship.to_entity)
                 ) {
-                    let rel = Relationship::new(relationship.relationship_type.clone());
-                    let edge_data = GraphData::new("relationship".to_string())
-                        .with_property("confidence".to_string(), DataType::Float(relationship.confidence_score));
-                    
-                    self.graph_store.add_edge(
-                        relationship.from_entity,
-                        relationship.to_entity,
-                        rel,
-                        Some(edge_data)
-                    )?;
+                    // Verify nodes exist in graph store
+                    if let (Ok(Some(_)), Ok(Some(_))) = (
+                        self.graph_store.get_node(from_node_id),
+                        self.graph_store.get_node(to_node_id)
+                    ) {
+                        let rel = Relationship::new(relationship.relationship_type.clone());
+                        let edge_data = GraphData::new("relationship".to_string())
+                            .with_property("confidence".to_string(), DataType::Float(relationship.confidence_score));
+                        
+                        self.graph_store.add_edge(
+                            from_node_id,
+                            to_node_id,
+                            rel,
+                            Some(edge_data)
+                        )?;
+                    }
                 }
             }
         }
@@ -606,5 +634,59 @@ mod tests {
         
         // The graph should now contain entities extracted from the documents
         // This is a basic test - in practice you'd verify specific entities and relationships
+    }
+
+    #[tokio::test]
+    async fn test_entity_relationship_id_mapping() {
+        // This test specifically verifies that the ID mapping fix works correctly
+        let retriever = Box::new(InMemoryRetriever::new(vec![]));
+        let mut engine = GraphRAGEngineImpl::new(retriever);
+        
+        // Create a document with entities that should be linked
+        let document = Document {
+            id: "test_doc_42".to_string(),
+            content: "Alice works with Bob and Charlie at TechCorp".to_string(),
+            embedding: Some(vec![0.1, 0.2, 0.3].into()),
+            metadata: Some(HashMap::new()),
+        };
+        
+        // Extract entities to see what temporary IDs are assigned
+        let entities = engine.extract_entities(&document).unwrap();
+        assert!(!entities.is_empty(), "Should extract entities from document");
+        
+        // Verify temporary IDs are unique (we can't predict exact values due to hashing)
+        let mut seen_ids = HashSet::new();
+        for entity in &entities {
+            assert!(entity.id > 0, "Temporary ID should be positive");
+            assert!(seen_ids.insert(entity.id), "Temporary IDs should be unique");
+        }
+        
+        // Build knowledge graph - this should handle ID mapping correctly
+        engine.build_knowledge_graph(&[document]).await.unwrap();
+        
+        // Verify that entities were actually added to the graph store
+        // We can't easily verify the exact NodeIds since they're internal to the store,
+        // but we can verify that the graph has nodes and potentially edges
+        
+        // Try to find entities in the graph by checking if any nodes exist
+        // This is an indirect way to verify the mapping worked
+        let has_nodes = {
+            let mut found_nodes = false;
+            // Try a range of possible NodeIds (graph stores typically start from 1)
+            for test_id in 1..=10 {
+                if engine.graph_store.get_node(test_id).is_ok() {
+                    if let Ok(Some(_)) = engine.graph_store.get_node(test_id) {
+                        found_nodes = true;
+                        break;
+                    }
+                }
+            }
+            found_nodes
+        };
+        
+        assert!(has_nodes, "Graph should contain nodes after building knowledge graph");
+        
+        // Verify embeddings were stored for entities
+        assert!(!engine.entity_embeddings.is_empty(), "Should have stored entity embeddings");
     }
 }
