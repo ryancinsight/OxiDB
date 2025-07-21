@@ -85,6 +85,7 @@ mod tests {
     use super::*;
     use crate::core::query::sql::ast::{Condition, AstExpressionValue, AstLiteralValue};
 
+    #[derive(Debug)]
     struct TestRule;
     
     impl OptimizationRule for TestRule {

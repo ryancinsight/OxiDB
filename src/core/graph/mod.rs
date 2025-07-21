@@ -100,7 +100,7 @@ impl GraphFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::types::DataType;
+
 
     #[test]
     fn test_graph_factory_memory() {

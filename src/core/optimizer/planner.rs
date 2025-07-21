@@ -201,8 +201,8 @@ impl Default for CostBasedPlanner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::types::{ColumnDef, DataType};
-    use crate::core::query::sql::ast::{TableReference, JoinClause, SelectColumn};
+    use crate::core::common::types::{schema::{ColumnDef, Schema}, data_type::DataType};
+
 
     #[test]
     fn test_table_scan_cost_estimation() {

@@ -142,7 +142,7 @@ mod tests {
 
         // Try to deserialize again, expecting EOF
         match WalEntry::deserialize(&mut cursor) {
-            Err(OxidbError::Io(e)) if e.contains("UnexpectedEof") => {
+            Err(OxidbError::Io(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 // This is the expected outcome
             }
             Ok(entry) => panic!("Expected EOF error, but got an entry: {:?}", entry),

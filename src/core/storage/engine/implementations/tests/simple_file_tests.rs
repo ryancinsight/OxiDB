@@ -1,7 +1,7 @@
 // Original imports from simple_file.rs that might be needed by test helpers or types:
 use std::collections::{HashMap, HashSet};
 use std::fs::{read, remove_file, write, File, File as StdFile, OpenOptions}; // Removed rename for now as it's not used after test changes
-use std::io::{BufReader, BufWriter, ErrorKind, Write};
+use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use tempfile::tempdir; // Added import for tempdir
 
@@ -25,14 +25,14 @@ fn create_db_file_with_kv_data(path: &Path, data: &[(Vec<u8>, Vec<u8>)]) -> Resu
         .create(true)
         .truncate(true)
         .open(path)
-        .map_err(|e| OxidbError::Io(e.to_string()))?;
+        .map_err(|e| OxidbError::Io(e))?;
     let mut writer = BufWriter::new(file);
     for (key, value) in data {
         <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut writer)?;
         <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(value, &mut writer)?;
     }
-    writer.flush().map_err(|e| OxidbError::Io(e.to_string()))?;
-    writer.get_ref().sync_all().map_err(|e| OxidbError::Io(e.to_string()))?;
+    writer.flush().map_err(|e| OxidbError::Io(e))?;
+    writer.get_ref().sync_all().map_err(|e| OxidbError::Io(e))?;
     Ok(())
 }
 
@@ -53,13 +53,13 @@ fn derive_wal_path(db_path: &Path) -> PathBuf {
 // Helper to read all entries from a WAL file
 fn read_all_wal_entries(wal_path: &Path) -> Result<Vec<WalEntry>, OxidbError> {
     // Changed
-    let file = StdFile::open(wal_path).map_err(|e| OxidbError::Io(e.to_string()))?;
+    let file = StdFile::open(wal_path).map_err(|e| OxidbError::Io(e))?;
     let mut reader = BufReader::new(file);
     let mut entries = Vec::new();
     loop {
         match <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut reader) {
             Ok(entry) => entries.push(entry),
-            Err(OxidbError::Io(e)) if e.contains("UnexpectedEof") => {
+            Err(OxidbError::Io(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 // Changed
                 break;
             }

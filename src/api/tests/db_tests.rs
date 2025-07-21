@@ -209,7 +209,7 @@ fn test_constraint_not_null_violation_insert() {
     let result1 = db
         .execute_query_str("INSERT INTO users_nn (id, email, name) VALUES (1, NULL, 'Test User');");
     match result1 {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(OxidbError::ConstraintViolation(message)) => {
             assert!(message.contains("NOT NULL constraint failed for column 'email'"));
         }
         _ => panic!("Expected ConstraintViolation for NULL email, got {:?}", result1),
@@ -219,7 +219,7 @@ fn test_constraint_not_null_violation_insert() {
     let result2 =
         db.execute_query_str("INSERT INTO users_nn (id, name) VALUES (2, 'Another User');");
     match result2 {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(OxidbError::ConstraintViolation(message)) => {
             assert!(message.contains("NOT NULL constraint failed for column 'email'"));
         }
         _ => panic!("Expected ConstraintViolation for missing email, got {:?}", result2),
@@ -249,7 +249,7 @@ fn test_constraint_not_null_violation_update() {
     // Attempt to update description to NULL
     let result = db.execute_query_str("UPDATE items_nn SET description = NULL WHERE id = 1;");
     match result {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(OxidbError::ConstraintViolation(message)) => {
             assert!(message.contains("NOT NULL constraint failed for column 'description'"));
         }
         _ => panic!("Expected ConstraintViolation for updating to NULL, got {:?}", result),
@@ -276,7 +276,7 @@ fn test_constraint_primary_key_violation_insert() {
     // Attempt to insert another product with the same pid
     let result = db.execute_query_str("INSERT INTO products_pk (pid, name) VALUES (100, 'Mouse');");
     match result {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(OxidbError::ConstraintViolation(message)) => {
             assert!(message.contains("UNIQUE constraint failed for column 'pid'"));
             // PK implies UNIQUE
         }
@@ -300,7 +300,7 @@ fn test_constraint_unique_violation_insert() {
     let result =
         db.execute_query_str("INSERT INTO employees_uq (id, emp_code) VALUES (2, 'E101');");
     match result {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(OxidbError::ConstraintViolation(message)) => {
             assert!(message.contains("UNIQUE constraint failed for column 'emp_code'"));
         }
         _ => panic!("Expected ConstraintViolation for UNIQUE duplicate, got {:?}", result),
@@ -335,7 +335,7 @@ fn test_constraint_unique_allows_multiple_nulls() {
     let result_dup_non_null =
         db.execute_query_str("INSERT INTO gadgets_uq_null (id, serial_no) VALUES (4, 'XYZ123');");
     match result_dup_non_null {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(OxidbError::ConstraintViolation(message)) => {
             assert!(message.contains("UNIQUE constraint failed for column 'serial_no'"));
         }
         _ => panic!(
@@ -364,7 +364,7 @@ fn test_constraint_update_violating_unique() {
     let result =
         db.execute_query_str("UPDATE services_uq SET service_name = 'Premium' WHERE id = 1;");
     match result {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(OxidbError::ConstraintViolation(message)) => {
             assert!(message.contains("UNIQUE constraint failed for column 'service_name'"));
         }
         _ => panic!("Expected ConstraintViolation for UPDATE violating UNIQUE, got {:?}", result),
@@ -393,7 +393,7 @@ fn test_constraint_update_pk_violating_unique() {
     let result_pk =
         db.execute_query_str("UPDATE devices_pk_uq SET device_id = 1 WHERE device_id = 2;");
     match result_pk {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(OxidbError::ConstraintViolation(message)) => {
             assert!(message.contains("UNIQUE constraint failed for column 'device_id'"));
         }
         _ => panic!(
@@ -958,7 +958,7 @@ fn test_constraint_primary_key_not_null_violation_insert() {
     let result =
         db.execute_query_str("INSERT INTO products_pk_nn (pid, name) VALUES (NULL, 'Tablet');");
     match result {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(OxidbError::ConstraintViolation(message)) => {
             // Expecting NOT NULL constraint failure here, as PKs are implicitly not nullable.
             assert!(
                 message.contains("NOT NULL constraint failed for column 'pid'"),
@@ -973,7 +973,7 @@ fn test_constraint_primary_key_not_null_violation_insert() {
     let result_missing_pk =
         db.execute_query_str("INSERT INTO products_pk_nn (name) VALUES ('Monitor');");
     match result_missing_pk {
-        Err(OxidbError::ConstraintViolation { message }) => {
+        Err(OxidbError::ConstraintViolation(message)) => {
             assert!(
                 message.contains("NOT NULL constraint failed for column 'pid'"),
                 "Unexpected constraint violation message for missing PK: {}",

@@ -26,8 +26,8 @@ fn test_error_display_and_source() {
     assert_eq!(format!("{}", internal_err), "Internal Error: something went wrong");
     assert!(internal_err.source().is_none());
 
-    let not_found_err = OxidbError::NotFound { key: "my_key".to_string() };
-    assert_eq!(format!("{}", not_found_err), "Key not found: my_key");
+    let not_found_err = OxidbError::NotFound("my_key".to_string());
+    assert_eq!(format!("{}", not_found_err), "Not Found: my_key");
     assert!(not_found_err.source().is_none());
 }
 
@@ -73,8 +73,8 @@ fn test_other_error_variants() {
     let _ = OxidbError::Index("corrupted index".to_string());
     let _ = OxidbError::LockTimeout("deadlock detected".to_string());
     let _ = OxidbError::NoActiveTransaction;
-    let _ = OxidbError::LockConflict { key: vec![1], current_tx: 1, locked_by_tx: Some(2) };
-    let _ = OxidbError::LockAcquisitionTimeout { key: vec![2], current_tx: 3 };
+    let _ = OxidbError::LockConflict { message: "lock conflict detected".to_string() };
+    let _ = OxidbError::LockAcquisitionTimeout { key: vec![2], current_tx: 3, timeout: 1000 };
     let _ = OxidbError::Configuration("bad timeout value".to_string());
     let _ = OxidbError::Type("type mismatch".to_string());
 }

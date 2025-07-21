@@ -635,7 +635,7 @@ impl GraphStore for PersistentGraphStore {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::types::DataType;
+
 
     #[test]
     fn test_in_memory_graph_operations() {

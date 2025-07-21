@@ -304,6 +304,7 @@ mod tests {
             }
         }
         
+        #[allow(dead_code)]
         fn invalidate(&self) {
             self.valid.store(false, Ordering::SeqCst);
         }
@@ -361,7 +362,7 @@ mod tests {
         let config = PoolConfig::default();
         let pool = ConnectionPool::new(config);
         let connection = MockConnection::new();
-        let reset_count_before = connection.reset_count.load(Ordering::SeqCst);
+        let _reset_count_before = connection.reset_count.load(Ordering::SeqCst);
         
         pool.add_connection(connection).unwrap();
         
