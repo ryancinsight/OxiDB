@@ -5,30 +5,45 @@ use crate::core::query::executor::ExecutionResult;
 use crate::core::types::{DataType, JsonSafeMap}; // Import JsonSafeMap
 use rand;
 use std::path::{Path, PathBuf};
+use tempfile::TempDir;
 
-// Helper function to create a NamedTempFile and return its path for tests
-// This avoids repeating NamedTempFile::new().expect("...").path()
-fn get_temp_db_path() -> PathBuf {
+/// Creates a temporary database with automatic cleanup
+/// Returns (TempDir, PathBuf) where TempDir must be kept alive for the duration of the test
+fn get_temp_db_with_cleanup() -> (TempDir, PathBuf) {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
 
+    let temp_dir = TempDir::new().expect("Failed to create temporary directory");
     let counter = COUNTER.fetch_add(1, Ordering::SeqCst);
     let pid = std::process::id();
-    let timestamp =
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default() // Safe fallback for pre-epoch times
+        .as_nanos();
 
-    std::env::temp_dir().join(format!(
+    let db_path = temp_dir.path().join(format!(
         "oxidb_test_{}_{}_{}_{}.db",
         pid,
         timestamp,
         counter,
         rand::random::<u32>()
-    ))
+    ));
+
+    (temp_dir, db_path)
+}
+
+/// Legacy function for backward compatibility - creates temp path without automatic cleanup
+/// This should be gradually replaced with get_temp_db_with_cleanup() in tests
+fn get_temp_db_path() -> PathBuf {
+    let (_temp_dir, db_path) = get_temp_db_with_cleanup();
+    // Note: _temp_dir is dropped here, so cleanup is immediate
+    // This maintains the old behavior but is not recommended for new tests
+    db_path
 }
 
 #[test]
 fn test_oxidb_insert_and_get() {
-    let db_path = get_temp_db_path();
+    let (_temp_dir, db_path) = get_temp_db_with_cleanup();
     let mut db =
         Oxidb::new(&db_path).expect("Failed to create Oxidb instance for insert_and_get test");
 
@@ -58,7 +73,7 @@ fn test_oxidb_get_non_existent() {
 
 #[test]
 fn test_oxidb_delete() {
-    let db_path = get_temp_db_path();
+    let (_temp_dir, db_path) = get_temp_db_with_cleanup();
     let mut db = Oxidb::new(&db_path).expect("Failed to create Oxidb instance for delete test");
     let key = b"api_delete_key".to_vec();
     let value_str = "api_delete_value".to_string();
