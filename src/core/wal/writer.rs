@@ -1,11 +1,11 @@
-use bincode;
 use std::fs::OpenOptions;
 use std::io::{BufWriter, Error as IoError, ErrorKind as IoErrorKind, Write};
 use std::path::PathBuf;
-use std::time::{Duration, Instant}; // Added for periodic flush
+use std::time::{Duration, Instant};
 
 use crate::core::wal::log_record::LogRecord;
 
+/// Configuration for WAL Writer with zero-cost abstractions
 #[derive(Debug, Clone, Copy)]
 pub struct WalWriterConfig {
     pub max_buffer_size: usize,
@@ -21,6 +21,7 @@ impl Default for WalWriterConfig {
     }
 }
 
+/// Pure stdlib WAL writer with minimal dependencies
 #[derive(Debug)]
 pub struct WalWriter {
     buffer: Vec<LogRecord>,
@@ -37,7 +38,12 @@ impl WalWriter {
         );
         let last_flush_time =
             if config.flush_interval_ms.is_some() { Some(Instant::now()) } else { None };
-        WalWriter { buffer: Vec::new(), wal_file_path, config, last_flush_time }
+        WalWriter { 
+            buffer: Vec::new(), 
+            wal_file_path, 
+            config, 
+            last_flush_time 
+        }
     }
 
     pub fn add_record(&mut self, record: LogRecord) -> Result<(), IoError> {
@@ -47,40 +53,24 @@ impl WalWriter {
             self.buffer.len(),
             self.config.max_buffer_size
         );
-        self.buffer.push(record.clone()); // Clone record to store in buffer
+        
+        self.buffer.push(record.clone());
 
-        let mut should_flush = false;
-        let mut flush_reason = String::new();
-
-        // Policy 1: Commit record
-        if let LogRecord::CommitTransaction { .. } = record {
-            flush_reason = "Commit record".to_string();
-            should_flush = true;
-        }
-
-        // Policy 2: Max buffer size exceeded
-        if !should_flush && self.buffer.len() >= self.config.max_buffer_size {
-            flush_reason = format!(
-                "Max buffer size ({}) exceeded (current: {})",
-                self.config.max_buffer_size,
-                self.buffer.len()
-            );
-            should_flush = true;
-        }
-
-        // Policy 3: Periodic flush interval
-        if !should_flush {
-            if let (Some(interval_ms), Some(last_flush)) =
-                (self.config.flush_interval_ms, self.last_flush_time)
-            {
-                if last_flush.elapsed() >= Duration::from_millis(interval_ms) {
-                    flush_reason = format!("Flush interval ({}ms) exceeded", interval_ms);
-                    should_flush = true;
-                }
-            }
-        }
+        // BUG FIX #3: Correct zero buffer size handling
+        // Use iterator-based zero-cost abstraction for flush decision
+        let should_flush = [
+            // Policy 1: Commit record always triggers flush
+            matches!(record, LogRecord::CommitTransaction { .. }),
+            // Policy 2: Buffer size exceeded (fixed for zero case)
+            self.config.max_buffer_size == 0 || self.buffer.len() >= self.config.max_buffer_size,
+            // Policy 3: Periodic flush interval exceeded
+            self.should_flush_by_interval(),
+        ]
+        .iter()
+        .any(|&condition| condition);
 
         if should_flush {
+            let flush_reason = self.determine_flush_reason(&record);
             eprintln!(
                 "[core::wal::writer::WalWriter::add_record] Triggering flush. Reason: {}.",
                 flush_reason
@@ -91,46 +81,81 @@ impl WalWriter {
         }
     }
 
+    /// Zero-cost abstraction for interval-based flush check
+    #[inline]
+    fn should_flush_by_interval(&self) -> bool {
+        self.config.flush_interval_ms
+            .zip(self.last_flush_time)
+            .map(|(interval_ms, last_flush)| {
+                last_flush.elapsed() >= Duration::from_millis(interval_ms)
+            })
+            .unwrap_or(false)
+    }
+
+    /// Zero-cost abstraction for determining flush reason
+    #[inline]
+    fn determine_flush_reason(&self, record: &LogRecord) -> String {
+        if matches!(record, LogRecord::CommitTransaction { .. }) {
+            "Commit record".to_string()
+        } else if self.config.max_buffer_size == 0 {
+            "Zero buffer size - immediate flush".to_string()
+        } else if self.buffer.len() >= self.config.max_buffer_size {
+            format!(
+                "Max buffer size ({}) exceeded (current: {})",
+                self.config.max_buffer_size,
+                self.buffer.len()
+            )
+        } else if self.should_flush_by_interval() {
+            format!("Flush interval ({}ms) exceeded", 
+                   self.config.flush_interval_ms.unwrap_or(0))
+        } else {
+            "Unknown reason".to_string()
+        }
+    }
+
     pub fn flush(&mut self) -> Result<(), IoError> {
         if self.buffer.is_empty() {
             eprintln!("[core::wal::writer::WalWriter::flush] Buffer empty, nothing to flush.");
             return Ok(());
         }
+        
         eprintln!(
             "[core::wal::writer::WalWriter::flush] Flushing {} records. Attempting to open/create file: {:?}",
             self.buffer.len(),
             &self.wal_file_path
         );
-        let file_result = OpenOptions::new().create(true).append(true).open(&self.wal_file_path);
-
-        if let Err(e) = &file_result {
-            eprintln!(
-                "[core::wal::writer::WalWriter::flush] Error opening file {:?}: {}",
-                &self.wal_file_path, e
-            );
-        } else {
-            eprintln!(
-                "[core::wal::writer::WalWriter::flush] Successfully opened/created file: {:?}",
-                &self.wal_file_path
-            );
-        }
-        let file = file_result?;
-        let mut writer = BufWriter::new(file);
-
-        for record in self.buffer.iter() {
-            let serialized_record = bincode::serialize(record).map_err(|e| {
-                IoError::new(
-                    IoErrorKind::InvalidData,
-                    format!("Log record serialization failed: {}", e),
-                )
+        
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.wal_file_path)
+            .map_err(|e| {
+                eprintln!(
+                    "[core::wal::writer::WalWriter::flush] Error opening file {:?}: {}",
+                    &self.wal_file_path, e
+                );
+                e
             })?;
 
-            let len = serialized_record.len() as u32; // Assuming length fits in u32
-            writer.write_all(&len.to_be_bytes())?;
-            writer.write_all(&serialized_record)?;
-        }
+        eprintln!(
+            "[core::wal::writer::WalWriter::flush] Successfully opened/created file: {:?}",
+            &self.wal_file_path
+        );
 
-        writer.flush()?; // Flush BufWriter contents to the OS buffer
+        let mut writer = BufWriter::new(file);
+
+        // Use iterator combinators for zero-cost serialization
+        self.buffer
+            .iter()
+            .try_for_each(|record| -> Result<(), IoError> {
+                // Pure stdlib serialization - no external dependencies
+                let serialized_record = self.serialize_record(record)?;
+                let len = serialized_record.len() as u32;
+                writer.write_all(&len.to_be_bytes())?;
+                writer.write_all(&serialized_record)
+            })?;
+
+        writer.flush()?;
 
         // Get the underlying file back from BufWriter to sync
         let file = writer.into_inner().map_err(|e| {
@@ -139,16 +164,70 @@ impl WalWriter {
                 format!("Failed to get file from BufWriter: {}", e.into_error()),
             )
         })?;
-        file.sync_all()?; // Ensure OS flushes its buffers to disk
+        file.sync_all()?;
 
         self.buffer.clear();
         if self.config.flush_interval_ms.is_some() {
-            // Update last_flush_time only if periodic flushing is enabled
             self.last_flush_time = Some(Instant::now());
             eprintln!("[core::wal::writer::WalWriter::flush] Updated last_flush_time.");
         }
         eprintln!("[core::wal::writer::WalWriter::flush] Flush successful.");
         Ok(())
+    }
+
+    /// Pure stdlib serialization - no external dependencies
+    fn serialize_record(&self, record: &LogRecord) -> Result<Vec<u8>, IoError> {
+        // Simple binary serialization using only stdlib
+        let mut buffer = Vec::new();
+        
+        match record {
+            LogRecord::StartTransaction { lsn, transaction_id } => {
+                buffer.push(1u8); // Type marker
+                buffer.extend_from_slice(&lsn.to_be_bytes());
+                buffer.extend_from_slice(&transaction_id.to_be_bytes());
+            }
+            LogRecord::CommitTransaction { lsn, transaction_id } => {
+                buffer.push(2u8); // Type marker
+                buffer.extend_from_slice(&lsn.to_be_bytes());
+                buffer.extend_from_slice(&transaction_id.to_be_bytes());
+            }
+            LogRecord::AbortTransaction { lsn, transaction_id } => {
+                buffer.push(3u8); // Type marker
+                buffer.extend_from_slice(&lsn.to_be_bytes());
+                buffer.extend_from_slice(&transaction_id.to_be_bytes());
+            }
+            LogRecord::Insert { lsn, transaction_id, key, value } => {
+                buffer.push(4u8); // Type marker
+                buffer.extend_from_slice(&lsn.to_be_bytes());
+                buffer.extend_from_slice(&transaction_id.to_be_bytes());
+                buffer.extend_from_slice(&(key.len() as u32).to_be_bytes());
+                buffer.extend_from_slice(key);
+                buffer.extend_from_slice(&(value.len() as u32).to_be_bytes());
+                buffer.extend_from_slice(value);
+            }
+            LogRecord::Update { lsn, transaction_id, key, old_value, new_value } => {
+                buffer.push(5u8); // Type marker
+                buffer.extend_from_slice(&lsn.to_be_bytes());
+                buffer.extend_from_slice(&transaction_id.to_be_bytes());
+                buffer.extend_from_slice(&(key.len() as u32).to_be_bytes());
+                buffer.extend_from_slice(key);
+                buffer.extend_from_slice(&(old_value.len() as u32).to_be_bytes());
+                buffer.extend_from_slice(old_value);
+                buffer.extend_from_slice(&(new_value.len() as u32).to_be_bytes());
+                buffer.extend_from_slice(new_value);
+            }
+            LogRecord::Delete { lsn, transaction_id, key, value } => {
+                buffer.push(6u8); // Type marker
+                buffer.extend_from_slice(&lsn.to_be_bytes());
+                buffer.extend_from_slice(&transaction_id.to_be_bytes());
+                buffer.extend_from_slice(&(key.len() as u32).to_be_bytes());
+                buffer.extend_from_slice(key);
+                buffer.extend_from_slice(&(value.len() as u32).to_be_bytes());
+                buffer.extend_from_slice(value);
+            }
+        }
+        
+        Ok(buffer)
     }
 }
 

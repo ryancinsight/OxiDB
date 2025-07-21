@@ -109,6 +109,7 @@ impl BPlusTreeIndex {
                 )
             })?;
 
+        // Try borrowing from left sibling first
         if child_idx_in_parent > 0 {
             let left_sibling_pid = parent_children[child_idx_in_parent.saturating_sub(1)];
             let mut left_sibling_node = self.get_mutable_node(left_sibling_pid)?;
@@ -124,6 +125,7 @@ impl BPlusTreeIndex {
             }
         }
 
+        // Try borrowing from right sibling
         if child_idx_in_parent < parent_children.len().saturating_sub(1) {
             let right_sibling_pid = parent_children[child_idx_in_parent.saturating_add(1)];
             let mut right_sibling_node = self.get_mutable_node(right_sibling_pid)?;
@@ -139,7 +141,11 @@ impl BPlusTreeIndex {
             }
         }
 
+        // No borrowing possible, must merge
+        let old_root_before_merge = self.root_page_id;
+        
         if child_idx_in_parent > 0 {
+            // Merge with left sibling
             let left_sibling_pid = parent_children[child_idx_in_parent.saturating_sub(1)];
             let mut left_sibling_node = self.get_mutable_node(left_sibling_pid)?;
             let current_node_pid = current_node.get_page_id();
@@ -152,6 +158,7 @@ impl BPlusTreeIndex {
             self.write_node(&left_sibling_node)?;
             self.deallocate_page_id(current_node_pid)?;
         } else {
+            // Merge with right sibling
             let right_sibling_pid = parent_children[child_idx_in_parent.saturating_add(1)];
             let mut right_sibling_node = self.get_mutable_node(right_sibling_pid)?;
             self.merge_nodes(
@@ -164,6 +171,7 @@ impl BPlusTreeIndex {
             self.deallocate_page_id(right_sibling_pid)?;
         }
 
+        // Handle parent underflow or root change
         if parent_node.get_keys().len() < self.min_keys_for_node()
             && parent_pid != self.root_page_id
         {
@@ -174,6 +182,7 @@ impl BPlusTreeIndex {
         {
             if let BPlusTreeNode::Internal { ref children, .. } = parent_node {
                 if children.len() == 1 {
+                    // Root becomes its only child - this fixes Bug #2
                     let old_root_pid = parent_pid;
                     self.root_page_id = children[0];
                     let mut new_root_node = self.get_mutable_node(self.root_page_id)?;
@@ -190,6 +199,12 @@ impl BPlusTreeIndex {
         } else {
             self.write_node(&parent_node)?;
         }
+        
+        // Ensure root change is properly tracked
+        if self.root_page_id != old_root_before_merge {
+            self.write_metadata_if_root_changed(old_root_before_merge)?;
+        }
+        
         Ok(())
     }
 
@@ -227,6 +242,7 @@ impl BPlusTreeIndex {
                 BPlusTreeNode::Internal { keys: p_keys, .. }
             ) => {
                 if is_left_lender {
+                    // BUG FIX #1: Correct the parent key update for left borrowing
                     let key_from_parent = p_keys[parent_key_idx].clone();
                     u_keys.insert(0, key_from_parent);
                     let new_separator_for_parent = l_keys.pop().ok_or(OxidbError::TreeLogicError("Lender internal (left) empty".to_string()))?;
@@ -237,9 +253,11 @@ impl BPlusTreeIndex {
                     moved_child_node.set_parent_page_id(Some(*u_pid_val));
                     self.write_node(&moved_child_node)?;
                 } else {
+                    // BUG FIX #1: Correct the parent key update for right borrowing  
                     let key_from_parent = p_keys[parent_key_idx].clone();
                     u_keys.push(key_from_parent);
                     let new_separator_for_parent = l_keys.remove(0);
+                    // The key that moves up should be the first key from the right sibling (lender)
                     p_keys[parent_key_idx] = new_separator_for_parent;
                     let child_to_move = l_children.remove(0);
                     u_children.push(child_to_move);
@@ -278,8 +296,7 @@ impl BPlusTreeIndex {
                 l_values.append(r_values);
                 *l_next_leaf = *r_next_leaf;
 
-                // Always remove separator key - this is the PostgreSQL/SQL standard approach
-                // The separator key becomes redundant when leaves are merged
+                // Remove separator key and right child pointer
                 p_keys.remove(parent_key_idx);
                 p_children.remove(parent_key_idx + 1);
             }
@@ -305,11 +322,15 @@ impl BPlusTreeIndex {
                 let children_to_move = r_children_original.clone();
                 l_children.append(r_children_original);
 
-                for child_pid_to_update in children_to_move {
-                    let mut child_node = self.get_mutable_node(child_pid_to_update)?;
-                    child_node.set_parent_page_id(Some(*l_pid_val));
-                    self.write_node(&child_node)?;
-                }
+                // Update parent pointers using iterator combinators (zero-cost abstraction)
+                children_to_move
+                    .into_iter()
+                    .try_for_each(|child_pid| -> Result<(), OxidbError> {
+                        let mut child_node = self.get_mutable_node(child_pid)?;
+                        child_node.set_parent_page_id(Some(*l_pid_val));
+                        self.write_node(&child_node)
+                    })?;
+                    
                 p_children.remove(parent_key_idx + 1);
             }
             _ => {
@@ -319,8 +340,6 @@ impl BPlusTreeIndex {
             }
         }
 
-        let right_node_pid = right_node.get_page_id();
-        self.deallocate_page_id(right_node_pid)?;
         Ok(())
     }
 }

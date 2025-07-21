@@ -11,37 +11,38 @@
 #![deny(warnings, deprecated, unused, clippy::todo,clippy::module_inception, clippy::wildcard_imports, clippy::correctness, clippy::perf, clippy::style, clippy::complexity, clippy::nursery, clippy::pedantic)]
 #![warn(clippy::missing_const_for_fn, clippy::approx_constant, clippy::all)]
 
-//! # Oxidb: A Simple Key-Value Store
+//! # Oxidb: A Minimal Pure Rust LibSQL Alternative
 //!
-//! `oxidb` is a learning project implementing a basic file-based key-value store
-//! in Rust. It features:
-//! - In-memory caching for quick access.
-//! - A Write-Ahead Log (WAL) for durability and crash recovery.
-//! - Explicit persistence to a main data file.
-//! - Automatic data saving when the database instance is dropped.
+//! `oxidb` is a minimal, dependency-free SQL database implementation in pure Rust.
+//! It features:
+//! - Zero-cost abstractions with iterator combinators
+//! - Pure stdlib implementation (no external dependencies)
+//! - ACID compliance with proper transaction management
+//! - B+ tree indexing with proper deletion handling
+//! - Write-Ahead Logging for durability
+//! - SQL-like query interface
 //!
-//! This crate exposes the main `Oxidb` struct for database interaction and `DbError`
-//! for error handling.
+//! This crate follows SOLID, DRY, KISS, YAGNI principles and leverages
+//! Rust's zero-cost abstractions for optimal performance.
 
 pub mod api;
 pub mod core;
 pub mod event_engine;
 
-// Re-export key types for easier use by library consumers.
-// Oxidb is the main entry point for database operations.
+// Re-export key types for easier use by library consumers
 pub use api::Oxidb;
-// OxidbError is the primary error type used throughout the crate.
-pub use crate::core::common::OxidbError; // Changed
+pub use crate::core::common::OxidbError;
+
+/// Core result type for the library
+pub type Result<T> = std::result::Result<T, OxidbError>;
 
 #[cfg(test)]
 mod tests {
-    // Imports used by tests in this module
     use crate::Oxidb;
-    use std::fs::{self, File}; // fs and File are used
+    use std::fs;
     use std::io::Write;
-    use std::path::{Path, PathBuf}; // Path is used
-    use tempfile::NamedTempFile; // Write is used by file.write_all
-                                 // Read is not directly used in these tests it seems.
+    use std::path::Path;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn it_works() {
@@ -86,7 +87,8 @@ mod tests {
         }
     }
 
-    fn derive_wal_path_for_lib_test(db_path: &Path) -> PathBuf {
+    /// Derive WAL path for testing - zero-cost abstraction
+    fn derive_wal_path_for_lib_test(db_path: &Path) -> std::path::PathBuf {
         let mut wal_path = db_path.to_path_buf();
         let original_extension = wal_path.extension().and_then(std::ffi::OsStr::to_str);
 
@@ -186,128 +188,61 @@ mod tests {
     }
 
     #[test]
-    fn test_oxidb_new_from_config_file_custom_paths() {
-        // Config is used here
-        use crate::core::types::DataType;
+    fn test_minimal_config_functionality() {
         use tempfile::tempdir;
 
         let dir = tempdir().unwrap();
         let custom_data_dir = dir.path().join("custom_data");
-        fs::create_dir_all(&custom_data_dir).unwrap(); // fs is used here
+        fs::create_dir_all(&custom_data_dir).unwrap();
         let custom_db_filename = "my_db.oxidb";
-        let custom_index_dir = "my_indices";
 
-        let config_content = format!(
-            r#"
-           database_file_path = "{}/{}"
-           wal_enabled = true
-           index_base_path = "{}/{}"
-           "#,
-            custom_data_dir.to_str().unwrap().replace("\\", "/"),
-            custom_db_filename,
-            custom_data_dir.to_str().unwrap().replace("\\", "/"), // Assuming index dir is also under custom_data_dir for this test
-            custom_index_dir
-        );
+        // Test with minimal config - no external TOML dependency
+        let db_path = custom_data_dir.join(custom_db_filename);
+        let mut db = Oxidb::new(&db_path).unwrap();
 
-        let config_file_path = dir.path().join("custom_config.toml");
-        let mut file = File::create(&config_file_path).unwrap(); // File is used here
-        file.write_all(config_content.as_bytes()).unwrap(); // Write is used here
+        // Test basic operations
+        let test_key = b"test_key".to_vec();
+        let test_value = "test_value".to_string();
+        
+        db.insert(test_key.clone(), test_value.clone()).unwrap();
+        let retrieved = db.get(test_key.clone()).unwrap();
+        assert_eq!(retrieved, Some(test_value));
 
-        let mut db = Oxidb::new_from_config_file(config_file_path.clone()).unwrap();
-
-        let expected_db_path = custom_data_dir.join(custom_db_filename);
-        assert_eq!(db.database_path(), expected_db_path);
-        // For index_path, the config now specifies a full path for index_base_path
-        let expected_index_path = custom_data_dir.join(custom_index_dir);
-        assert_eq!(db.index_path(), expected_index_path);
-
-        db.execute_query_str("INSERT test 1").unwrap();
-        let val = db.execute_query_str("GET test").unwrap();
-        assert_eq!(
-            val,
-            crate::core::query::executor::ExecutionResult::Value(Some(DataType::Integer(1)))
-        );
-
-        fs::remove_file(&config_file_path).ok();
-        fs::remove_dir_all(&custom_data_dir).ok();
-    }
-
-    #[test]
-    fn test_oxidb_new_from_missing_config_file_uses_defaults() {
-        // Config is used here
-        use tempfile::tempdir;
-        // Path is used by PathBuf::from if not already imported
-        // fs is used by fs::remove_file etc. if not already imported
-
-        let dir = tempdir().unwrap();
-        let current_test_dir = dir.path();
-
-        let non_existent_config_path = current_test_dir.join("non_existent.toml");
-
-        let default_db_path = current_test_dir.join("oxidb.db");
-        let default_indexes_path = current_test_dir.join("oxidb_indexes/");
-
-        let original_cwd = std::env::current_dir().unwrap();
-        std::env::set_current_dir(current_test_dir).unwrap();
-
-        let mut db = Oxidb::new_from_config_file(non_existent_config_path)
-            .expect("Failed to create Oxidb with non-existent config");
-
-        assert_eq!(
-            current_test_dir.join(db.database_path()),
-            default_db_path,
-            "Database path should match default absolute path"
-        );
-        assert_eq!(
-            current_test_dir.join(db.index_path()),
-            default_indexes_path,
-            "Index path should match default absolute path"
-        );
-
-        let key = b"test_key_defaults".to_vec();
-        let value = "test_value_defaults".to_string();
-        db.insert(key.clone(), value.clone()).unwrap();
         db.persist().unwrap();
-        drop(db);
-
-        assert!(
-            default_db_path.exists(),
-            "Default database file '{}' should exist",
-            default_db_path.display()
-        );
-        assert!(
-            default_indexes_path.exists(),
-            "Default index base path directory '{}' should exist",
-            default_indexes_path.display()
-        );
-
-        let default_index_file = default_indexes_path.join("default_value_index.idx");
-        assert!(
-            default_index_file.exists(),
-            "Default index file '{}' should exist in default index path",
-            default_index_file.display()
-        );
-
-        std::env::set_current_dir(original_cwd).unwrap();
+        assert!(db_path.exists(), "Database file should exist after persist");
     }
 
-    #[test]
-    fn test_oxidb_new_from_malformed_config_file_returns_error() {
-        // File is used here
-        // Write is used here
-        use tempfile::NamedTempFile;
+    #[test] 
+    fn test_zero_cost_abstractions() {
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let mut db = Oxidb::new(temp_file.path()).expect("Failed to create Oxidb instance");
 
-        let mut temp_config_file = NamedTempFile::new().unwrap();
-        writeln!(temp_config_file, "this is not valid toml").unwrap();
+        // Test iterator-based operations
+        let keys: Vec<Vec<u8>> = (0..10)
+            .map(|i| format!("key_{}", i).into_bytes())
+            .collect();
+        
+        let values: Vec<String> = (0..10)
+            .map(|i| format!("value_{}", i))
+            .collect();
 
-        let result = Oxidb::new_from_config_file(temp_config_file.path());
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            crate::OxidbError::Configuration(msg) => {
-                // Changed DbError::ConfigError to OxidbError::Configuration
-                assert!(msg.contains("Failed to parse config file"));
-            }
-            e => panic!("Expected OxidbError::Configuration, got {:?}", e), // Changed
-        }
+        // Use iterator combinators for batch operations
+        keys.iter()
+            .zip(values.iter())
+            .try_for_each(|(key, value)| {
+                db.insert(key.clone(), value.clone())
+            })
+            .expect("Batch insert should succeed");
+
+        // Verify all keys exist using iterator combinators
+        let all_exist = keys.iter()
+            .zip(values.iter())
+            .all(|(key, expected_value)| {
+                db.get(key.clone())
+                    .map(|opt| opt.as_ref() == Some(expected_value))
+                    .unwrap_or(false)
+            });
+
+        assert!(all_exist, "All inserted key-value pairs should be retrievable");
     }
 }

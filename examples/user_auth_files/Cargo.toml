@@ -6,14 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-oxidb = { path = "../../", package = "oxidb" } # Assuming oxidb is the root of the workspace
-anyhow = "1.0"
-clap = { version = "4.0", features = ["derive"] }
-serde = { version = "1.0", features = ["derive"] }
-chrono = { version = "0.4", features = ["serde"] } # For potential timestamping, if needed later
-# Basic hashing - replace with a proper crypto library for real applications
-sha2 = "0.10"
-hex = "0.4"
+oxidb = { path = "../../" }
 
 [[bin]]
 name = "user_auth_files"
