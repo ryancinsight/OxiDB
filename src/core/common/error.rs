@@ -98,7 +98,7 @@ impl From<crate::core::indexing::btree::OxidbError> for OxidbError {
                 OxidbError::Index(format!("BTree Logic Error: {}", s))
             }
             crate::core::indexing::btree::OxidbError::BorrowError(s) => {
-                OxidbError::Lock(format!("BTree Borrow Error: {}", s)) // Or a new specific variant
+                OxidbError::LockTimeout(format!("BTree Borrow Error: {}", s)) // Or a new specific variant
             }
             crate::core::indexing::btree::OxidbError::Generic(s) => {
                 OxidbError::Internal(format!("BTree Generic Error: {}", s))

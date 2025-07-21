@@ -76,7 +76,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                         let lsn = self.log_manager.next_lsn();
                         self.store
                             .write()
-                            .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on store for rollback (revert insert): {}",e)))?
+                            .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on store for rollback (revert insert): {}",e)))?
                             .delete(
                                 key,
                                 &temp_transaction_for_undo,
@@ -94,7 +94,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                         // because its expirer_tx_id points to a non-committed transaction.
                         self.store
                             .write()
-                            .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on store for rollback (revert update): {}",e)))?
+                            .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on store for rollback (revert update): {}",e)))?
                             .delete(
                                 key,
                                 &temp_transaction_for_undo, // The transaction being rolled back
@@ -106,7 +106,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                         let lsn = self.log_manager.next_lsn();
                         self.store
                             .write()
-                            .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on store for rollback (revert delete): {}",e)))?
+                            .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on store for rollback (revert delete): {}",e)))?
                             .put(
                                 key.clone(),
                                 old_value.clone(),
@@ -119,7 +119,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                         indexed_values_map.insert(index_name.clone(), value_for_index.clone());
                         self.index_manager
                             .write()
-                            .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on index manager for rollback (revert index insert): {}",e)))?
+                            .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for rollback (revert index insert): {}",e)))?
                             .on_delete_data(&indexed_values_map, key)?;
                     }
                     UndoOperation::IndexRevertDelete { index_name, key, old_value_for_index } => {
@@ -127,7 +127,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                         indexed_values_map.insert(index_name.clone(), old_value_for_index.clone());
                         self.index_manager
                             .write()
-                            .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on index manager for rollback (revert index delete): {}",e)))?
+                            .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for rollback (revert index delete): {}",e)))?
                             .on_insert_data(&indexed_values_map, key)?;
                     }
                     UndoOperation::IndexRevertUpdate {
@@ -142,7 +142,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                         new_values_map.insert(index_name.clone(), new_value_for_index.clone());
                         self.index_manager
                             .write()
-                            .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on index manager for rollback (revert index update - delete part): {}",e)))?
+                            .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for rollback (revert index update - delete part): {}",e)))?
                             .on_delete_data(&new_values_map, key)?;
 
                         // 2. Re-insert the old value.
@@ -150,7 +150,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                         old_values_map.insert(index_name.clone(), old_value_for_index.clone());
                         self.index_manager
                             .write()
-                            .map_err(|e| OxidbError::Lock(format!("Failed to acquire write lock on index manager for rollback (revert index update - insert part): {}",e)))?
+                            .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for rollback (revert index update - insert part): {}",e)))?
                             .on_insert_data(&old_values_map, key)?;
                     }
                 }
@@ -198,7 +198,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         self.store
             .write()
             .map_err(|e| {
-                OxidbError::Lock(format!("Failed to acquire write lock on store for vacuum: {}", e))
+                OxidbError::LockTimeout(format!("Failed to acquire write lock on store for vacuum: {}", e))
             })?
             .gc(low_water_mark.0, &committed_ids)?; // Use low_water_mark.0
         Ok(ExecutionResult::Success)

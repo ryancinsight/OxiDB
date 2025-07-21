@@ -1,11 +1,17 @@
 pub mod cow_utils; // Performance optimizations using Copy-on-Write
-pub mod error;
-pub use error::OxidbError;
+pub mod errors;
+pub mod result_utils;  // New result utilities module
 pub mod serialization;
 pub mod traits;
 pub mod types;
+
+pub use errors::OxidbError;
+pub use result_utils::{IntoOxidbError, ResultExt, retry_with_backoff};
 
 #[cfg(test)]
 mod tests {
     mod error_tests;
 }
+
+#[cfg(test)]
+pub use result_utils::TestResultExt;

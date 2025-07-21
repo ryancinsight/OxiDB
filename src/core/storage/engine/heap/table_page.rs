@@ -1,4 +1,4 @@
-use crate::core::common::error::OxidbError;
+use crate::core::common::errors::OxidbError;
 use crate::core::common::types::ids::SlotId;
 use crate::core::storage::engine::page::{PAGE_HEADER_SIZE, PAGE_SIZE};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -193,7 +193,7 @@ impl TablePage {
     pub fn init(page_data: &mut [u8]) -> Result<(), OxidbError> {
         if page_data.len() < SLOTS_ARRAY_DATA_OFFSET {
             // Check if page can even hold the basic header
-            return Err(OxidbError::Storage(
+            return Err(OxidbError::StorageError(
                 "Page data too small to initialize as TablePage".to_string(),
             ));
         }
@@ -271,12 +271,12 @@ impl TablePage {
 
         let record_data_write_end =
             record_data_write_offset.checked_add(data_len).ok_or_else(|| {
-                OxidbError::Storage("Record data offset calculation overflow".to_string())
+                OxidbError::StorageError("Record data offset calculation overflow".to_string())
             })?;
 
         // Final space check: does the end of data exceed page capacity?
         if record_data_write_end as usize > page_data.len() {
-            return Err(OxidbError::Storage(
+            return Err(OxidbError::StorageError(
                 "Page full: no space for record data (after considering slot array)".to_string(),
             ));
         }
@@ -328,17 +328,13 @@ impl TablePage {
     pub fn delete_record(page_data: &mut [u8], slot_id: SlotId) -> Result<(), OxidbError> {
         let num_records = Self::get_num_records(page_data)?;
         if slot_id.0 >= num_records {
-            return Err(OxidbError::NotFound {
-                key: format!("SlotId {} out of bounds", slot_id.0),
-            });
+            return Err(OxidbError::NotFound(format!("SlotId {} out of bounds", slot_id.0)));
         }
 
         let mut slot_info = match Self::get_slot_info(page_data, slot_id)? {
             Some(s) if s.length > 0 => s,
             _ => {
-                return Err(OxidbError::NotFound {
-                    key: format!("Record at SlotId {} not found or already deleted", slot_id.0),
-                })
+                return Err(OxidbError::NotFound(format!("Record at SlotId {} not found or already deleted", slot_id.0)))
             }
         };
 
@@ -377,17 +373,13 @@ impl TablePage {
 
         let num_records = Self::get_num_records(page_data)?;
         if slot_id.0 >= num_records {
-            return Err(OxidbError::NotFound {
-                key: format!("SlotId {} out of bounds", slot_id.0),
-            });
+            return Err(OxidbError::NotFound(format!("SlotId {} out of bounds", slot_id.0)));
         }
 
         let current_slot_info = match Self::get_slot_info(page_data, slot_id)? {
             Some(s) if s.length > 0 => s,
             _ => {
-                return Err(OxidbError::NotFound {
-                    key: format!("Record at SlotId {} not found or has been deleted", slot_id.0),
-                })
+                return Err(OxidbError::NotFound(format!("Record at SlotId {} not found or has been deleted", slot_id.0)))
             }
         };
 
@@ -407,7 +399,7 @@ impl TablePage {
             // New data is larger. Current simple model: return error.
             // A more complex version might try to "deallocate" the old record (like delete)
             // and then "insert" the new record if space allows.
-            return Err(OxidbError::Storage(
+            return Err(OxidbError::StorageError(
                 "Update failed: new data is larger than old data and in-place update is not supported for larger data.".to_string()
             ));
             // TODO: Advanced update: try to use free space if new_data > old_data.

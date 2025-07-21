@@ -1,8 +1,8 @@
-use crate::core::common::error::OxidbError;
+use crate::core::common::errors::OxidbError;
 use crate::core::common::types::PageId; // Assuming PageId is u64 from common::types::ids
 use crate::core::storage::engine::page::PAGE_SIZE;
 use std::fs::{File, OpenOptions};
-use std::io::{Error as IoError, ErrorKind, Read, Seek, SeekFrom, Write};
+use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 
 /// Manages disk operations for database pages, including reading, writing, and allocating pages.
@@ -25,11 +25,11 @@ impl DiskManager {
             .truncate(is_new_db) // Truncate if we are creating it new
             .open(&db_path)
             .map_err(|e| {
-                OxidbError::Io(IoError::other(format!(
+                OxidbError::Io(format!(
                     "Failed to open database file '{}': {}",
                     db_path.display(),
                     e
-                )))
+                ))
             })?;
 
         let next_page_id = if is_new_db || db_file.metadata()?.len() == 0 {
@@ -37,11 +37,11 @@ impl DiskManager {
             PageId(0)
         } else {
             let metadata = db_file.metadata().map_err(|e| {
-                OxidbError::Io(IoError::other(format!(
+                OxidbError::Io(format!(
                     "Failed to read metadata for database file '{}': {}",
                     db_path.display(),
                     e
-                )))
+                ))
             })?;
             // Calculate next_page_id based on file size. Each page is PAGE_SIZE bytes.
             // If metadata.len() is 0, this implies 0 pages.
@@ -59,26 +59,23 @@ impl DiskManager {
 
     pub fn write_page(&mut self, page_id: PageId, page_data: &[u8]) -> Result<(), OxidbError> {
         if page_data.len() != PAGE_SIZE {
-            return Err(OxidbError::Io(IoError::new(
-                ErrorKind::InvalidInput,
-                format!(
-                    "Page data length mismatch: expected {}, got {}",
-                    PAGE_SIZE,
-                    page_data.len()
-                ),
+            return Err(OxidbError::Io(format!(
+                "Page data length mismatch: expected {}, got {}",
+                PAGE_SIZE,
+                page_data.len()
             )));
         }
 
         let offset = page_id.0.saturating_mul(PAGE_SIZE as u64);
         self.db_file.seek(SeekFrom::Start(offset)).map_err(|e| {
-            OxidbError::Io(IoError::other(format!(
+            OxidbError::Io(format!(
                 "Failed to seek to page {} offset {}: {}",
                 page_id.0, offset, e
-            )))
+            ))
         })?;
 
         self.db_file.write_all(page_data).map_err(|e| {
-            OxidbError::Io(IoError::other(format!("Failed to write page {}: {}", page_id.0, e)))
+            OxidbError::Io(format!("Failed to write page {}: {}", page_id.0, e))
         })?;
 
         Ok(())
@@ -90,44 +87,37 @@ impl DiskManager {
         page_data_buf: &mut [u8],
     ) -> Result<(), OxidbError> {
         if page_data_buf.len() != PAGE_SIZE {
-            return Err(OxidbError::Io(IoError::new(
-                ErrorKind::InvalidInput,
-                format!(
-                    "Page data buffer length mismatch: expected {}, got {}",
-                    PAGE_SIZE,
-                    page_data_buf.len()
-                ),
+            return Err(OxidbError::Io(format!(
+                "Page data buffer length mismatch: expected {}, got {}",
+                PAGE_SIZE,
+                page_data_buf.len()
             )));
         }
 
         if page_id.0 >= self.next_page_id.0 {
-            return Err(OxidbError::Io(IoError::new(
-                ErrorKind::NotFound,
-                format!(
-                    "Page ID {} out of bounds (next_page_id is {})",
-                    page_id.0, self.next_page_id.0
-                ),
+            return Err(OxidbError::Io(format!(
+                "Page ID {} out of bounds (next_page_id is {})",
+                page_id.0, self.next_page_id.0
             )));
         }
 
         let offset = page_id.0.saturating_mul(PAGE_SIZE as u64);
         self.db_file.seek(SeekFrom::Start(offset)).map_err(|e| {
-            OxidbError::Io(IoError::other(format!(
+            OxidbError::Io(format!(
                 "Failed to seek to page {} offset {}: {}",
                 page_id.0, offset, e
-            )))
+            ))
         })?;
 
         match self.db_file.read_exact(page_data_buf) {
             Ok(_) => Ok(()),
-            Err(e) if e.kind() == ErrorKind::UnexpectedEof => Err(OxidbError::Io(IoError::new(
-                ErrorKind::UnexpectedEof,
-                format!("Unexpected EOF when reading page {}: not enough bytes", page_id.0),
+            Err(e) if e.kind() == ErrorKind::UnexpectedEof => Err(OxidbError::Io(format!(
+                "Unexpected EOF when reading page {}: not enough bytes", page_id.0
             ))),
-            Err(e) => Err(OxidbError::Io(IoError::other(format!(
+            Err(e) => Err(OxidbError::Io(format!(
                 "Failed to read page {}: {}",
                 page_id.0, e
-            )))),
+            ))),
         }
     }
 

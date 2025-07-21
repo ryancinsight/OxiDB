@@ -25,14 +25,14 @@ fn create_db_file_with_kv_data(path: &Path, data: &[(Vec<u8>, Vec<u8>)]) -> Resu
         .create(true)
         .truncate(true)
         .open(path)
-        .map_err(OxidbError::Io)?; // Changed
+        .map_err(|e| OxidbError::Io(e.to_string()))?;
     let mut writer = BufWriter::new(file);
     for (key, value) in data {
         <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut writer)?;
         <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(value, &mut writer)?;
     }
-    writer.flush().map_err(OxidbError::Io)?; // Changed
-    writer.get_ref().sync_all().map_err(OxidbError::Io)?; // Changed
+    writer.flush().map_err(|e| OxidbError::Io(e.to_string()))?;
+    writer.get_ref().sync_all().map_err(|e| OxidbError::Io(e.to_string()))?;
     Ok(())
 }
 
@@ -53,13 +53,13 @@ fn derive_wal_path(db_path: &Path) -> PathBuf {
 // Helper to read all entries from a WAL file
 fn read_all_wal_entries(wal_path: &Path) -> Result<Vec<WalEntry>, OxidbError> {
     // Changed
-    let file = StdFile::open(wal_path).map_err(OxidbError::Io)?; // Changed
+    let file = StdFile::open(wal_path).map_err(|e| OxidbError::Io(e.to_string()))?;
     let mut reader = BufReader::new(file);
     let mut entries = Vec::new();
     loop {
         match <WalEntry as DataDeserializer<WalEntry>>::deserialize(&mut reader) {
             Ok(entry) => entries.push(entry),
-            Err(OxidbError::Io(e)) if e.kind() == ErrorKind::UnexpectedEof => {
+            Err(OxidbError::Io(e)) if e.contains("UnexpectedEof") => {
                 // Changed
                 break;
             }
@@ -364,7 +364,7 @@ fn test_load_from_malformed_file_key_eof() {
     let result = SimpleFileKvStore::new(path);
     assert!(result.is_err());
     match result.unwrap_err() {
-        OxidbError::Storage(msg) => {
+        OxidbError::StorageError(msg) => {
             assert!(msg.contains("Failed to deserialize key"));
             assert!(
                 msg.contains("failed to fill whole buffer")
@@ -391,7 +391,7 @@ fn test_load_from_malformed_file_value_eof() {
     let result = SimpleFileKvStore::new(path);
     assert!(result.is_err());
     match result.unwrap_err() {
-        OxidbError::Storage(msg) => {
+        OxidbError::StorageError(msg) => {
             assert!(msg.contains("Failed to deserialize value for key"));
             assert!(
                 msg.contains("failed to fill whole buffer")

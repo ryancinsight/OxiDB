@@ -105,7 +105,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<
                 .store
                 .write()
                 .map_err(|e| {
-                    OxidbError::Lock(format!("Failed to acquire write lock on store: {}", e))
+                    OxidbError::LockTimeout(format!("Failed to acquire write lock on store: {}", e))
                 })?
                 .delete(&primary_key, &tx_for_store, lsn, &self.committed_ids)?;
             if was_deleted {

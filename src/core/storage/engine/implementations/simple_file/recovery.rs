@@ -20,7 +20,7 @@ pub(super) fn replay_wal_into_cache(
     let wal_file = match File::open(wal_file_path) {
         Ok(f) => f,
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(()),
-        Err(e) => return Err(OxidbError::Io(e)), // Changed
+        Err(e) => return Err(OxidbError::Io(e.to_string())),
     };
     let mut reader = BufReader::new(wal_file);
 
@@ -46,7 +46,7 @@ pub(super) fn replay_wal_into_cache(
                     rolled_back_transactions.insert(*transaction_id);
                 }
             },
-            Err(OxidbError::Io(e)) if e.kind() == ErrorKind::UnexpectedEof => break,
+            Err(OxidbError::Io(e)) if e.contains("UnexpectedEof") => break,
             Err(OxidbError::Deserialization(msg)) => {
                 // Changed
                 eprintln!("WAL corruption detected (Deserialization error): {}. Replay stopped. Data up to this point is recovered.", msg);

@@ -4,7 +4,7 @@
 //! This module provides connection pooling and management capabilities for the database.
 //! It ensures efficient resource utilization and follows established design patterns.
 
-// pub mod pool; // TODO: Implement connection pool in future
+pub mod pool; // New connection pool implementation
 
 use crate::core::common::OxidbError;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -146,19 +146,19 @@ impl PoolConfig {
     /// Validates the configuration
     pub fn validate(&self) -> Result<(), OxidbError> {
         if self.min_connections > self.max_connections {
-            return Err(OxidbError::Configuration(
+            return Err(OxidbError::ConfigError(
                 "min_connections cannot be greater than max_connections".to_string(),
             ));
         }
 
         if self.max_connections == 0 {
-            return Err(OxidbError::Configuration(
+            return Err(OxidbError::ConfigError(
                 "max_connections must be greater than 0".to_string(),
             ));
         }
 
         if self.acquire_timeout.is_zero() {
-            return Err(OxidbError::Configuration(
+            return Err(OxidbError::ConfigError(
                 "acquire_timeout must be greater than 0".to_string(),
             ));
         }

@@ -104,7 +104,7 @@ impl Transaction {
 
 // Original content of mod.rs (with modifications)
 // This module will handle transaction management.
-pub mod errors;
+pub mod acid_manager; // Comprehensive ACID transaction manager
 pub mod lock_manager;
 pub mod manager;
 // pub mod transaction; // This line is removed
@@ -113,4 +113,4 @@ pub mod manager;
 pub use lock_manager::{LockManager, LockType};
 pub use manager::TransactionManager;
 // pub use transaction::{Transaction, TransactionState}; // This line is removed - already defined above
-pub use errors::TransactionError;
+pub use crate::core::common::errors::TransactionError;
