@@ -128,9 +128,9 @@ impl<T: PoolableConnection> PoolInner<T> {
             self.available.push_back(connection);
         }
         
-        if self.in_use > 0 {
-            self.in_use -= 1;
-        }
+        // Debug assertion to catch logic errors in development
+        debug_assert!(self.in_use > 0, "in_use should always be > 0 when returning a connection");
+        self.in_use -= 1;
         
         // Notify waiting threads
         self.condvar.notify_one();
