@@ -533,7 +533,7 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
 
     async fn add_entity(&mut self, entity: KnowledgeNode) -> Result<NodeId, OxidbError> {
         let graph_data = GraphData::new(entity.entity_type.clone())
-                            .with_property("name".to_string(), Value::Text(entity.name.clone()))
+            .with_property("name".to_string(), Value::Text(entity.name.clone()))
             .with_property("confidence".to_string(), Value::Float(entity.confidence_score))
             .with_properties(entity.properties);
         
