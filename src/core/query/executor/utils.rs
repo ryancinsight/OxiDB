@@ -94,6 +94,10 @@ pub fn datatype_to_ast_literal(data_type: &DataType) -> Result<AstLiteralValue, 
             // This might not be directly usable in all SQL condition contexts without specific function calls.
             Ok(AstLiteralValue::String(hex::encode(bytes)))
         }
-        DataType::Vector(_) => todo!("Handle DataType::Vector in datatype_to_ast_literal"),
+        DataType::Vector(vec) => {
+            // Convert vector to a string representation for AST compatibility
+            let vec_str = format!("[{}]", vec.data.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
+            Ok(AstLiteralValue::String(vec_str))
+        },
     }
 }

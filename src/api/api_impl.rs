@@ -63,18 +63,19 @@ impl Oxidb {
     /// # Errors
     /// Returns `OxidbError` if the store cannot be initialized or the executor cannot be created.
     pub fn new(db_path: impl AsRef<Path>) -> Result<Self, OxidbError> {
-        let mut config = Config {
-            // made mutable
-            database_file_path: db_path.as_ref().to_string_lossy().into_owned(),
-            ..Default::default()
-        };
-        // Make index_base_path relative to db_path's parent if default or empty
-        if let Some(parent) = db_path.as_ref().parent() {
-            if config.index_base_path.is_empty() || config.index_base_path == "oxidb_indexes/" {
-                config.index_base_path =
-                    parent.join("oxidb_indexes/").to_string_lossy().into_owned();
-            }
+        let db_path = db_path.as_ref();
+        let mut config = Config::default();
+        
+        // Set data directory based on the database path
+        if let Some(parent) = db_path.parent() {
+            config.data_dir = parent.to_path_buf();
+        } else {
+            config.data_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         }
+        
+        // Set index directory relative to data directory
+        config.index_dir = config.data_dir.join("oxidb_indexes");
+        
         Self::new_with_config(config)
     }
 
@@ -157,7 +158,10 @@ impl Oxidb {
                     DataType::JsonBlob(json_val) => serde_json::to_string(&json_val)
                         .unwrap_or_else(|e| format!("Error serializing JsonBlob: {}", e)),
                     DataType::RawBytes(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-                    DataType::Vector(_) => todo!("Handle DataType::Vector in Oxidb::get"),
+                    DataType::Vector(vec) => {
+                        // Convert vector to a readable string representation
+                        format!("[{}]", vec.data.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(", "))
+                    },
                 }))
             }
             Ok(unexpected_result) => Err(OxidbError::Internal(format!(
