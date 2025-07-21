@@ -76,9 +76,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Reasoning paths: {}", graphrag_result.reasoning_paths.len());
     println!("Overall confidence: {:.2}", graphrag_result.confidence_score);
     
-    // Step 6: Demonstrate pure graph operations
-    println!("\n🔗 Demonstrating pure graph operations...");
+    // Step 6: Demonstrate comprehensive graph store capabilities
+    println!("\n🔗 Demonstrating comprehensive graph store capabilities...");
     let mut graph = GraphFactory::create_memory_graph()?;
+    
+    println!("  🏗️  Factory now returns Box<dyn GraphStore> with full capabilities:");
+    println!("     • GraphOperations: CRUD operations (add/get/remove nodes/edges)");
     
     // Add nodes
     let node1_data = GraphData::new("Person".to_string())
@@ -98,9 +101,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Added nodes: {} and {}", node1_id, node2_id);
     println!("Added edge: {}", edge_id);
     
-    // Query graph
+    // Test GraphOperations capabilities
     let neighbors = graph.get_neighbors(node1_id, oxidb::core::graph::traversal::TraversalDirection::Both)?;
-    println!("Charlie's neighbors: {:?}", neighbors);
+    println!("  ✅ GraphOperations - Charlie's neighbors: {:?}", neighbors);
+    
+    // Test GraphQuery capabilities (now accessible!)
+    println!("     • GraphQuery: Advanced querying (find_shortest_path, traverse, etc.)");
+    let path = graph.find_shortest_path(node1_id, node2_id)?;
+    println!("  ✅ GraphQuery - Shortest path from Charlie to Diana: {:?}", path);
+    
+    let traversal = graph.traverse(node1_id, oxidb::core::graph::TraversalStrategy::BreadthFirst, Some(2))?;
+    println!("  ✅ GraphQuery - BFS traversal from Charlie (max depth 2): {:?}", traversal);
+    
+    // Test GraphTransaction capabilities (now accessible!)
+    println!("     • GraphTransaction: Transaction management (begin/commit/rollback)");
+    graph.begin_transaction()?;
+    
+    let temp_node_data = GraphData::new("Person".to_string())
+        .with_property("name".to_string(), DataType::String("Eve".to_string()));
+    let temp_node_id = graph.add_node(temp_node_data)?;
+    println!("  ✅ GraphTransaction - Added node {} in transaction", temp_node_id);
+    
+    graph.commit_transaction()?;
+    println!("  ✅ GraphTransaction - Transaction committed successfully");
+    
+    // Verify the committed node exists
+    let eve_node = graph.get_node(temp_node_id)?;
+    println!("  ✅ Verification - Eve node exists after commit: {}", eve_node.is_some());
     
     // Demonstrate optimized clustering coefficient calculation
     println!("\n📊 Demonstrating optimized clustering coefficient...");
@@ -119,7 +146,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  ✓ Document-based knowledge graph construction");
     println!("  ✓ Custom entity and relationship management");
     println!("  ✓ Graph-enhanced retrieval with reasoning paths");
-    println!("  ✓ Pure graph database operations");
+    println!("  ✓ Comprehensive GraphStore capabilities (Operations + Query + Transaction)");
     println!("  ✓ Optimized clustering coefficient calculation (O(k³) → O(k×k_avg))");
     println!("  ✓ Efficient persistent storage with proper error handling");
     println!("  ✓ SOLID design principles throughout");
