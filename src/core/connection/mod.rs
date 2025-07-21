@@ -250,7 +250,9 @@ impl PoolConfigBuilder {
             max_connections: self.max_connections.unwrap_or(50),
             acquire_timeout: self.acquire_timeout.unwrap_or_else(|| Duration::from_secs(30)),
             max_idle_time: self.max_idle_time.unwrap_or_else(|| Duration::from_secs(300)),
-            validation_interval: self.validation_interval.unwrap_or_else(|| Duration::from_secs(60)),
+            validation_interval: self
+                .validation_interval
+                .unwrap_or_else(|| Duration::from_secs(60)),
             enable_metrics: self.enable_metrics.unwrap_or(true),
         };
 
@@ -267,9 +269,7 @@ pub struct ConnectionIdGenerator {
 
 impl ConnectionIdGenerator {
     pub fn new() -> Self {
-        Self {
-            counter: AtomicU64::new(1),
-        }
+        Self { counter: AtomicU64::new(1) }
     }
 
     pub fn next_id(&self) -> ConnectionId {
@@ -293,7 +293,7 @@ mod tests {
         let generator = ConnectionIdGenerator::new();
         let id1 = generator.next_id();
         let id2 = generator.next_id();
-        
+
         assert_ne!(id1, id2);
         assert_eq!(id1.as_u64(), 1);
         assert_eq!(id2.as_u64(), 2);
@@ -303,19 +303,19 @@ mod tests {
     fn test_connection_info_lifecycle() {
         let id = ConnectionId::new(1);
         let mut info = ConnectionInfo::new(id);
-        
+
         assert_eq!(info.id, id);
         assert_eq!(info.state, ConnectionState::Idle);
         assert_eq!(info.transaction_count, 0);
         assert_eq!(info.query_count, 0);
-        
+
         info.mark_used();
         assert_eq!(info.query_count, 1);
-        
+
         info.start_transaction();
         assert_eq!(info.state, ConnectionState::Active);
         assert_eq!(info.transaction_count, 1);
-        
+
         info.end_transaction();
         assert_eq!(info.state, ConnectionState::Idle);
     }
@@ -323,23 +323,15 @@ mod tests {
     #[test]
     fn test_pool_config_validation() {
         // Valid configuration
-        let config = PoolConfig::builder()
-            .min_connections(5)
-            .max_connections(10)
-            .build();
+        let config = PoolConfig::builder().min_connections(5).max_connections(10).build();
         assert!(config.is_ok());
 
         // Invalid: min > max
-        let config = PoolConfig::builder()
-            .min_connections(10)
-            .max_connections(5)
-            .build();
+        let config = PoolConfig::builder().min_connections(10).max_connections(5).build();
         assert!(config.is_err());
 
         // Invalid: max = 0
-        let config = PoolConfig::builder()
-            .max_connections(0)
-            .build();
+        let config = PoolConfig::builder().max_connections(0).build();
         assert!(config.is_err());
     }
 
@@ -358,10 +350,10 @@ mod tests {
     fn test_connection_expiration() {
         let id = ConnectionId::new(1);
         let info = ConnectionInfo::new(id);
-        
+
         // Not expired immediately
         assert!(!info.is_expired(Duration::from_secs(1)));
-        
+
         // Simulate time passage
         std::thread::sleep(Duration::from_millis(10));
         assert!(info.is_expired(Duration::from_millis(5)));

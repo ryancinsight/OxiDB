@@ -36,11 +36,22 @@ impl IndexManager {
         auto_discover: bool,
     ) -> Result<Self, OxidbError> {
         if !base_path.exists() {
-            std::fs::create_dir_all(&base_path).map_err(OxidbError::Io)?;
+            std::fs::create_dir_all(&base_path).map_err(|e| {
+                OxidbError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "Failed to create index base directory {:?}. Underlying error: {} (kind: {:?})",
+                        &base_path, e, e.kind()
+                    ),
+                ))
+            })?;
         } else if !base_path.is_dir() {
             return Err(OxidbError::Io(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "Base path for indexes must be a directory.",
+                format!(
+                    "Index base path {:?} exists but is not a directory. Please ensure the path points to a valid directory.",
+                    &base_path
+                ),
             )));
         }
 

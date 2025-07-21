@@ -131,8 +131,8 @@ mod tests {
     // but for consistency with tree.rs tests, using crate path might be better.
     // use super::*; // This brings BPlusTreeIndex, OxidbError etc. from this mod.rs
     // use crate::core::indexing::traits::Index;
-    use crate::core::query::commands::{Key as TestKey, Value as TestValue};
     use crate::core::indexing::btree::node::PrimaryKey;
+    use crate::core::query::commands::{Key as TestKey, Value as TestValue};
 
     #[allow(dead_code)]
     fn trait_val(s: &str) -> TestValue {

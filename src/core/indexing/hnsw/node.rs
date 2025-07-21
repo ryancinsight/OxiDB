@@ -1,4 +1,5 @@
 use crate::core::query::commands::Key as PrimaryKey;
+use crate::core::vector::similarity::cosine_similarity as core_cosine_similarity;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -101,19 +102,9 @@ pub fn euclidean_distance(a: &Vector, b: &Vector) -> f32 {
 
 /// Calculate cosine similarity between two vectors
 pub fn cosine_similarity(a: &Vector, b: &Vector) -> f32 {
-    if a.len() != b.len() {
-        return 0.0;
-    }
-
-    let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-    let norm_a: f32 = a.iter().map(|x| x.powi(2)).sum::<f32>().sqrt();
-    let norm_b: f32 = b.iter().map(|x| x.powi(2)).sum::<f32>().sqrt();
-
-    if norm_a == 0.0 || norm_b == 0.0 {
-        0.0
-    } else {
-        dot_product / (norm_a * norm_b)
-    }
+    // Use the proper error-handling implementation from core::vector::similarity
+    // and convert errors to 0.0 for backward compatibility in HNSW context
+    core_cosine_similarity(a, b).unwrap_or(0.0)
 }
 
 /// Distance function type for HNSW

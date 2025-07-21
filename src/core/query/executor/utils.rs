@@ -96,8 +96,11 @@ pub fn datatype_to_ast_literal(data_type: &DataType) -> Result<AstLiteralValue, 
         }
         DataType::Vector(vec) => {
             // Convert vector to a string representation for AST compatibility
-            let vec_str = format!("[{}]", vec.data.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
+            let vec_str = format!(
+                "[{}]",
+                vec.data.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+            );
             Ok(AstLiteralValue::String(vec_str))
-        },
+        }
     }
 }

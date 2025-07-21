@@ -101,20 +101,38 @@ impl WalWriter {
             self.buffer.len(),
             &self.wal_file_path
         );
-        let file_result = OpenOptions::new().create(true).append(true).open(&self.wal_file_path);
 
-        if let Err(e) = &file_result {
-            eprintln!(
-                "[core::wal::writer::WalWriter::flush] Error opening file {:?}: {}",
-                &self.wal_file_path, e
-            );
-        } else {
-            eprintln!(
-                "[core::wal::writer::WalWriter::flush] Successfully opened/created file: {:?}",
-                &self.wal_file_path
-            );
+        // Ensure parent directory exists (SOLID: Single Responsibility - file handling)
+        if let Some(parent) = self.wal_file_path.parent() {
+            if !parent.exists() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    let error_msg = format!(
+                        "Failed to create parent directory {:?} for WAL file {:?}. Underlying error: {} (kind: {:?})",
+                        parent, &self.wal_file_path, e, e.kind()
+                    );
+                    eprintln!("[core::wal::writer::WalWriter::flush] {}", error_msg);
+                    IoError::new(IoErrorKind::Other, error_msg)
+                })?;
+            }
         }
-        let file = file_result?;
+
+        let file = OpenOptions::new().create(true).append(true).open(&self.wal_file_path).map_err(
+            |e| {
+                let error_msg = format!(
+                    "Failed to open/create WAL file {:?}. Underlying error: {} (kind: {:?})",
+                    &self.wal_file_path,
+                    e,
+                    e.kind()
+                );
+                eprintln!("[core::wal::writer::WalWriter::flush] {}", error_msg);
+                IoError::new(e.kind(), error_msg)
+            },
+        )?;
+
+        eprintln!(
+            "[core::wal::writer::WalWriter::flush] Successfully opened/created file: {:?}",
+            &self.wal_file_path
+        );
         let mut writer = BufWriter::new(file);
 
         for record in self.buffer.iter() {

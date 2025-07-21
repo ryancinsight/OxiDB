@@ -1,6 +1,42 @@
 // src/core/vector/similarity.rs
 
-use crate::core::common::error::OxidbError;
+use crate::core::common::OxidbError;
+
+/// Enumeration of supported similarity metrics
+/// Following the Open/Closed Principle - open for extension, closed for modification
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SimilarityMetric {
+    /// Cosine similarity (angle between vectors)
+    Cosine,
+    /// Dot product similarity
+    DotProduct,
+    /// Euclidean distance-based similarity
+    Euclidean,
+}
+
+impl SimilarityMetric {
+    /// Calculate similarity between two vectors using this metric
+    pub fn calculate(&self, v1: &[f32], v2: &[f32]) -> Result<f32, OxidbError> {
+        match self {
+            SimilarityMetric::Cosine => cosine_similarity(v1, v2),
+            SimilarityMetric::DotProduct => dot_product(v1, v2),
+            SimilarityMetric::Euclidean => {
+                // Convert Euclidean distance to similarity
+                let distance = euclidean_distance(v1, v2)?;
+                Ok(1.0 / (1.0 + distance)) // Normalize to [0,1] range
+            }
+        }
+    }
+
+    /// Get the name of the similarity metric
+    pub fn name(&self) -> &'static str {
+        match self {
+            SimilarityMetric::Cosine => "cosine",
+            SimilarityMetric::DotProduct => "dot_product",
+            SimilarityMetric::Euclidean => "euclidean",
+        }
+    }
+}
 
 /// Calculates the dot product of two vectors.
 ///
@@ -17,7 +53,8 @@ pub fn dot_product(v1: &[f32], v2: &[f32]) -> Result<f32, OxidbError> {
     if v1.len() != v2.len() {
         return Err(OxidbError::VectorDimensionMismatch { dim1: v1.len(), dim2: v2.len() });
     }
-    Ok(v1.iter().zip(v2.iter()).map(|(x, y)| x * y).sum())
+
+    Ok(v1.iter().zip(v2.iter()).map(|(a, b)| a * b).sum())
 }
 
 /// Calculates the cosine similarity of two vectors.
@@ -45,6 +82,27 @@ pub fn cosine_similarity(v1: &[f32], v2: &[f32]) -> Result<f32, OxidbError> {
     }
 
     Ok(dot_prod / (magnitude_v1 * magnitude_v2))
+}
+
+/// Calculates the Euclidean distance between two vectors.
+///
+/// # Arguments
+///
+/// * `v1` - A slice of f32 representing the first vector.
+/// * `v2` - A slice of f32 representing the second vector.
+///
+/// # Returns
+///
+/// * `Result<f32, OxidbError>` - The Euclidean distance between the two vectors, or an error if
+///   the vectors have different dimensions.
+pub fn euclidean_distance(v1: &[f32], v2: &[f32]) -> Result<f32, OxidbError> {
+    if v1.len() != v2.len() {
+        return Err(OxidbError::VectorDimensionMismatch { dim1: v1.len(), dim2: v2.len() });
+    }
+
+    let sum_sq_diff: f32 = v1.iter().zip(v2.iter()).map(|(a, b)| (a - b).powi(2)).sum();
+
+    Ok(sum_sq_diff.sqrt())
 }
 
 #[cfg(test)]

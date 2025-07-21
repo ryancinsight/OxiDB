@@ -441,7 +441,7 @@ mod tests {
     fn test_multiple_node_insertion() {
         let mut graph = HnswGraph::new(2, 4, 10, DistanceFunction::Euclidean);
 
-        let vectors = vec![vec![1.0, 0.0], vec![0.0, 1.0], vec![-1.0, 0.0], vec![0.0, -1.0]];
+        let vectors = [vec![1.0, 0.0], vec![0.0, 1.0], vec![2.0, 0.0], vec![0.0, 2.0]];
 
         for (i, vector) in vectors.iter().enumerate() {
             let pk = format!("pk_{}", i).as_bytes().to_vec();
@@ -457,7 +457,7 @@ mod tests {
     fn test_search() {
         let mut graph = HnswGraph::new(2, 4, 10, DistanceFunction::Euclidean);
 
-        let vectors = vec![vec![1.0, 0.0], vec![0.0, 1.0], vec![2.0, 0.0], vec![0.0, 2.0]];
+        let vectors = [vec![1.0, 0.0], vec![0.0, 1.0], vec![2.0, 0.0], vec![0.0, 2.0]];
 
         for (i, vector) in vectors.iter().enumerate() {
             let pk = format!("pk_{}", i).as_bytes().to_vec();

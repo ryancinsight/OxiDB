@@ -65,17 +65,20 @@ impl Oxidb {
     pub fn new(db_path: impl AsRef<Path>) -> Result<Self, OxidbError> {
         let db_path = db_path.as_ref();
         let mut config = Config::default();
-        
+
+        // Set the specific database file path
+        config.database_file = db_path.to_path_buf();
+
         // Set data directory based on the database path
         if let Some(parent) = db_path.parent() {
             config.data_dir = parent.to_path_buf();
         } else {
             config.data_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         }
-        
+
         // Set index directory relative to data directory
         config.index_dir = config.data_dir.join("oxidb_indexes");
-        
+
         Self::new_with_config(config)
     }
 

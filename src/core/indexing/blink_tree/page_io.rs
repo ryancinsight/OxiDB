@@ -37,10 +37,36 @@ impl BlinkPageManager {
     ) -> Result<Self, BlinkTreeError> {
         let file = if path.exists() {
             // File exists, open for read/write
-            OpenOptions::new().read(true).write(true).open(path)?
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(path)
+                .map_err(|e| {
+                    BlinkTreeError::Io(std::io::Error::new(
+                        e.kind(),
+                        format!(
+                            "Failed to open existing blink tree file {:?}. Underlying error: {} (kind: {:?})",
+                            path, e, e.kind()
+                        ),
+                    ))
+                })?
         } else if create_new_if_not_exists {
             // File doesn't exist, create it
-            OpenOptions::new().read(true).write(true).create(true).truncate(true).open(path)?
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(path)
+                .map_err(|e| {
+                    BlinkTreeError::Io(std::io::Error::new(
+                        e.kind(),
+                        format!(
+                            "Failed to create new blink tree file {:?}. Underlying error: {} (kind: {:?})",
+                            path, e, e.kind()
+                        ),
+                    ))
+                })?
         } else {
             return Err(BlinkTreeError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
