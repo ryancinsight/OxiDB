@@ -452,6 +452,7 @@ pub struct GraphMetrics;
 
 impl GraphMetrics {
     /// Calculate clustering coefficient for a node
+    /// Optimized version with O(k * k_avg) complexity using HashSet lookups
     pub fn clustering_coefficient<F>(
         node: NodeId,
         get_neighbors: F,
@@ -468,14 +469,21 @@ impl GraphMetrics {
         
         let mut edges_between_neighbors = 0;
         
+        // Optimize by checking each neighbor's connections only once
+        // and using HashSet for O(1) lookups
         for i in 0..neighbors.len() {
+            let neighbor_i = neighbors[i];
+            
+            // Get neighbors of neighbor_i and convert to HashSet for O(1) lookups
+            let neighbors_of_i = get_neighbors(neighbor_i)?;
+            let neighbors_set: std::collections::HashSet<NodeId> = neighbors_of_i.into_iter().collect();
+            
+            // Check connections to remaining neighbors (j > i to avoid double counting)
             for j in (i + 1)..neighbors.len() {
-                let neighbor_i = neighbors[i];
                 let neighbor_j = neighbors[j];
                 
-                // Check if there's an edge between neighbor_i and neighbor_j
-                let neighbors_of_i = get_neighbors(neighbor_i)?;
-                if neighbors_of_i.contains(&neighbor_j) {
+                // O(1) lookup instead of O(k) contains() on Vec
+                if neighbors_set.contains(&neighbor_j) {
                     edges_between_neighbors += 1;
                 }
             }
@@ -571,6 +579,46 @@ mod tests {
 
         let clustering = GraphMetrics::clustering_coefficient(1, get_neighbors).unwrap();
         assert_eq!(clustering, 1.0); // Perfect triangle
+    }
+
+    #[test]
+    fn test_clustering_coefficient_optimization() {
+        // Test with a larger graph to verify the optimization works correctly
+        // Star graph with center node connected to many nodes, but no edges between outer nodes
+        let get_neighbors = |node: NodeId| -> Result<Vec<NodeId>, OxidbError> {
+            match node {
+                1 => Ok((2..=10).collect()), // Center node connected to nodes 2-10
+                n if n >= 2 && n <= 10 => Ok(vec![1]), // Outer nodes only connected to center
+                _ => Ok(vec![]),
+            }
+        };
+
+        // Center node should have clustering coefficient of 0 (no edges between neighbors)
+        let clustering = GraphMetrics::clustering_coefficient(1, get_neighbors).unwrap();
+        assert_eq!(clustering, 0.0);
+    }
+
+    #[test]
+    fn test_clustering_coefficient_partial_connections() {
+        // Test case with some but not all possible edges between neighbors
+        let get_neighbors = |node: NodeId| -> Result<Vec<NodeId>, OxidbError> {
+            match node {
+                1 => Ok(vec![2, 3, 4, 5]), // Node 1 connected to 2, 3, 4, 5
+                2 => Ok(vec![1, 3]),       // 2 connected to 1, 3
+                3 => Ok(vec![1, 2, 4]),    // 3 connected to 1, 2, 4
+                4 => Ok(vec![1, 3]),       // 4 connected to 1, 3
+                5 => Ok(vec![1]),          // 5 connected only to 1
+                _ => Ok(vec![]),
+            }
+        };
+
+        let clustering = GraphMetrics::clustering_coefficient(1, get_neighbors).unwrap();
+        
+        // Node 1 has 4 neighbors: 2, 3, 4, 5
+        // Possible edges between neighbors: 4*3/2 = 6
+        // Actual edges: (2,3), (3,4) = 2 edges
+        // Clustering coefficient: 2/6 = 1/3 ≈ 0.333...
+        assert!((clustering - (1.0/3.0)).abs() < 1e-10);
     }
 
     #[test]
