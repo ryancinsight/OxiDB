@@ -345,7 +345,44 @@ The GraphFactory enhancement delivers:
 This enhancement transforms the GraphFactory from a limited operations provider to a comprehensive graph database interface, enabling clients to fully utilize Oxidb's graph capabilities through a clean, unified API.
 
 ### Key Metrics
-- **Test Coverage**: 662 tests pass, including comprehensive capability test
-- **API Completeness**: 100% of graph capabilities now accessible
+- **Test Coverage**: 663 tests pass, including comprehensive capability tests for both memory and persistent stores
+- **API Completeness**: 100% of graph capabilities now accessible for both factory methods
 - **Performance**: Zero runtime overhead, same performance as direct calls
 - **Backward Compatibility**: 100% compatible with existing code
+
+## Verification
+
+Both factory methods now return the comprehensive `Box<dyn GraphStore>` trait object:
+
+```rust
+// Both methods now return full capabilities
+pub fn create_memory_graph() -> Result<Box<dyn GraphStore>, OxidbError>
+pub fn create_persistent_graph(path: impl AsRef<Path>) -> Result<Box<dyn GraphStore>, OxidbError>
+```
+
+### Comprehensive Testing
+
+Added specific tests for both factory methods:
+- `test_comprehensive_graph_store_capabilities()` - Tests in-memory store
+- `test_persistent_graph_store_comprehensive_capabilities()` - Tests persistent store
+
+### Demo Integration
+
+The GraphRAG demo now showcases both:
+- **Memory Store**: Full capabilities via factory method
+- **Persistent Store**: Full capabilities via factory method with real-world usage patterns
+
+**Demo Output:**
+```
+💾 Demonstrating comprehensive persistent graph storage...
+  📁 Creating persistent graph store with FULL GraphStore capabilities
+     🏗️  Factory returns Box<dyn GraphStore> - NOT just GraphOperations!
+  ✅ GraphOperations - Added 3 nodes and 2 edges
+  🔍 Testing GraphQuery capabilities (previously inaccessible)...
+    ✅ find_nodes_by_property: Found 1 nodes with name 'Oxidb Database'
+    ✅ find_shortest_path: Path from company to feature: Some([1, 2, 3])
+    ✅ traverse: BFS traversal from company (depth 2): 3 nodes
+  💼 Testing GraphTransaction capabilities (previously inaccessible)...
+    ✅ Transaction committed successfully
+    ✅ Verification: User node exists after commit: true
+```

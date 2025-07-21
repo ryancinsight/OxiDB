@@ -137,9 +137,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // For this demo, we'll skip the shortest path since we're using the basic GraphOperations trait
     println!("Graph operations completed successfully!");
     
-    // Step 8: Demonstrate persistent graph storage
-    println!("\n💾 Demonstrating persistent graph storage...");
-    demonstrate_persistence().await?;
+    // Step 8: Demonstrate comprehensive persistent graph storage
+    println!("\n💾 Demonstrating comprehensive persistent graph storage...");
+    demonstrate_comprehensive_persistence().await?;
     
     println!("\n✅ GraphRAG demo completed successfully!");
     println!("\nKey features demonstrated:");
@@ -236,77 +236,7 @@ fn create_relationship(from: u64, to: u64, relationship_type: &str, confidence: 
     }
 }
 
-async fn demonstrate_persistence() -> Result<(), Box<dyn std::error::Error>> {
-    use oxidb::core::graph::storage::PersistentGraphStore;
-    use oxidb::core::graph::{GraphOperations, GraphTransaction};
-    
-    let temp_dir = std::env::temp_dir();
-    let storage_path = temp_dir.join("demo_graph.db");
-    
-    // Clean up any existing file
-    let _ = std::fs::remove_file(&storage_path);
-    
-    println!("  📁 Creating persistent graph store at: {:?}", storage_path);
-    
-    // Create persistent store with auto-flush every 3 operations
-    let mut store = PersistentGraphStore::with_auto_flush(&storage_path, 3)?;
-    
-    println!("  ➕ Adding nodes and edges...");
-    
-    // Add some data
-    let node1_data = GraphData::new("company".to_string())
-        .with_property("name".to_string(), DataType::String("Oxidb Corp".to_string()))
-        .with_property("founded".to_string(), DataType::Integer(2024));
-    
-    let node2_data = GraphData::new("product".to_string())
-        .with_property("name".to_string(), DataType::String("Oxidb Database".to_string()))
-        .with_property("version".to_string(), DataType::String("1.0".to_string()));
-    
-    let node1_id = store.add_node(node1_data)?;
-    println!("    🏢 Added company node (dirty: {})", store.is_dirty());
-    
-    let node2_id = store.add_node(node2_data)?;
-    println!("    📦 Added product node (dirty: {})", store.is_dirty());
-    
-    let develops_rel = Relationship::new("DEVELOPS".to_string());
-    store.add_edge(node1_id, node2_id, develops_rel, None)?;
-    println!("    🔗 Added relationship (dirty: {}, should auto-flush)", store.is_dirty());
-    
-    // Demonstrate transaction with persistence
-    println!("  💼 Demonstrating transactional persistence...");
-    
-    store.begin_transaction()?;
-    println!("    🔄 Transaction started");
-    
-    let node3_data = GraphData::new("feature".to_string())
-        .with_property("name".to_string(), DataType::String("GraphRAG".to_string()));
-    
-    let node3_id = store.add_node(node3_data)?;
-    println!("    ✨ Added feature node in transaction");
-    
-    let includes_rel = Relationship::new("INCLUDES".to_string());
-    store.add_edge(node2_id, node3_id, includes_rel, None)?;
-    println!("    🔗 Added feature relationship in transaction");
-    
-    // Commit will automatically flush to disk
-    store.commit_transaction()?;
-    println!("    ✅ Transaction committed and flushed to disk (dirty: {})", store.is_dirty());
-    
-    // Demonstrate explicit flush
-    let node4_data = GraphData::new("user".to_string())
-        .with_property("name".to_string(), DataType::String("Demo User".to_string()));
-    
-    store.add_node(node4_data)?;
-    println!("    👤 Added user node (dirty: {})", store.is_dirty());
-    
-    store.flush()?;
-    println!("    💾 Explicitly flushed to disk (dirty: {})", store.is_dirty());
-    
-    println!("  🧹 Cleaning up demo files...");
-    let _ = std::fs::remove_file(&storage_path);
-    
-    Ok(())
-}
+
 
 async fn demonstrate_clustering_coefficient() -> Result<(), Box<dyn std::error::Error>> {
     use oxidb::core::graph::GraphOperations;
@@ -377,6 +307,111 @@ async fn demonstrate_clustering_coefficient() -> Result<(), Box<dyn std::error::
     
     println!("  ⚡ Performance note: Previous O(k³) algorithm would be ~125x slower for node1!");
     println!("     (degree=4: 4³=64 ops vs optimized 4×2.5≈10 ops for typical neighbor degree)");
+    
+    Ok(())
+}
+
+async fn demonstrate_comprehensive_persistence() -> Result<(), Box<dyn std::error::Error>> {
+    use oxidb::core::graph::GraphFactory;
+    use oxidb::core::graph::storage::PersistentGraphStore;
+    
+    let temp_dir = std::env::temp_dir();
+    let storage_path = temp_dir.join("demo_comprehensive_graph.db");
+    
+    // Clean up any existing file
+    let _ = std::fs::remove_file(&storage_path);
+    
+    println!("  📁 Creating persistent graph store with FULL GraphStore capabilities at: {:?}", storage_path);
+    println!("     🏗️  Factory returns Box<dyn GraphStore> - NOT just GraphOperations!");
+    
+    // Create persistent store with auto-flush every 3 operations (for comparison)
+    let _store = PersistentGraphStore::with_auto_flush(&storage_path, 3)?;
+    
+    // But also demonstrate that the factory method gives us full capabilities
+    let mut factory_store = GraphFactory::create_persistent_graph(&storage_path)?;
+    
+    println!("  ➕ Testing comprehensive capabilities on factory-created persistent store...");
+    
+    // Test GraphOperations
+    let node1_data = GraphData::new("company".to_string())
+        .with_property("name".to_string(), DataType::String("Oxidb Corp".to_string()))
+        .with_property("founded".to_string(), DataType::Integer(2024));
+    
+    let node2_data = GraphData::new("product".to_string())
+        .with_property("name".to_string(), DataType::String("Oxidb Database".to_string()))
+        .with_property("version".to_string(), DataType::String("1.0".to_string()));
+    
+    let node3_data = GraphData::new("feature".to_string())
+        .with_property("name".to_string(), DataType::String("GraphRAG".to_string()));
+    
+    let node1_id = factory_store.add_node(node1_data)?;
+    let node2_id = factory_store.add_node(node2_data)?;
+    let node3_id = factory_store.add_node(node3_data)?;
+    
+    // Add relationships
+    let develops_rel = Relationship::new("DEVELOPS".to_string());
+    let includes_rel = Relationship::new("INCLUDES".to_string());
+    factory_store.add_edge(node1_id, node2_id, develops_rel, None)?;
+    factory_store.add_edge(node2_id, node3_id, includes_rel, None)?;
+    
+    println!("  ✅ GraphOperations - Added {} nodes and 2 edges", 3);
+    
+    // Test GraphQuery capabilities (NOW ACCESSIBLE via factory!)
+    println!("  🔍 Testing GraphQuery capabilities (previously inaccessible)...");
+    
+    let oxidb_nodes = factory_store.find_nodes_by_property("name", &DataType::String("Oxidb Database".to_string()))?;
+    println!("    ✅ find_nodes_by_property: Found {} nodes with name 'Oxidb Database'", oxidb_nodes.len());
+    
+    let path = factory_store.find_shortest_path(node1_id, node3_id)?;
+    println!("    ✅ find_shortest_path: Path from company to feature: {:?}", path);
+    
+    let traversal = factory_store.traverse(node1_id, oxidb::core::graph::TraversalStrategy::BreadthFirst, Some(2))?;
+    println!("    ✅ traverse: BFS traversal from company (depth 2): {} nodes", traversal.len());
+    
+    // Test GraphTransaction capabilities (NOW ACCESSIBLE via factory!)
+    println!("  💼 Testing GraphTransaction capabilities (previously inaccessible)...");
+    
+    factory_store.begin_transaction()?;
+    println!("    🔄 Transaction started");
+    
+    let user_data = GraphData::new("user".to_string())
+        .with_property("name".to_string(), DataType::String("Demo User".to_string()));
+    let user_id = factory_store.add_node(user_data)?;
+    
+    let uses_rel = Relationship::new("USES".to_string());
+    factory_store.add_edge(user_id, node2_id, uses_rel, None)?;
+    
+    println!("    ✨ Added user node and relationship in transaction");
+    
+    factory_store.commit_transaction()?;
+    println!("    ✅ Transaction committed successfully");
+    
+    // Verify the transaction worked
+    let user_node = factory_store.get_node(user_id)?;
+    println!("    ✅ Verification: User node exists after commit: {}", user_node.is_some());
+    
+    // Show the power of having all capabilities together
+    println!("  🚀 Demonstrating combined capabilities...");
+    
+    // Find all nodes connected to the database
+    let db_neighbors = factory_store.get_neighbors(node2_id, oxidb::core::graph::traversal::TraversalDirection::Both)?;
+    println!("    📊 Database has {} connections", db_neighbors.len());
+    
+    // Use transaction to safely update multiple nodes
+    factory_store.begin_transaction()?;
+    
+    // Find all company nodes and update their status
+    let company_nodes = factory_store.find_nodes_by_property("name", &DataType::String("Oxidb Corp".to_string()))?;
+    for &company_id in &company_nodes {
+        // In a real scenario, you'd update properties here
+        println!("    🏢 Processing company node: {}", company_id);
+    }
+    
+    factory_store.commit_transaction()?;
+    println!("    ✅ Batch update transaction completed");
+    
+    println!("  🧹 Cleaning up demo files...");
+    let _ = std::fs::remove_file(&storage_path);
     
     Ok(())
 }

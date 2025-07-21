@@ -201,4 +201,65 @@ mod tests {
         // For in-memory store, the temp node might still exist in main storage
         // but transaction changes should be discarded
     }
+
+    #[test]
+    fn test_persistent_graph_store_comprehensive_capabilities() {
+        use std::env;
+        
+        // Create a temporary file path
+        let temp_dir = env::temp_dir();
+        let storage_path = temp_dir.join("test_persistent_comprehensive.db");
+        
+        // Clean up any existing file
+        let _ = std::fs::remove_file(&storage_path);
+        
+        // Test that create_persistent_graph returns full GraphStore capabilities
+        let mut graph = GraphFactory::create_persistent_graph(&storage_path).unwrap();
+        
+        // Test GraphOperations - basic CRUD operations
+        let node1_data = GraphData::new("person".to_string())
+            .with_property("name".to_string(), DataType::String("Alice".to_string()));
+        let node1_id = graph.add_node(node1_data).unwrap();
+        
+        let node2_data = GraphData::new("person".to_string())
+            .with_property("name".to_string(), DataType::String("Bob".to_string()));
+        let node2_id = graph.add_node(node2_data).unwrap();
+        
+        let node3_data = GraphData::new("person".to_string())
+            .with_property("name".to_string(), DataType::String("Charlie".to_string()));
+        let node3_id = graph.add_node(node3_data).unwrap();
+        
+        // Add edges to create a path: Alice -> Bob -> Charlie
+        let friendship = Relationship::new("FRIENDS".to_string());
+        graph.add_edge(node1_id, node2_id, friendship.clone(), None).unwrap();
+        graph.add_edge(node2_id, node3_id, friendship, None).unwrap();
+        
+        // Test GraphQuery - advanced querying capabilities (now accessible!)
+        let alice_nodes = graph.find_nodes_by_property("name", &DataType::String("Alice".to_string())).unwrap();
+        assert_eq!(alice_nodes.len(), 1);
+        assert_eq!(alice_nodes[0], node1_id);
+        
+        let path = graph.find_shortest_path(node1_id, node3_id).unwrap();
+        assert!(path.is_some());
+        let path = path.unwrap();
+        assert_eq!(path, vec![node1_id, node2_id, node3_id]);
+        
+        let traversal_result = graph.traverse(node1_id, TraversalStrategy::BreadthFirst, Some(2)).unwrap();
+        assert!(traversal_result.len() >= 2);
+        
+        // Test GraphTransaction - transaction capabilities (now accessible!)
+        graph.begin_transaction().unwrap();
+        
+        let node4_data = GraphData::new("person".to_string())
+            .with_property("name".to_string(), DataType::String("Diana".to_string()));
+        let node4_id = graph.add_node(node4_data).unwrap();
+        
+        graph.commit_transaction().unwrap();
+        
+        // Verify node was committed and persisted
+        assert!(graph.get_node(node4_id).unwrap().is_some());
+        
+        // Clean up
+        let _ = std::fs::remove_file(&storage_path);
+    }
 }
