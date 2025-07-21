@@ -3,7 +3,7 @@
 //! This rule performs compile-time evaluation of constant expressions
 //! following KISS and DRY principles.
 
-use crate::core::common::{OxidbError, ResultExt};
+use crate::core::common::OxidbError;
 use crate::core::optimizer::rule::OptimizationRule;
 use crate::core::query::sql::ast::{ConditionTree, AstLiteralValue, AstExpressionValue};
 use crate::core::types::Value;

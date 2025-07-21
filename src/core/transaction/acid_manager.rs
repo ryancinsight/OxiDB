@@ -3,17 +3,17 @@
 //! This module provides a comprehensive transaction manager that ensures
 //! ACID properties while following SOLID design principles.
 
-use crate::core::common::{OxidbError, ResultExt};
+use crate::core::common::OxidbError;
 use crate::core::transaction::manager::TransactionManager;
 use crate::core::transaction::lock_manager::{LockManager, LockMode};
 use crate::core::wal::log_manager::LogManager;
 use crate::core::wal::log_record::LogRecord;
 use crate::core::wal::writer::WalWriter;
-use crate::core::types::{TransactionId, Value};
+use crate::core::types::TransactionId;
 use crate::core::common::types::ids::{PageId, SlotId};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// ACID Transaction Manager
 /// Follows SOLID's Single Responsibility Principle - manages ACID properties
@@ -205,7 +205,8 @@ impl AcidTransactionManager {
         }
         
         // Acquire the lock
-        if lock_manager.acquire_lock(tx_id.0, resource.to_string(), lock_mode) {
+        let key_bytes = resource.as_bytes().to_vec();
+        if lock_manager.acquire_lock(tx_id.0, &key_bytes, lock_mode).is_ok() {
             // Update transaction metadata
             if let Ok(mut active_txs) = self.active_transactions.write() {
                 if let Some(metadata) = active_txs.get_mut(&tx_id) {
@@ -366,7 +367,7 @@ mod tests {
     #[test]
     fn test_acid_manager_creation() {
         let temp_file = NamedTempFile::new().unwrap();
-        let wal_writer = WalWriter::new(temp_file.path().to_path_buf()).unwrap();
+        let wal_writer = WalWriter::new(temp_file.path().to_path_buf(), Default::default());
         let log_manager = Arc::new(LogManager::new());
         
         let acid_manager = AcidTransactionManager::new(wal_writer, log_manager);
@@ -378,7 +379,7 @@ mod tests {
     #[test]
     fn test_begin_transaction() {
         let temp_file = NamedTempFile::new().unwrap();
-        let wal_writer = WalWriter::new(temp_file.path().to_path_buf()).unwrap();
+        let wal_writer = WalWriter::new(temp_file.path().to_path_buf(), Default::default());
         let log_manager = Arc::new(LogManager::new());
         
         let acid_manager = AcidTransactionManager::new(wal_writer, log_manager);

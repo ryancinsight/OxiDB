@@ -363,7 +363,7 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
             Some(bytes_ref) => {
                 // Schema is assumed to be serialized directly (e.g., using serde_json)
                 // not wrapped in DataType::Schema variant.
-                match serde_json::from_slice(bytes_ref) {
+                match serde_json::from_slice(&bytes_ref) {
                     Ok(schema) => Ok(Some(schema)),
                     Err(e) => Err(OxidbError::Deserialization(format!(
                         "Failed to deserialize Schema for key {:?}: {}",

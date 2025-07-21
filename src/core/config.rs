@@ -302,7 +302,7 @@ impl Config {
                 Ok(config)
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
-            Err(e) => Err(OxidbError::Io(e)), // Changed to Io variant
+            Err(e) => Err(OxidbError::Io(e.to_string())),
         }
     }
 

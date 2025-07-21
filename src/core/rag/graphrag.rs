@@ -10,7 +10,7 @@ use crate::core::graph::{GraphOperations, GraphQuery, NodeId, EdgeId, GraphData,
 use crate::core::graph::storage::InMemoryGraphStore;
 use crate::core::graph::traversal::TraversalDirection;
 use crate::core::common::OxidbError;
-use crate::core::types::DataType;
+use crate::core::types::{DataType, Value};
 use std::collections::{HashMap, HashSet};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -23,7 +23,7 @@ pub struct KnowledgeNode {
     pub name: String,
     pub description: Option<String>,
     pub embedding: Option<Embedding>,
-    pub properties: HashMap<String, DataType>,
+    pub properties: HashMap<String, Value>,
     pub confidence_score: f64, // 0.0 to 1.0
 }
 

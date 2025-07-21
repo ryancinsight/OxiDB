@@ -16,37 +16,70 @@ pub enum OxidbError {
     /// Serialization/Deserialization errors
     Serialization(String),
     Deserialization(String),
+    Json(String), // JSON-specific serialization errors
     
     /// Transaction related errors
     TransactionError(String),
     TransactionNotFound(String),
+    Transaction(String), // Additional transaction error variant
     
     /// Lock related errors
     LockTimeout(String),
     DeadlockDetected(String),
+    LockConflict { message: String },
+    Lock(String), // Additional lock error variant
     
     /// Storage related errors
     StorageError(String),
+    Storage(String), // Additional storage error variant
+    
+    /// Buffer pool related errors
+    BufferPool(String),
+    
+    /// Internal system errors
+    Internal(String),
     
     /// Query related errors
     QueryError(String),
     ParseError(String),
+    SqlParsing(String), // SQL parsing errors
+    
+    /// Execution related errors
+    Execution(String),
+    
+    /// Type related errors
+    Type(String),
+    
+    /// Transaction state errors
+    NoActiveTransaction,
+    
+    /// Feature not implemented
+    NotImplemented { feature: String },
     
     /// Table related errors
     TableNotFound(String),
     TableAlreadyExists(String),
     
     /// Index related errors
-    IndexError(String),
+    Index(String),
+    IndexError(String), // Legacy alias for Index
     
     /// Configuration errors
     ConfigError(String),
+    Configuration(String), // Additional configuration error variant
     
     /// Network related errors
     NetworkError(String),
     
     /// Authentication/Authorization errors
     AuthError(String),
+    
+    /// Vector related errors
+    VectorDimensionMismatch { dim1: usize, dim2: usize },
+    VectorMagnitudeZero,
+    
+    /// Input validation errors
+    InvalidInput { message: String },
     
     /// General errors
     Other(String),
@@ -67,19 +100,38 @@ impl fmt::Display for OxidbError {
             OxidbError::Io(msg) => write!(f, "IO Error: {}", msg),
             OxidbError::Serialization(msg) => write!(f, "Serialization Error: {}", msg),
             OxidbError::Deserialization(msg) => write!(f, "Deserialization Error: {}", msg),
+            OxidbError::Json(msg) => write!(f, "JSON Error: {}", msg),
             OxidbError::TransactionError(msg) => write!(f, "Transaction Error: {}", msg),
             OxidbError::TransactionNotFound(msg) => write!(f, "Transaction Not Found: {}", msg),
+            OxidbError::Transaction(msg) => write!(f, "Transaction Error: {}", msg),
             OxidbError::LockTimeout(msg) => write!(f, "Lock Timeout: {}", msg),
             OxidbError::DeadlockDetected(msg) => write!(f, "Deadlock Detected: {}", msg),
+            OxidbError::LockConflict { message } => write!(f, "Lock Conflict: {}", message),
+            OxidbError::Lock(msg) => write!(f, "Lock Error: {}", msg),
             OxidbError::StorageError(msg) => write!(f, "Storage Error: {}", msg),
+            OxidbError::Storage(msg) => write!(f, "Storage Error: {}", msg),
+            OxidbError::BufferPool(msg) => write!(f, "Buffer Pool Error: {}", msg),
+            OxidbError::Internal(msg) => write!(f, "Internal Error: {}", msg),
             OxidbError::QueryError(msg) => write!(f, "Query Error: {}", msg),
             OxidbError::ParseError(msg) => write!(f, "Parse Error: {}", msg),
+            OxidbError::SqlParsing(msg) => write!(f, "SQL Parsing Error: {}", msg),
+            OxidbError::Execution(msg) => write!(f, "Execution Error: {}", msg),
+            OxidbError::Type(msg) => write!(f, "Type Error: {}", msg),
+            OxidbError::NoActiveTransaction => write!(f, "No Active Transaction"),
+            OxidbError::NotImplemented { feature } => write!(f, "Not Implemented: {}", feature),
             OxidbError::TableNotFound(msg) => write!(f, "Table Not Found: {}", msg),
             OxidbError::TableAlreadyExists(msg) => write!(f, "Table Already Exists: {}", msg),
+            OxidbError::Index(msg) => write!(f, "Index Error: {}", msg),
             OxidbError::IndexError(msg) => write!(f, "Index Error: {}", msg),
             OxidbError::ConfigError(msg) => write!(f, "Config Error: {}", msg),
+            OxidbError::Configuration(msg) => write!(f, "Configuration Error: {}", msg),
             OxidbError::NetworkError(msg) => write!(f, "Network Error: {}", msg),
             OxidbError::AuthError(msg) => write!(f, "Auth Error: {}", msg),
+            OxidbError::VectorDimensionMismatch { dim1, dim2 } => {
+                write!(f, "Vector Dimension Mismatch: {} vs {}", dim1, dim2)
+            }
+            OxidbError::VectorMagnitudeZero => write!(f, "Vector Magnitude is Zero"),
+            OxidbError::InvalidInput { message } => write!(f, "Invalid Input: {}", message),
             OxidbError::Other(msg) => write!(f, "Error: {}", msg),
             OxidbError::InvalidOperation(msg) => write!(f, "Invalid Operation: {}", msg),
             OxidbError::NotFound(msg) => write!(f, "Not Found: {}", msg),

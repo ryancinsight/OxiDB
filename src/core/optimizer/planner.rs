@@ -2,9 +2,9 @@
 //! 
 //! This module provides cost-based query optimization following SOLID and CUPID principles.
 
-use crate::core::common::{OxidbError, ResultExt};
-use crate::core::query::sql::ast::{SelectStatement, ConditionTree, JoinType, OrderByExpr};
-use crate::core::types::{Value, DataType, Schema};
+use crate::core::common::OxidbError;
+use crate::core::query::sql::ast::{SelectStatement, ConditionTree, JoinType};
+use crate::core::types::{Value, Schema};
 use std::collections::HashMap;
 use std::fmt;
 

@@ -12,7 +12,7 @@ fn test_error_display_and_source() {
     // Test Json variant
     let json_err_str = "{\"a\":"; // Invalid JSON
     let serde_err = serde_json::from_str::<serde_json::Value>(json_err_str).unwrap_err();
-    let json_err = OxidbError::Json(serde_err);
+    let json_err = OxidbError::Json(serde_err.to_string());
     assert!(format!("{}", json_err).contains("JSON Serialization/Deserialization Error"));
     assert!(json_err.source().is_some());
 

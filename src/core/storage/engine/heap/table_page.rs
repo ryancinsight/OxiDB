@@ -328,17 +328,13 @@ impl TablePage {
     pub fn delete_record(page_data: &mut [u8], slot_id: SlotId) -> Result<(), OxidbError> {
         let num_records = Self::get_num_records(page_data)?;
         if slot_id.0 >= num_records {
-            return Err(OxidbError::NotFound {
-                key: format!("SlotId {} out of bounds", slot_id.0),
-            });
+            return Err(OxidbError::NotFound(format!("SlotId {} out of bounds", slot_id.0)));
         }
 
         let mut slot_info = match Self::get_slot_info(page_data, slot_id)? {
             Some(s) if s.length > 0 => s,
             _ => {
-                return Err(OxidbError::NotFound {
-                    key: format!("Record at SlotId {} not found or already deleted", slot_id.0),
-                })
+                return Err(OxidbError::NotFound(format!("Record at SlotId {} not found or already deleted", slot_id.0)))
             }
         };
 
@@ -377,17 +373,13 @@ impl TablePage {
 
         let num_records = Self::get_num_records(page_data)?;
         if slot_id.0 >= num_records {
-            return Err(OxidbError::NotFound {
-                key: format!("SlotId {} out of bounds", slot_id.0),
-            });
+            return Err(OxidbError::NotFound(format!("SlotId {} out of bounds", slot_id.0)));
         }
 
         let current_slot_info = match Self::get_slot_info(page_data, slot_id)? {
             Some(s) if s.length > 0 => s,
             _ => {
-                return Err(OxidbError::NotFound {
-                    key: format!("Record at SlotId {} not found or has been deleted", slot_id.0),
-                })
+                return Err(OxidbError::NotFound(format!("Record at SlotId {} not found or has been deleted", slot_id.0)))
             }
         };
 

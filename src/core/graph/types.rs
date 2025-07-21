@@ -3,7 +3,7 @@
 //! This module defines the core data structures used in graph operations.
 //! Following SOLID principles with clear, single-purpose types.
 
-use crate::core::types::{DataType, Value};
+use crate::core::types::Value;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
