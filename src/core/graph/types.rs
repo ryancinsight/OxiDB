@@ -1,0 +1,282 @@
+//! Graph data types for Oxidb
+//!
+//! This module defines the core data structures used in graph operations.
+//! Following SOLID principles with clear, single-purpose types.
+
+use crate::core::types::DataType;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+/// Unique identifier for graph nodes
+pub type NodeId = u64;
+
+/// Unique identifier for graph edges
+pub type EdgeId = u64;
+
+/// Graph node containing data and metadata
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Node {
+    pub id: NodeId,
+    pub data: GraphData,
+    pub created_at: u64, // Unix timestamp
+    pub updated_at: u64, // Unix timestamp
+}
+
+/// Graph edge representing relationships between nodes
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Edge {
+    pub id: EdgeId,
+    pub from_node: NodeId,
+    pub to_node: NodeId,
+    pub relationship: Relationship,
+    pub data: Option<GraphData>,
+    pub created_at: u64, // Unix timestamp
+    pub weight: Option<f64>, // Optional edge weight for algorithms
+}
+
+/// Relationship type between nodes
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Relationship {
+    pub name: String,
+    pub direction: RelationshipDirection,
+}
+
+/// Direction of relationships
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum RelationshipDirection {
+    Outgoing,
+    Incoming,
+    Bidirectional,
+}
+
+/// Graph data container with properties
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GraphData {
+    pub label: String, // Node/Edge type label
+    pub properties: HashMap<String, DataType>,
+}
+
+impl Node {
+    /// Create a new node with the given data
+    pub fn new(id: NodeId, data: GraphData) -> Self {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+            
+        Self {
+            id,
+            data,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    /// Update node data
+    pub fn update_data(&mut self, data: GraphData) {
+        self.data = data;
+        self.updated_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+    }
+
+    /// Get a property value
+    pub fn get_property(&self, key: &str) -> Option<&DataType> {
+        self.data.properties.get(key)
+    }
+
+    /// Set a property value
+    pub fn set_property(&mut self, key: String, value: DataType) {
+        self.data.properties.insert(key, value);
+        self.updated_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+    }
+}
+
+impl Edge {
+    /// Create a new edge
+    pub fn new(
+        id: EdgeId,
+        from_node: NodeId,
+        to_node: NodeId,
+        relationship: Relationship,
+        data: Option<GraphData>,
+    ) -> Self {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+            
+        Self {
+            id,
+            from_node,
+            to_node,
+            relationship,
+            data,
+            created_at: now,
+            weight: None,
+        }
+    }
+
+    /// Create a weighted edge
+    pub fn new_weighted(
+        id: EdgeId,
+        from_node: NodeId,
+        to_node: NodeId,
+        relationship: Relationship,
+        weight: f64,
+        data: Option<GraphData>,
+    ) -> Self {
+        let mut edge = Self::new(id, from_node, to_node, relationship, data);
+        edge.weight = Some(weight);
+        edge
+    }
+
+    /// Check if edge connects the given nodes
+    pub fn connects(&self, node1: NodeId, node2: NodeId) -> bool {
+        (self.from_node == node1 && self.to_node == node2) ||
+        (self.from_node == node2 && self.to_node == node1 && 
+         self.relationship.direction == RelationshipDirection::Bidirectional)
+    }
+
+    /// Get the other node in the relationship
+    pub fn other_node(&self, node_id: NodeId) -> Option<NodeId> {
+        if self.from_node == node_id {
+            Some(self.to_node)
+        } else if self.to_node == node_id && 
+                  self.relationship.direction == RelationshipDirection::Bidirectional {
+            Some(self.from_node)
+        } else {
+            None
+        }
+    }
+}
+
+impl Relationship {
+    /// Create a new outgoing relationship
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            direction: RelationshipDirection::Outgoing,
+        }
+    }
+
+    /// Create a bidirectional relationship
+    pub fn bidirectional(name: String) -> Self {
+        Self {
+            name,
+            direction: RelationshipDirection::Bidirectional,
+        }
+    }
+
+    /// Create an incoming relationship
+    pub fn incoming(name: String) -> Self {
+        Self {
+            name,
+            direction: RelationshipDirection::Incoming,
+        }
+    }
+}
+
+impl GraphData {
+    /// Create new graph data with a label
+    pub fn new(label: String) -> Self {
+        Self {
+            label,
+            properties: HashMap::new(),
+        }
+    }
+
+    /// Add a property to the graph data (builder pattern)
+    pub fn with_property(mut self, key: String, value: DataType) -> Self {
+        self.properties.insert(key, value);
+        self
+    }
+
+    /// Add multiple properties
+    pub fn with_properties(mut self, properties: HashMap<String, DataType>) -> Self {
+        self.properties.extend(properties);
+        self
+    }
+
+    /// Get a property value
+    pub fn get_property(&self, key: &str) -> Option<&DataType> {
+        self.properties.get(key)
+    }
+
+    /// Set a property value
+    pub fn set_property(&mut self, key: String, value: DataType) {
+        self.properties.insert(key, value);
+    }
+
+    /// Check if has property
+    pub fn has_property(&self, key: &str) -> bool {
+        self.properties.contains_key(key)
+    }
+
+    /// Get all property keys
+    pub fn property_keys(&self) -> Vec<&String> {
+        self.properties.keys().collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::types::DataType;
+
+    #[test]
+    fn test_node_creation() {
+        let data = GraphData::new("user".to_string())
+            .with_property("name".to_string(), DataType::String("Alice".to_string()))
+            .with_property("age".to_string(), DataType::Integer(30));
+        
+        let node = Node::new(1, data);
+        assert_eq!(node.id, 1);
+        assert_eq!(node.data.label, "user");
+        assert_eq!(node.get_property("name"), Some(&DataType::String("Alice".to_string())));
+        assert_eq!(node.get_property("age"), Some(&DataType::Integer(30)));
+    }
+
+    #[test]
+    fn test_edge_creation() {
+        let relationship = Relationship::new("FOLLOWS".to_string());
+        let edge = Edge::new(1, 1, 2, relationship, None);
+        
+        assert_eq!(edge.id, 1);
+        assert_eq!(edge.from_node, 1);
+        assert_eq!(edge.to_node, 2);
+        assert_eq!(edge.relationship.name, "FOLLOWS");
+        assert!(edge.connects(1, 2));
+        assert!(!edge.connects(1, 3));
+    }
+
+    #[test]
+    fn test_bidirectional_relationship() {
+        let relationship = Relationship::bidirectional("FRIENDS".to_string());
+        let edge = Edge::new(1, 1, 2, relationship, None);
+        
+        assert!(edge.connects(1, 2));
+        assert!(edge.connects(2, 1));
+        assert_eq!(edge.other_node(1), Some(2));
+        assert_eq!(edge.other_node(2), Some(1));
+    }
+
+    #[test]
+    fn test_graph_data_builder() {
+        let data = GraphData::new("product".to_string())
+            .with_property("name".to_string(), DataType::String("iPhone".to_string()))
+            .with_property("price".to_string(), DataType::Float(999.99))
+            .with_property("in_stock".to_string(), DataType::Boolean(true));
+        
+        assert_eq!(data.label, "product");
+        assert_eq!(data.properties.len(), 3);
+        assert!(data.has_property("name"));
+        assert!(data.has_property("price"));
+        assert!(data.has_property("in_stock"));
+        assert!(!data.has_property("description"));
+    }
+}

@@ -2,6 +2,7 @@ pub mod common;
 pub mod config;
 pub mod connection; // Enhanced connection management with pooling
 pub mod execution; // Added execution module
+pub mod graph; // Added graph database module
 pub mod indexing;
 pub mod optimizer; // Added optimizer module
 pub mod query;

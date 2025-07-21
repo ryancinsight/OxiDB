@@ -35,5 +35,6 @@ members = [
     "examples/simple_blog",
     "examples/todo_app",
     "examples/user_auth_files",
+    "examples/graphrag_demo",
 ]
 resolver = "2"
