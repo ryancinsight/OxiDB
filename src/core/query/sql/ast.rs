@@ -38,7 +38,7 @@ pub struct Assignment {
     pub value: AstExpressionValue,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum SelectColumn {
     ColumnName(String),
     Asterisk, // For SELECT *
@@ -54,7 +54,7 @@ pub struct SelectStatement {
     pub limit: Option<AstLiteralValue>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum JoinType {
     Inner,
     LeftOuter,
@@ -63,7 +63,7 @@ pub enum JoinType {
     Cross,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TableReference {
     pub name: String,
     pub alias: Option<String>,
@@ -76,13 +76,13 @@ pub struct JoinClause {
     pub on_condition: Option<ConditionTree>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct OrderByExpr {
     pub expression: String,
     pub direction: Option<OrderDirection>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum OrderDirection {
     Asc,
     Desc,
@@ -95,7 +95,7 @@ pub struct UpdateStatement {
     pub condition: Option<ConditionTree>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AstColumnConstraint {
     NotNull,
     Unique,
@@ -103,7 +103,7 @@ pub enum AstColumnConstraint {
     AutoIncrement,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AstDataType {
     Integer,
     Text,
@@ -113,7 +113,7 @@ pub enum AstDataType {
     Blob,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ColumnDef {
     pub name: String,
     pub data_type: AstDataType,
@@ -149,7 +149,7 @@ pub enum Statement {
     DropTable(DropTableStatement),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct DropTableStatement {
     pub table_name: String,
     pub if_exists: bool,

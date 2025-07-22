@@ -28,7 +28,7 @@ pub trait Index: Debug {
     ///
     /// Note: Depending on the index implementation (e.g., if it allows multiple primary keys
     /// per indexed value), this might remove a specific value-primary_key pair or
-    /// all entries for a given value if the primary_key is not specific enough.
+    /// all entries for a given value if the `primary_key` is not specific enough.
     /// For a simple hash index mapping a value to a list of PKs, it would remove the PK from the list.
     ///
     /// # Arguments

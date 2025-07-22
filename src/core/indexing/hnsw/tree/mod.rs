@@ -128,55 +128,52 @@ impl HnswIndex {
         vector: &Vector,
         primary_key: Option<&PrimaryKey>,
     ) -> HnswResult<bool> {
-        match primary_key {
-            Some(pk) => {
-                // Delete by primary key
-                if let Some(&node_id) = self.pk_to_node.get(pk) {
-                    // Verify vector matches
-                    if let Some(node) = self.graph.get_node(node_id) {
-                        let distance = self.graph.distance(vector, &node.vector);
-                        if distance < 1e-6 {
-                            // Very small epsilon for float comparison
-                            self.graph.remove_node(node_id)?;
-                            self.pk_to_node.remove(pk);
-                            Ok(true)
-                        } else {
-                            Err(HnswError::Generic("Vector does not match primary key".to_string()))
-                        }
+        if let Some(pk) = primary_key {
+            // Delete by primary key
+            if let Some(&node_id) = self.pk_to_node.get(pk) {
+                // Verify vector matches
+                if let Some(node) = self.graph.get_node(node_id) {
+                    let distance = self.graph.distance(vector, &node.vector);
+                    if distance < 1e-6 {
+                        // Very small epsilon for float comparison
+                        self.graph.remove_node(node_id)?;
+                        self.pk_to_node.remove(pk);
+                        Ok(true)
                     } else {
-                        Err(HnswError::NodeNotFound(node_id))
+                        Err(HnswError::Generic("Vector does not match primary key".to_string()))
                     }
                 } else {
-                    Ok(false) // Primary key not found
+                    Err(HnswError::NodeNotFound(node_id))
                 }
+            } else {
+                Ok(false) // Primary key not found
             }
-            None => {
-                // Delete by finding the closest vector
-                let search_results = self.graph.search(vector, 1)?;
-                if let Some(&node_id) = search_results.first() {
-                    if let Some(node) = self.graph.get_node(node_id) {
-                        let distance = self.graph.distance(vector, &node.vector);
-                        if distance < 1e-6 {
-                            // Very small epsilon for float comparison
-                            let pk = node.primary_key.clone();
-                            self.graph.remove_node(node_id)?;
-                            self.pk_to_node.remove(&pk);
-                            Ok(true)
-                        } else {
-                            Ok(false) // No exact match found
-                        }
+        } else {
+            // Delete by finding the closest vector
+            let search_results = self.graph.search(vector, 1)?;
+            if let Some(&node_id) = search_results.first() {
+                if let Some(node) = self.graph.get_node(node_id) {
+                    let distance = self.graph.distance(vector, &node.vector);
+                    if distance < 1e-6 {
+                        // Very small epsilon for float comparison
+                        let pk = node.primary_key.clone();
+                        self.graph.remove_node(node_id)?;
+                        self.pk_to_node.remove(&pk);
+                        Ok(true)
                     } else {
-                        Err(HnswError::NodeNotFound(node_id))
+                        Ok(false) // No exact match found
                     }
                 } else {
-                    Ok(false) // No nodes in graph
+                    Err(HnswError::NodeNotFound(node_id))
                 }
+            } else {
+                Ok(false) // No nodes in graph
             }
         }
     }
 
     /// Get statistics about the index
-    pub fn stats(&self) -> IndexStats {
+    #[must_use] pub fn stats(&self) -> IndexStats {
         IndexStats {
             node_count: self.graph.len(),
             dimension: self.dimension,
@@ -185,12 +182,12 @@ impl HnswIndex {
     }
 
     /// Get the number of vectors in the index
-    pub fn len(&self) -> usize {
+    #[must_use] pub fn len(&self) -> usize {
         self.graph.len()
     }
 
     /// Check if the index is empty
-    pub fn is_empty(&self) -> bool {
+    #[must_use] pub fn is_empty(&self) -> bool {
         self.graph.is_empty()
     }
 
@@ -231,7 +228,7 @@ impl HnswIndex {
     }
 
     /// Get a vector by its primary key
-    pub fn get_vector(&self, primary_key: &PrimaryKey) -> Option<&Vector> {
+    #[must_use] pub fn get_vector(&self, primary_key: &PrimaryKey) -> Option<&Vector> {
         if let Some(&node_id) = self.pk_to_node.get(primary_key) {
             self.graph.get_node(node_id).map(|node| &node.vector)
         } else {
@@ -240,7 +237,7 @@ impl HnswIndex {
     }
 
     /// Check if a primary key exists in the index
-    pub fn contains_key(&self, primary_key: &PrimaryKey) -> bool {
+    #[must_use] pub fn contains_key(&self, primary_key: &PrimaryKey) -> bool {
         self.pk_to_node.contains_key(primary_key)
     }
 }

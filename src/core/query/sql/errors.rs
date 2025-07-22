@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum SqlTokenizerError {
     #[error("Unterminated string literal starting at position {0}")]
     UnterminatedString(usize),
@@ -12,7 +12,7 @@ pub enum SqlTokenizerError {
     UnexpectedEOF(usize), // Added variant
 }
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum SqlParseError {
     #[error("Unexpected token: expected {expected}, found {found} at position {position}")]
     UnexpectedToken { expected: String, found: String, position: usize },

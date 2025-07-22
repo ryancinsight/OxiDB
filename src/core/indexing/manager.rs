@@ -55,7 +55,7 @@ impl IndexManager {
             )));
         }
 
-        let mut manager = IndexManager { indexes: HashMap::new(), base_path };
+        let mut manager = Self { indexes: HashMap::new(), base_path };
 
         // Load existing indexes from disk only if auto_discover is enabled
         if auto_discover {
@@ -68,12 +68,11 @@ impl IndexManager {
     pub fn create_index(&mut self, index_name: String, index_type: &str) -> Result<(), OxidbError> {
         if self.indexes.contains_key(&index_name) {
             return Err(OxidbError::Index(format!(
-                "Index with name '{}' already exists.",
-                index_name
+                "Index with name '{index_name}' already exists."
             )));
         }
 
-        let index_path = self.base_path.join(format!("{}.{}", index_name, index_type));
+        let index_path = self.base_path.join(format!("{index_name}.{index_type}"));
 
         let index: SharedIndex = match index_type {
             "hash" => {
@@ -89,11 +88,11 @@ impl IndexManager {
                     index_path, // Pass the constructed path
                     DEFAULT_BTREE_ORDER,
                 )
-                .map_err(|e| OxidbError::Index(format!("BTree creation error: {:?}", e)))?; // Map btree::OxidbError
+                .map_err(|e| OxidbError::Index(format!("BTree creation error: {e:?}")))?; // Map btree::OxidbError
                 Arc::new(RwLock::new(btree_index))
             }
             _ => {
-                return Err(OxidbError::Index(format!("Unsupported index type: {}", index_type)));
+                return Err(OxidbError::Index(format!("Unsupported index type: {index_type}")));
             }
         };
 
@@ -101,11 +100,11 @@ impl IndexManager {
         Ok(())
     }
 
-    pub fn get_index(&self, index_name: &str) -> Option<SharedIndex> {
+    #[must_use] pub fn get_index(&self, index_name: &str) -> Option<SharedIndex> {
         self.indexes.get(index_name).cloned()
     }
 
-    pub fn base_path(&self) -> PathBuf {
+    #[must_use] pub fn base_path(&self) -> PathBuf {
         self.base_path.clone()
     }
 
@@ -126,7 +125,7 @@ impl IndexManager {
                 index.insert(value, primary_key) // This now expects Result<(), common::OxidbError>
             }
             None => {
-                Err(OxidbError::Index(format!("Index '{}' not found for insertion.", index_name)))
+                Err(OxidbError::Index(format!("Index '{index_name}' not found for insertion.")))
             }
         }
     }
@@ -143,7 +142,7 @@ impl IndexManager {
                 })?;
                 index.insert(value, primary_key)?;
             } else {
-                eprintln!("Warning: Index '{}' not found during data insertion.", index_name);
+                eprintln!("Warning: Index '{index_name}' not found during data insertion.");
             }
         }
         Ok(())
@@ -163,7 +162,7 @@ impl IndexManager {
                 index.delete(value, primary_key)
             }
             None => {
-                Err(OxidbError::Index(format!("Index '{}' not found for deletion.", index_name)))
+                Err(OxidbError::Index(format!("Index '{index_name}' not found for deletion.")))
             }
         }
     }
@@ -180,7 +179,7 @@ impl IndexManager {
                 })?;
                 index.delete(value, Some(primary_key))?;
             } else {
-                eprintln!("Warning: Index '{}' not found during data deletion.", index_name);
+                eprintln!("Warning: Index '{index_name}' not found during data deletion.");
             }
         }
         Ok(())
@@ -198,8 +197,7 @@ impl IndexManager {
             {
                 let mut index = index_arc.write().map_err(|_| {
                     OxidbError::LockTimeout(format!(
-                        "Failed to acquire write lock on index '{}' for update.",
-                        index_name
+                        "Failed to acquire write lock on index '{index_name}' for update."
                     ))
                 })?;
                 index.update(old_value, new_value, primary_key)?;
@@ -221,8 +219,7 @@ impl IndexManager {
                 index.find(value)
             }
             None => Err(OxidbError::Index(format!(
-                "Index '{}' not found for find operation.",
-                index_name
+                "Index '{index_name}' not found for find operation."
             ))),
         }
     }
@@ -240,11 +237,11 @@ impl IndexManager {
     pub fn load_all_indexes(&mut self) -> Result<(), OxidbError> {
         for (name, index_arc) in &self.indexes {
             let mut index = index_arc.write().map_err(|_| {
-                OxidbError::LockTimeout(format!("Failed to lock index {} for loading", name))
+                OxidbError::LockTimeout(format!("Failed to lock index {name} for loading"))
             })?;
             index
                 .load()
-                .map_err(|e| OxidbError::Index(format!("Error loading index {}: {}", name, e)))?;
+                .map_err(|e| OxidbError::Index(format!("Error loading index {name}: {e}")))?;
         }
         Ok(())
     }
@@ -269,16 +266,14 @@ impl IndexManager {
                             // Skip if already loaded
                             if !self.indexes.contains_key(index_name) {
                                 match self.create_index(index_name.to_string(), "hash") {
-                                    Ok(_) => {
+                                    Ok(()) => {
                                         eprintln!(
-                                            "[IndexManager] Loaded existing index: {}",
-                                            index_name
+                                            "[IndexManager] Loaded existing index: {index_name}"
                                         );
                                     }
                                     Err(e) => {
                                         eprintln!(
-                                            "[IndexManager] Failed to load index {}: {}",
-                                            index_name, e
+                                            "[IndexManager] Failed to load index {index_name}: {e}"
                                         );
                                         // Continue loading other indexes instead of failing completely
                                     }

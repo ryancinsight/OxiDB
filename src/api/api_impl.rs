@@ -39,11 +39,10 @@ impl Oxidb {
         let tm_wal_path = config.wal_path(); // This is typically "<cwd>/oxidb.wal" or user-defined.
                                              // SimpleFileKvStore derives its WAL as "<store_path>.wal" or "<store_path>.<ext>.wal"
 
-        eprintln!("[Oxidb::new_with_config] SFKS main DB path: {:?}", store_path);
+        eprintln!("[Oxidb::new_with_config] SFKS main DB path: {store_path:?}");
         // Actual SFKS WAL path is derived internally by SFKS, e.g. store_path.with_extension(...)
         eprintln!(
-            "[Oxidb::new_with_config] Using TM WAL path for QueryExecutor: {:?}",
-            tm_wal_path
+            "[Oxidb::new_with_config] Using TM WAL path for QueryExecutor: {tm_wal_path:?}"
         );
 
         let tm_wal_writer = WalWriter::new(tm_wal_path, wal_writer_config);
@@ -116,8 +115,7 @@ impl Oxidb {
         match self.executor.execute_command(command) {
             Ok(ExecutionResult::Success) => Ok(()),
             Ok(unexpected_result) => Err(OxidbError::Internal(format!(
-                "Insert: Expected Success, got {:?}",
-                unexpected_result
+                "Insert: Expected Success, got {unexpected_result:?}"
             ))),
             Err(e) => Err(e),
         }
@@ -138,7 +136,7 @@ impl Oxidb {
         let command = Command::Get { key };
         match self.executor.execute_command(command) {
             Ok(ExecutionResult::Value(data_type_option)) => {
-                println!("[Oxidb::get] Value from executor: {:?}", data_type_option); // Debug print
+                println!("[Oxidb::get] Value from executor: {data_type_option:?}"); // Debug print
                 Ok(data_type_option.map(|dt| match dt {
                     DataType::Integer(i) => i.to_string(),
                     DataType::String(s) => s,
@@ -154,22 +152,21 @@ impl Oxidb {
                         }
                         // Serialize the JsonSafeMap wrapper itself, which has the #[serde_as] annotations
                         let json_string = serde_json::to_string(&json_safe_map)
-                            .unwrap_or_else(|e| format!("Error serializing Map: {}", e));
-                        println!("[api_impl.rs get() -> Map serialization] Serialized JSON string: {}", json_string);
+                            .unwrap_or_else(|e| format!("Error serializing Map: {e}"));
+                        println!("[api_impl.rs get() -> Map serialization] Serialized JSON string: {json_string}");
                         json_string
                     }
                     DataType::JsonBlob(json_val) => serde_json::to_string(&json_val)
-                        .unwrap_or_else(|e| format!("Error serializing JsonBlob: {}", e)),
+                        .unwrap_or_else(|e| format!("Error serializing JsonBlob: {e}")),
                     DataType::RawBytes(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
                     DataType::Vector(vec) => {
                         // Convert vector to a readable string representation
-                        format!("[{}]", vec.data.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(", "))
+                        format!("[{}]", vec.data.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join(", "))
                     },
                 }))
             }
             Ok(unexpected_result) => Err(OxidbError::Internal(format!(
-                "Get: Expected Value, got {:?}",
-                unexpected_result
+                "Get: Expected Value, got {unexpected_result:?}"
             ))),
             Err(e) => Err(e),
         }
@@ -193,8 +190,7 @@ impl Oxidb {
         match self.executor.execute_command(command) {
             Ok(ExecutionResult::Deleted(status)) => Ok(status),
             Ok(unexpected_result) => Err(OxidbError::Internal(format!(
-                "Delete: Expected Deleted, got {:?}",
-                unexpected_result
+                "Delete: Expected Deleted, got {unexpected_result:?}"
             ))),
             Err(e) => Err(e),
         }
@@ -248,12 +244,12 @@ impl Oxidb {
 
     /// Returns the path to the main database file.
     #[allow(clippy::unwrap_used)] // Panicking on poisoned lock is acceptable here
-    pub fn database_path(&self) -> PathBuf {
+    #[must_use] pub fn database_path(&self) -> PathBuf {
         self.executor.store.read().unwrap().file_path().to_path_buf()
     }
 
     /// Returns the base path for index storage.
-    pub fn index_path(&self) -> PathBuf {
+    #[must_use] pub fn index_path(&self) -> PathBuf {
         self.executor.index_base_path()
     }
 
@@ -279,8 +275,7 @@ impl Oxidb {
                 Ok(val) => val,
                 Err(e) => {
                     return Err(OxidbError::Serialization(format!(
-                        "Failed to serialize value for index lookup: {}",
-                        e
+                        "Failed to serialize value for index lookup: {e}"
                     )))
                 }
             };
@@ -296,8 +291,7 @@ impl Oxidb {
                 }
             }
             Ok(unexpected_result) => Err(OxidbError::Internal(format!(
-                "FindByIndex: Expected Values, got {:?}",
-                unexpected_result
+                "FindByIndex: Expected Values, got {unexpected_result:?}"
             ))),
             Err(e) => Err(e),
         }

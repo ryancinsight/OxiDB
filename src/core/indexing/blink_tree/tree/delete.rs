@@ -4,8 +4,8 @@ use crate::core::indexing::blink_tree::node::{BlinkTreeNode, KeyType, PrimaryKey
 
 impl BlinkTreeIndex {
     /// Delete a key from the Blink tree
-    /// If primary_key is specified, only remove that specific primary key
-    /// If primary_key is None, remove all entries for the key
+    /// If `primary_key` is specified, only remove that specific primary key
+    /// If `primary_key` is None, remove all entries for the key
     pub fn delete(
         &mut self,
         key: &KeyType,
@@ -101,7 +101,7 @@ impl BlinkTreeIndex {
             (self.order - 1 + 1) / 2 // Ceiling division for internal nodes
         };
 
-        node.get_keys().len() < min_keys && node.get_keys().len() > 0
+        node.get_keys().len() < min_keys && !node.get_keys().is_empty()
     }
 
     /// Maintenance operation: Clean up underflowing nodes
@@ -275,8 +275,8 @@ pub struct BlinkTreeStats {
 }
 
 impl BlinkTreeStats {
-    fn new() -> Self {
-        BlinkTreeStats {
+    const fn new() -> Self {
+        Self {
             total_nodes: 0,
             internal_nodes: 0,
             leaf_nodes: 0,
@@ -286,11 +286,11 @@ impl BlinkTreeStats {
         }
     }
 
-    fn empty() -> Self {
-        BlinkTreeStats::new()
+    const fn empty() -> Self {
+        Self::new()
     }
 
-    pub fn average_keys_per_node(&self) -> f64 {
+    #[must_use] pub fn average_keys_per_node(&self) -> f64 {
         if self.total_nodes > 0 {
             self.total_keys as f64 / self.total_nodes as f64
         } else {
@@ -298,7 +298,7 @@ impl BlinkTreeStats {
         }
     }
 
-    pub fn average_values_per_key(&self) -> f64 {
+    #[must_use] pub fn average_values_per_key(&self) -> f64 {
         if self.total_keys > 0 {
             self.total_values as f64 / self.total_keys as f64
         } else {

@@ -23,9 +23,9 @@ pub(crate) const FREE_SPACE_POINTER_METADATA_SIZE: usize = 2;
 pub(crate) const SLOTS_ARRAY_DATA_OFFSET: usize =
     FREE_SPACE_POINTER_METADATA_OFFSET + FREE_SPACE_POINTER_METADATA_SIZE;
 
-/// Represents a slot in the TablePage.
+/// Represents a slot in the `TablePage`.
 /// A slot stores the location and size of a record's data.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Slot {
     /// Offset of the record data from the start of the Page's data area (Page.data).
     pub offset: u16,
@@ -54,7 +54,7 @@ impl Slot {
         let mut cursor = Cursor::new(buffer);
         let offset = cursor.read_u16::<LittleEndian>()?;
         let length = cursor.read_u16::<LittleEndian>()?;
-        Ok(Slot { offset, length })
+        Ok(Self { offset, length })
     }
 }
 
@@ -64,7 +64,7 @@ impl Slot {
 /// Page Data Layout:
 /// [ Number of Records (u16) ]
 /// [ Free Space Pointer (u16) ] -> Points to the start of the available free space for record data.
-/// [ Slot Array (Slot * num_records_capacity) ] -> Array of Slots.
+/// [ Slot Array (Slot * `num_records_capacity`) ] -> Array of Slots.
 /// [ Record Data Area (...) ] -> Actual record bytes, grows towards higher addresses.
 /// [ Free Space Area (...) ]
 ///
@@ -135,7 +135,7 @@ impl TablePage {
 
     // Removed get_max_slot_capacity as it's no longer used with the new init/insert logic.
 
-    /// Retrieves a slot's metadata. Returns `None` if SlotId is out of bounds of current num_records.
+    /// Retrieves a slot's metadata. Returns `None` if `SlotId` is out of bounds of current `num_records`.
     /// Note: This doesn't mean the slot is occupied, check Slot.length.
     pub(crate) fn get_slot_info(
         page_data: &[u8],
@@ -163,8 +163,8 @@ impl TablePage {
         Ok(Some(Slot::deserialize(slot_data)?))
     }
 
-    /// Writes a slot's metadata to the specified SlotId.
-    /// Assumes slot_id is valid and within current num_records or is the next available slot.
+    /// Writes a slot's metadata to the specified `SlotId`.
+    /// Assumes `slot_id` is valid and within current `num_records` or is the next available slot.
     pub(crate) fn set_slot_info(
         page_data: &mut [u8],
         slot_id: SlotId,
@@ -188,8 +188,8 @@ impl TablePage {
         Ok(())
     }
 
-    /// Initializes a new TablePage structure on a raw page_data buffer.
-    /// Sets num_records to 0 and free_space_pointer to the start of where data can be written.
+    /// Initializes a new `TablePage` structure on a raw `page_data` buffer.
+    /// Sets `num_records` to 0 and `free_space_pointer` to the start of where data can be written.
     pub fn init(page_data: &mut [u8]) -> Result<(), OxidbError> {
         if page_data.len() < SLOTS_ARRAY_DATA_OFFSET {
             // Check if page can even hold the basic header

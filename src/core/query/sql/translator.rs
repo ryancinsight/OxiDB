@@ -27,15 +27,13 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
                 Some(ast::AstLiteralValue::Number(n_str)) => {
                     n_str.parse::<u64>().map(Some).map_err(|_| {
                         OxidbError::SqlParsing(format!(
-                            "Invalid numeric literal '{}' for LIMIT clause",
-                            n_str
+                            "Invalid numeric literal '{n_str}' for LIMIT clause"
                         ))
                     })?
                 }
                 Some(other_literal) => {
                     return Err(OxidbError::SqlParsing(format!(
-                        "LIMIT clause expects a numeric literal, found {:?}",
-                        other_literal
+                        "LIMIT clause expects a numeric literal, found {other_literal:?}"
                     )));
                 }
                 None => None,
@@ -73,7 +71,7 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
             for ast_col_def in create_ast.columns {
                 let data_type = match ast_col_def.data_type {
                     ast::AstDataType::Integer => DataType::Integer(0), // Default value for schema
-                    ast::AstDataType::Text => DataType::String("".to_string()),
+                    ast::AstDataType::Text => DataType::String(String::new()),
                     ast::AstDataType::Boolean => DataType::Boolean(false),
                     ast::AstDataType::Float => DataType::Float(0.0),
                     ast::AstDataType::Blob => DataType::RawBytes(Vec::new()), // Assuming RawBytes is the engine type for Blob
@@ -82,8 +80,7 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
                         crate::core::types::VectorData::new(dimension, vec![])
                             .map(DataType::Vector)
                             .ok_or_else(|| OxidbError::SqlParsing(format!(
-                                "Invalid dimension {} for VECTOR type in CREATE TABLE (should not happen if parser validated > 0)",
-                                dimension
+                                "Invalid dimension {dimension} for VECTOR type in CREATE TABLE (should not happen if parser validated > 0)"
                             )))?
                     } // Potentially other AstDataTypes if added
                                                                                // _ => return Err(OxidbError::SqlParsing(format!(
@@ -196,7 +193,7 @@ pub fn translate_datatype_to_ast_literal(
         )),
         DataType::Vector(vec) => {
             // Convert vector to a string representation for AST compatibility
-            let vec_str = format!("[{}]", vec.data.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
+            let vec_str = format!("[{}]", vec.data.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join(","));
             Ok(ast::AstLiteralValue::String(vec_str))
         },
     }
@@ -216,7 +213,7 @@ fn translate_expression_value(expr: &ast::AstExpressionValue) -> Result<DataType
         ast::AstExpressionValue::ColumnIdentifier(col_name) => {
             // Column references in VALUES clauses are not typically supported
             Err(OxidbError::InvalidInput {
-                message: format!("Column reference '{}' not supported in this context", col_name)
+                message: format!("Column reference '{col_name}' not supported in this context")
             })
         }
     }
@@ -232,7 +229,7 @@ fn translate_literal(literal: &ast::AstLiteralValue) -> Result<DataType, OxidbEr
             } else if let Ok(f_val) = n_str.parse::<f64>() {
                 Ok(DataType::Float(f_val))
             } else {
-                Err(OxidbError::SqlParsing(format!("Cannot parse numeric literal '{}'", n_str)))
+                Err(OxidbError::SqlParsing(format!("Cannot parse numeric literal '{n_str}'")))
                 // Changed
             }
         }

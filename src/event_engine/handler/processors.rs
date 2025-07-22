@@ -49,14 +49,14 @@ impl Processor for UserCreatedProcessor {
         if let Event::UserCreated { user_id, user_email } = event {
             println!("UserCreatedProcessor: Handling UserCreated event");
             // Logic extracted from the original match statement in core.rs
-            println!("User created: ID={}, Email={}", user_id, user_email);
+            println!("User created: ID={user_id}, Email={user_email}");
             if user_email.contains("@example.com") {
-                println!("Sending welcome email to example.com user: {}", user_email);
+                println!("Sending welcome email to example.com user: {user_email}");
             } else {
-                println!("Sending standard welcome email to: {}", user_email);
+                println!("Sending standard welcome email to: {user_email}");
             }
-            println!("Provisioning initial resources for user: {}", user_id);
-            println!("Notifying analytics service about new user: {}", user_id);
+            println!("Provisioning initial resources for user: {user_id}");
+            println!("Notifying analytics service about new user: {user_id}");
             Ok(())
         } else {
             Err(anyhow::anyhow!(
@@ -74,19 +74,19 @@ impl Processor for OrderPlacedProcessor {
         if let Event::OrderPlaced { order_id, amount } = event {
             println!("OrderPlacedProcessor: Handling OrderPlaced event");
             // Logic extracted from the original match statement in core.rs
-            println!("Order placed: ID={}, Amount={}", order_id, amount);
+            println!("Order placed: ID={order_id}, Amount={amount}");
             if *amount > 1000 {
-                println!("Order {} requires additional verification (amount > 1000)", order_id);
+                println!("Order {order_id} requires additional verification (amount > 1000)");
                 if order_id.starts_with("ORD-SPECIAL-") {
-                    println!("Special order {} - bypassing some checks.", order_id);
+                    println!("Special order {order_id} - bypassing some checks.");
                 } else {
-                    println!("Standard order {} - performing full checks.", order_id);
+                    println!("Standard order {order_id} - performing full checks.");
                 }
             } else {
-                println!("Order {} amount is within standard limits.", order_id);
+                println!("Order {order_id} amount is within standard limits.");
             }
-            println!("Updating inventory for order: {}", order_id);
-            println!("Sending order confirmation for: {}", order_id);
+            println!("Updating inventory for order: {order_id}");
+            println!("Sending order confirmation for: {order_id}");
             Ok(())
         } else {
             Err(anyhow::anyhow!(
@@ -105,18 +105,17 @@ impl Processor for NotificationSentProcessor {
             println!("NotificationSentProcessor: Handling NotificationSent event");
             // Logic extracted from the original match statement in core.rs
             println!(
-                "Notification sent: ID={}, Recipient={}, Type={}",
-                notification_id, recipient, message_type
+                "Notification sent: ID={notification_id}, Recipient={recipient}, Type={message_type}"
             );
             match message_type.as_str() {
                 "PasswordReset" => {
-                    println!("Logging password reset notification: {}", notification_id);
+                    println!("Logging password reset notification: {notification_id}");
                 }
                 "TwoFactorAuth" => {
-                    println!("Logging 2FA notification: {}", notification_id);
+                    println!("Logging 2FA notification: {notification_id}");
                 }
                 _ => {
-                    println!("Logging generic notification: {}", notification_id);
+                    println!("Logging generic notification: {notification_id}");
                 }
             }
             Ok(())
@@ -136,16 +135,15 @@ impl Processor for DataUpdatedProcessor {
         if let Event::DataUpdated { resource_id, old_value, new_value, changed_by } = event {
             println!("DataUpdatedProcessor: Handling DataUpdated event");
             // Logic extracted from the original match statement in core.rs
-            println!("Data updated: ResourceID={}, ChangedBy={}", resource_id, changed_by);
-            println!("Old value: '{}', New value: '{}'", old_value, new_value);
+            println!("Data updated: ResourceID={resource_id}, ChangedBy={changed_by}");
+            println!("Old value: '{old_value}', New value: '{new_value}'");
             if old_value.len() > new_value.len() && new_value.is_empty() {
                 println!(
-                    "Warning: Value for {} was potentially cleared by {}",
-                    resource_id, changed_by
+                    "Warning: Value for {resource_id} was potentially cleared by {changed_by}"
                 );
             }
-            println!("Creating audit log for resource {}: changed by {}", resource_id, changed_by);
-            println!("Notifying subscribers about update to resource {}", resource_id);
+            println!("Creating audit log for resource {resource_id}: changed by {changed_by}");
+            println!("Notifying subscribers about update to resource {resource_id}");
             Ok(())
         } else {
             Err(anyhow::anyhow!(

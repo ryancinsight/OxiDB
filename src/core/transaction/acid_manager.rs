@@ -53,7 +53,7 @@ pub enum Modification {
 }
 
 /// Transaction isolation levels
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IsolationLevel {
     ReadUncommitted,
     ReadCommitted,
@@ -77,7 +77,7 @@ impl DeadlockDetector {
     fn add_wait_for(&mut self, waiting_tx: TransactionId, holding_tx: TransactionId) {
         self.wait_for_graph
             .entry(waiting_tx)
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(holding_tx);
     }
     
@@ -131,7 +131,7 @@ impl DeadlockDetector {
 
 impl AcidTransactionManager {
     /// Create a new ACID transaction manager
-    pub fn new(wal_writer: WalWriter, log_manager: Arc<LogManager>) -> Self {
+    #[must_use] pub fn new(wal_writer: WalWriter, log_manager: Arc<LogManager>) -> Self {
         let transaction_manager = Arc::new(Mutex::new(
             TransactionManager::new(wal_writer, log_manager.clone())
         ));
@@ -149,7 +149,7 @@ impl AcidTransactionManager {
     pub fn begin_transaction(&self, isolation_level: IsolationLevel) -> Result<TransactionId, OxidbError> {
         let mut tx_manager = self.transaction_manager.lock().unwrap();
         let transaction = tx_manager.begin_transaction()
-            .map_err(|e| OxidbError::Transaction(format!("Failed to begin transaction: {}", e)))?;
+            .map_err(|e| OxidbError::Transaction(format!("Failed to begin transaction: {e}")))?;
         
         let tx_id = transaction.id;
         
@@ -196,11 +196,10 @@ impl AcidTransactionManager {
                     let victim = cycle.iter().min_by_key(|&&tx| {
                         self.active_transactions.read().unwrap()
                             .get(&tx)
-                            .map(|meta| meta.start_time)
-                            .unwrap_or(Instant::now())
+                            .map_or(Instant::now(), |meta| meta.start_time)
                     }).copied().unwrap_or(tx_id);
                     
-                    return Err(OxidbError::DeadlockDetected(format!("Transaction {:?} aborted due to deadlock", victim)));
+                    return Err(OxidbError::DeadlockDetected(format!("Transaction {victim:?} aborted due to deadlock")));
                 }
             }
         }
@@ -250,7 +249,7 @@ impl AcidTransactionManager {
             }
         }
         
-        Err(OxidbError::TransactionNotFound(format!("Transaction {:?} not found", tx_id)))
+        Err(OxidbError::TransactionNotFound(format!("Transaction {tx_id:?} not found")))
     }
     
     /// Commit a transaction (ACID Consistency and Durability)
@@ -259,7 +258,7 @@ impl AcidTransactionManager {
         let _modifications = {
             let active_txs = self.active_transactions.read().unwrap();
             active_txs.get(&tx_id)
-                .ok_or_else(|| OxidbError::TransactionNotFound(format!("Transaction {:?} not found", tx_id)))?
+                .ok_or_else(|| OxidbError::TransactionNotFound(format!("Transaction {tx_id:?} not found")))?
                 .modifications.clone()
         };
         
@@ -269,7 +268,7 @@ impl AcidTransactionManager {
         // Commit the transaction
         let mut tx_manager = self.transaction_manager.lock().unwrap();
         tx_manager.commit_transaction()
-            .map_err(|e| OxidbError::Transaction(format!("Failed to commit transaction: {}", e)))?;
+            .map_err(|e| OxidbError::Transaction(format!("Failed to commit transaction: {e}")))?;
         
         // Release all locks
         self.lock_manager.lock().unwrap().release_locks(tx_id.0);
@@ -287,7 +286,7 @@ impl AcidTransactionManager {
         let modifications = {
             let active_txs = self.active_transactions.read().unwrap();
             active_txs.get(&tx_id)
-                .ok_or_else(|| OxidbError::TransactionNotFound(format!("Transaction {:?} not found", tx_id)))?
+                .ok_or_else(|| OxidbError::TransactionNotFound(format!("Transaction {tx_id:?} not found")))?
                 .modifications.clone()
         };
         
@@ -299,7 +298,7 @@ impl AcidTransactionManager {
         // Abort the transaction
         let mut tx_manager = self.transaction_manager.lock().unwrap();
         tx_manager.abort_transaction()
-            .map_err(|e| OxidbError::Transaction(format!("Failed to abort transaction: {}", e)))?;
+            .map_err(|e| OxidbError::Transaction(format!("Failed to abort transaction: {e}")))?;
         
         // Release all locks
         self.lock_manager.lock().unwrap().release_locks(tx_id.0);
@@ -320,7 +319,7 @@ impl AcidTransactionManager {
         match modification {
             Modification::Insert { table, key, value: _ } => {
                 // Undo insert by deleting the record
-                eprintln!("ROLLBACK: Deleting inserted record - table: {}, key: {:?}", table, key);
+                eprintln!("ROLLBACK: Deleting inserted record - table: {table}, key: {key:?}");
                 
                 // In a real implementation, we would:
                 // self.storage_engine.delete(table, key)?;
@@ -331,8 +330,7 @@ impl AcidTransactionManager {
             }
             Modification::Update { table, key, old_value, new_value: _ } => {
                 // Undo update by restoring old value
-                eprintln!("ROLLBACK: Restoring old value - table: {}, key: {:?}, old_value: {:?}", 
-                         table, key, old_value);
+                eprintln!("ROLLBACK: Restoring old value - table: {table}, key: {key:?}, old_value: {old_value:?}");
                 
                 // In a real implementation, we would:
                 // self.storage_engine.update(table, key, old_value.clone())?;
@@ -341,8 +339,7 @@ impl AcidTransactionManager {
             }
             Modification::Delete { table, key, old_value } => {
                 // Undo delete by reinserting the record
-                eprintln!("ROLLBACK: Reinserting deleted record - table: {}, key: {:?}, value: {:?}", 
-                         table, key, old_value);
+                eprintln!("ROLLBACK: Reinserting deleted record - table: {table}, key: {key:?}, value: {old_value:?}");
                 
                 // In a real implementation, we would:
                 // self.storage_engine.insert(table, key, old_value.clone())?;
@@ -354,7 +351,7 @@ impl AcidTransactionManager {
     
     /// Check if a transaction can read a value based on isolation level
     /// This is critical for maintaining ACID Isolation guarantees
-    pub fn can_read(&self, tx_id: TransactionId, resource: &str) -> bool {
+    #[must_use] pub fn can_read(&self, tx_id: TransactionId, resource: &str) -> bool {
         let active_txs = self.active_transactions.read().unwrap();
         if let Some(metadata) = active_txs.get(&tx_id) {
             match metadata.isolation_level {
@@ -408,7 +405,7 @@ impl AcidTransactionManager {
                     if let Some(holder) = lock_manager.get_lock_holder(resource) {
                         if holder != tx_id.0 {
                             // Another transaction has a lock, potential serialization conflict
-                            eprintln!("SERIALIZABLE: Read blocked due to lock held by transaction {}", holder);
+                            eprintln!("SERIALIZABLE: Read blocked due to lock held by transaction {holder}");
                             return false;
                         }
                     }

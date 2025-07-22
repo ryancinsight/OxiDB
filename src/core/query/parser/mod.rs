@@ -21,13 +21,13 @@ pub fn parse_sql_to_ast(sql: &str) -> Result<Statement, OxidbError> {
     // Tokenize the SQL
     let mut tokenizer = Tokenizer::new(sql);
     let tokens = tokenizer.tokenize().map_err(|e| {
-        OxidbError::SqlParsing(format!("Tokenization error: {:?}", e))
+        OxidbError::SqlParsing(format!("Tokenization error: {e:?}"))
     })?;
 
     // Parse tokens to AST
     let mut parser = SqlParser::new(tokens);
     parser.parse().map_err(|e| {
-        OxidbError::SqlParsing(format!("Parse error: {:?}", e))
+        OxidbError::SqlParsing(format!("Parse error: {e:?}"))
     })
 }
 
@@ -63,14 +63,12 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, OxidbError> {
                             sql::translator::translate_ast_to_command(ast_statement)
                         }
                         Err(sql_parse_error) => Err(OxidbError::SqlParsing(format!(
-                            "SQL parse error: {}",
-                            sql_parse_error
+                            "SQL parse error: {sql_parse_error}"
                         ))),
                     }
                 }
                 Err(sql_tokenizer_error) => Err(OxidbError::SqlParsing(format!(
-                    "SQL tokenizer error: {}",
-                    sql_tokenizer_error
+                    "SQL tokenizer error: {sql_tokenizer_error}"
                 ))),
             }
         } else {
@@ -82,7 +80,7 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, OxidbError> {
         let mut tokenizer = Tokenizer::new(query_str);
         match tokenizer.tokenize() {
             Ok(tokens) => {
-                let mut parser = SqlParser::new(tokens.clone()); // Clone tokens for potential fallback
+                let mut parser = SqlParser::new(tokens); // Clone tokens for potential fallback
                 match parser.parse() {
                     Ok(ast_statement @ sql::ast::Statement::Delete { .. }) => {
                         // Successfully parsed as a SQL DELETE statement
@@ -116,12 +114,12 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, OxidbError> {
                 match parser.parse() {
                     Ok(ast_statement) => sql::translator::translate_ast_to_command(ast_statement),
                     Err(sql_parse_error) => {
-                        Err(OxidbError::SqlParsing(format!("SQL parse error: {}", sql_parse_error)))
+                        Err(OxidbError::SqlParsing(format!("SQL parse error: {sql_parse_error}")))
                     }
                 }
             }
             Err(sql_tokenizer_error) => {
-                Err(OxidbError::SqlParsing(format!("SQL tokenizer error: {}", sql_tokenizer_error)))
+                Err(OxidbError::SqlParsing(format!("SQL tokenizer error: {sql_tokenizer_error}")))
             }
         }
     } else if first_word == "GET"
@@ -144,16 +142,14 @@ pub fn parse_query_string(query_str: &str) -> Result<Command, OxidbError> {
                     Ok(ast_statement) => sql::translator::translate_ast_to_command(ast_statement),
                     Err(sql_parse_error) => {
                         Err(OxidbError::SqlParsing(format!( // Changed
-                                "SQL parse error: {}. If you intended a legacy command, ensure it's one of GET, INSERT, DELETE, BEGIN, COMMIT, ROLLBACK.",
-                                sql_parse_error
+                                "SQL parse error: {sql_parse_error}. If you intended a legacy command, ensure it's one of GET, INSERT, DELETE, BEGIN, COMMIT, ROLLBACK."
                             )))
                     }
                 }
             }
             Err(sql_tokenizer_error) => {
                 Err(OxidbError::SqlParsing(format!( // Changed
-                        "SQL tokenizer error: {}. If you intended a legacy command, ensure it's one of GET, INSERT, DELETE, BEGIN, COMMIT, ROLLBACK.",
-                        sql_tokenizer_error
+                        "SQL tokenizer error: {sql_tokenizer_error}. If you intended a legacy command, ensure it's one of GET, INSERT, DELETE, BEGIN, COMMIT, ROLLBACK."
                     )))
             }
         }
@@ -189,8 +185,7 @@ fn parse_legacy_command_string(query_str: &str) -> Result<Command, OxidbError> {
                     if !current_token.is_empty() {
                         return Err(OxidbError::SqlParsing(format!(
                             // Changed
-                            "Unexpected quote in token: {}",
-                            current_token
+                            "Unexpected quote in token: {current_token}"
                         )));
                     }
                     in_quotes = true;
@@ -326,16 +321,14 @@ fn parse_vector_literal_from_string(s: &str) -> Result<VectorData, OxidbError> {
         let trimmed_part = part.trim();
         if trimmed_part.is_empty() {
             return Err(OxidbError::SqlParsing(format!(
-                "Empty element in vector literal: '{}'",
-                s
+                "Empty element in vector literal: '{s}'"
             )));
         }
         match trimmed_part.parse::<f32>() {
             Ok(f) => data.push(f),
             Err(_) => {
                 return Err(OxidbError::SqlParsing(format!(
-                    "Invalid float in vector literal: '{}'",
-                    trimmed_part
+                    "Invalid float in vector literal: '{trimmed_part}'"
                 )))
             }
         }
@@ -343,8 +336,7 @@ fn parse_vector_literal_from_string(s: &str) -> Result<VectorData, OxidbError> {
     let dimension = data.len() as u32;
     VectorData::new(dimension, data).ok_or_else(|| {
         OxidbError::SqlParsing(format!(
-            "Dimension mismatch for vector literal (dim: {}, len: {})",
-            dimension, dimension
+            "Dimension mismatch for vector literal (dim: {dimension}, len: {dimension})"
         ))
     })
 }
@@ -398,7 +390,7 @@ fn parse_similarity_search_command_details(query_str: &str) -> Result<Command, O
         OxidbError::SqlParsing("Missing K value for TOP_K in SIMILARITY_SEARCH".to_string())
     })?;
     let top_k = top_k_str.parse::<usize>().map_err(|_| {
-        OxidbError::SqlParsing(format!("Invalid K value for TOP_K: '{}'", top_k_str))
+        OxidbError::SqlParsing(format!("Invalid K value for TOP_K: '{top_k_str}'"))
     })?;
     if top_k == 0 {
         return Err(OxidbError::SqlParsing("TOP_K value must be greater than 0".to_string()));

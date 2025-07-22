@@ -32,7 +32,7 @@ pub struct InMemoryRetriever {
 }
 
 impl InMemoryRetriever {
-    pub fn new(documents: Vec<Document>) -> Self {
+    #[must_use] pub const fn new(documents: Vec<Document>) -> Self {
         Self { documents }
     }
 

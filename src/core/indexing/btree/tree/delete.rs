@@ -23,28 +23,25 @@ impl BPlusTreeIndex {
 
         match &mut leaf_node {
             BPlusTreeNode::Leaf { keys, values, .. } => {
-                match keys.binary_search(key_to_delete) {
-                    Ok(idx) => {
-                        if let Some(pk_ref) = pk_to_remove {
-                            let original_pk_count = values[idx].len();
-                            values[idx].retain(|p| p != pk_ref);
-                            if values[idx].len() < original_pk_count {
-                                modification_made = true;
-                                if values[idx].is_empty() {
-                                    keys.remove(idx);
-                                    values.remove(idx);
-                                    key_removed_from_structure = true;
-                                }
-                            }
-                        } else {
-                            keys.remove(idx);
-                            values.remove(idx);
-                            key_removed_from_structure = true;
+                if let Ok(idx) = keys.binary_search(key_to_delete) {
+                    if let Some(pk_ref) = pk_to_remove {
+                        let original_pk_count = values[idx].len();
+                        values[idx].retain(|p| p != pk_ref);
+                        if values[idx].len() < original_pk_count {
                             modification_made = true;
+                            if values[idx].is_empty() {
+                                keys.remove(idx);
+                                values.remove(idx);
+                                key_removed_from_structure = true;
+                            }
                         }
+                    } else {
+                        keys.remove(idx);
+                        values.remove(idx);
+                        key_removed_from_structure = true;
+                        modification_made = true;
                     }
-                    Err(_) => { /* Key not found */ }
-                }
+                } else { /* Key not found */ }
             }
             _ => return Err(OxidbError::UnexpectedNodeType),
         }
@@ -63,7 +60,7 @@ impl BPlusTreeIndex {
         Ok(modification_made)
     }
 
-    fn min_keys_for_node(&self) -> usize {
+    const fn min_keys_for_node(&self) -> usize {
         self.order.saturating_sub(1) / 2
     }
 
@@ -216,7 +213,7 @@ impl BPlusTreeIndex {
                 } else {
                     let borrowed_key = l_keys.remove(0);
                     let borrowed_value = l_values.remove(0);
-                    u_keys.push(borrowed_key.clone());
+                    u_keys.push(borrowed_key);
                     u_values.push(borrowed_value);
                     p_keys[parent_key_idx] = l_keys.first().ok_or(OxidbError::TreeLogicError("Lender leaf (right) became empty".to_string()))?.clone();
                 }

@@ -12,8 +12,8 @@ pub struct InMemoryKvStore {
 }
 
 impl InMemoryKvStore {
-    pub fn new() -> Self {
-        InMemoryKvStore { data: HashMap::new() }
+    #[must_use] pub fn new() -> Self {
+        Self { data: HashMap::new() }
     }
 }
 
@@ -177,7 +177,7 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
     fn scan(&self) -> Result<Vec<(Vec<u8>, Vec<u8>)>, OxidbError> {
         // Changed
         let mut results = Vec::new();
-        for (key, version_vec) in self.data.iter() {
+        for (key, version_vec) in &self.data {
             if let Some(_latest_version) = version_vec.last() {
                 let mut best_candidate: Option<&VersionedValue<Vec<u8>>> = None;
                 for version in version_vec.iter().rev() {

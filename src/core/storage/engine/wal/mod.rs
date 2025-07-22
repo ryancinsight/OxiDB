@@ -16,7 +16,7 @@ const TRANSACTION_COMMIT_OPERATION: u8 = 0x03;
 const TRANSACTION_ROLLBACK_OPERATION: u8 = 0x04;
 
 /// Represents an entry in the Write-Ahead Log (WAL).
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum WalEntry {
     /// Represents a 'Put' operation with a key and a value.
     Put { lsn: Lsn, transaction_id: u64, key: Vec<u8>, value: Vec<u8> },
@@ -28,7 +28,7 @@ pub enum WalEntry {
     TransactionRollback { lsn: Lsn, transaction_id: u64 },
 }
 
-impl DataSerializer<WalEntry> for WalEntry {
+impl DataSerializer<Self> for WalEntry {
     /// Serializes a `WalEntry` into a byte stream.
     /// The format is:
     /// - Operation type (1 byte)
@@ -37,10 +37,10 @@ impl DataSerializer<WalEntry> for WalEntry {
     /// - Key (length-prefixed Vec<u8>, for Put, Delete)
     /// - Value (length-prefixed Vec<u8>, only for Put operation)
     /// - CRC32 checksum (4 bytes) of all preceding data in this entry.
-    fn serialize<W: Write>(value: &WalEntry, writer: &mut W) -> Result<(), OxidbError> {
+    fn serialize<W: Write>(value: &Self, writer: &mut W) -> Result<(), OxidbError> {
         let mut buffer = Vec::new(); // Buffer to hold data before checksum calculation
         match value {
-            WalEntry::Put { lsn, transaction_id, key, value } => {
+            Self::Put { lsn, transaction_id, key, value } => {
                 buffer.push(PUT_OPERATION);
                 buffer.extend_from_slice(&lsn.to_le_bytes());
                 buffer.extend_from_slice(&transaction_id.to_le_bytes());
@@ -235,11 +235,11 @@ impl DataDeserializer<Self> for WalEntry {
     /// - `Ok(WalEntry)` if deserialization is successful.
     /// - `Err(OxidbError::Io)` for any I/O issues, including unexpected EOF.
     /// - `Err(OxidbError::Deserialization)` for checksum mismatches or unknown operation types.
-    fn deserialize<R: Read>(reader: &mut R) -> Result<WalEntry, OxidbError> {
+    fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
         // Changed
         let mut operation_type_buffer = [0u8; 1];
         match reader.read_exact(&mut operation_type_buffer) {
-            Ok(_) => (),
+            Ok(()) => (),
             Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 // Return the original EOF error so callers can handle it appropriately
                 return Err(OxidbError::Io(e));
@@ -366,7 +366,7 @@ impl DataDeserializer<Self> for WalEntry {
 
 /// Helper function to map EOF errors encountered during WAL deserialization
 /// to a more context-specific error message.
-fn map_eof_error(e: std::io::Error, _context: &str) -> OxidbError {
+const fn map_eof_error(e: std::io::Error, _context: &str) -> OxidbError {
     // Always return the original IO error to maintain consistent error handling
     OxidbError::Io(e)
 }
@@ -374,7 +374,7 @@ fn map_eof_error(e: std::io::Error, _context: &str) -> OxidbError {
 /// Helper function to specifically handle EOF errors that might occur during
 /// the deserialization of length-prefixed data (like keys or values) within a WAL entry.
 /// It distinguishes general I/O errors from those indicating a truncated entry part.
-fn map_deserialization_eof(e: OxidbError, _context: &str) -> OxidbError {
+const fn map_deserialization_eof(e: OxidbError, _context: &str) -> OxidbError {
     // Always return the original error to maintain consistent error handling
     e
 }

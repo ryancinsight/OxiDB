@@ -8,7 +8,7 @@ use crate::core::common::OxidbError;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Traversal direction for graph operations
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TraversalDirection {
     Outgoing,
     Incoming,
@@ -16,7 +16,7 @@ pub enum TraversalDirection {
 }
 
 /// Graph traversal strategy
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TraversalStrategy {
     BreadthFirst,
     DepthFirst,
@@ -60,7 +60,7 @@ pub struct TraversalResult {
 
 impl TraversalResult {
     /// Create a new traversal result
-    pub fn new() -> Self {
+    #[must_use] pub fn new() -> Self {
         Self {
             path: Vec::new(),
             depths: HashMap::new(),
@@ -80,17 +80,17 @@ impl TraversalResult {
     }
 
     /// Get the depth of a node
-    pub fn get_depth(&self, node_id: NodeId) -> Option<usize> {
+    #[must_use] pub fn get_depth(&self, node_id: NodeId) -> Option<usize> {
         self.depths.get(&node_id).copied()
     }
 
     /// Get the parent of a node
-    pub fn get_parent(&self, node_id: NodeId) -> Option<NodeId> {
+    #[must_use] pub fn get_parent(&self, node_id: NodeId) -> Option<NodeId> {
         self.parent_map.get(&node_id).copied()
     }
 
     /// Reconstruct path from start to a specific node
-    pub fn path_to_node(&self, target: NodeId) -> Option<Vec<NodeId>> {
+    #[must_use] pub fn path_to_node(&self, target: NodeId) -> Option<Vec<NodeId>> {
         let mut path = Vec::new();
         let mut current = target;
         
@@ -305,7 +305,7 @@ impl TraversalEngine {
                 }
 
                 if !component.is_empty() {
-                    component.sort();
+                    component.sort_unstable();
                     components.push(component);
                 }
             }
@@ -322,7 +322,7 @@ pub struct CollectingVisitor {
 }
 
 impl CollectingVisitor {
-    pub fn new() -> Self {
+    #[must_use] pub const fn new() -> Self {
         Self {
             visited_nodes: Vec::new(),
             visited_edges: Vec::new(),
@@ -360,7 +360,7 @@ pub struct TargetVisitor {
 }
 
 impl TargetVisitor {
-    pub fn new(target: NodeId) -> Self {
+    #[must_use] pub const fn new(target: NodeId) -> Self {
         Self {
             target,
             found: false,

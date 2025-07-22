@@ -52,7 +52,7 @@ impl SqlParser {
                     Some(other) => {
                         return Err(SqlParseError::UnexpectedToken {
                             expected: "numeric dimension for VECTOR type".to_string(),
-                            found: format!("{:?}", other),
+                            found: format!("{other:?}"),
                             position: dim_token_pos,
                         })
                     }
@@ -111,14 +111,14 @@ impl SqlParser {
                 } else {
                     Err(SqlParseError::UnexpectedToken {
                         expected: expected.to_string(),
-                        found: format!("Identifier({})", ident),
+                        found: format!("Identifier({ident})"),
                         position: token_pos,
                     })
                 }
             }
             Some(other_token) => Err(SqlParseError::UnexpectedToken {
                 expected: expected.to_string(),
-                found: format!("{:?}", other_token),
+                found: format!("{other_token:?}"),
                 position: token_pos,
             }),
             None => Err(SqlParseError::UnexpectedToken {
@@ -483,7 +483,7 @@ impl SqlParser {
                     self.consume_any();
                     return Err(SqlParseError::UnexpectedToken {
                         expected: "numeric literal for LIMIT".to_string(),
-                        found: format!("{:?}", other_token_val), // Report the peeked token
+                        found: format!("{other_token_val:?}"), // Report the peeked token
                         position: current_pos,
                     });
                 }

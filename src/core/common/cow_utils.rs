@@ -16,33 +16,33 @@ pub struct CowKeyValue<'a> {
 }
 
 impl<'a> CowKeyValue<'a> {
-    /// Creates a new CowKeyValue with borrowed data
-    pub fn borrowed(key: &'a [u8], value: &'a DataType) -> Self {
+    /// Creates a new `CowKeyValue` with borrowed data
+    #[must_use] pub const fn borrowed(key: &'a [u8], value: &'a DataType) -> Self {
         Self { key: Cow::Borrowed(key), value: Cow::Borrowed(value) }
     }
 
-    /// Creates a new CowKeyValue with owned data
-    pub fn owned(key: Vec<u8>, value: DataType) -> Self {
+    /// Creates a new `CowKeyValue` with owned data
+    #[must_use] pub const fn owned(key: Vec<u8>, value: DataType) -> Self {
         Self { key: Cow::Owned(key), value: Cow::Owned(value) }
     }
 
     /// Converts to owned data if not already owned
-    pub fn into_owned(self) -> (Vec<u8>, DataType) {
+    #[must_use] pub fn into_owned(self) -> (Vec<u8>, DataType) {
         (self.key.into_owned(), self.value.into_owned())
     }
 
     /// Gets a reference to the key
-    pub fn key(&self) -> &[u8] {
+    #[must_use] pub fn key(&self) -> &[u8] {
         &self.key
     }
 
     /// Gets a reference to the value
-    pub fn value(&self) -> &DataType {
+    #[must_use] pub fn value(&self) -> &DataType {
         &self.value
     }
 
     /// Checks if both key and value are borrowed (zero-copy)
-    pub fn is_borrowed(&self) -> bool {
+    #[must_use] pub const fn is_borrowed(&self) -> bool {
         matches!(self.key, Cow::Borrowed(_)) && matches!(self.value, Cow::Borrowed(_))
     }
 }
@@ -54,33 +54,33 @@ pub struct CowString<'a> {
 }
 
 impl<'a> CowString<'a> {
-    /// Creates a CowString from a borrowed string slice
-    pub fn borrowed(s: &'a str) -> Self {
+    /// Creates a `CowString` from a borrowed string slice
+    #[must_use] pub const fn borrowed(s: &'a str) -> Self {
         Self { data: Cow::Borrowed(s) }
     }
 
-    /// Creates a CowString from an owned String
-    pub fn owned(s: String) -> Self {
+    /// Creates a `CowString` from an owned String
+    #[must_use] pub const fn owned(s: String) -> Self {
         Self { data: Cow::Owned(s) }
     }
 
     /// Gets a string slice reference
-    pub fn as_str(&self) -> &str {
+    #[must_use] pub fn as_str(&self) -> &str {
         &self.data
     }
 
     /// Converts to owned String if not already owned
-    pub fn into_owned(self) -> String {
+    #[must_use] pub fn into_owned(self) -> String {
         self.data.into_owned()
     }
 
     /// Checks if the string is borrowed (zero-copy)
-    pub fn is_borrowed(&self) -> bool {
+    #[must_use] pub const fn is_borrowed(&self) -> bool {
         matches!(self.data, Cow::Borrowed(_))
     }
 
-    /// Creates a CowString from a DataType if it's a string
-    pub fn from_datatype(dt: &'a DataType) -> Option<Self> {
+    /// Creates a `CowString` from a `DataType` if it's a string
+    #[must_use] pub fn from_datatype(dt: &'a DataType) -> Option<Self> {
         match dt {
             DataType::String(s) => Some(Self::borrowed(s)),
             _ => None,
@@ -95,33 +95,33 @@ pub struct CowBytes<'a> {
 }
 
 impl<'a> CowBytes<'a> {
-    /// Creates CowBytes from a borrowed byte slice
-    pub fn borrowed(bytes: &'a [u8]) -> Self {
+    /// Creates `CowBytes` from a borrowed byte slice
+    #[must_use] pub const fn borrowed(bytes: &'a [u8]) -> Self {
         Self { data: Cow::Borrowed(bytes) }
     }
 
-    /// Creates CowBytes from owned Vec<u8>
-    pub fn owned(bytes: Vec<u8>) -> Self {
+    /// Creates `CowBytes` from owned Vec<u8>
+    #[must_use] pub const fn owned(bytes: Vec<u8>) -> Self {
         Self { data: Cow::Owned(bytes) }
     }
 
     /// Gets a byte slice reference
-    pub fn as_bytes(&self) -> &[u8] {
+    #[must_use] pub fn as_bytes(&self) -> &[u8] {
         &self.data
     }
 
     /// Converts to owned Vec<u8> if not already owned
-    pub fn into_owned(self) -> Vec<u8> {
+    #[must_use] pub fn into_owned(self) -> Vec<u8> {
         self.data.into_owned()
     }
 
     /// Checks if the bytes are borrowed (zero-copy)
-    pub fn is_borrowed(&self) -> bool {
+    #[must_use] pub const fn is_borrowed(&self) -> bool {
         matches!(self.data, Cow::Borrowed(_))
     }
 
-    /// Creates CowBytes from a DataType if it's raw bytes
-    pub fn from_datatype(dt: &'a DataType) -> Option<Self> {
+    /// Creates `CowBytes` from a `DataType` if it's raw bytes
+    #[must_use] pub fn from_datatype(dt: &'a DataType) -> Option<Self> {
         match dt {
             DataType::RawBytes(bytes) => Some(Self::borrowed(bytes)),
             _ => None,
@@ -135,33 +135,33 @@ pub struct CowMap<'a> {
 }
 
 impl<'a> CowMap<'a> {
-    /// Creates a CowMap from a borrowed HashMap
-    pub fn borrowed(map: &'a HashMap<Vec<u8>, DataType>) -> Self {
+    /// Creates a `CowMap` from a borrowed `HashMap`
+    #[must_use] pub const fn borrowed(map: &'a HashMap<Vec<u8>, DataType>) -> Self {
         Self { data: Cow::Borrowed(map) }
     }
 
-    /// Creates a CowMap from an owned HashMap
-    pub fn owned(map: HashMap<Vec<u8>, DataType>) -> Self {
+    /// Creates a `CowMap` from an owned `HashMap`
+    #[must_use] pub const fn owned(map: HashMap<Vec<u8>, DataType>) -> Self {
         Self { data: Cow::Owned(map) }
     }
 
     /// Gets a value by key without cloning
-    pub fn get(&self, key: &[u8]) -> Option<&DataType> {
+    #[must_use] pub fn get(&self, key: &[u8]) -> Option<&DataType> {
         self.data.get(key)
     }
 
     /// Checks if a key exists
-    pub fn contains_key(&self, key: &[u8]) -> bool {
+    #[must_use] pub fn contains_key(&self, key: &[u8]) -> bool {
         self.data.contains_key(key)
     }
 
     /// Gets the number of entries
-    pub fn len(&self) -> usize {
+    #[must_use] pub fn len(&self) -> usize {
         self.data.len()
     }
 
     /// Checks if the map is empty
-    pub fn is_empty(&self) -> bool {
+    #[must_use] pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
@@ -170,13 +170,13 @@ impl<'a> CowMap<'a> {
         self.data.iter()
     }
 
-    /// Converts to owned HashMap if not already owned
-    pub fn into_owned(self) -> HashMap<Vec<u8>, DataType> {
+    /// Converts to owned `HashMap` if not already owned
+    #[must_use] pub fn into_owned(self) -> HashMap<Vec<u8>, DataType> {
         self.data.into_owned()
     }
 
     /// Checks if the map is borrowed (zero-copy)
-    pub fn is_borrowed(&self) -> bool {
+    #[must_use] pub const fn is_borrowed(&self) -> bool {
         matches!(self.data, Cow::Borrowed(_))
     }
 }
@@ -185,8 +185,8 @@ impl<'a> CowMap<'a> {
 pub struct CowUtils;
 
 impl CowUtils {
-    /// Efficiently converts a DataType to a string representation without unnecessary cloning
-    pub fn datatype_to_string_cow(dt: &DataType) -> Cow<'_, str> {
+    /// Efficiently converts a `DataType` to a string representation without unnecessary cloning
+    #[must_use] pub fn datatype_to_string_cow(dt: &DataType) -> Cow<'_, str> {
         match dt {
             DataType::String(s) => Cow::Borrowed(s),
             DataType::Integer(i) => Cow::Owned(i.to_string()),
@@ -196,15 +196,15 @@ impl CowUtils {
             DataType::RawBytes(bytes) => Cow::Owned(String::from_utf8_lossy(bytes).into_owned()),
             DataType::Vector(vec) => Cow::Owned(format!(
                 "[{}]",
-                vec.data.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(", ")
+                vec.data.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join(", ")
             )),
             DataType::Map(_) => Cow::Borrowed("{Map}"),
             DataType::JsonBlob(_) => Cow::Borrowed("{JsonBlob}"),
         }
     }
 
-    /// Efficiently compares two DataTypes without cloning
-    pub fn datatype_equals_efficient(left: &DataType, right: &DataType) -> bool {
+    /// Efficiently compares two `DataTypes` without cloning
+    #[must_use] pub fn datatype_equals_efficient(left: &DataType, right: &DataType) -> bool {
         match (left, right) {
             (DataType::String(a), DataType::String(b)) => a == b,
             (DataType::Integer(a), DataType::Integer(b)) => a == b,
@@ -220,8 +220,8 @@ impl CowUtils {
         }
     }
 
-    /// Efficiently extracts string data from DataType without cloning when possible
-    pub fn extract_string_cow(dt: &DataType) -> Option<Cow<'_, str>> {
+    /// Efficiently extracts string data from `DataType` without cloning when possible
+    #[must_use] pub fn extract_string_cow(dt: &DataType) -> Option<Cow<'_, str>> {
         match dt {
             DataType::String(s) => Some(Cow::Borrowed(s)),
             DataType::Integer(i) => Some(Cow::Owned(i.to_string())),
@@ -231,8 +231,8 @@ impl CowUtils {
         }
     }
 
-    /// Efficiently extracts numeric data from DataType
-    pub fn extract_number(dt: &DataType) -> Option<f64> {
+    /// Efficiently extracts numeric data from `DataType`
+    #[must_use] pub fn extract_number(dt: &DataType) -> Option<f64> {
         match dt {
             DataType::Integer(i) => Some(*i as f64),
             DataType::Float(f) => Some(*f),
@@ -241,16 +241,16 @@ impl CowUtils {
         }
     }
 
-    /// Creates a vector of CowKeyValue from a slice of tuples without cloning when possible
-    pub fn create_cow_pairs<'a>(pairs: &'a [(Vec<u8>, DataType)]) -> Vec<CowKeyValue<'a>> {
+    /// Creates a vector of `CowKeyValue` from a slice of tuples without cloning when possible
+    #[must_use] pub fn create_cow_pairs(pairs: &[(Vec<u8>, DataType)]) -> Vec<CowKeyValue<'_>> {
         pairs.iter().map(|(k, v)| CowKeyValue::borrowed(k, v)).collect()
     }
 
     /// Efficiently filters key-value pairs based on a predicate
-    pub fn filter_pairs<'a, F>(
-        pairs: &'a [(Vec<u8>, DataType)],
+    pub fn filter_pairs<F>(
+        pairs: &[(Vec<u8>, DataType)],
         predicate: F,
-    ) -> Vec<CowKeyValue<'a>>
+    ) -> Vec<CowKeyValue<'_>>
     where
         F: Fn(&[u8], &DataType) -> bool,
     {
@@ -271,25 +271,32 @@ pub struct CowMetrics {
 }
 
 impl CowMetrics {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
     pub fn record_borrowed(&mut self) {
-        self.borrowed_operations += 1;
-        self.total_operations += 1;
+        self.borrowed_operations = self.borrowed_operations.saturating_add(1);
+        self.total_operations = self.total_operations.saturating_add(1);
     }
 
     pub fn record_cloned(&mut self) {
-        self.cloned_operations += 1;
-        self.total_operations += 1;
+        self.cloned_operations = self.cloned_operations.saturating_add(1);
+        self.total_operations = self.total_operations.saturating_add(1);
     }
 
+    #[must_use]
     pub fn efficiency_ratio(&self) -> f64 {
         if self.total_operations == 0 {
             0.0
         } else {
-            self.borrowed_operations as f64 / self.total_operations as f64
+            // Use explicit conversion to handle potential precision loss
+            #[allow(clippy::cast_precision_loss)]
+            let borrowed = self.borrowed_operations as f64;
+            #[allow(clippy::cast_precision_loss)]
+            let total = self.total_operations as f64;
+            borrowed / total
         }
     }
 

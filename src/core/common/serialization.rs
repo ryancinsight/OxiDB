@@ -6,19 +6,19 @@ use crate::core::types::DataType;
 use serde_json;
 use std::io::{Read, Write}; // Added
 
-/// Serializes a DataType into a Vec<u8> using JSON.
+/// Serializes a `DataType` into a Vec<u8> using JSON.
 pub fn serialize_data_type(data_type: &DataType) -> Result<Vec<u8>, OxidbError> {
-    serde_json::to_vec(data_type).map_err(|e| OxidbError::Json(e))
+    serde_json::to_vec(data_type).map_err(OxidbError::Json)
 }
 
-/// Deserializes a Vec<u8> (expected to be JSON) into a DataType.
+/// Deserializes a Vec<u8> (expected to be JSON) into a `DataType`.
 pub fn deserialize_data_type(bytes: &[u8]) -> Result<DataType, OxidbError> {
     match serde_json::from_slice(bytes) {
         Ok(dt) => Ok(dt),
         Err(e) => {
             let err_string = e.to_string();
             // Print it regardless to see what errors occur
-            println!("[deserialize_data_type] Serde JSON error string: '{}'", err_string);
+            println!("[deserialize_data_type] Serde JSON error string: '{err_string}'");
             println!(
                 "[deserialize_data_type] Bytes as lossy UTF-8 for this error: '{}'",
                 String::from_utf8_lossy(bytes)
@@ -39,8 +39,8 @@ pub fn deserialize_data_type(bytes: &[u8]) -> Result<DataType, OxidbError> {
 }
 
 // Implementations for Vec<u8>
-impl DataSerializer<Vec<u8>> for Vec<u8> {
-    fn serialize<W: Write>(value: &Vec<u8>, writer: &mut W) -> Result<(), OxidbError> {
+impl DataSerializer<Self> for Vec<u8> {
+    fn serialize<W: Write>(value: &Self, writer: &mut W) -> Result<(), OxidbError> {
         let len = value.len() as u64;
         writer.write_all(&len.to_be_bytes())?; // Relies on From<std::io::Error> for OxidbError
         writer.write_all(value)?;
@@ -48,15 +48,14 @@ impl DataSerializer<Vec<u8>> for Vec<u8> {
     }
 }
 
-impl DataDeserializer<Vec<u8>> for Vec<u8> {
-    fn deserialize<R: Read>(reader: &mut R) -> Result<Vec<u8>, OxidbError> {
+impl DataDeserializer<Self> for Vec<u8> {
+    fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
         let mut len_bytes = [0u8; 8];
         reader.read_exact(&mut len_bytes)?; // Relies on From<std::io::Error> for OxidbError
         let len_u64 = u64::from_be_bytes(len_bytes);
         let len = usize::try_from(len_u64).map_err(|_| {
             OxidbError::Deserialization(format!(
-                "Vec<u8> length {} exceeds usize capabilities",
-                len_u64
+                "Vec<u8> length {len_u64} exceeds usize capabilities"
             ))
         })?;
         // Basic protection against extremely large allocations
@@ -64,8 +63,7 @@ impl DataDeserializer<Vec<u8>> for Vec<u8> {
             // 1GB limit, adjust as needed
             return Err(OxidbError::Deserialization(format!(
                 // Changed
-                "Vec<u8> length {} exceeds maximum allowed size",
-                len
+                "Vec<u8> length {len} exceeds maximum allowed size"
             )));
         }
         let mut buffer = vec![0u8; len];

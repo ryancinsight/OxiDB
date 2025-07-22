@@ -145,8 +145,7 @@ impl BlinkTreeIndex {
                 for i in 1..keys.len() {
                     if keys[i - 1] >= keys[i] {
                         return Err(BlinkTreeError::TreeLogicError(format!(
-                            "Internal node {} has unsorted keys",
-                            page_id
+                            "Internal node {page_id} has unsorted keys"
                         )));
                     }
                 }
@@ -156,8 +155,7 @@ impl BlinkTreeIndex {
                     if let Some(last_key) = keys.last() {
                         if last_key > hkey {
                             return Err(BlinkTreeError::TreeLogicError(format!(
-                                "Internal node {} violates high key constraint",
-                                page_id
+                                "Internal node {page_id} violates high key constraint"
                             )));
                         }
                     }
@@ -173,8 +171,7 @@ impl BlinkTreeIndex {
                     let right_node = self.read_node(*right_page_id)?;
                     if right_node.get_parent_page_id() != expected_parent {
                         return Err(BlinkTreeError::TreeLogicError(format!(
-                            "Right sibling {} has incorrect parent",
-                            right_page_id
+                            "Right sibling {right_page_id} has incorrect parent"
                         )));
                     }
                 }
@@ -194,8 +191,7 @@ impl BlinkTreeIndex {
                 for i in 1..keys.len() {
                     if keys[i - 1] >= keys[i] {
                         return Err(BlinkTreeError::TreeLogicError(format!(
-                            "Leaf node {} has unsorted keys",
-                            page_id
+                            "Leaf node {page_id} has unsorted keys"
                         )));
                     }
                 }
@@ -205,8 +201,7 @@ impl BlinkTreeIndex {
                     if let Some(last_key) = keys.last() {
                         if last_key > hkey {
                             return Err(BlinkTreeError::TreeLogicError(format!(
-                                "Leaf node {} violates high key constraint",
-                                page_id
+                                "Leaf node {page_id} violates high key constraint"
                             )));
                         }
                     }
@@ -217,8 +212,7 @@ impl BlinkTreeIndex {
                     let right_node = self.read_node(*right_page_id)?;
                     if right_node.get_parent_page_id() != expected_parent {
                         return Err(BlinkTreeError::TreeLogicError(format!(
-                            "Right sibling {} has incorrect parent",
-                            right_page_id
+                            "Right sibling {right_page_id} has incorrect parent"
                         )));
                     }
                 }

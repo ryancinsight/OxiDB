@@ -28,7 +28,7 @@ pub struct WalReaderConfig {
 
 impl Default for WalReaderConfig {
     fn default() -> Self {
-        WalReaderConfig {
+        Self {
             buffer_size: 8192, // 8KB buffer
             validate_lsn_ordering: true,
         }
@@ -80,11 +80,11 @@ impl WalRecordIterator {
         let file = File::open(path).map_err(WalReaderError::Io)?;
         let reader = BufReader::with_capacity(config.buffer_size, file);
 
-        Ok(WalRecordIterator { reader, config, last_lsn: None, records_read: 0 })
+        Ok(Self { reader, config, last_lsn: None, records_read: 0 })
     }
 
     /// Get the number of records read so far
-    pub fn records_read(&self) -> usize {
+    #[must_use] pub const fn records_read(&self) -> usize {
         self.records_read
     }
 
@@ -142,7 +142,7 @@ impl WalRecordIterator {
     }
 
     /// Extract LSN from a log record
-    fn extract_lsn(&self, record: &LogRecord) -> Lsn {
+    const fn extract_lsn(&self, record: &LogRecord) -> Lsn {
         match record {
             LogRecord::BeginTransaction { lsn, .. } 
             | LogRecord::CommitTransaction { lsn, .. } 

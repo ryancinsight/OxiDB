@@ -225,8 +225,8 @@ impl CentralityCalculator {
             let neighbors = get_neighbors(current)?;
             
             for neighbor in neighbors {
-                if !distances.contains_key(&neighbor) {
-                    distances.insert(neighbor, current_distance + 1);
+                if let std::collections::hash_map::Entry::Vacant(e) = distances.entry(neighbor) {
+                    e.insert(current_distance + 1);
                     queue.push_back(neighbor);
                 }
             }
@@ -452,7 +452,7 @@ pub struct GraphMetrics;
 
 impl GraphMetrics {
     /// Calculate clustering coefficient for a node
-    /// Optimized version with O(k * k_avg) complexity using HashSet lookups
+    /// Optimized version with O(k * `k_avg`) complexity using `HashSet` lookups
     pub fn clustering_coefficient<F>(
         node: NodeId,
         get_neighbors: F,
@@ -490,7 +490,7 @@ impl GraphMetrics {
         }
         
         let possible_edges = degree * (degree - 1) / 2;
-        Ok(edges_between_neighbors as f64 / possible_edges as f64)
+        Ok(f64::from(edges_between_neighbors) / possible_edges as f64)
     }
     
     /// Calculate average clustering coefficient for the graph
@@ -513,7 +513,7 @@ impl GraphMetrics {
         }
         
         if valid_nodes > 0 {
-            Ok(total_clustering / valid_nodes as f64)
+            Ok(total_clustering / f64::from(valid_nodes))
         } else {
             Ok(0.0)
         }

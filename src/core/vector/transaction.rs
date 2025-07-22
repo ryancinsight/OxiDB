@@ -30,7 +30,7 @@ pub enum UndoOperation {
 }
 
 /// Transaction state
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransactionState {
     Active,
     Committed,
@@ -49,7 +49,7 @@ pub struct VectorTransaction {
 
 impl VectorTransaction {
     /// Create a new transaction
-    pub fn new(id: TransactionId) -> Self {
+    #[must_use] pub fn new(id: TransactionId) -> Self {
         Self {
             id,
             state: TransactionState::Active,
@@ -109,7 +109,7 @@ pub struct VectorTransactionManager {
 
 impl VectorTransactionManager {
     /// Create a new transaction manager
-    pub fn new(store: Box<dyn VectorStore + Send>) -> Self {
+    #[must_use] pub fn new(store: Box<dyn VectorStore + Send>) -> Self {
         Self {
             next_tx_id: Arc::new(Mutex::new(1)),
             active_transactions: Arc::new(Mutex::new(HashMap::new())),
@@ -149,7 +149,7 @@ impl VectorTransactionManager {
 
         let transaction = active_txs
             .get_mut(&tx_id)
-            .ok_or_else(|| OxidbError::Transaction(format!("Transaction {} not found", tx_id)))?;
+            .ok_or_else(|| OxidbError::Transaction(format!("Transaction {tx_id} not found")))?;
 
         if transaction.state != TransactionState::Active {
             return Err(OxidbError::Transaction("Transaction is not active".to_string()));
@@ -187,7 +187,7 @@ impl VectorTransactionManager {
 
         let transaction = active_txs
             .get_mut(&tx_id)
-            .ok_or_else(|| OxidbError::Transaction(format!("Transaction {} not found", tx_id)))?;
+            .ok_or_else(|| OxidbError::Transaction(format!("Transaction {tx_id} not found")))?;
 
         if transaction.state != TransactionState::Active {
             return Err(OxidbError::Transaction("Transaction is not active".to_string()));
@@ -223,7 +223,7 @@ impl VectorTransactionManager {
 
         let mut transaction = active_txs
             .remove(&tx_id)
-            .ok_or_else(|| OxidbError::Transaction(format!("Transaction {} not found", tx_id)))?;
+            .ok_or_else(|| OxidbError::Transaction(format!("Transaction {tx_id} not found")))?;
 
         if transaction.state != TransactionState::Active {
             return Err(OxidbError::Transaction("Transaction is not active".to_string()));
@@ -246,7 +246,7 @@ impl VectorTransactionManager {
 
         let mut transaction = active_txs
             .remove(&tx_id)
-            .ok_or_else(|| OxidbError::Transaction(format!("Transaction {} not found", tx_id)))?;
+            .ok_or_else(|| OxidbError::Transaction(format!("Transaction {tx_id} not found")))?;
 
         if transaction.state != TransactionState::Active {
             return Err(OxidbError::Transaction("Transaction is not active".to_string()));

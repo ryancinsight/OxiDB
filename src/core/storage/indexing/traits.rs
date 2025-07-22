@@ -1,7 +1,7 @@
 use crate::core::common::OxidbError; // Changed
 
 /// Represents the type of pointer to the data's location.
-/// For SimpleFileKvStore, this could be a byte offset in the file.
+/// For `SimpleFileKvStore`, this could be a byte offset in the file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)] // Derive what's needed
 pub struct DataPointer(pub u64); // Example: u64 for file offset
 

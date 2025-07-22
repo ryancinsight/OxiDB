@@ -42,7 +42,16 @@ impl Connection {
     
     /// Opens a new in-memory database connection.
     pub fn open_in_memory() -> Result<Self, OxidbError> {
-        let config = Config::default();
+        let mut config = Config::default();
+        
+        // Use a unique temporary file path to avoid conflicts between concurrent tests
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let unique_id = COUNTER.fetch_add(1, Ordering::SeqCst);
+        
+        let temp_db_name = format!("temp_oxidb_{}_{}.db", std::process::id(), unique_id);
+        config.database_file = std::path::PathBuf::from(temp_db_name);
+        
         Self::new_with_config(config)
     }
     

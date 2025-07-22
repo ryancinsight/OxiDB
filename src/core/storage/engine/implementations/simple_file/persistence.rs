@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf}; // Added PathBuf for derive_wal_path
 // Made it internal to this module.
 fn derive_wal_path(db_path: &Path) -> PathBuf {
     let mut wal_path = db_path.to_path_buf();
-    let original_extension = wal_path.extension().map(|s| s.to_os_string());
+    let original_extension = wal_path.extension().map(std::ffi::OsStr::to_os_string);
     if let Some(ext) = original_extension {
         let mut new_ext = ext;
         new_ext.push(".wal");
@@ -84,7 +84,7 @@ fn read_data_into_cache_internal(
     loop {
         // Check for EOF before trying to deserialize key length.
         // fill_buf returns an empty slice at EOF.
-        let buffer = reader.fill_buf().map_err(|e| OxidbError::Io(e))?;
+        let buffer = reader.fill_buf().map_err(OxidbError::Io)?;
         if buffer.is_empty() {
             break; // Clean EOF
         }
@@ -100,7 +100,7 @@ fn read_data_into_cache_internal(
             })?;
 
         // Need to check for EOF again before deserializing value, in case file ends after a valid key.
-        let buffer_val_check = reader.fill_buf().map_err(|e| OxidbError::Io(e))?;
+        let buffer_val_check = reader.fill_buf().map_err(OxidbError::Io)?;
         if buffer_val_check.is_empty() {
             return Err(OxidbError::Storage(format!(
                 // Changed
@@ -152,7 +152,7 @@ pub(super) fn save_data_to_disk(
         .create(true)
         .truncate(true)
         .open(&temp_file_path)
-        .map_err(|e| OxidbError::Io(e))?;
+        .map_err(OxidbError::Io)?;
 
     let mut writer = BufWriter::new(temp_file);
 
@@ -175,16 +175,16 @@ pub(super) fn save_data_to_disk(
         if let Some(value_bytes) = value_to_persist {
             // If a live version was found, serialize the key and that version's value.
             <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut writer)
-                .map_err(|e| OxidbError::Storage(format!("Failed to serialize key: {}", e)))?;
+                .map_err(|e| OxidbError::Storage(format!("Failed to serialize key: {e}")))?;
             <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(value_bytes, &mut writer)
-                .map_err(|e| OxidbError::Storage(format!("Failed to serialize value: {}", e)))?;
+                .map_err(|e| OxidbError::Storage(format!("Failed to serialize value: {e}")))?;
         }
         // If value_to_persist is None (all versions were expired, i.e., key was deleted),
         // then nothing is written for this key, effectively removing it from the new data file.
     }
 
-    writer.flush().map_err(|e| OxidbError::Io(e))?;
-    writer.get_ref().sync_all().map_err(|e| OxidbError::Io(e))?;
+    writer.flush().map_err(OxidbError::Io)?;
+    writer.get_ref().sync_all().map_err(OxidbError::Io)?;
 
     rename(&temp_file_path, file_path).map_err(|e| {
         let _ = std::fs::remove_file(&temp_file_path);

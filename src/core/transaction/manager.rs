@@ -24,7 +24,7 @@ impl Default for TransactionManager {
         let wal_config = crate::core::wal::writer::WalWriterConfig::default();
         let wal_writer = WalWriter::new(default_wal_path, wal_config);
         let log_manager = Arc::new(LogManager::default());
-        TransactionManager {
+        Self {
             active_transactions: HashMap::new(),
             next_transaction_id: CommonTransactionId(1), // Initialize with TransactionId struct
             current_active_transaction_id: None,
@@ -36,8 +36,8 @@ impl Default for TransactionManager {
 }
 
 impl TransactionManager {
-    pub fn new(wal_writer: WalWriter, log_manager: Arc<LogManager>) -> Self {
-        TransactionManager {
+    #[must_use] pub fn new(wal_writer: WalWriter, log_manager: Arc<LogManager>) -> Self {
+        Self {
             active_transactions: HashMap::new(),
             next_transaction_id: CommonTransactionId(1), // Initialize with TransactionId struct
             current_active_transaction_id: None,
@@ -120,7 +120,7 @@ impl TransactionManager {
         Ok(transaction)
     }
 
-    pub fn get_active_transaction(&self) -> Option<&Transaction> {
+    #[must_use] pub fn get_active_transaction(&self) -> Option<&Transaction> {
         self.current_active_transaction_id.and_then(|id| self.active_transactions.get(&id))
     }
 
@@ -128,7 +128,7 @@ impl TransactionManager {
         self.current_active_transaction_id.and_then(move |id| self.active_transactions.get_mut(&id))
     }
 
-    pub fn current_active_transaction_id(&self) -> Option<CommonTransactionId> {
+    #[must_use] pub const fn current_active_transaction_id(&self) -> Option<CommonTransactionId> {
         // Use CommonTransactionId
         self.current_active_transaction_id
     }
@@ -147,8 +147,7 @@ impl TransactionManager {
                 return Err(IoError::new(
                     std::io::ErrorKind::NotFound,
                     format!(
-                        "Transaction {} not found in active transactions during commit.",
-                        current_tx_id
+                        "Transaction {current_tx_id} not found in active transactions during commit."
                     ),
                 ));
             }
@@ -187,8 +186,7 @@ impl TransactionManager {
                 return Err(IoError::new(
                     std::io::ErrorKind::NotFound,
                     format!(
-                        "Transaction {} not found in active transactions during abort.",
-                        current_tx_id
+                        "Transaction {current_tx_id} not found in active transactions during abort."
                     ),
                 ));
             }
@@ -214,12 +212,12 @@ impl TransactionManager {
         Ok(())
     }
 
-    pub fn is_committed(&self, tx_id: CommonTransactionId) -> bool {
+    #[must_use] pub fn is_committed(&self, tx_id: CommonTransactionId) -> bool {
         // Use CommonTransactionId
         self.committed_tx_ids.binary_search(&tx_id).is_ok()
     }
 
-    pub fn get_committed_tx_ids_snapshot(&self) -> Vec<CommonTransactionId> {
+    #[must_use] pub fn get_committed_tx_ids_snapshot(&self) -> Vec<CommonTransactionId> {
         // Use CommonTransactionId
         self.committed_tx_ids.clone()
     }
@@ -231,12 +229,12 @@ impl TransactionManager {
         }
     }
 
-    pub fn get_oldest_active_tx_id(&self) -> Option<CommonTransactionId> {
+    #[must_use] pub fn get_oldest_active_tx_id(&self) -> Option<CommonTransactionId> {
         // Use CommonTransactionId
         self.active_transactions.values().map(|tx| tx.id).min()
     }
 
-    pub fn get_next_transaction_id_peek(&self) -> CommonTransactionId {
+    #[must_use] pub const fn get_next_transaction_id_peek(&self) -> CommonTransactionId {
         // Use CommonTransactionId
         self.next_transaction_id
     }

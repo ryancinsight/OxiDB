@@ -25,24 +25,24 @@ use crate::core::indexing::traits::Index;
 use crate::core::query::commands::Key as TraitPrimaryKey; // PrimaryKey type from the trait (Key alias)
 use crate::core::query::commands::Value as TraitValue; // Value type from the trait
 
-/// Helper function to map internal BTree errors to common `OxidbError` type for the `Index` trait.
+/// Helper function to map internal `BTree` errors to common `OxidbError` type for the `Index` trait.
 fn map_btree_error_to_common(btree_error: OxidbError) -> CommonError {
     // Changed to use the new OxidbError
     match btree_error {
         OxidbError::Io(e) => CommonError::Io(e),
         OxidbError::Serialization(se) => {
-            CommonError::Serialization(format!("BTree Serialization: {:?}", se))
+            CommonError::Serialization(format!("BTree Serialization: {se:?}"))
         }
         OxidbError::NodeNotFound(page_id) => {
-            CommonError::Index(format!("BTree Node not found on page: {}", page_id))
+            CommonError::Index(format!("BTree Node not found on page: {page_id}"))
         }
-        OxidbError::PageFull(s) => CommonError::Index(format!("BTree PageFull: {}", s)),
+        OxidbError::PageFull(s) => CommonError::Index(format!("BTree PageFull: {s}")),
         OxidbError::UnexpectedNodeType => {
             CommonError::Index("BTree Unexpected Node Type".to_string())
         }
-        OxidbError::TreeLogicError(s) => CommonError::Index(format!("BTree Logic Error: {}", s)),
-        OxidbError::BorrowError(s) => CommonError::Lock(format!("BTree Borrow Error: {}", s)),
-        OxidbError::Generic(s) => CommonError::Internal(format!("BTree Generic Error: {}", s)),
+        OxidbError::TreeLogicError(s) => CommonError::Index(format!("BTree Logic Error: {s}")),
+        OxidbError::BorrowError(s) => CommonError::Lock(format!("BTree Borrow Error: {s}")),
+        OxidbError::Generic(s) => CommonError::Internal(format!("BTree Generic Error: {s}")),
     }
 }
 

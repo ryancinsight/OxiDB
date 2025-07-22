@@ -26,9 +26,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
                 let operator = TableScanOperator::new(
                     self.store.clone(),
-                    table_name.clone(),
+                    table_name,
                     snapshot_id,
-                    committed_ids.clone(),
+                    committed_ids,
                 );
                 Ok(Box::new(operator))
             }
@@ -44,19 +44,19 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     index_name,
                     serialized_scan_value,
                     snapshot_id,
-                    committed_ids.clone(),
+                    committed_ids,
                 );
                 Ok(Box::new(operator))
             }
             QueryPlanNode::Filter { input, predicate } => {
                 let input_operator =
-                    self.build_execution_tree(*input, snapshot_id, committed_ids.clone())?;
+                    self.build_execution_tree(*input, snapshot_id, committed_ids)?;
                 let operator = FilterOperator::new(input_operator, predicate);
                 Ok(Box::new(operator))
             }
             QueryPlanNode::Project { input, columns } => {
                 let input_operator =
-                    self.build_execution_tree(*input, snapshot_id, committed_ids.clone())?;
+                    self.build_execution_tree(*input, snapshot_id, committed_ids)?;
                 let mut column_indices = Vec::new();
                 if columns.len() == 1 && columns[0] == "*" {
                     column_indices = Vec::new(); // ProjectOperator interprets empty as all columns
@@ -66,8 +66,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                             Ok(idx) => column_indices.push(idx),
                             Err(_) => {
                                 return Err(OxidbError::SqlParsing(format!(
-                                    "Project column '{}' is not a valid numeric index and not '*'.",
-                                    col_str
+                                    "Project column '{col_str}' is not a valid numeric index and not '*'."
                                 )));
                             }
                         }
@@ -80,7 +79,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 let left_operator =
                     self.build_execution_tree(*left, snapshot_id, committed_ids.clone())?;
                 let right_operator =
-                    self.build_execution_tree(*right, snapshot_id, committed_ids.clone())?;
+                    self.build_execution_tree(*right, snapshot_id, committed_ids)?;
                 let operator =
                     NestedLoopJoinOperator::new(left_operator, right_operator, join_predicate);
                 Ok(Box::new(operator))
@@ -96,8 +95,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 let schema_arc: Arc<Schema> =
                     self.get_table_schema(&table_name)?.ok_or_else(|| {
                         OxidbError::Execution(format!(
-                            "Table '{}' not found when building DeleteNode.",
-                            table_name
+                            "Table '{table_name}' not found when building DeleteNode."
                         ))
                     })?;
 
@@ -110,7 +108,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     self.log_manager.clone(), // 4. log_manager: Arc<LogManager>
                     crate::core::common::types::TransactionId(snapshot_id), // 5. transaction_id: TransactionId
                     primary_key_column_index, // 6. primary_key_column_index: usize
-                    committed_ids.clone(),    // 7. committed_ids: Arc<HashSet<u64>>
+                    committed_ids,    // 7. committed_ids: Arc<HashSet<u64>>
                     schema_arc,               // 8. schema: Arc<Schema>
                 );
                 Ok(Box::new(delete_operator))

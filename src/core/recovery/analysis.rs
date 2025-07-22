@@ -33,8 +33,8 @@ pub struct AnalysisResult {
 }
 
 impl AnalysisResult {
-    /// Creates a new empty AnalysisResult.
-    pub fn new() -> Self {
+    /// Creates a new empty `AnalysisResult`.
+    #[must_use] pub fn new() -> Self {
         Self {
             transaction_table: TransactionTable::new(),
             dirty_page_table: DirtyPageTable::new(),
@@ -45,17 +45,17 @@ impl AnalysisResult {
     }
 
     /// Returns the number of active transactions that need to be undone.
-    pub fn active_transaction_count(&self) -> usize {
+    #[must_use] pub fn active_transaction_count(&self) -> usize {
         self.transaction_table.active_transactions().count()
     }
 
     /// Returns the number of dirty pages that may need redo.
-    pub fn dirty_page_count(&self) -> usize {
+    #[must_use] pub fn dirty_page_count(&self) -> usize {
         self.dirty_page_table.len()
     }
 
     /// Returns true if recovery is needed (there are active transactions or dirty pages).
-    pub fn recovery_needed(&self) -> bool {
+    #[must_use] pub fn recovery_needed(&self) -> bool {
         self.active_transaction_count() > 0 || self.dirty_page_count() > 0
     }
 }
@@ -121,8 +121,7 @@ impl<'a> AnalysisPhase<'a> {
             }
             Err(e) => {
                 return Err(RecoveryError::WalError(format!(
-                    "Error finding last checkpoint: {}",
-                    e
+                    "Error finding last checkpoint: {e}"
                 )));
             }
         }
@@ -136,7 +135,7 @@ impl<'a> AnalysisPhase<'a> {
             let records = self
                 .wal_reader
                 .read_all_records()
-                .map_err(|e| RecoveryError::WalError(format!("Failed to read records: {}", e)))?;
+                .map_err(|e| RecoveryError::WalError(format!("Failed to read records: {e}")))?;
 
             for record in records {
                 if let LogRecord::CheckpointEnd { lsn, active_transactions, dirty_pages } = record {
@@ -176,7 +175,7 @@ impl<'a> AnalysisPhase<'a> {
         let records = self
             .wal_reader
             .read_all_records()
-            .map_err(|e| RecoveryError::WalError(format!("Failed to read records: {}", e)))?;
+            .map_err(|e| RecoveryError::WalError(format!("Failed to read records: {e}")))?;
 
         for record in records {
             // Only process records after the checkpoint
@@ -237,7 +236,7 @@ impl<'a> AnalysisPhase<'a> {
     }
 
     /// Extracts the LSN from a log record.
-    fn get_record_lsn(&self, record: &LogRecord) -> Lsn {
+    const fn get_record_lsn(&self, record: &LogRecord) -> Lsn {
         match record {
             LogRecord::BeginTransaction { lsn, .. }
             | LogRecord::CommitTransaction { lsn, .. }

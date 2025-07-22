@@ -28,6 +28,7 @@ rand = "0.8"
 tempfile = "3.8" # Or a more recent compatible version
 approx = "0.5" # For floating point comparisons in tests
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] } # For async tests
+criterion = { version = "0.5", features = ["html_reports"] } # For benchmarking
 
 [workspace]
 members = [
@@ -38,5 +39,9 @@ members = [
     "examples/graphrag_demo",
 ]
 resolver = "2"
+
+[[bench]]
+name = "database_benchmarks"
+harness = false
 
 

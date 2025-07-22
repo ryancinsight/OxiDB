@@ -2,7 +2,7 @@ use super::errors::SqlTokenizerError;
 use std::fmt;
 
 // #[derive(Debug, PartialEq, Clone)] // Remove derive
-#[derive(PartialEq, Clone)] // Keep PartialEq and Clone
+#[derive(PartialEq, Eq, Clone)] // Keep PartialEq and Clone
 pub enum Token {
     // Keywords
     Select,
@@ -62,50 +62,50 @@ pub enum Token {
 impl fmt::Debug for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Token::Select => write!(f, "Select"),
-            Token::From => write!(f, "From"),
-            Token::Where => write!(f, "Where"),
-            Token::Update => write!(f, "Update"),
-            Token::Set => write!(f, "Set"),
-            Token::Create => write!(f, "Create"),
-            Token::Table => write!(f, "Table"),
-            Token::Insert => write!(f, "Insert"),
-            Token::Into => write!(f, "Into"),
-            Token::Values => write!(f, "Values"),
-            Token::True => write!(f, "True"),
-            Token::False => write!(f, "False"),
-            Token::Delete => write!(f, "Delete"), // Added for Delete Token
-            Token::Drop => write!(f, "Drop"),     // Added for Drop Token
-            Token::Order => write!(f, "Order"),   // Added for Order Token
-            Token::By => write!(f, "By"),         // Added for By Token
-            Token::Asc => write!(f, "Asc"),       // Added for Asc Token
-            Token::Desc => write!(f, "Desc"),     // Added for Desc Token
-            Token::Limit => write!(f, "Limit"),   // Added for Limit Token
-            Token::Join => write!(f, "Join"),
-            Token::On => write!(f, "On"),
-            Token::Inner => write!(f, "Inner"),
-            Token::Left => write!(f, "Left"),
-            Token::Right => write!(f, "Right"),
-            Token::Full => write!(f, "Full"),
-            Token::Outer => write!(f, "Outer"),
-            Token::Cross => write!(f, "Cross"),
-            Token::As => write!(f, "As"), // Added for As
-            Token::Identifier(s) => f.debug_tuple("Identifier").field(s).finish(),
-            Token::StringLiteral(s) => f.debug_tuple("StringLiteral").field(s).finish(),
-            Token::NumericLiteral(s) => f.debug_tuple("NumericLiteral").field(s).finish(),
-            Token::BooleanLiteral(b) => f.debug_tuple("BooleanLiteral").field(b).finish(),
-            Token::Operator(s) => f.debug_tuple("Operator").field(s).finish(),
-            Token::LParen => write!(f, "LParen"),
-            Token::RParen => write!(f, "RParen"),
-            Token::Comma => write!(f, "Comma"),
-            Token::Asterisk => write!(f, "Asterisk"),
-            Token::Semicolon => write!(f, "Semicolon"),
-            Token::LBracket => write!(f, "LBracket"),
-            Token::RBracket => write!(f, "RBracket"),
-            Token::Dot => write!(f, "Dot"),
-            Token::Parameter => write!(f, "Parameter"),
-            Token::Autoincrement => write!(f, "Autoincrement"),
-            Token::EOF => write!(f, "EOF"),
+            Self::Select => write!(f, "Select"),
+            Self::From => write!(f, "From"),
+            Self::Where => write!(f, "Where"),
+            Self::Update => write!(f, "Update"),
+            Self::Set => write!(f, "Set"),
+            Self::Create => write!(f, "Create"),
+            Self::Table => write!(f, "Table"),
+            Self::Insert => write!(f, "Insert"),
+            Self::Into => write!(f, "Into"),
+            Self::Values => write!(f, "Values"),
+            Self::True => write!(f, "True"),
+            Self::False => write!(f, "False"),
+            Self::Delete => write!(f, "Delete"), // Added for Delete Token
+            Self::Drop => write!(f, "Drop"),     // Added for Drop Token
+            Self::Order => write!(f, "Order"),   // Added for Order Token
+            Self::By => write!(f, "By"),         // Added for By Token
+            Self::Asc => write!(f, "Asc"),       // Added for Asc Token
+            Self::Desc => write!(f, "Desc"),     // Added for Desc Token
+            Self::Limit => write!(f, "Limit"),   // Added for Limit Token
+            Self::Join => write!(f, "Join"),
+            Self::On => write!(f, "On"),
+            Self::Inner => write!(f, "Inner"),
+            Self::Left => write!(f, "Left"),
+            Self::Right => write!(f, "Right"),
+            Self::Full => write!(f, "Full"),
+            Self::Outer => write!(f, "Outer"),
+            Self::Cross => write!(f, "Cross"),
+            Self::As => write!(f, "As"), // Added for As
+            Self::Identifier(s) => f.debug_tuple("Identifier").field(s).finish(),
+            Self::StringLiteral(s) => f.debug_tuple("StringLiteral").field(s).finish(),
+            Self::NumericLiteral(s) => f.debug_tuple("NumericLiteral").field(s).finish(),
+            Self::BooleanLiteral(b) => f.debug_tuple("BooleanLiteral").field(b).finish(),
+            Self::Operator(s) => f.debug_tuple("Operator").field(s).finish(),
+            Self::LParen => write!(f, "LParen"),
+            Self::RParen => write!(f, "RParen"),
+            Self::Comma => write!(f, "Comma"),
+            Self::Asterisk => write!(f, "Asterisk"),
+            Self::Semicolon => write!(f, "Semicolon"),
+            Self::LBracket => write!(f, "LBracket"),
+            Self::RBracket => write!(f, "RBracket"),
+            Self::Dot => write!(f, "Dot"),
+            Self::Parameter => write!(f, "Parameter"),
+            Self::Autoincrement => write!(f, "Autoincrement"),
+            Self::EOF => write!(f, "EOF"),
         }
     }
 }
@@ -117,7 +117,7 @@ pub struct Tokenizer<'a> {
 }
 
 impl<'a> Tokenizer<'a> {
-    pub fn new(input: &'a str) -> Self {
+    #[must_use] pub fn new(input: &'a str) -> Self {
         Tokenizer { input, chars: input.char_indices().peekable(), current_pos: 0 }
     }
 
@@ -229,7 +229,7 @@ impl<'a> Tokenizer<'a> {
 
         loop {
             // Peek at the next character. `.cloned()` is important to avoid holding a borrow.
-            let next_char_info = self.chars.peek().cloned();
+            let next_char_info = self.chars.peek().copied();
 
             if let Some((idx_peek, ch_peek)) = next_char_info {
                 if ch_peek.is_ascii_digit() {
@@ -277,97 +277,94 @@ impl<'a> Tokenizer<'a> {
             self.skip_whitespace();
             self.current_pos = self.chars.peek().map_or(self.input.len(), |(idx, _)| *idx);
 
-            match self.chars.peek().cloned() {
-                Some((idx, ch)) => {
-                    match ch {
-                        '=' | '<' | '>' | '!' => {
-                            // Potential multi-char operators later
+            if let Some((idx, ch)) = self.chars.peek().copied() {
+                match ch {
+                    '=' | '<' | '>' | '!' => {
+                        // Potential multi-char operators later
+                        self.chars.next();
+                        // Basic for now, extend for !=, <=, >=
+                        if ch == '!'
+                            && self.chars.peek().is_some_and(|&(_, next_ch)| next_ch == '=')
+                        {
                             self.chars.next();
-                            // Basic for now, extend for !=, <=, >=
-                            if ch == '!'
-                                && self.chars.peek().is_some_and(|&(_, next_ch)| next_ch == '=')
-                            {
-                                self.chars.next();
-                                tokens.push(Token::Operator("!=".to_string()));
-                            } else {
-                                tokens.push(Token::Operator(ch.to_string()));
-                            }
-                            self.current_pos = idx + 1; // Update position
+                            tokens.push(Token::Operator("!=".to_string()));
+                        } else {
+                            tokens.push(Token::Operator(ch.to_string()));
                         }
-                        '(' => {
-                            self.chars.next();
-                            tokens.push(Token::LParen);
-                            self.current_pos = idx + 1;
-                        }
-                        ')' => {
-                            self.chars.next();
-                            tokens.push(Token::RParen);
-                            self.current_pos = idx + 1;
-                        }
-                        ',' => {
-                            self.chars.next();
-                            tokens.push(Token::Comma);
-                            self.current_pos = idx + 1;
-                        }
-                        '*' => {
-                            self.chars.next();
-                            tokens.push(Token::Asterisk);
-                            self.current_pos = idx + 1;
-                        }
-                        ';' => {
-                            self.chars.next();
-                            tokens.push(Token::Semicolon);
-                            self.current_pos = idx + 1;
-                        }
-                        '[' => {
-                            self.chars.next();
-                            tokens.push(Token::LBracket);
-                            self.current_pos = idx + 1;
-                        }
-                        ']' => {
-                            self.chars.next();
-                            tokens.push(Token::RBracket);
-                            self.current_pos = idx + 1;
-                        }
-                        '?' => {
-                            self.chars.next();
-                            tokens.push(Token::Parameter);
-                            self.current_pos = idx + 1;
-                        }
-                        '\'' | '"' => {
-                            tokens.push(self.read_string_literal(ch, idx)?);
-                        }
-                        c if c.is_alphabetic() || c == '_' => {
-                            tokens.push(self.read_identifier_or_keyword(idx)?);
-                        }
-                        c if c.is_ascii_digit() => {
-                            tokens.push(self.read_numeric_literal(idx)?);
-                        }
-                        '.' => {
-                            // Peek ahead: if the next char is a digit, it's a numeric literal like .5
-                            if self
-                                .chars
-                                .clone()
-                                .nth(1)
-                                .map_or(false, |(_, next_ch)| next_ch.is_ascii_digit())
-                            {
-                                tokens.push(self.read_numeric_literal(idx)?);
-                            } else {
-                                // Otherwise, it's a Dot token for qualified names (e.g. table.column)
-                                self.chars.next(); // Consume the dot
-                                tokens.push(Token::Dot);
-                                self.current_pos = idx + 1;
-                            }
-                        }
-                        // Use self.current_pos which was set at the start of the loop iteration
-                        // based on the peek that gave us 'ch' and 'idx'.
-                        _ => return Err(SqlTokenizerError::InvalidCharacter(ch, self.current_pos)),
+                        self.current_pos = idx + 1; // Update position
                     }
+                    '(' => {
+                        self.chars.next();
+                        tokens.push(Token::LParen);
+                        self.current_pos = idx + 1;
+                    }
+                    ')' => {
+                        self.chars.next();
+                        tokens.push(Token::RParen);
+                        self.current_pos = idx + 1;
+                    }
+                    ',' => {
+                        self.chars.next();
+                        tokens.push(Token::Comma);
+                        self.current_pos = idx + 1;
+                    }
+                    '*' => {
+                        self.chars.next();
+                        tokens.push(Token::Asterisk);
+                        self.current_pos = idx + 1;
+                    }
+                    ';' => {
+                        self.chars.next();
+                        tokens.push(Token::Semicolon);
+                        self.current_pos = idx + 1;
+                    }
+                    '[' => {
+                        self.chars.next();
+                        tokens.push(Token::LBracket);
+                        self.current_pos = idx + 1;
+                    }
+                    ']' => {
+                        self.chars.next();
+                        tokens.push(Token::RBracket);
+                        self.current_pos = idx + 1;
+                    }
+                    '?' => {
+                        self.chars.next();
+                        tokens.push(Token::Parameter);
+                        self.current_pos = idx + 1;
+                    }
+                    '\'' | '"' => {
+                        tokens.push(self.read_string_literal(ch, idx)?);
+                    }
+                    c if c.is_alphabetic() || c == '_' => {
+                        tokens.push(self.read_identifier_or_keyword(idx)?);
+                    }
+                    c if c.is_ascii_digit() => {
+                        tokens.push(self.read_numeric_literal(idx)?);
+                    }
+                    '.' => {
+                        // Peek ahead: if the next char is a digit, it's a numeric literal like .5
+                        if self
+                            .chars
+                            .clone()
+                            .nth(1)
+                            .map_or(false, |(_, next_ch)| next_ch.is_ascii_digit())
+                        {
+                            tokens.push(self.read_numeric_literal(idx)?);
+                        } else {
+                            // Otherwise, it's a Dot token for qualified names (e.g. table.column)
+                            self.chars.next(); // Consume the dot
+                            tokens.push(Token::Dot);
+                            self.current_pos = idx + 1;
+                        }
+                    }
+                    // Use self.current_pos which was set at the start of the loop iteration
+                    // based on the peek that gave us 'ch' and 'idx'.
+                    _ => return Err(SqlTokenizerError::InvalidCharacter(ch, self.current_pos)),
                 }
-                None => {
-                    tokens.push(Token::EOF);
-                    break;
-                }
+            } else {
+                tokens.push(Token::EOF);
+                break;
             }
         }
         Ok(tokens)

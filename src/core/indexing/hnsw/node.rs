@@ -31,14 +31,14 @@ pub struct HnswNode {
 
 impl HnswNode {
     /// Create a new HNSW node
-    pub fn new(id: NodeId, vector: Vector, primary_key: PrimaryKey, layer: usize) -> Self {
+    #[must_use] pub fn new(id: NodeId, vector: Vector, primary_key: PrimaryKey, layer: usize) -> Self {
         let connections = (0..=layer).map(|_| HashSet::new()).collect();
 
         Self { id, vector, primary_key, connections, layer }
     }
 
     /// Get connections for a specific layer
-    pub fn connections_at_layer(&self, layer: usize) -> Option<&HashSet<NodeId>> {
+    #[must_use] pub fn connections_at_layer(&self, layer: usize) -> Option<&HashSet<NodeId>> {
         self.connections.get(layer)
     }
 
@@ -66,27 +66,27 @@ impl HnswNode {
     }
 
     /// Get the number of connections at a specific layer
-    pub fn connection_count_at_layer(&self, layer: usize) -> usize {
-        self.connections_at_layer(layer).map(|conns| conns.len()).unwrap_or(0)
+    #[must_use] pub fn connection_count_at_layer(&self, layer: usize) -> usize {
+        self.connections_at_layer(layer).map_or(0, std::collections::HashSet::len)
     }
 
     /// Check if this node has a connection to another node at a specific layer
-    pub fn has_connection(&self, layer: usize, neighbor_id: NodeId) -> bool {
-        self.connections_at_layer(layer).map(|conns| conns.contains(&neighbor_id)).unwrap_or(false)
+    #[must_use] pub fn has_connection(&self, layer: usize, neighbor_id: NodeId) -> bool {
+        self.connections_at_layer(layer).is_some_and(|conns| conns.contains(&neighbor_id))
     }
 
     /// Get the dimension of the vector
-    pub fn dimension(&self) -> usize {
+    #[must_use] pub fn dimension(&self) -> usize {
         self.vector.len()
     }
 
     /// Calculate Euclidean distance to another vector
-    pub fn distance_to(&self, other_vector: &Vector) -> f32 {
+    #[must_use] pub fn distance_to(&self, other_vector: &Vector) -> f32 {
         euclidean_distance(&self.vector, other_vector)
     }
 
     /// Calculate cosine similarity to another vector
-    pub fn cosine_similarity_to(&self, other_vector: &Vector) -> f32 {
+    #[must_use] pub fn cosine_similarity_to(&self, other_vector: &Vector) -> f32 {
         cosine_similarity(&self.vector, other_vector)
     }
 }
@@ -118,8 +118,8 @@ impl DistanceFunction {
     /// Calculate distance between two vectors using this distance function
     pub fn calculate(&self, a: &Vector, b: &Vector) -> f32 {
         match self {
-            DistanceFunction::Euclidean => euclidean_distance(a, b),
-            DistanceFunction::Cosine => 1.0 - cosine_similarity(a, b), // Convert similarity to distance
+            Self::Euclidean => euclidean_distance(a, b),
+            Self::Cosine => 1.0 - cosine_similarity(a, b), // Convert similarity to distance
         }
     }
 }

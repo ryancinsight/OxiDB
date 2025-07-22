@@ -58,16 +58,14 @@ pub fn compare_data_types(
                     _ => unreachable!(),
                 },
                 (DataType::Null, _) | (_, DataType::Null) => Err(OxidbError::SqlParsing(format!( // Changed
-                    "Ordered comparison ('{}') with NULL is not supported directly. Use IS NULL or IS NOT NULL.",
-                    operator
+                    "Ordered comparison ('{operator}') with NULL is not supported directly. Use IS NULL or IS NOT NULL."
                 ))),
                 _ => Err(OxidbError::Type(format!( // Changed
-                    "Cannot apply ordered operator '{}' between {:?} and {:?}",
-                    operator, val1, val2
+                    "Cannot apply ordered operator '{operator}' between {val1:?} and {val2:?}"
                 ))),
             }
         }
-        _ => Err(OxidbError::SqlParsing(format!("Unsupported operator: {}", operator))), // Changed
+        _ => Err(OxidbError::SqlParsing(format!("Unsupported operator: {operator}"))), // Changed
     }
 }
 
@@ -98,7 +96,7 @@ pub fn datatype_to_ast_literal(data_type: &DataType) -> Result<AstLiteralValue, 
             // Convert vector to a string representation for AST compatibility
             let vec_str = format!(
                 "[{}]",
-                vec.data.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+                vec.data.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join(",")
             );
             Ok(AstLiteralValue::String(vec_str))
         }

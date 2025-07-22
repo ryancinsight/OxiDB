@@ -61,17 +61,17 @@ pub enum DataType {
 
 // Optional: Helper methods for DataType if needed, e.g., for type checking
 impl DataType {
-    pub fn type_name(&self) -> &'static str {
+    #[must_use] pub const fn type_name(&self) -> &'static str {
         match self {
-            DataType::Integer(_) => "Integer",
-            DataType::String(_) => "String",
-            DataType::Boolean(_) => "Boolean",
-            DataType::Float(_) => "Float",
-            DataType::Null => "Null",
-            DataType::Map(_) => "Map",
-            DataType::JsonBlob(_) => "JsonBlob",
-            DataType::RawBytes(_) => "RawBytes",
-            DataType::Vector(_) => "Vector",
+            Self::Integer(_) => "Integer",
+            Self::String(_) => "String",
+            Self::Boolean(_) => "Boolean",
+            Self::Float(_) => "Float",
+            Self::Null => "Null",
+            Self::Map(_) => "Map",
+            Self::JsonBlob(_) => "JsonBlob",
+            Self::RawBytes(_) => "RawBytes",
+            Self::Vector(_) => "Vector",
         }
     }
 }
@@ -84,9 +84,9 @@ pub struct VectorData {
 }
 
 impl VectorData {
-    /// Creates a new VectorData, ensuring the data matches the dimension.
+    /// Creates a new `VectorData`, ensuring the data matches the dimension.
     /// Returns None if the data length does not match the dimension.
-    pub fn new(dimension: u32, data: Vec<f32>) -> Option<Self> {
+    #[must_use] pub fn new(dimension: u32, data: Vec<f32>) -> Option<Self> {
         if data.len() as u32 == dimension {
             // This covers both (0, empty_vec) and (N, vec_of_N_elements)
             // Note: A dimension of 0 might be valid for an "empty" vector concept.
@@ -98,7 +98,7 @@ impl VectorData {
 
     /// Calculates the Euclidean distance between this vector and another.
     /// Returns None if dimensions do not match or if dimension is 0.
-    pub fn euclidean_distance(&self, other: &VectorData) -> Option<f32> {
+    #[must_use] pub fn euclidean_distance(&self, other: &Self) -> Option<f32> {
         if self.dimension != other.dimension || self.dimension == 0 {
             return None;
         }

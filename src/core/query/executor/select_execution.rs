@@ -78,7 +78,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         let mut execution_tree_root = self.build_execution_tree(
             optimized_plan,
             snapshot_id.0,
-            committed_ids_u64_set.clone(),
+            committed_ids_u64_set,
         )?; // Pass snapshot_id.0 (u64)
 
         let results_iter = execution_tree_root.execute()?;

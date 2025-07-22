@@ -9,7 +9,7 @@ use uuid; // Added for Uuid::new_v4()
 
 /// The `CommandProcessor` trait defines the interface for processing a specific command.
 pub trait CommandProcessor<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> {
-    /// Processes the command using the provided QueryExecutor.
+    /// Processes the command using the provided `QueryExecutor`.
     fn process(&self, executor: &mut QueryExecutor<S>) -> Result<ExecutionResult, OxidbError>;
 }
 
@@ -17,31 +17,31 @@ pub trait CommandProcessor<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 's
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcessor<S> for Command {
     fn process(&self, executor: &mut QueryExecutor<S>) -> Result<ExecutionResult, OxidbError> {
         match self {
-            Command::Insert { key, value } => executor.handle_insert(key.clone(), value.clone()),
-            Command::Get { key } => executor.handle_get(key.clone()),
-            Command::Delete { key } => executor.handle_delete(key.clone()),
-            Command::FindByIndex { index_name, value } => {
+            Self::Insert { key, value } => executor.handle_insert(key.clone(), value.clone()),
+            Self::Get { key } => executor.handle_get(key.clone()),
+            Self::Delete { key } => executor.handle_delete(key.clone()),
+            Self::FindByIndex { index_name, value } => {
                 executor.handle_find_by_index(index_name.clone(), value.clone())
             }
-            Command::BeginTransaction => executor.handle_begin_transaction(),
-            Command::CommitTransaction => executor.handle_commit_transaction(),
-            Command::RollbackTransaction => executor.handle_rollback_transaction(),
-            Command::Vacuum => executor.handle_vacuum(),
-            Command::Select { columns, source, condition, order_by: _order_by, limit: _limit } => {
+            Self::BeginTransaction => executor.handle_begin_transaction(),
+            Self::CommitTransaction => executor.handle_commit_transaction(),
+            Self::RollbackTransaction => executor.handle_rollback_transaction(),
+            Self::Vacuum => executor.handle_vacuum(),
+            Self::Select { columns, source, condition, order_by: _order_by, limit: _limit } => {
                 // Updated pattern
                 // TODO: Pass order_by and limit to handle_select
                 executor.handle_select(columns.clone(), source.clone(), condition.clone())
             }
-            Command::Update { source, assignments, condition } => {
+            Self::Update { source, assignments, condition } => {
                 executor.handle_update(source.clone(), assignments.clone(), condition.clone())
             }
-            Command::CreateTable { table_name, columns } => {
+            Self::CreateTable { table_name, columns } => {
                 // Call the actual DDL handler in QueryExecutor
                 executor.handle_create_table(table_name.clone(), columns.clone())
             }
-            Command::SqlInsert { table_name, columns: insert_columns_opt, values } => {
+            Self::SqlInsert { table_name, columns: insert_columns_opt, values } => {
                 let schema_arc = executor.get_table_schema(table_name)?.ok_or_else(|| {
-                    OxidbError::Execution(format!("Table '{}' not found.", table_name))
+                    OxidbError::Execution(format!("Table '{table_name}' not found."))
                 })?;
                 let schema = schema_arc.as_ref();
 
@@ -165,18 +165,18 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                             .replace("Integer(", "")
                             .replace("String(\"", "")
                             .replace("\")", "")
-                            .replace(")", "")
+                            .replace(')', "")
                             .into_bytes()
                         }
                     } else if let (Some(pk_val), Some(pk_c_name)) =
                         (&pk_value_opt, &pk_col_name_opt)
                     {
                         // Standard PK-based key generation for non-string PKs or different PK col name
-                        format!("{}_pk_{}_{:?}", table_name, pk_c_name, pk_val)
+                        format!("{table_name}_pk_{pk_c_name}_{pk_val:?}")
                             .replace("Integer(", "")
                             .replace("String(\"", "")
                             .replace("\")", "")
-                            .replace(")", "")
+                            .replace(')', "")
                             .into_bytes()
                     } else {
                         // Fallback to UUID if no PK or complex PK (not yet supported for keying)
@@ -209,7 +209,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                             executor
                                 .index_manager
                                 .write()
-                                .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for insert: {}",e)))?
+                                .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for insert: {e}")))?
                                 .insert_into_index(
                                     &index_name,
                                     &serialized_column_value,
@@ -244,10 +244,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                 }
                 Ok(ExecutionResult::Updated { count: values.len() }) // Return rows affected
             }
-            Command::SqlDelete { table_name, condition } => {
+            Self::SqlDelete { table_name, condition } => {
                 executor.handle_sql_delete(table_name.clone(), condition.clone())
             }
-            Command::SimilaritySearch {
+            Self::SimilaritySearch {
                 table_name: _table_name,
                 vector_column_name: _vector_column_name,
                 query_vector: _query_vector,
@@ -260,14 +260,14 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                     feature: "SimilaritySearch command processing".to_string(),
                 })
             }
-            Command::DropTable { table_name: _table_name, if_exists: _if_exists } => {
+            Self::DropTable { table_name: _table_name, if_exists: _if_exists } => {
                 // TODO: Implement actual call to an executor method for drop table
                 // executor.handle_drop_table(table_name.clone(), *if_exists)
                 Err(OxidbError::NotImplemented {
                     feature: "DropTable command processing".to_string(),
                 })
             }
-            Command::ParameterizedSql { statement, parameters } => {
+            Self::ParameterizedSql { statement, parameters } => {
                 // Handle parameterized SQL execution
                 executor.execute_parameterized_statement(statement, parameters)
             }
