@@ -16,7 +16,7 @@ pub struct PerformanceMetrics {
 
 impl PerformanceMetrics {
     /// Create a new metrics collector
-    pub fn new() -> Self {
+    #[must_use] pub fn new() -> Self {
         Self {
             query_metrics: QueryMetrics::new(),
             transaction_metrics: TransactionMetrics::new(),
@@ -67,7 +67,7 @@ pub struct QueryMetrics {
 
 impl QueryMetrics {
     /// Create new query metrics
-    pub fn new() -> Self {
+    #[must_use] pub fn new() -> Self {
         Self {
             total_queries: 0,
             total_execution_time: Duration::ZERO,
@@ -100,7 +100,7 @@ impl QueryMetrics {
         let query_type = self.extract_query_type(query);
         self.execution_times_by_type
             .entry(query_type)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(duration);
     }
 
@@ -148,7 +148,7 @@ pub struct TransactionMetrics {
 
 impl TransactionMetrics {
     /// Create new transaction metrics
-    pub fn new() -> Self {
+    #[must_use] pub const fn new() -> Self {
         Self {
             total_transactions: 0,
             total_duration: Duration::ZERO,
@@ -188,7 +188,7 @@ pub struct StorageMetrics {
 
 impl StorageMetrics {
     /// Create new storage metrics
-    pub fn new() -> Self {
+    #[must_use] pub const fn new() -> Self {
         Self {
             total_bytes_read: 0,
             total_bytes_written: 0,

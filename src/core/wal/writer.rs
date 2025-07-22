@@ -851,7 +851,7 @@ mod tests {
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(800) };
         // Sleep a tiny bit to ensure elapsed time > 0, though Instant::now() should differ.
         thread::sleep(StdDuration::from_micros(10));
-        assert!(writer.add_record(&record1.clone()).is_ok());
+        assert!(writer.add_record(&record1).is_ok());
         assert!(
             writer.buffer.is_empty(),
             "Buffer should be empty after adding one record with interval_ms=0"
@@ -866,7 +866,7 @@ mod tests {
 
         let record2 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(801) };
         thread::sleep(StdDuration::from_micros(10));
-        assert!(writer.add_record(&record2.clone()).is_ok());
+        assert!(writer.add_record(&record2).is_ok());
         assert!(
             writer.buffer.is_empty(),
             "Buffer should be empty after adding second record with interval_ms=0"

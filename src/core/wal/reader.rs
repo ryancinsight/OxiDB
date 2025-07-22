@@ -137,7 +137,7 @@ impl WalRecordIterator {
             self.last_lsn = Some(current_lsn);
         }
 
-        self.records_read += 1;
+        self.records_read = self.records_read.saturating_add(1);
         Ok(Some(log_record))
     }
 

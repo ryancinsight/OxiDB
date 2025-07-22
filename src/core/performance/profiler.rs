@@ -14,7 +14,7 @@ pub struct PerformanceProfiler {
 
 impl PerformanceProfiler {
     /// Create a new profiler
-    pub fn new() -> Self {
+    #[must_use] pub fn new() -> Self {
         Self {
             active_operations: HashMap::new(),
             completed_profiles: Vec::new(),
@@ -42,7 +42,7 @@ impl PerformanceProfiler {
     }
 
     /// Get profiling results
-    pub fn get_results(&self) -> &[ProfileResult] {
+    #[must_use] pub fn get_results(&self) -> &[ProfileResult] {
         &self.completed_profiles
     }
 
@@ -70,7 +70,7 @@ pub struct ProfiledOperation {
 
 impl ProfiledOperation {
     /// Complete the profiled operation
-    pub fn complete(self) -> ProfileResult {
+    #[must_use] pub fn complete(self) -> ProfileResult {
         ProfileResult {
             operation: self.operation,
             duration: self.start_time.elapsed(),

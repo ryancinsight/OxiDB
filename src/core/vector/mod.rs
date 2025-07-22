@@ -27,9 +27,15 @@ use crate::core::types::VectorData;
 /// Trait for vector operations following the Interface Segregation Principle
 pub trait VectorOperations {
     /// Calculate similarity between two vectors
+    /// 
+    /// # Errors
+    /// Returns `OxidbError::InvalidOperation` if vectors have different dimensions or contain invalid values
     fn similarity(&self, other: &VectorData, metric: SimilarityMetric) -> Result<f32, OxidbError>;
 
     /// Normalize a vector to unit length
+    /// 
+    /// # Errors
+    /// Returns `OxidbError::InvalidOperation` if the vector has zero magnitude
     fn normalize(&mut self) -> Result<(), OxidbError>;
 
     /// Check if vector is valid (no NaN or infinite values)
@@ -85,6 +91,10 @@ pub struct VectorFactory;
 
 impl VectorFactory {
     /// Create a new vector with validation (YAGNI - only what's needed)
+    /// 
+    /// # Errors
+    /// Returns `OxidbError::VectorDimensionMismatch` if data length doesn't match dimension,
+    /// or `OxidbError::InvalidInput` if vector contains NaN or infinite values
     pub fn create_vector(dimension: u32, data: Vec<f32>) -> Result<VectorData, OxidbError> {
         let data_len = data.len(); // Store length before moving data
         let vector =
@@ -103,6 +113,9 @@ impl VectorFactory {
     }
 
     /// Create a normalized vector
+    /// 
+    /// # Errors
+    /// Returns errors from `create_vector` or `normalize` operations
     pub fn create_normalized_vector(
         dimension: u32,
         data: Vec<f32>,
@@ -113,6 +126,9 @@ impl VectorFactory {
     }
 
     /// Create a zero vector
+    /// 
+    /// # Errors
+    /// Returns `OxidbError::InvalidInput` if dimension is 0
     pub fn create_zero_vector(dimension: u32) -> Result<VectorData, OxidbError> {
         if dimension == 0 {
             return Err(OxidbError::InvalidInput {
@@ -125,6 +141,9 @@ impl VectorFactory {
     }
 
     /// Create a random vector (for testing/initialization)
+    /// 
+    /// # Errors
+    /// Returns `OxidbError::InvalidInput` if dimension is 0
     pub fn create_random_vector(dimension: u32) -> Result<VectorData, OxidbError> {
         if dimension == 0 {
             return Err(OxidbError::InvalidInput {

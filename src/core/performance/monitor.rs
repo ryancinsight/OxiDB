@@ -13,7 +13,7 @@ pub struct PerformanceMonitor {
 
 impl PerformanceMonitor {
     /// Create a new performance monitor
-    pub fn new() -> Self {
+    #[must_use] pub fn new() -> Self {
         Self {
             config: MonitoringConfig::default(),
             active_alerts: Vec::new(),
@@ -21,7 +21,7 @@ impl PerformanceMonitor {
     }
 
     /// Create monitor with custom configuration
-    pub fn with_config(config: MonitoringConfig) -> Self {
+    #[must_use] pub const fn with_config(config: MonitoringConfig) -> Self {
         Self {
             config,
             active_alerts: Vec::new(),
@@ -29,14 +29,14 @@ impl PerformanceMonitor {
     }
 
     /// Check for performance alerts
-    pub fn check_alerts(&self) -> Vec<String> {
+    #[must_use] pub fn check_alerts(&self) -> Vec<String> {
         self.active_alerts.clone()
     }
 
     /// Add a new alert
     pub fn add_alert(&mut self, message: String, level: AlertLevel) {
         if level >= self.config.min_alert_level {
-            self.active_alerts.push(format!("[{:?}] {}", level, message));
+            self.active_alerts.push(format!("[{level:?}] {message}"));
         }
     }
 

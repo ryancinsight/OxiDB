@@ -120,7 +120,7 @@ pub struct ColumnDef {
     pub constraints: Vec<AstColumnConstraint>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct CreateTableStatement {
     pub table_name: String,
     pub columns: Vec<ColumnDef>,

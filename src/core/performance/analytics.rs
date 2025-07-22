@@ -12,21 +12,21 @@ pub struct PerformanceAnalyzer {
 
 impl PerformanceAnalyzer {
     /// Create a new performance analyzer
-    pub fn new() -> Self {
+    #[must_use] pub const fn new() -> Self {
         Self {
             slow_query_threshold: Duration::from_secs(1),
         }
     }
 
     /// Create analyzer with custom slow query threshold
-    pub fn with_threshold(threshold: Duration) -> Self {
+    #[must_use] pub const fn with_threshold(threshold: Duration) -> Self {
         Self {
             slow_query_threshold: threshold,
         }
     }
 
     /// Analyze performance metrics and generate a report
-    pub fn analyze(&self, metrics: &PerformanceMetrics) -> PerformanceReport {
+    #[must_use] pub fn analyze(&self, metrics: &PerformanceMetrics) -> PerformanceReport {
         let query_analysis = self.analyze_queries(metrics);
         let transaction_analysis = self.analyze_transactions(metrics);
         let storage_analysis = self.analyze_storage(metrics);
