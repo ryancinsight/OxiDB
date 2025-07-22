@@ -343,7 +343,7 @@ impl DataDeserializer<Self> for WalEntry {
             _ => {
                 return Err(OxidbError::Deserialization(format!(
                     "Unknown WAL operation type: {operation_type}"
-                )))
+                ))
             }
         };
 
