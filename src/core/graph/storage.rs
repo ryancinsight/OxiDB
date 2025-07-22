@@ -42,7 +42,7 @@ pub struct InMemoryGraphStore {
 
 impl InMemoryGraphStore {
     /// Create a new in-memory graph store
-    pub fn new() -> Self {
+    #[must_use] pub fn new() -> Self {
         Self {
             nodes: HashMap::new(),
             edges: HashMap::new(),
@@ -71,7 +71,7 @@ impl InMemoryGraphStore {
 
     /// Add edge to node mapping
     fn add_edge_to_node(&mut self, node_id: NodeId, edge_id: EdgeId) {
-        self.node_edges.entry(node_id).or_insert_with(HashSet::new).insert(edge_id);
+        self.node_edges.entry(node_id).or_default().insert(edge_id);
     }
 
     /// Remove edge from node mapping
@@ -111,13 +111,13 @@ impl GraphOperations for InMemoryGraphStore {
         
         if !nodes.contains_key(&from) && !self.nodes.contains_key(&from) {
             return Err(OxidbError::InvalidInput {
-                message: format!("From node {} does not exist", from),
+                message: format!("From node {from} does not exist"),
             });
         }
         
         if !nodes.contains_key(&to) && !self.nodes.contains_key(&to) {
             return Err(OxidbError::InvalidInput {
-                message: format!("To node {} does not exist", to),
+                message: format!("To node {to} does not exist"),
             });
         }
 
@@ -127,7 +127,7 @@ impl GraphOperations for InMemoryGraphStore {
         if self.transaction_active {
             self.transaction_edges.insert(id, edge);
         } else {
-            self.edges.insert(id, edge.clone());
+            self.edges.insert(id, edge);
             self.add_edge_to_node(from, id);
             if from != to { // Avoid duplicate entries for self-loops
                 self.add_edge_to_node(to, id);
@@ -225,7 +225,7 @@ impl GraphOperations for InMemoryGraphStore {
             }
         }
         
-        neighbors.sort();
+        neighbors.sort_unstable();
         neighbors.dedup();
         Ok(neighbors)
     }
@@ -254,7 +254,7 @@ impl GraphQuery for InMemoryGraphStore {
             }
         }
         
-        matching_nodes.sort();
+        matching_nodes.sort_unstable();
         matching_nodes.dedup();
         Ok(matching_nodes)
     }
@@ -447,7 +447,7 @@ impl PersistentGraphStore {
         // Try to load existing data
         if let Err(e) = store.load_from_disk() {
             // Log warning but continue with empty store
-            eprintln!("Warning: Could not load existing data from disk: {:?}", e);
+            eprintln!("Warning: Could not load existing data from disk: {e:?}");
         }
         
         Ok(store)
@@ -470,7 +470,7 @@ impl PersistentGraphStore {
     }
 
     /// Check if there are uncommitted changes
-    pub fn is_dirty(&self) -> bool {
+    #[must_use] pub const fn is_dirty(&self) -> bool {
         self.dirty
     }
 
@@ -538,7 +538,7 @@ impl Drop for PersistentGraphStore {
     fn drop(&mut self) {
         if self.dirty {
             if let Err(e) = self.flush() {
-                eprintln!("Warning: Failed to flush data during drop: {:?}", e);
+                eprintln!("Warning: Failed to flush data during drop: {e:?}");
             }
         }
     }

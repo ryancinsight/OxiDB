@@ -15,17 +15,17 @@ use std::time::{Duration, Instant};
 pub struct ConnectionId(u64);
 
 impl ConnectionId {
-    fn new(id: u64) -> Self {
+    const fn new(id: u64) -> Self {
         Self(id)
     }
 
-    pub fn as_u64(&self) -> u64 {
+    #[must_use] pub const fn as_u64(&self) -> u64 {
         self.0
     }
 }
 
 /// Connection state tracking
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConnectionState {
     Active,
     Idle,
@@ -138,8 +138,8 @@ impl Default for PoolConfig {
 }
 
 impl PoolConfig {
-    /// Creates a new PoolConfig builder
-    pub fn builder() -> PoolConfigBuilder {
+    /// Creates a new `PoolConfig` builder
+    #[must_use] pub const fn builder() -> PoolConfigBuilder {
         PoolConfigBuilder::new()
     }
 
@@ -167,7 +167,7 @@ impl PoolConfig {
     }
 
     /// Creates a configuration for high-throughput scenarios
-    pub fn for_high_throughput() -> Self {
+    #[must_use] pub const fn for_high_throughput() -> Self {
         Self {
             min_connections: 20,
             max_connections: 200,
@@ -179,7 +179,7 @@ impl PoolConfig {
     }
 
     /// Creates a configuration for low-resource scenarios
-    pub fn for_low_resource() -> Self {
+    #[must_use] pub const fn for_low_resource() -> Self {
         Self {
             min_connections: 2,
             max_connections: 10,
@@ -191,7 +191,7 @@ impl PoolConfig {
     }
 }
 
-/// Builder for PoolConfig (Builder Pattern)
+/// Builder for `PoolConfig` (Builder Pattern)
 #[derive(Debug)]
 pub struct PoolConfigBuilder {
     min_connections: Option<usize>,
@@ -203,7 +203,7 @@ pub struct PoolConfigBuilder {
 }
 
 impl PoolConfigBuilder {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             min_connections: None,
             max_connections: None,
@@ -214,32 +214,32 @@ impl PoolConfigBuilder {
         }
     }
 
-    pub fn min_connections(mut self, min: usize) -> Self {
+    #[must_use] pub const fn min_connections(mut self, min: usize) -> Self {
         self.min_connections = Some(min);
         self
     }
 
-    pub fn max_connections(mut self, max: usize) -> Self {
+    #[must_use] pub const fn max_connections(mut self, max: usize) -> Self {
         self.max_connections = Some(max);
         self
     }
 
-    pub fn acquire_timeout(mut self, timeout: Duration) -> Self {
+    #[must_use] pub const fn acquire_timeout(mut self, timeout: Duration) -> Self {
         self.acquire_timeout = Some(timeout);
         self
     }
 
-    pub fn max_idle_time(mut self, idle_time: Duration) -> Self {
+    #[must_use] pub const fn max_idle_time(mut self, idle_time: Duration) -> Self {
         self.max_idle_time = Some(idle_time);
         self
     }
 
-    pub fn validation_interval(mut self, interval: Duration) -> Self {
+    #[must_use] pub const fn validation_interval(mut self, interval: Duration) -> Self {
         self.validation_interval = Some(interval);
         self
     }
 
-    pub fn enable_metrics(mut self, enable: bool) -> Self {
+    #[must_use] pub const fn enable_metrics(mut self, enable: bool) -> Self {
         self.enable_metrics = Some(enable);
         self
     }
@@ -268,7 +268,7 @@ pub struct ConnectionIdGenerator {
 }
 
 impl ConnectionIdGenerator {
-    pub fn new() -> Self {
+    #[must_use] pub const fn new() -> Self {
         Self { counter: AtomicU64::new(1) }
     }
 

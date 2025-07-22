@@ -34,9 +34,9 @@ impl HashIndex {
     pub fn new(name: String, base_path: &Path) -> Result<Self, OxidbError> {
         // Changed
         let mut file_path = base_path.to_path_buf();
-        file_path.push(format!("{}.{}", name, DEFAULT_INDEX_FILE_EXTENSION));
+        file_path.push(format!("{name}.{DEFAULT_INDEX_FILE_EXTENSION}"));
 
-        let mut index = HashIndex { name, store: HashMap::new(), file_path };
+        let mut index = Self { name, store: HashMap::new(), file_path };
 
         // Try to load existing index data if the file exists
         if index.file_path.exists() {
@@ -57,7 +57,7 @@ impl Index for HashIndex {
 
     fn insert(&mut self, value: &Value, primary_key: &PrimaryKey) -> Result<(), OxidbError> {
         // Changed
-        eprintln!("[HashIndex::insert] Top: value: {:?}, pk: {:?}", value, primary_key);
+        eprintln!("[HashIndex::insert] Top: value: {value:?}, pk: {primary_key:?}");
         eprintln!("[HashIndex::insert] Store BEFORE: {:?}", self.store);
         let primary_keys = self.store.entry(value.clone()).or_default();
         if !primary_keys.contains(primary_key) {
@@ -94,7 +94,7 @@ impl Index for HashIndex {
     fn find(&self, value: &Value) -> Result<Option<Vec<PrimaryKey>>, OxidbError> {
         // Changed
         let result = self.store.get(value).cloned();
-        eprintln!("[HashIndex::find] value: {:?}, found_pks: {:?}", value, result);
+        eprintln!("[HashIndex::find] value: {value:?}, found_pks: {result:?}");
         Ok(result)
     }
 
@@ -108,7 +108,7 @@ impl Index for HashIndex {
             .map_err(OxidbError::Io)?; // Changed
         let writer = BufWriter::new(file);
         bincode::serialize_into(writer, &self.store).map_err(|e| {
-            OxidbError::Serialization(format!("Failed to serialize index data: {}", e))
+            OxidbError::Serialization(format!("Failed to serialize index data: {e}"))
             // Changed
         })
     }

@@ -9,11 +9,11 @@ pub struct SqlParser {
 }
 
 impl SqlParser {
-    pub fn new(tokens: Vec<Token>) -> Self {
-        SqlParser { tokens, current: 0, parameter_count: 0 }
+    #[must_use] pub const fn new(tokens: Vec<Token>) -> Self {
+        Self { tokens, current: 0, parameter_count: 0 }
     }
 
-    pub(super) fn current_token_pos(&self) -> usize {
+    pub(super) const fn current_token_pos(&self) -> usize {
         self.current
     }
 
@@ -53,7 +53,7 @@ impl SqlParser {
                     Err(SqlParseError::UnexpectedEOF)
                 } else {
                     Err(SqlParseError::UnexpectedToken {
-                        expected: format!("{:?}", expected_token),
+                        expected: format!("{expected_token:?}"),
                         found: format!("{:?}", found_token.clone()),
                         position: self.current_token_pos(),
                     })
@@ -97,7 +97,7 @@ impl SqlParser {
             }
             Some(other) => Err(SqlParseError::UnexpectedToken {
                 expected: context_message.to_string(), // Use context_message for better error
-                found: format!("{:?}", other),
+                found: format!("{other:?}"),
                 position: self.current_token_pos() - 1, // Position of the consumed token
             }),
             None => Err(SqlParseError::UnexpectedEOF),
@@ -112,8 +112,8 @@ impl SqlParser {
         match self.consume_any() {
             Some(Token::Operator(s)) if s == op_str => Ok(s),
             Some(other) => Err(SqlParseError::UnexpectedToken {
-                expected: format!("Operator '{}'", op_str), // This is specific enough
-                found: format!("{:?}", other),
+                expected: format!("Operator '{op_str}'"), // This is specific enough
+                found: format!("{other:?}"),
                 position: self.current_token_pos() - 1, // Position of the consumed token
             }),
             None => Err(SqlParseError::UnexpectedEOF),
@@ -134,8 +134,8 @@ impl SqlParser {
                 Ok(s)
             }
             Some(other) => Err(SqlParseError::UnexpectedToken {
-                expected: format!("one of operators: {:?}", valid_ops),
-                found: format!("{:?}", other),
+                expected: format!("one of operators: {valid_ops:?}"),
+                found: format!("{other:?}"),
                 position: current_pos_before_consume,
             }),
             None => Err(SqlParseError::UnexpectedEOF),

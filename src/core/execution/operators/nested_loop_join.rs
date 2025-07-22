@@ -115,12 +115,12 @@ pub struct NestedLoopJoinOperator {
 }
 
 impl NestedLoopJoinOperator {
-    pub fn new(
+    #[must_use] pub fn new(
         left_input: Box<dyn ExecutionOperator + Send + Sync>,
         right_input: Box<dyn ExecutionOperator + Send + Sync>,
         join_predicate: Option<JoinPredicate>,
     ) -> Self {
-        NestedLoopJoinOperator {
+        Self {
             left_input,
             right_input,
             join_predicate,

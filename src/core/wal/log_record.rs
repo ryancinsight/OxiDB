@@ -2,7 +2,7 @@ use crate::core::common::types::ids::{PageId, SlotId};
 use crate::core::common::types::{Lsn, TransactionId};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Copy)]
 pub enum PageType {
     TablePage,
     BTreeInternal,
@@ -10,19 +10,19 @@ pub enum PageType {
     // Potentially others like IndexHeaderPage, etc.
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ActiveTransactionInfo {
     pub tx_id: TransactionId,
     pub last_lsn: Lsn,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct DirtyPageInfo {
     pub page_id: PageId,
     pub recovery_lsn: Lsn,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum LogRecord {
     BeginTransaction {
         lsn: Lsn,

@@ -69,7 +69,7 @@ pub struct PooledConnection<T: PoolableConnection> {
 
 impl<T: PoolableConnection> PooledConnection<T> {
     /// Create a new pooled connection
-    fn new(connection: T, pool_inner: Weak<Mutex<PoolInner<T>>>, connection_available: Weak<Condvar>) -> Self {
+    const fn new(connection: T, pool_inner: Weak<Mutex<PoolInner<T>>>, connection_available: Weak<Condvar>) -> Self {
         Self {
             connection: Some(connection),
             pool_inner,
@@ -78,7 +78,7 @@ impl<T: PoolableConnection> PooledConnection<T> {
     }
     
     /// Get a reference to the underlying connection
-    pub fn as_ref(&self) -> Option<&T> {
+    pub const fn as_ref(&self) -> Option<&T> {
         self.connection.as_ref()
     }
     
@@ -118,7 +118,7 @@ struct PoolInner<T: PoolableConnection> {
 }
 
 impl<T: PoolableConnection> PoolInner<T> {
-    fn new(config: PoolConfig) -> Self {
+    const fn new(config: PoolConfig) -> Self {
         Self {
             available: VecDeque::new(),
             in_use: 0,
@@ -175,7 +175,7 @@ pub struct ConnectionPool<T: PoolableConnection> {
 
 impl<T: PoolableConnection + 'static> ConnectionPool<T> {
     /// Create a new connection pool with the given configuration
-    pub fn new(config: PoolConfig) -> Self {
+    #[must_use] pub fn new(config: PoolConfig) -> Self {
         let inner = Arc::new(Mutex::new(PoolInner::new(config.clone())));
         let connection_available = Arc::new(Condvar::new());
         let cleanup_inner = Arc::downgrade(&inner);

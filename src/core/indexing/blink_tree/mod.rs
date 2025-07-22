@@ -16,27 +16,27 @@ fn map_blink_error_to_common(blink_error: BlinkTreeError) -> CommonError {
     match blink_error {
         BlinkTreeError::Io(io_err) => CommonError::Io(io_err),
         BlinkTreeError::Serialization(ser_err) => {
-            CommonError::Serialization(format!("{:?}", ser_err))
+            CommonError::Serialization(format!("{ser_err:?}"))
         }
         BlinkTreeError::NodeNotFound(page_id) => {
-            CommonError::Index(format!("Blink tree node not found: {}", page_id))
+            CommonError::Index(format!("Blink tree node not found: {page_id}"))
         }
         BlinkTreeError::PageFull(msg) => {
-            CommonError::Index(format!("Blink tree page full: {}", msg))
+            CommonError::Index(format!("Blink tree page full: {msg}"))
         }
         BlinkTreeError::UnexpectedNodeType => {
             CommonError::Index("Unexpected Blink tree node type".into())
         }
         BlinkTreeError::TreeLogicError(msg) => {
-            CommonError::Index(format!("Blink tree logic error: {}", msg))
+            CommonError::Index(format!("Blink tree logic error: {msg}"))
         }
         BlinkTreeError::ConcurrencyError(msg) => {
-            CommonError::Index(format!("Blink tree concurrency error: {}", msg))
+            CommonError::Index(format!("Blink tree concurrency error: {msg}"))
         }
         BlinkTreeError::BorrowError(msg) => {
-            CommonError::Index(format!("Blink tree borrow error: {}", msg))
+            CommonError::Index(format!("Blink tree borrow error: {msg}"))
         }
-        BlinkTreeError::Generic(msg) => CommonError::Index(format!("Blink tree error: {}", msg)),
+        BlinkTreeError::Generic(msg) => CommonError::Index(format!("Blink tree error: {msg}")),
     }
 }
 
@@ -73,8 +73,8 @@ impl Index for BlinkTreeIndex {
         primary_key_to_remove: Option<&TraitPrimaryKey>,
     ) -> Result<(), CommonError> {
         match primary_key_to_remove {
-            Some(pk) => BlinkTreeIndex::delete(self, value, Some(pk)),
-            None => BlinkTreeIndex::delete(self, value, None),
+            Some(pk) => Self::delete(self, value, Some(pk)),
+            None => Self::delete(self, value, None),
         }
         .map(|_| ()) // Convert bool result to ()
         .map_err(map_blink_error_to_common)
@@ -87,8 +87,8 @@ impl Index for BlinkTreeIndex {
         primary_key: &TraitPrimaryKey,
     ) -> Result<(), CommonError> {
         // For Blink tree, update is delete old + insert new
-        BlinkTreeIndex::delete(self, old_value, Some(primary_key))
-            .and_then(|_| BlinkTreeIndex::insert(self, new_value.clone(), primary_key.clone()))
+        Self::delete(self, old_value, Some(primary_key))
+            .and_then(|_| Self::insert(self, new_value.clone(), primary_key.clone()))
             .map_err(map_blink_error_to_common)
     }
 }

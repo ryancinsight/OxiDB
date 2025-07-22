@@ -29,15 +29,13 @@ impl BPlusTreeIndex {
             effective_order = page_manager.get_order();
             if order != 0 && effective_order != order {
                 eprintln!(
-                    "Warning: Order mismatch during load. Requested: {}, File's: {}. Using file's order.",
-                    order, effective_order
+                    "Warning: Order mismatch during load. Requested: {order}, File's: {effective_order}. Using file's order."
                 );
             }
         } else {
             if order < 3 {
                 return Err(OxidbError::TreeLogicError(format!(
-                    "Order {} is too small. Minimum order is 3.",
-                    order
+                    "Order {order} is too small. Minimum order is 3."
                 )));
             }
             effective_order = order;

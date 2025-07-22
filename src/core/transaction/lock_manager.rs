@@ -11,14 +11,14 @@ pub enum LockType {
     Exclusive,
 }
 
-/// Alias for LockType for compatibility
+/// Alias for `LockType` for compatibility
 pub type LockMode = LockType;
 
 /// Represents the key for a lock in the lock table.
 pub type LockTableKey = Vec<u8>;
 
 /// Represents a request for a lock.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LockRequest {
     /// The ID of the transaction requesting the lock.
     pub transaction_id: u64,
@@ -30,12 +30,12 @@ pub struct LockRequest {
 #[derive(Debug)]
 pub struct LockManager {
     /// Stores the lock queue for each resource.
-    /// Key: LockTableKey (e.g., table name, row ID)
+    /// Key: `LockTableKey` (e.g., table name, row ID)
     /// Value: Vec<LockRequest> (queue of lock requests for that resource)
     lock_table: HashMap<LockTableKey, Vec<LockRequest>>,
     /// Stores the set of locks held by each transaction.
     /// Key: Transaction ID (u64)
-    /// Value: HashSet<LockTableKey> (set of resources locked by the transaction)
+    /// Value: `HashSet`<LockTableKey> (set of resources locked by the transaction)
     transaction_locks: HashMap<u64, HashSet<LockTableKey>>,
 }
 
@@ -46,9 +46,9 @@ impl Default for LockManager {
 }
 
 impl LockManager {
-    /// Creates a new, empty LockManager.
-    pub fn new() -> Self {
-        LockManager { lock_table: HashMap::new(), transaction_locks: HashMap::new() }
+    /// Creates a new, empty `LockManager`.
+    #[must_use] pub fn new() -> Self {
+        Self { lock_table: HashMap::new(), transaction_locks: HashMap::new() }
     }
 
     pub fn acquire_lock(
@@ -126,7 +126,7 @@ impl LockManager {
     }
 
     /// Get the current lock holder for a resource (if any)
-    pub fn get_lock_holder(&self, key: &str) -> Option<u64> {
+    #[must_use] pub fn get_lock_holder(&self, key: &str) -> Option<u64> {
         let key_bytes = key.as_bytes().to_vec();
         self.lock_table.get(&key_bytes)
             .and_then(|locks| locks.first())

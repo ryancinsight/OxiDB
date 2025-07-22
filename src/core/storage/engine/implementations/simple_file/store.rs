@@ -26,7 +26,7 @@ impl SimpleFileKvStore {
         let path_buf = path.as_ref().to_path_buf();
 
         let mut wal_file_path = path_buf.clone();
-        let original_extension = wal_file_path.extension().map(|s| s.to_os_string());
+        let original_extension = wal_file_path.extension().map(std::ffi::OsStr::to_os_string);
         if let Some(ext) = original_extension {
             let mut new_ext = ext;
             new_ext.push(".wal");
@@ -51,7 +51,7 @@ impl SimpleFileKvStore {
         Ok(Self { file_path: path_buf, cache, wal_writer })
     }
 
-    pub fn file_path(&self) -> &Path {
+    #[must_use] pub fn file_path(&self) -> &Path {
         &self.file_path
     }
 
@@ -339,7 +339,7 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         Vec<u8>: Clone, // V: Clone
     {
         let mut results = Vec::new();
-        for (key, versions) in self.cache.iter() {
+        for (key, versions) in &self.cache {
             // Find the latest, non-expired version for this key.
             // This mimics the logic in `get` for snapshot_id = 0 (non-transactional read).
             for version in versions.iter().rev() {
@@ -381,7 +381,7 @@ impl Drop for SimpleFileKvStore {
     fn drop(&mut self) {
         // The save_data_to_disk function (now in persistence module) should handle WAL clearing.
         if let Err(e) = persistence::save_data_to_disk(&self.file_path, &self.cache) {
-            eprintln!("Error saving data to disk during drop: {}", e);
+            eprintln!("Error saving data to disk during drop: {e}");
         }
     }
 }

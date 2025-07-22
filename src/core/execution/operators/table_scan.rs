@@ -24,13 +24,13 @@ pub struct TableScanOperator<S: KeyValueStore<Key, Vec<u8>>> {
 }
 
 impl<S: KeyValueStore<Key, Vec<u8>>> TableScanOperator<S> {
-    pub fn new(
+    pub const fn new(
         store: Arc<RwLock<S>>, // Changed to Arc<RwLock<S>>
         table_name: String,
         snapshot_id: u64,
         committed_ids: Arc<HashSet<u64>>,
     ) -> Self {
-        TableScanOperator { store, table_name, snapshot_id, committed_ids, executed: false }
+        Self { store, table_name, snapshot_id, committed_ids, executed: false }
     }
 }
 
@@ -49,7 +49,7 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for TableScanOp
 
         // Now self.store is Arc<RwLock<S>>, so we need to lock it for reading.
         let store_guard = self.store.read().map_err(|e| {
-            OxidbError::LockTimeout(format!("Failed to acquire read lock on store: {}", e))
+            OxidbError::LockTimeout(format!("Failed to acquire read lock on store: {e}"))
         })?;
         
 

@@ -31,19 +31,19 @@ pub struct SqlAssignment {
     pub value: DataType, // Use DataType here
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum SelectColumnSpec {
     Specific(Vec<String>), // List of column names
     All,                   // Represents SELECT *
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct SqlOrderByExpr {
     pub expression: String, // Column name
     pub direction: Option<SqlOrderDirection>,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum SqlOrderDirection {
     Asc,
     Desc,

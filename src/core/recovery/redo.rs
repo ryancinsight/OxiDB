@@ -37,8 +37,8 @@ pub struct RedoPhase {
 }
 
 impl RedoPhase {
-    /// Creates a new RedoPhase with the given dirty page table.
-    pub fn new(dirty_page_table: DirtyPageTable) -> Self {
+    /// Creates a new `RedoPhase` with the given dirty page table.
+    #[must_use] pub fn new(dirty_page_table: DirtyPageTable) -> Self {
         let redo_lsn = dirty_page_table.min_recovery_lsn();
 
         Self {
@@ -61,26 +61,23 @@ impl RedoPhase {
         self.state = RecoveryState::Redo;
 
         // If there's no redo LSN, no redo is needed
-        let redo_lsn = match self.redo_lsn {
-            Some(lsn) => lsn,
-            None => {
-                log::info!("No redo LSN found, skipping redo phase");
-                return Ok(());
-            }
+        let redo_lsn = if let Some(lsn) = self.redo_lsn { lsn } else {
+            log::info!("No redo LSN found, skipping redo phase");
+            return Ok(());
         };
 
         log::info!("Starting redo phase from LSN {}", redo_lsn);
 
         // Create WAL reader from path
         let reader = WalReader::with_defaults(wal_path.as_ref());
-        let mut iterator = reader.iter_records().map_err(|e| {
-            RecoveryError::WalError(format!("Failed to create WAL iterator: {}", e))
+        let iterator = reader.iter_records().map_err(|e| {
+            RecoveryError::WalError(format!("Failed to create WAL iterator: {e}"))
         })?;
 
         // Read all records and process those from redo LSN forward
-        while let Some(result) = iterator.next() {
+        for result in iterator {
             let log_record = result.map_err(|e| {
-                RecoveryError::WalError(format!("Failed to read WAL record: {}", e))
+                RecoveryError::WalError(format!("Failed to read WAL record: {e}"))
             })?;
             let record_lsn = self.get_record_lsn(&log_record);
             if record_lsn >= redo_lsn {
@@ -106,7 +103,7 @@ impl RedoPhase {
                 lsn, page_id, old_record_data: _, new_record_data, ..
             } => self.redo_update(*lsn, *page_id, new_record_data)?,
             LogRecord::InsertRecord { lsn, page_id, record_data, .. } => {
-                self.redo_insert(*lsn, *page_id, record_data)?
+                self.redo_insert(*lsn, *page_id, record_data)?;
             }
             LogRecord::DeleteRecord { lsn, page_id, .. } => self.redo_delete(*lsn, *page_id)?,
             LogRecord::BeginTransaction { .. }
@@ -241,17 +238,17 @@ impl RedoPhase {
     }
 
     /// Returns the redo LSN determined for this phase.
-    pub fn get_redo_lsn(&self) -> Option<Lsn> {
+    #[must_use] pub const fn get_redo_lsn(&self) -> Option<Lsn> {
         self.redo_lsn
     }
 
     /// Returns the current state of the redo phase.
-    pub fn get_state(&self) -> &RecoveryState {
+    #[must_use] pub const fn get_state(&self) -> &RecoveryState {
         &self.state
     }
 
     /// Returns the number of pages in the cache.
-    pub fn cache_size(&self) -> usize {
+    #[must_use] pub fn cache_size(&self) -> usize {
         self.page_cache.len()
     }
 
@@ -261,7 +258,7 @@ impl RedoPhase {
     }
 
     /// Returns statistics about the redo phase.
-    pub fn get_statistics(&self) -> RedoStatistics {
+    #[must_use] pub fn get_statistics(&self) -> RedoStatistics {
         RedoStatistics {
             redo_lsn: self.redo_lsn,
             dirty_pages_count: self.dirty_page_table.len(),
@@ -271,12 +268,12 @@ impl RedoPhase {
     }
 
     /// Extracts the LSN from a log record.
-    fn get_record_lsn(&self, record: &LogRecord) -> Lsn {
+    const fn get_record_lsn(&self, record: &LogRecord) -> Lsn {
         self.extract_lsn(record)
     }
 
     /// Extract LSN from a log record
-    fn extract_lsn(&self, record: &LogRecord) -> Lsn {
+    const fn extract_lsn(&self, record: &LogRecord) -> Lsn {
         match record {
             LogRecord::BeginTransaction { lsn, .. }
             | LogRecord::CommitTransaction { lsn, .. }

@@ -54,7 +54,7 @@ pub struct FilterNode {
 
 impl PlanNode for FilterNode {
     fn estimated_cost(&self) -> f64 {
-        self.input.estimated_cost() + (self.input.estimated_rows() as f64 * 0.1)
+        (self.input.estimated_rows() as f64).mul_add(0.1, self.input.estimated_cost())
     }
     
     fn estimated_rows(&self) -> usize {
@@ -122,7 +122,7 @@ pub struct CostBasedPlanner {
 
 impl CostBasedPlanner {
     /// Create a new cost-based planner
-    pub fn new() -> Self {
+    #[must_use] pub fn new() -> Self {
         Self {
             table_stats: HashMap::new(),
             schemas: HashMap::new(),
@@ -174,7 +174,7 @@ impl CostBasedPlanner {
             .ok_or_else(|| OxidbError::TableNotFound(table_name.to_string()))?;
             
         let stats = self.table_stats.get(table_name);
-        let estimated_rows = stats.map(|s| s.row_count).unwrap_or(1000);
+        let estimated_rows = stats.map_or(1000, |s| s.row_count);
         
         Ok(Box::new(TableScanNode {
             table_name: table_name.to_string(),
@@ -185,7 +185,7 @@ impl CostBasedPlanner {
     }
     
     /// Estimate selectivity of a condition
-    fn estimate_selectivity(&self, _condition: &ConditionTree, _table_name: &str) -> f64 {
+    const fn estimate_selectivity(&self, _condition: &ConditionTree, _table_name: &str) -> f64 {
         // Simplified selectivity estimation
         // In practice, would analyze condition and use column statistics
         0.1

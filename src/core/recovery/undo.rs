@@ -38,7 +38,7 @@ pub struct UndoStatistics {
 
 impl UndoStatistics {
     /// Creates new empty undo statistics.
-    pub fn new() -> Self {
+    #[must_use] pub const fn new() -> Self {
         Self {
             transactions_undone: 0,
             records_processed: 0,
@@ -70,7 +70,7 @@ pub struct UndoPhase {
 
 impl UndoPhase {
     /// Creates a new Undo phase with the given transaction table.
-    pub fn new(transaction_table: TransactionTable) -> Self {
+    #[must_use] pub fn new(transaction_table: TransactionTable) -> Self {
         Self {
             transaction_table,
             page_cache: HashMap::new(),
@@ -122,7 +122,7 @@ impl UndoPhase {
         if let Some(ref mut writer) = self.wal_writer {
             writer
                 .flush()
-                .map_err(|e| RecoveryError::UndoError(format!("Failed to flush WAL: {}", e)))?;
+                .map_err(|e| RecoveryError::UndoError(format!("Failed to flush WAL: {e}")))?;
         }
 
         self.state = RecoveryState::Completed;
@@ -150,7 +150,7 @@ impl UndoPhase {
         // Read all records to build a lookup map
         let all_records = reader
             .read_all_records()
-            .map_err(|e| RecoveryError::UndoError(format!("Failed to read WAL records: {}", e)))?;
+            .map_err(|e| RecoveryError::UndoError(format!("Failed to read WAL records: {e}")))?;
 
         let mut record_map: HashMap<Lsn, LogRecord> = HashMap::new();
         for record in all_records {
@@ -163,29 +163,26 @@ impl UndoPhase {
             if let Some(record) = record_map.get(&lsn) {
                 // Only process records for this transaction
                 if self.record_belongs_to_transaction(record, tx_info.tx_id) {
-                    match record {
-                        LogRecord::CompensationLogRecord { next_undo_lsn: unl, .. } => {
-                            // For CLRs, skip to the undo_next_lsn
-                            current_lsn = *unl;
-                            continue;
-                        }
-                        _ => {
-                            // Process the undo operation
-                            debug!("Processing undo for record at LSN {}: {:?}", lsn, record);
-                            let prev_lsn = self.undo_log_record(record, undo_next_lsn)?;
-                            undo_next_lsn = Some(lsn);
-                            current_lsn = prev_lsn;
-                            // Only count records that actually need undo operations (not BeginTransaction)
-                            match record {
-                                LogRecord::InsertRecord { .. }
-                                | LogRecord::DeleteRecord { .. }
-                                | LogRecord::UpdateRecord { .. } => {
-                                    self.statistics.records_processed += 1;
-                                }
-                                _ => {} // Don't count BeginTransaction and other non-undoable records
+                    if let LogRecord::CompensationLogRecord { next_undo_lsn: unl, .. } = record {
+                        // For CLRs, skip to the undo_next_lsn
+                        current_lsn = *unl;
+                        continue;
+                    } else {
+                        // Process the undo operation
+                        debug!("Processing undo for record at LSN {}: {:?}", lsn, record);
+                        let prev_lsn = self.undo_log_record(record, undo_next_lsn)?;
+                        undo_next_lsn = Some(lsn);
+                        current_lsn = prev_lsn;
+                        // Only count records that actually need undo operations (not BeginTransaction)
+                        match record {
+                            LogRecord::InsertRecord { .. }
+                            | LogRecord::DeleteRecord { .. }
+                            | LogRecord::UpdateRecord { .. } => {
+                                self.statistics.records_processed += 1;
                             }
-                            debug!("CLRs generated so far: {}", self.statistics.clrs_generated);
+                            _ => {} // Don't count BeginTransaction and other non-undoable records
                         }
+                        debug!("CLRs generated so far: {}", self.statistics.clrs_generated);
                     }
                 } else {
                     // This record doesn't belong to our transaction, get prev_lsn
@@ -386,7 +383,7 @@ impl UndoPhase {
 
             writer
                 .add_record(&clr)
-                .map_err(|e| RecoveryError::UndoError(format!("Failed to write CLR: {}", e)))?;
+                .map_err(|e| RecoveryError::UndoError(format!("Failed to write CLR: {e}")))?;
 
             self.statistics.clrs_generated += 1;
             debug!("Generated CLR for insert undo on page {}, slot {}", page_id.0, slot_id.0);
@@ -418,7 +415,7 @@ impl UndoPhase {
 
             writer
                 .add_record(&clr)
-                .map_err(|e| RecoveryError::UndoError(format!("Failed to write CLR: {}", e)))?;
+                .map_err(|e| RecoveryError::UndoError(format!("Failed to write CLR: {e}")))?;
 
             self.statistics.clrs_generated += 1;
             debug!("Generated CLR for delete undo on page {}, slot {}", page_id.0, slot_id.0);
@@ -450,7 +447,7 @@ impl UndoPhase {
 
             writer
                 .add_record(&clr)
-                .map_err(|e| RecoveryError::UndoError(format!("Failed to write CLR: {}", e)))?;
+                .map_err(|e| RecoveryError::UndoError(format!("Failed to write CLR: {e}")))?;
 
             self.statistics.clrs_generated += 1;
             debug!("Generated CLR for update undo on page {}, slot {}", page_id.0, slot_id.0);
@@ -468,7 +465,7 @@ impl UndoPhase {
             };
 
             writer.add_record(&abort_record).map_err(|e| {
-                RecoveryError::UndoError(format!("Failed to write abort record: {}", e))
+                RecoveryError::UndoError(format!("Failed to write abort record: {e}"))
             })?;
 
             debug!("Generated abort record for transaction {}", tx_id.0);
@@ -515,7 +512,7 @@ impl UndoPhase {
     }
 
     /// Extracts the LSN from a log record.
-    fn extract_lsn(&self, record: &LogRecord) -> Lsn {
+    const fn extract_lsn(&self, record: &LogRecord) -> Lsn {
         match record {
             LogRecord::BeginTransaction { lsn, .. }
             | LogRecord::CommitTransaction { lsn, .. }
@@ -531,7 +528,7 @@ impl UndoPhase {
     }
 
     /// Extracts the previous LSN from a log record.
-    fn extract_prev_lsn(&self, record: &LogRecord) -> Option<Lsn> {
+    const fn extract_prev_lsn(&self, record: &LogRecord) -> Option<Lsn> {
         match record {
             LogRecord::CommitTransaction { prev_lsn, .. }
             | LogRecord::AbortTransaction { prev_lsn, .. }
@@ -547,17 +544,17 @@ impl UndoPhase {
     }
 
     /// Returns the current state of the undo phase.
-    pub fn get_state(&self) -> &RecoveryState {
+    #[must_use] pub const fn get_state(&self) -> &RecoveryState {
         &self.state
     }
 
     /// Returns the statistics collected during the undo phase.
-    pub fn get_statistics(&self) -> &UndoStatistics {
+    #[must_use] pub const fn get_statistics(&self) -> &UndoStatistics {
         &self.statistics
     }
 
     /// Returns the number of pages currently cached.
-    pub fn cache_size(&self) -> usize {
+    #[must_use] pub fn cache_size(&self) -> usize {
         self.page_cache.len()
     }
 }

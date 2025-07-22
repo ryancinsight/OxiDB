@@ -42,7 +42,7 @@ fn default_data_dir() -> PathBuf {
     PathBuf::from("data")
 }
 
-/// Default function for database_file field
+/// Default function for `database_file` field
 fn default_database_file() -> PathBuf {
     PathBuf::from("oxidb.db")
 }
@@ -51,35 +51,35 @@ fn default_index_dir() -> PathBuf {
     PathBuf::from("oxidb_indexes")
 }
 
-fn default_max_cache_size() -> usize {
+const fn default_max_cache_size() -> usize {
     1024 * 1024 // 1MB
 }
 
-fn default_wal_enabled() -> bool {
+const fn default_wal_enabled() -> bool {
     true
 }
 
-fn default_auto_checkpoint_interval() -> u64 {
+const fn default_auto_checkpoint_interval() -> u64 {
     1000
 }
 
-fn default_max_connections() -> u32 {
+const fn default_max_connections() -> u32 {
     100
 }
 
-fn default_query_timeout_ms() -> u64 {
+const fn default_query_timeout_ms() -> u64 {
     30000 // 30 seconds
 }
 
-fn default_enable_vector_search() -> bool {
+const fn default_enable_vector_search() -> bool {
     false
 }
 
-fn default_vector_dimension() -> usize {
+const fn default_vector_dimension() -> usize {
     128
 }
 
-fn default_similarity_threshold() -> f32 {
+const fn default_similarity_threshold() -> f32 {
     0.7
 }
 
@@ -105,8 +105,8 @@ pub struct ConfigBuilder {
 }
 
 impl ConfigBuilder {
-    /// Creates a new ConfigBuilder with default values
-    pub fn new() -> Self {
+    /// Creates a new `ConfigBuilder` with default values
+    #[must_use] pub const fn new() -> Self {
         Self {
             data_dir: None,
             database_file: None,
@@ -141,49 +141,49 @@ impl ConfigBuilder {
     }
 
     /// Sets the maximum cache size
-    pub fn max_cache_size(mut self, size: usize) -> Self {
+    #[must_use] pub const fn max_cache_size(mut self, size: usize) -> Self {
         self.max_cache_size = Some(size);
         self
     }
 
     /// Enables or disables WAL
-    pub fn wal_enabled(mut self, enabled: bool) -> Self {
+    #[must_use] pub const fn wal_enabled(mut self, enabled: bool) -> Self {
         self.wal_enabled = Some(enabled);
         self
     }
 
     /// Sets the auto checkpoint interval
-    pub fn auto_checkpoint_interval(mut self, interval: u64) -> Self {
+    #[must_use] pub const fn auto_checkpoint_interval(mut self, interval: u64) -> Self {
         self.auto_checkpoint_interval = Some(interval);
         self
     }
 
     /// Sets the maximum number of connections
-    pub fn max_connections(mut self, connections: u32) -> Self {
+    #[must_use] pub const fn max_connections(mut self, connections: u32) -> Self {
         self.max_connections = Some(connections);
         self
     }
 
     /// Sets the query timeout in milliseconds
-    pub fn query_timeout_ms(mut self, timeout: u64) -> Self {
+    #[must_use] pub const fn query_timeout_ms(mut self, timeout: u64) -> Self {
         self.query_timeout_ms = Some(timeout);
         self
     }
 
     /// Enables or disables vector search
-    pub fn enable_vector_search(mut self, enabled: bool) -> Self {
+    #[must_use] pub const fn enable_vector_search(mut self, enabled: bool) -> Self {
         self.enable_vector_search = Some(enabled);
         self
     }
 
     /// Sets the vector dimension
-    pub fn vector_dimension(mut self, dimension: usize) -> Self {
+    #[must_use] pub const fn vector_dimension(mut self, dimension: usize) -> Self {
         self.vector_dimension = Some(dimension);
         self
     }
 
     /// Sets the similarity threshold
-    pub fn similarity_threshold(mut self, threshold: f32) -> Self {
+    #[must_use] pub const fn similarity_threshold(mut self, threshold: f32) -> Self {
         self.similarity_threshold = Some(threshold);
         self
     }
@@ -235,8 +235,8 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Creates a new ConfigBuilder for fluent configuration
-    pub fn builder() -> ConfigBuilder {
+    /// Creates a new `ConfigBuilder` for fluent configuration
+    #[must_use] pub const fn builder() -> ConfigBuilder {
         ConfigBuilder::new()
     }
 
@@ -301,7 +301,7 @@ impl Config {
                 config.validate()?;
                 Ok(config)
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(e) => Err(OxidbError::Io(e)),
         }
     }
@@ -323,27 +323,27 @@ impl Config {
     }
 
     /// Helper to get a `PathBuf` for the data directory.
-    pub fn data_dir_path(&self) -> &PathBuf {
+    #[must_use] pub const fn data_dir_path(&self) -> &PathBuf {
         &self.data_dir
     }
 
     /// Helper to get a `PathBuf` for the index directory.
-    pub fn index_dir_path(&self) -> &PathBuf {
+    #[must_use] pub const fn index_dir_path(&self) -> &PathBuf {
         &self.index_dir
     }
 
-    /// Legacy compatibility method for database_path
-    pub fn database_path(&self) -> PathBuf {
+    /// Legacy compatibility method for `database_path`
+    #[must_use] pub fn database_path(&self) -> PathBuf {
         self.database_file.clone()
     }
 
-    /// Legacy compatibility method for wal_path
-    pub fn wal_path(&self) -> PathBuf {
+    /// Legacy compatibility method for `wal_path`
+    #[must_use] pub fn wal_path(&self) -> PathBuf {
         self.data_dir.join("oxidb.wal")
     }
 
-    /// Legacy compatibility method for index_path
-    pub fn index_path(&self) -> PathBuf {
+    /// Legacy compatibility method for `index_path`
+    #[must_use] pub fn index_path(&self) -> PathBuf {
         self.index_dir.clone()
     }
 

@@ -45,10 +45,10 @@ pub struct HnswGraph {
     /// Maximum connections per layer (M parameter)
     max_connections: usize,
 
-    /// Maximum connections for layer 0 (M_L parameter, typically 2*M)
+    /// Maximum connections for layer 0 (`M_L` parameter, typically 2*M)
     max_connections_layer0: usize,
 
-    /// Construction parameter (ef_construction)
+    /// Construction parameter (`ef_construction`)
     ef_construction: usize,
 
     /// Distance function to use
@@ -94,7 +94,7 @@ impl HnswGraph {
     }
 
     /// Get entry point node ID
-    pub fn entry_point(&self) -> Option<NodeId> {
+    pub const fn entry_point(&self) -> Option<NodeId> {
         self.entry_point
     }
 
@@ -243,7 +243,7 @@ impl HnswGraph {
 
         while let Some(candidate) = candidates.pop() {
             // Get furthest point in w
-            let furthest = w.peek().map(|c| -c.distance).unwrap_or(f32::INFINITY);
+            let furthest = w.peek().map_or(f32::INFINITY, |c| -c.distance);
 
             if candidate.distance > furthest {
                 break;
@@ -333,7 +333,7 @@ impl HnswGraph {
                 .connections_at_layer(layer)
                 .unwrap_or(&std::collections::HashSet::new())
                 .iter()
-                .cloned()
+                .copied()
                 .collect();
 
             let node_vector = node.vector.clone();

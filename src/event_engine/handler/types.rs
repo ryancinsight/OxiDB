@@ -5,7 +5,7 @@
 
 /// Represents the different types of events that can occur in the system.
 /// These are placeholders and will be expanded based on actual system needs.
-#[derive(Debug, Clone, PartialEq)] // Added derive for easier testing and inspection
+#[derive(Debug, Clone, PartialEq, Eq)] // Added derive for easier testing and inspection
 pub enum Event {
     UserCreated { user_id: String, user_email: String },
     OrderPlaced { order_id: String, amount: u64 },

@@ -35,14 +35,14 @@ pub struct Edge {
 }
 
 /// Relationship type between nodes
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Relationship {
     pub name: String,
     pub direction: RelationshipDirection,
 }
 
 /// Direction of relationships
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RelationshipDirection {
     Outgoing,
     Incoming,
@@ -59,7 +59,7 @@ pub struct GraphData {
 
 impl Node {
     /// Create a new node with the given data
-    pub fn new(id: NodeId, data: GraphData) -> Self {
+    #[must_use] pub fn new(id: NodeId, data: GraphData) -> Self {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -83,7 +83,7 @@ impl Node {
     }
 
     /// Get a property value
-    pub fn get_property(&self, key: &str) -> Option<&Value> {
+    #[must_use] pub fn get_property(&self, key: &str) -> Option<&Value> {
         self.data.properties.get(key)
     }
 
@@ -97,7 +97,7 @@ impl Node {
     }
     
     /// Get property as a specific type with type safety
-    pub fn get_property_as<T>(&self, key: &str) -> Option<T> 
+    #[must_use] pub fn get_property_as<T>(&self, key: &str) -> Option<T> 
     where 
         T: for<'a> TryFrom<&'a Value>
     {
@@ -107,7 +107,7 @@ impl Node {
 
 impl Edge {
     /// Create a new edge
-    pub fn new(
+    #[must_use] pub fn new(
         id: EdgeId,
         from_node: NodeId,
         to_node: NodeId,
@@ -131,7 +131,7 @@ impl Edge {
     }
 
     /// Create a weighted edge
-    pub fn new_weighted(
+    #[must_use] pub fn new_weighted(
         id: EdgeId,
         from_node: NodeId,
         to_node: NodeId,
@@ -145,14 +145,14 @@ impl Edge {
     }
 
     /// Check if edge connects the given nodes
-    pub fn connects(&self, node1: NodeId, node2: NodeId) -> bool {
+    #[must_use] pub fn connects(&self, node1: NodeId, node2: NodeId) -> bool {
         (self.from_node == node1 && self.to_node == node2) ||
         (self.from_node == node2 && self.to_node == node1 && 
          self.relationship.direction == RelationshipDirection::Bidirectional)
     }
 
     /// Get the other node in the relationship
-    pub fn other_node(&self, node_id: NodeId) -> Option<NodeId> {
+    #[must_use] pub fn other_node(&self, node_id: NodeId) -> Option<NodeId> {
         if self.from_node == node_id {
             Some(self.to_node)
         } else if self.to_node == node_id && 
@@ -166,7 +166,7 @@ impl Edge {
 
 impl Relationship {
     /// Create a new outgoing relationship
-    pub fn new(name: String) -> Self {
+    #[must_use] pub const fn new(name: String) -> Self {
         Self {
             name,
             direction: RelationshipDirection::Outgoing,
@@ -174,7 +174,7 @@ impl Relationship {
     }
 
     /// Create a bidirectional relationship
-    pub fn bidirectional(name: String) -> Self {
+    #[must_use] pub const fn bidirectional(name: String) -> Self {
         Self {
             name,
             direction: RelationshipDirection::Bidirectional,
@@ -182,7 +182,7 @@ impl Relationship {
     }
 
     /// Create an incoming relationship
-    pub fn incoming(name: String) -> Self {
+    #[must_use] pub const fn incoming(name: String) -> Self {
         Self {
             name,
             direction: RelationshipDirection::Incoming,
@@ -192,7 +192,7 @@ impl Relationship {
 
 impl GraphData {
     /// Create new graph data with a label
-    pub fn new(label: String) -> Self {
+    #[must_use] pub fn new(label: String) -> Self {
         Self {
             label,
             properties: HashMap::new(),
@@ -200,19 +200,19 @@ impl GraphData {
     }
 
     /// Add a property to the graph data (builder pattern)
-    pub fn with_property(mut self, key: String, value: Value) -> Self {
+    #[must_use] pub fn with_property(mut self, key: String, value: Value) -> Self {
         self.properties.insert(key, value);
         self
     }
 
     /// Add multiple properties
-    pub fn with_properties(mut self, properties: HashMap<String, Value>) -> Self {
+    #[must_use] pub fn with_properties(mut self, properties: HashMap<String, Value>) -> Self {
         self.properties.extend(properties);
         self
     }
 
     /// Get a property value
-    pub fn get_property(&self, key: &str) -> Option<&Value> {
+    #[must_use] pub fn get_property(&self, key: &str) -> Option<&Value> {
         self.properties.get(key)
     }
 
@@ -222,12 +222,12 @@ impl GraphData {
     }
 
     /// Check if has property
-    pub fn has_property(&self, key: &str) -> bool {
+    #[must_use] pub fn has_property(&self, key: &str) -> bool {
         self.properties.contains_key(key)
     }
 
     /// Get all property keys
-    pub fn property_keys(&self) -> Vec<&String> {
+    #[must_use] pub fn property_keys(&self) -> Vec<&String> {
         self.properties.keys().collect()
     }
 }

@@ -144,15 +144,10 @@ impl SqlParser {
             let param_index = self.parameter_count;
             self.parameter_count += 1;
             Ok(ast::AstExpressionValue::Parameter(param_index))
-        } else {
-            match self.try_parse_literal_value()? {
-                Some(literal_val) => Ok(ast::AstExpressionValue::Literal(literal_val)),
-                None => {
-                    // Try parsing as identifier (column reference)
-                    let col_ident = self.parse_qualified_identifier(context)?;
-                    Ok(ast::AstExpressionValue::ColumnIdentifier(col_ident))
-                }
-            }
+        } else if let Some(literal_val) = self.try_parse_literal_value()? { Ok(ast::AstExpressionValue::Literal(literal_val)) } else {
+            // Try parsing as identifier (column reference)
+            let col_ident = self.parse_qualified_identifier(context)?;
+            Ok(ast::AstExpressionValue::ColumnIdentifier(col_ident))
         }
     }
 
@@ -226,17 +221,12 @@ impl SqlParser {
                 let param_index = self.parameter_count;
                 self.parameter_count += 1;
                 ast::AstExpressionValue::Parameter(param_index)
-            } else {
-                match self.try_parse_literal_value()? {
-                    Some(literal_val) => ast::AstExpressionValue::Literal(literal_val),
-                    None => {
-                        // Not a literal, try parsing as a qualified identifier
-                        let col_ident = self.parse_qualified_identifier(
-                            "Expected literal, parameter (?), or column identifier for RHS of condition",
-                        )?;
-                        ast::AstExpressionValue::ColumnIdentifier(col_ident)
-                    }
-                }
+            } else if let Some(literal_val) = self.try_parse_literal_value()? { ast::AstExpressionValue::Literal(literal_val) } else {
+                // Not a literal, try parsing as a qualified identifier
+                let col_ident = self.parse_qualified_identifier(
+                    "Expected literal, parameter (?), or column identifier for RHS of condition",
+                )?;
+                ast::AstExpressionValue::ColumnIdentifier(col_ident)
             };
 
             Ok(ast::ConditionTree::Comparison(Condition { column, operator, value: rhs_value }))
@@ -314,14 +304,14 @@ impl SqlParser {
                     } else {
                         Err(SqlParseError::UnexpectedToken {
                             expected: error_msg_context.to_string(),
-                            found: format!("Identifier({})", ident),
+                            found: format!("Identifier({ident})"),
                             position: error_pos,
                         })
                     }
                 }
                 Some(other) => Err(SqlParseError::UnexpectedToken {
                     expected: error_msg_context.to_string(),
-                    found: format!("{:?}", other),
+                    found: format!("{other:?}"),
                     position: error_pos,
                 }),
                 None => Err(SqlParseError::UnexpectedEOF),

@@ -19,8 +19,8 @@ pub struct BoundStatement {
 pub struct Binder {}
 
 impl Binder {
-    pub fn new() -> Self {
-        Binder {}
+    #[must_use] pub const fn new() -> Self {
+        Self {}
     }
 
     pub fn bind_statement(&self, statement: &AstStatement) -> Result<BoundStatement, BindError> {
@@ -35,7 +35,7 @@ impl Binder {
             // If AstStatement is non_exhaustive or has other variants, _ might be needed.
             // Assuming for now all variants are covered or it's okay for this to be exhaustive.
         };
-        eprintln!("[Binder] Attempting to bind statement: {:?}", stmt_type);
+        eprintln!("[Binder] Attempting to bind statement: {stmt_type:?}");
         Err(BindError::NotImplemented { statement_type: stmt_type.to_string() })
     }
 }

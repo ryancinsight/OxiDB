@@ -26,7 +26,7 @@ pub struct IndexScanOperator<S: KeyValueStore<Key, Vec<u8>>> {
 }
 
 impl<S: KeyValueStore<Key, Vec<u8>>> IndexScanOperator<S> {
-    pub fn new(
+    pub const fn new(
         store: Arc<RwLock<S>>,                    // Changed to Arc<RwLock<S>>
         index_manager: Arc<RwLock<IndexManager>>, // Changed to Arc<RwLock<IndexManager>>
         index_name: String,
@@ -34,7 +34,7 @@ impl<S: KeyValueStore<Key, Vec<u8>>> IndexScanOperator<S> {
         snapshot_id: u64,
         committed_ids: Arc<HashSet<u64>>,
     ) -> Self {
-        IndexScanOperator {
+        Self {
             store,
             index_manager,
             index_name,
@@ -63,7 +63,7 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for IndexScanOp
             .index_manager
             .read()
             .map_err(|e| {
-                OxidbError::LockTimeout(format!("Failed to acquire read lock on index manager: {}", e))
+                OxidbError::LockTimeout(format!("Failed to acquire read lock on index manager: {e}"))
             })?
             .find_by_index(&self.index_name, &self.scan_value)?) // Acquire read lock
         .unwrap_or_default();
@@ -84,8 +84,7 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for IndexScanOp
                 Ok(guard) => guard,
                 Err(e) => {
                     return Some(Err(OxidbError::LockTimeout(format!(
-                        "Failed to acquire read lock on store for PK {:?}: {}",
-                        pk, e
+                        "Failed to acquire read lock on store for PK {pk:?}: {e}"
                     ))))
                 }
             };

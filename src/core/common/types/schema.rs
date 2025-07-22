@@ -8,7 +8,7 @@ pub struct ColumnDef {
 }
 
 impl ColumnDef {
-    pub fn new(name: String, data_type: DataType, is_nullable: bool) -> Self {
+    #[must_use] pub const fn new(name: String, data_type: DataType, is_nullable: bool) -> Self {
         Self {
             name,
             data_type,
@@ -23,11 +23,11 @@ pub struct Schema {
 }
 
 impl Schema {
-    pub fn new(columns: Vec<ColumnDef>) -> Self {
+    #[must_use] pub const fn new(columns: Vec<ColumnDef>) -> Self {
         Self { columns }
     }
 
-    pub fn get_column_index(&self, name: &str) -> Option<usize> {
+    #[must_use] pub fn get_column_index(&self, name: &str) -> Option<usize> {
         self.columns.iter().position(|col| col.name == name)
     }
 }

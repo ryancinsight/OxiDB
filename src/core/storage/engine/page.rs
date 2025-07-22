@@ -31,18 +31,18 @@ impl TryFrom<u8> for PageType {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(PageType::Meta),
-            1 => Ok(PageType::Data),
-            2 => Ok(PageType::Index),
-            255 => Ok(PageType::Unknown),
-            _ => Err(OxidbError::Deserialization(format!("Invalid PageType value: {}", value))),
+            0 => Ok(Self::Meta),
+            1 => Ok(Self::Data),
+            2 => Ok(Self::Index),
+            255 => Ok(Self::Unknown),
+            _ => Err(OxidbError::Deserialization(format!("Invalid PageType value: {value}"))),
         }
     }
 }
 
 impl From<PageType> for u8 {
     fn from(page_type: PageType) -> Self {
-        page_type as u8
+        page_type as Self
     }
 }
 
@@ -55,8 +55,8 @@ pub struct PageHeader {
 }
 
 impl PageHeader {
-    pub fn new(page_id: PageId, page_type: PageType) -> Self {
-        PageHeader {
+    #[must_use] pub const fn new(page_id: PageId, page_type: PageType) -> Self {
+        Self {
             page_id,
             page_type,
             lsn: 0, // Lsn is u64, default to 0
@@ -90,7 +90,7 @@ impl PageHeader {
         let lsn = cursor.read_u64::<LittleEndian>()?; // Lsn is u64
         let flags = cursor.read_u8()?;
 
-        Ok(PageHeader { page_id, page_type, lsn, flags })
+        Ok(Self { page_id, page_type, lsn, flags })
     }
 }
 
@@ -101,14 +101,14 @@ pub struct Page {
 }
 
 impl Page {
-    pub fn new(page_id: PageId, page_type: PageType) -> Self {
+    #[must_use] pub fn new(page_id: PageId, page_type: PageType) -> Self {
         let header = PageHeader::new(page_id, page_type);
         // Data initialized to zeros, size of PAGE_SIZE - PAGE_HEADER_SIZE
         let data_size = PAGE_SIZE - PAGE_HEADER_SIZE;
-        Page { header, data: vec![0; data_size] }
+        Self { header, data: vec![0; data_size] }
     }
 
-    pub fn get_page_id(&self) -> PageId {
+    #[must_use] pub const fn get_page_id(&self) -> PageId {
         self.header.page_id
     }
 
@@ -154,11 +154,11 @@ impl Page {
         let mut data = vec![0u8; data_size];
         data.copy_from_slice(&buffer[PAGE_HEADER_SIZE..PAGE_SIZE]);
 
-        Ok(Page { header, data })
+        Ok(Self { header, data })
     }
 
     /// Get the LSN (Log Sequence Number) of this page
-    pub fn get_lsn(&self) -> Lsn {
+    #[must_use] pub const fn get_lsn(&self) -> Lsn {
         self.header.lsn
     }
 

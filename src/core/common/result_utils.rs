@@ -9,7 +9,7 @@ use std::fmt::Debug;
 /// A trait for converting various error types into `OxidbError`
 /// Follows SOLID's Dependency Inversion Principle by depending on abstractions
 pub trait IntoOxidbError<T> {
-    /// Convert the result into a Result<T, OxidbError>
+    /// Convert the result into a Result<T, `OxidbError`>
     fn into_oxidb_error(self) -> Result<T, OxidbError>;
 }
 
@@ -30,7 +30,7 @@ pub trait ResultExt<T, E> {
     where
         F: FnOnce() -> String;
     
-    /// Convert to OxidbError with a static context
+    /// Convert to `OxidbError` with a static context
     fn with_static_context(self, context: &'static str) -> Result<T, OxidbError>;
 }
 
@@ -46,7 +46,7 @@ where
     }
     
     fn with_static_context(self, context: &'static str) -> Result<T, OxidbError> {
-        self.map_err(|e| OxidbError::Other(format!("{}: {:?}", context, e)))
+        self.map_err(|e| OxidbError::Other(format!("{context}: {e:?}")))
     }
 }
 

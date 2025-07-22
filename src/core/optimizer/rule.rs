@@ -34,7 +34,7 @@ pub struct RuleManager {
 
 impl RuleManager {
     /// Create a new rule manager
-    pub fn new() -> Self {
+    #[must_use] pub fn new() -> Self {
         Self {
             rules: Vec::new(),
         }
@@ -61,7 +61,7 @@ impl RuleManager {
     }
     
     /// Get the number of rules
-    pub fn rule_count(&self) -> usize {
+    #[must_use] pub fn rule_count(&self) -> usize {
         self.rules.len()
     }
 }

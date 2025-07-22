@@ -12,7 +12,7 @@ pub const PAGE_SIZE: u64 = 4096;
 /// Sentinel Page ID to signify the end of the free list or no page.
 pub const SENTINEL_PAGE_ID: PageId = u64::MAX; // u64::MAX is already used by tree.SENTINEL_PAGE_ID
 /// The size of the metadata stored at the beginning of the B+Tree file.
-/// order (u32) + root_page_id (u64) + next_available_page_id (u64) + free_list_head_page_id (u64)
+/// order (u32) + `root_page_id` (u64) + `next_available_page_id` (u64) + `free_list_head_page_id` (u64)
 pub const METADATA_SIZE: u64 = 4 + 8 + 8 + 8;
 
 #[derive(Debug)]
@@ -38,7 +38,7 @@ impl PageManager {
             .write(true)
             .create(create_new_if_not_exists) // Create if specified
             .truncate(create_new_if_not_exists && !file_exists) // Truncate if newly created
-            .open(&path)?;
+            .open(path)?;
 
         if file_exists && file_obj.metadata()?.len() >= METADATA_SIZE {
             file_obj.seek(SeekFrom::Start(0))?;
@@ -65,8 +65,7 @@ impl PageManager {
                 // This case should be handled carefully. For now, log or return error.
                 // Let's prefer the loaded order if the file was valid.
                 eprintln!(
-                    "Warning: Order mismatch. Provided: {}, Loaded: {}. Using loaded order.",
-                    order, effective_order
+                    "Warning: Order mismatch. Provided: {order}, Loaded: {effective_order}. Using loaded order."
                 );
             }
 
@@ -82,8 +81,7 @@ impl PageManager {
             if order < 3 {
                 // Min order check
                 return Err(OxidbError::TreeLogicError(format!(
-                    "Order {} is too small. Minimum order is 3.",
-                    order
+                    "Order {order} is too small. Minimum order is 3."
                 )));
             }
             let initial_root_page_id = 0; // Root always starts at page 0
@@ -103,7 +101,7 @@ impl PageManager {
             // File does not exist, and create_new_if_not_exists is false
             Err(OxidbError::Io(io::Error::new(
                 io::ErrorKind::NotFound,
-                format!("B+Tree file not found at {:?} and not allowed to create.", path),
+                format!("B+Tree file not found at {path:?} and not allowed to create."),
             )))
         }
     }
@@ -111,7 +109,7 @@ impl PageManager {
     // Internal write_metadata, expects file lock to be already acquired or not needed (e.g. during new)
     fn write_metadata_internal(&mut self) -> Result<(), OxidbError> {
         let mut file = self.file_handle.lock().map_err(|e| {
-            OxidbError::BorrowError(format!("Mutex lock error for write_metadata_internal: {}", e))
+            OxidbError::BorrowError(format!("Mutex lock error for write_metadata_internal: {e}"))
         })?;
         file.seek(SeekFrom::Start(0))?;
         file.write_all(&(self.order as u32).to_be_bytes())?; // Assuming order fits u32
@@ -128,11 +126,11 @@ impl PageManager {
     }
 
     // Getter methods for metadata needed by BPlusTreeIndex
-    pub fn get_order(&self) -> usize {
+    pub const fn get_order(&self) -> usize {
         self.order
     }
 
-    pub fn get_root_page_id(&self) -> PageId {
+    pub const fn get_root_page_id(&self) -> PageId {
         self.root_page_id
     }
 
@@ -150,8 +148,7 @@ impl PageManager {
             // Read the first 8 bytes of this page to get the next free page ID
             let mut file = self.file_handle.lock().map_err(|e| {
                 OxidbError::BorrowError(format!(
-                    "Mutex lock error for allocate (read free list): {}",
-                    e
+                    "Mutex lock error for allocate (read free list): {e}"
                 ))
             })?;
             let offset = PAGE_SIZE.saturating_add(new_page_id.saturating_mul(PAGE_SIZE)); // Metadata is on page 0, actual data pages start after PAGE_SIZE offset
@@ -176,7 +173,7 @@ impl PageManager {
         }
 
         let mut file = self.file_handle.lock().map_err(|e| {
-            OxidbError::BorrowError(format!("Mutex lock error for deallocate: {}", e))
+            OxidbError::BorrowError(format!("Mutex lock error for deallocate: {e}"))
         })?;
         let offset = PAGE_SIZE.saturating_add(page_id_to_free.saturating_mul(PAGE_SIZE));
         file.seek(SeekFrom::Start(offset))?;
@@ -189,7 +186,7 @@ impl PageManager {
 
     pub fn read_node(&self, page_id: PageId) -> Result<BPlusTreeNode, OxidbError> {
         let mut file = self.file_handle.lock().map_err(|e| {
-            OxidbError::BorrowError(format!("Mutex lock error for read_node: {}", e))
+            OxidbError::BorrowError(format!("Mutex lock error for read_node: {e}"))
         })?;
         let offset = PAGE_SIZE.saturating_add(page_id.saturating_mul(PAGE_SIZE));
         file.seek(SeekFrom::Start(offset))?;
@@ -202,7 +199,7 @@ impl PageManager {
         let mut page_buffer = vec![0u8; page_size_usize];
 
         match file.read_exact(&mut page_buffer) {
-            Ok(_) => BPlusTreeNode::from_bytes(&page_buffer).map_err(OxidbError::from),
+            Ok(()) => BPlusTreeNode::from_bytes(&page_buffer).map_err(OxidbError::from),
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
                 Err(OxidbError::NodeNotFound(page_id))
             }
@@ -212,7 +209,7 @@ impl PageManager {
 
     pub fn write_node(&mut self, node: &BPlusTreeNode) -> Result<(), OxidbError> {
         let mut file = self.file_handle.lock().map_err(|e| {
-            OxidbError::BorrowError(format!("Mutex lock error for write_node: {}", e))
+            OxidbError::BorrowError(format!("Mutex lock error for write_node: {e}"))
         })?;
         let page_id = node.get_page_id();
         let offset = PAGE_SIZE.saturating_add(page_id.saturating_mul(PAGE_SIZE));
@@ -241,7 +238,7 @@ impl PageManager {
 
     pub fn sync_all_files(&self) -> Result<(), OxidbError> {
         let file = self.file_handle.lock().map_err(|e| {
-            OxidbError::BorrowError(format!("Mutex lock error for sync_all_files: {}", e))
+            OxidbError::BorrowError(format!("Mutex lock error for sync_all_files: {e}"))
         })?;
         file.sync_all().map_err(OxidbError::from)
     }

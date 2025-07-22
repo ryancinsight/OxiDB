@@ -22,10 +22,10 @@ pub enum TransactionState {
 impl fmt::Display for TransactionState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TransactionState::Active => write!(f, "Active"),
-            TransactionState::Committed => write!(f, "Committed"),
-            TransactionState::Aborted => write!(f, "Aborted"),
-            TransactionState::Undoing => write!(f, "Undoing"),
+            Self::Active => write!(f, "Active"),
+            Self::Committed => write!(f, "Committed"),
+            Self::Aborted => write!(f, "Aborted"),
+            Self::Undoing => write!(f, "Undoing"),
         }
     }
 }
@@ -50,12 +50,12 @@ pub enum RecoveryState {
 impl fmt::Display for RecoveryState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RecoveryState::NotStarted => write!(f, "Not Started"),
-            RecoveryState::Analysis => write!(f, "Analysis Phase"),
-            RecoveryState::Redo => write!(f, "Redo Phase"),
-            RecoveryState::Undo => write!(f, "Undo Phase"),
-            RecoveryState::Completed => write!(f, "Completed"),
-            RecoveryState::Failed => write!(f, "Failed"),
+            Self::NotStarted => write!(f, "Not Started"),
+            Self::Analysis => write!(f, "Analysis Phase"),
+            Self::Redo => write!(f, "Redo Phase"),
+            Self::Undo => write!(f, "Undo Phase"),
+            Self::Completed => write!(f, "Completed"),
+            Self::Failed => write!(f, "Failed"),
         }
     }
 }
@@ -74,18 +74,18 @@ pub struct TransactionInfo {
 }
 
 impl TransactionInfo {
-    /// Creates a new TransactionInfo for an active transaction.
-    pub fn new_active(tx_id: TransactionId, last_lsn: Lsn) -> Self {
+    /// Creates a new `TransactionInfo` for an active transaction.
+    #[must_use] pub const fn new_active(tx_id: TransactionId, last_lsn: Lsn) -> Self {
         Self { tx_id, state: TransactionState::Active, last_lsn, undo_next_lsn: Some(last_lsn) }
     }
 
-    /// Creates a new TransactionInfo for a committed transaction.
-    pub fn new_committed(tx_id: TransactionId, last_lsn: Lsn) -> Self {
+    /// Creates a new `TransactionInfo` for a committed transaction.
+    #[must_use] pub const fn new_committed(tx_id: TransactionId, last_lsn: Lsn) -> Self {
         Self { tx_id, state: TransactionState::Committed, last_lsn, undo_next_lsn: None }
     }
 
-    /// Creates a new TransactionInfo for an aborted transaction.
-    pub fn new_aborted(tx_id: TransactionId, last_lsn: Lsn) -> Self {
+    /// Creates a new `TransactionInfo` for an aborted transaction.
+    #[must_use] pub const fn new_aborted(tx_id: TransactionId, last_lsn: Lsn) -> Self {
         Self { tx_id, state: TransactionState::Aborted, last_lsn, undo_next_lsn: None }
     }
 
@@ -110,7 +110,7 @@ impl TransactionInfo {
     }
 
     /// Returns true if the transaction needs to be undone during recovery.
-    pub fn needs_undo(&self) -> bool {
+    #[must_use] pub const fn needs_undo(&self) -> bool {
         matches!(self.state, TransactionState::Active | TransactionState::Undoing)
     }
 }
@@ -139,14 +139,14 @@ pub enum RecoveryError {
 impl fmt::Display for RecoveryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            RecoveryError::WalError(msg) => write!(f, "WAL Error: {}", msg),
-            RecoveryError::AnalysisError(msg) => write!(f, "Analysis Error: {}", msg),
-            RecoveryError::RedoError(msg) => write!(f, "Redo Error: {}", msg),
-            RecoveryError::UndoError(msg) => write!(f, "Undo Error: {}", msg),
-            RecoveryError::InvalidLogRecord(msg) => write!(f, "Invalid Log Record: {}", msg),
-            RecoveryError::InconsistentState(msg) => write!(f, "Inconsistent State: {}", msg),
-            RecoveryError::IoError(msg) => write!(f, "I/O Error: {}", msg),
-            RecoveryError::ConfigError(msg) => write!(f, "Configuration Error: {}", msg),
+            Self::WalError(msg) => write!(f, "WAL Error: {msg}"),
+            Self::AnalysisError(msg) => write!(f, "Analysis Error: {msg}"),
+            Self::RedoError(msg) => write!(f, "Redo Error: {msg}"),
+            Self::UndoError(msg) => write!(f, "Undo Error: {msg}"),
+            Self::InvalidLogRecord(msg) => write!(f, "Invalid Log Record: {msg}"),
+            Self::InconsistentState(msg) => write!(f, "Inconsistent State: {msg}"),
+            Self::IoError(msg) => write!(f, "I/O Error: {msg}"),
+            Self::ConfigError(msg) => write!(f, "Configuration Error: {msg}"),
         }
     }
 }
@@ -155,7 +155,7 @@ impl std::error::Error for RecoveryError {}
 
 impl From<std::io::Error> for RecoveryError {
     fn from(error: std::io::Error) -> Self {
-        RecoveryError::IoError(error.to_string())
+        Self::IoError(error.to_string())
     }
 }
 

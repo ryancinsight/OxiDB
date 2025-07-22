@@ -4,7 +4,7 @@
 //! focusing on boolean logic optimization and literal value simplification.
 //! 
 //! Note: Full arithmetic expression folding (2 + 3 -> 5) requires extending
-//! the AST to support BinaryOp, UnaryOp, and FunctionCall expression types.
+//! the AST to support `BinaryOp`, `UnaryOp`, and `FunctionCall` expression types.
 //! This implementation works with the current AST structure.
 
 use crate::core::common::OxidbError;
@@ -36,22 +36,22 @@ impl ConstantFoldingRule {
                 
                 // Boolean short-circuit evaluation
                 // If left is false, entire AND is false
-                if let Some(false) = self.try_evaluate_to_boolean(&folded_left)? {
+                if self.try_evaluate_to_boolean(&folded_left)? == Some(false) {
                     return Ok(self.create_boolean_literal(false));
                 }
                 
                 // If right is false, entire AND is false
-                if let Some(false) = self.try_evaluate_to_boolean(&folded_right)? {
+                if self.try_evaluate_to_boolean(&folded_right)? == Some(false) {
                     return Ok(self.create_boolean_literal(false));
                 }
                 
                 // If left is true, result is right
-                if let Some(true) = self.try_evaluate_to_boolean(&folded_left)? {
+                if self.try_evaluate_to_boolean(&folded_left)? == Some(true) {
                     return Ok(folded_right);
                 }
                 
                 // If right is true, result is left
-                if let Some(true) = self.try_evaluate_to_boolean(&folded_right)? {
+                if self.try_evaluate_to_boolean(&folded_right)? == Some(true) {
                     return Ok(folded_left);
                 }
                 
@@ -72,22 +72,22 @@ impl ConstantFoldingRule {
                 
                 // Boolean short-circuit evaluation
                 // If left is true, entire OR is true
-                if let Some(true) = self.try_evaluate_to_boolean(&folded_left)? {
+                if self.try_evaluate_to_boolean(&folded_left)? == Some(true) {
                     return Ok(self.create_boolean_literal(true));
                 }
                 
                 // If right is true, entire OR is true
-                if let Some(true) = self.try_evaluate_to_boolean(&folded_right)? {
+                if self.try_evaluate_to_boolean(&folded_right)? == Some(true) {
                     return Ok(self.create_boolean_literal(true));
                 }
                 
                 // If left is false, result is right
-                if let Some(false) = self.try_evaluate_to_boolean(&folded_left)? {
+                if self.try_evaluate_to_boolean(&folded_left)? == Some(false) {
                     return Ok(folded_right);
                 }
                 
                 // If right is false, result is left
-                if let Some(false) = self.try_evaluate_to_boolean(&folded_right)? {
+                if self.try_evaluate_to_boolean(&folded_right)? == Some(false) {
                     return Ok(folded_left);
                 }
                 

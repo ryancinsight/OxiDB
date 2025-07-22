@@ -7,8 +7,8 @@ pub type PrimaryKey = Vec<u8>; // Represents the primary key of a record
 
 /// Blink Tree Node with concurrent access support
 /// Key differences from B+ tree:
-/// 1. right_link: Points to right sibling for concurrent traversal
-/// 2. high_key: Highest key in this subtree (for safe concurrent access)
+/// 1. `right_link`: Points to right sibling for concurrent traversal
+/// 2. `high_key`: Highest key in this subtree (for safe concurrent access)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BlinkTreeNode {
     Internal {
@@ -38,91 +38,91 @@ pub enum SerializationError {
 
 impl From<std::io::Error> for SerializationError {
     fn from(err: std::io::Error) -> Self {
-        SerializationError::IoError(err.to_string())
+        Self::IoError(err.to_string())
     }
 }
 
 impl BlinkTreeNode {
     /// Get the page ID of this node
-    pub fn get_page_id(&self) -> PageId {
+    #[must_use] pub const fn get_page_id(&self) -> PageId {
         match self {
-            BlinkTreeNode::Internal { page_id, .. } => *page_id,
-            BlinkTreeNode::Leaf { page_id, .. } => *page_id,
+            Self::Internal { page_id, .. } => *page_id,
+            Self::Leaf { page_id, .. } => *page_id,
         }
     }
 
     /// Get the parent page ID
-    pub fn get_parent_page_id(&self) -> Option<PageId> {
+    #[must_use] pub const fn get_parent_page_id(&self) -> Option<PageId> {
         match self {
-            BlinkTreeNode::Internal { parent_page_id, .. } => *parent_page_id,
-            BlinkTreeNode::Leaf { parent_page_id, .. } => *parent_page_id,
+            Self::Internal { parent_page_id, .. } => *parent_page_id,
+            Self::Leaf { parent_page_id, .. } => *parent_page_id,
         }
     }
 
     /// Set the parent page ID
     pub fn set_parent_page_id(&mut self, parent_id: Option<PageId>) {
         match self {
-            BlinkTreeNode::Internal { parent_page_id, .. } => *parent_page_id = parent_id,
-            BlinkTreeNode::Leaf { parent_page_id, .. } => *parent_page_id = parent_id,
+            Self::Internal { parent_page_id, .. } => *parent_page_id = parent_id,
+            Self::Leaf { parent_page_id, .. } => *parent_page_id = parent_id,
         }
     }
 
     /// Get the keys in this node
-    pub fn get_keys(&self) -> &Vec<KeyType> {
+    #[must_use] pub const fn get_keys(&self) -> &Vec<KeyType> {
         match self {
-            BlinkTreeNode::Internal { keys, .. } => keys,
-            BlinkTreeNode::Leaf { keys, .. } => keys,
+            Self::Internal { keys, .. } => keys,
+            Self::Leaf { keys, .. } => keys,
         }
     }
 
     /// Check if this is a leaf node
-    pub fn is_leaf(&self) -> bool {
-        matches!(self, BlinkTreeNode::Leaf { .. })
+    #[must_use] pub const fn is_leaf(&self) -> bool {
+        matches!(self, Self::Leaf { .. })
     }
 
     /// Get children (only for internal nodes)
-    pub fn get_children(&self) -> Result<&Vec<PageId>, &'static str> {
+    pub const fn get_children(&self) -> Result<&Vec<PageId>, &'static str> {
         match self {
-            BlinkTreeNode::Internal { children, .. } => Ok(children),
-            BlinkTreeNode::Leaf { .. } => Err("Leaf nodes don't have children"),
+            Self::Internal { children, .. } => Ok(children),
+            Self::Leaf { .. } => Err("Leaf nodes don't have children"),
         }
     }
 
     /// Get right link (NEW for Blink tree)
-    pub fn get_right_link(&self) -> Option<PageId> {
+    #[must_use] pub const fn get_right_link(&self) -> Option<PageId> {
         match self {
-            BlinkTreeNode::Internal { right_link, .. } => *right_link,
-            BlinkTreeNode::Leaf { right_link, .. } => *right_link,
+            Self::Internal { right_link, .. } => *right_link,
+            Self::Leaf { right_link, .. } => *right_link,
         }
     }
 
     /// Set right link (NEW for Blink tree)
     pub fn set_right_link(&mut self, link: Option<PageId>) {
         match self {
-            BlinkTreeNode::Internal { right_link, .. } => *right_link = link,
-            BlinkTreeNode::Leaf { right_link, .. } => *right_link = link,
+            Self::Internal { right_link, .. } => *right_link = link,
+            Self::Leaf { right_link, .. } => *right_link = link,
         }
     }
 
     /// Get high key (NEW for Blink tree)
-    pub fn get_high_key(&self) -> Option<&KeyType> {
+    #[must_use] pub const fn get_high_key(&self) -> Option<&KeyType> {
         match self {
-            BlinkTreeNode::Internal { high_key, .. } => high_key.as_ref(),
-            BlinkTreeNode::Leaf { high_key, .. } => high_key.as_ref(),
+            Self::Internal { high_key, .. } => high_key.as_ref(),
+            Self::Leaf { high_key, .. } => high_key.as_ref(),
         }
     }
 
     /// Set high key (NEW for Blink tree)
     pub fn set_high_key(&mut self, key: Option<KeyType>) {
         match self {
-            BlinkTreeNode::Internal { high_key, .. } => *high_key = key,
-            BlinkTreeNode::Leaf { high_key, .. } => *high_key = key,
+            Self::Internal { high_key, .. } => *high_key = key,
+            Self::Leaf { high_key, .. } => *high_key = key,
         }
     }
 
     /// Check if node is safe for concurrent access (NEW for Blink tree)
-    /// A node is safe if the search key is <= high_key or high_key is None
-    pub fn is_safe_for_key(&self, search_key: &KeyType) -> bool {
+    /// A node is safe if the search key is <= `high_key` or `high_key` is None
+    #[must_use] pub fn is_safe_for_key(&self, search_key: &KeyType) -> bool {
         match self.get_high_key() {
             Some(high_key) => search_key <= high_key,
             None => true, // No high key means this node handles all keys >= its min
@@ -130,15 +130,15 @@ impl BlinkTreeNode {
     }
 
     /// Check if this node is full
-    pub fn is_full(&self, order: usize) -> bool {
+    #[must_use] pub fn is_full(&self, order: usize) -> bool {
         match self {
-            BlinkTreeNode::Internal { keys, .. } => keys.len() >= order - 1,
-            BlinkTreeNode::Leaf { keys, .. } => keys.len() >= order,
+            Self::Internal { keys, .. } => keys.len() >= order - 1,
+            Self::Leaf { keys, .. } => keys.len() >= order,
         }
     }
 
     /// Check if this node can lend a key or should be merged
-    pub fn can_lend_or_merge(&self, order: usize) -> bool {
+    #[must_use] pub fn can_lend_or_merge(&self, order: usize) -> bool {
         let min_keys = if self.is_leaf() {
             (order + 1) / 2 // Ceiling division for leaf nodes
         } else {
@@ -151,7 +151,7 @@ impl BlinkTreeNode {
     /// Find the index of the child that should contain the given key
     pub fn find_child_index(&self, key: &KeyType) -> Result<usize, &'static str> {
         match self {
-            BlinkTreeNode::Internal { keys, .. } => {
+            Self::Internal { keys, .. } => {
                 // For internal nodes, find the rightmost child whose key is <= search key
                 let mut index = 0;
                 for (i, node_key) in keys.iter().enumerate() {
@@ -163,7 +163,7 @@ impl BlinkTreeNode {
                 }
                 Ok(index)
             }
-            BlinkTreeNode::Leaf { .. } => Err("Leaf nodes don't have children"),
+            Self::Leaf { .. } => Err("Leaf nodes don't have children"),
         }
     }
 
@@ -179,7 +179,7 @@ impl BlinkTreeNode {
         }
 
         match self {
-            BlinkTreeNode::Internal { keys, children, .. } => {
+            Self::Internal { keys, children, .. } => {
                 if let InsertValue::Page(page_id) = value {
                     // Find insertion point
                     let mut insert_pos = keys.len();
@@ -197,7 +197,7 @@ impl BlinkTreeNode {
                     Err("Internal nodes require PageId values")
                 }
             }
-            BlinkTreeNode::Leaf { keys, values, .. } => {
+            Self::Leaf { keys, values, .. } => {
                 if let InsertValue::PrimaryKeys(pk_list) = value {
                     // Find insertion point
                     let mut insert_pos = keys.len();
@@ -227,9 +227,9 @@ impl BlinkTreeNode {
         &mut self,
         _order: usize,
         new_page_id: PageId,
-    ) -> Result<(KeyType, BlinkTreeNode), &'static str> {
+    ) -> Result<(KeyType, Self), &'static str> {
         match self {
-            BlinkTreeNode::Internal {
+            Self::Internal {
                 keys,
                 children,
                 parent_page_id,
@@ -246,7 +246,7 @@ impl BlinkTreeNode {
                 keys.pop(); // Remove the split key from left node
 
                 // Create new right node
-                let new_right_node = BlinkTreeNode::Internal {
+                let new_right_node = Self::Internal {
                     page_id: new_page_id,
                     parent_page_id: *parent_page_id,
                     keys: right_keys,
@@ -261,7 +261,7 @@ impl BlinkTreeNode {
 
                 Ok((split_key, new_right_node))
             }
-            BlinkTreeNode::Leaf { keys, values, parent_page_id, right_link, high_key, .. } => {
+            Self::Leaf { keys, values, parent_page_id, right_link, high_key, .. } => {
                 let mid = keys.len() / 2;
 
                 // Split keys and values
@@ -270,7 +270,7 @@ impl BlinkTreeNode {
                 let split_key = right_keys[0].clone(); // First key of right node goes up
 
                 // Create new right node
-                let new_right_node = BlinkTreeNode::Leaf {
+                let new_right_node = Self::Leaf {
                     page_id: new_page_id,
                     parent_page_id: *parent_page_id,
                     keys: right_keys,
@@ -293,7 +293,7 @@ impl BlinkTreeNode {
         let mut buffer = Vec::new();
 
         match self {
-            BlinkTreeNode::Internal {
+            Self::Internal {
                 page_id,
                 parent_page_id,
                 keys,
@@ -339,7 +339,7 @@ impl BlinkTreeNode {
                     buffer.write_all(&child.to_le_bytes())?;
                 }
             }
-            BlinkTreeNode::Leaf { page_id, parent_page_id, keys, values, right_link, high_key } => {
+            Self::Leaf { page_id, parent_page_id, keys, values, right_link, high_key } => {
                 // Write node type (1 = Leaf)
                 buffer.write_all(&[1u8])?;
 
@@ -432,7 +432,7 @@ impl BlinkTreeNode {
                     children.push(read_u64(&mut cursor)?);
                 }
 
-                Ok(BlinkTreeNode::Internal {
+                Ok(Self::Internal {
                     page_id,
                     parent_page_id,
                     keys,
@@ -464,7 +464,7 @@ impl BlinkTreeNode {
                     values.push(pk_list);
                 }
 
-                Ok(BlinkTreeNode::Leaf {
+                Ok(Self::Leaf {
                     page_id,
                     parent_page_id,
                     keys,
@@ -478,7 +478,7 @@ impl BlinkTreeNode {
     }
 }
 
-/// Enum for inserting either PageId (internal) or PrimaryKeys (leaf)
+/// Enum for inserting either `PageId` (internal) or `PrimaryKeys` (leaf)
 pub enum InsertValue {
     Page(PageId),
     PrimaryKeys(Vec<PrimaryKey>),

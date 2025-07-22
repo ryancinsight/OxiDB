@@ -84,14 +84,14 @@ pub trait GraphTransaction {
 pub struct GraphFactory;
 
 impl GraphFactory {
-    /// Create a new in-memory graph store with full GraphStore capabilities
-    /// Returns a trait object that provides GraphOperations, GraphQuery, and GraphTransaction
+    /// Create a new in-memory graph store with full `GraphStore` capabilities
+    /// Returns a trait object that provides `GraphOperations`, `GraphQuery`, and `GraphTransaction`
     pub fn create_memory_graph() -> Result<Box<dyn storage::GraphStore>, OxidbError> {
         Ok(Box::new(storage::InMemoryGraphStore::new()))
     }
     
-    /// Create a persistent graph store with full GraphStore capabilities
-    /// Returns a trait object that provides GraphOperations, GraphQuery, and GraphTransaction
+    /// Create a persistent graph store with full `GraphStore` capabilities
+    /// Returns a trait object that provides `GraphOperations`, `GraphQuery`, and `GraphTransaction`
     pub fn create_persistent_graph(path: impl AsRef<std::path::Path>) -> Result<Box<dyn storage::GraphStore>, OxidbError> {
         Ok(Box::new(storage::PersistentGraphStore::new(path)?))
     }

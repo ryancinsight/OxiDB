@@ -36,7 +36,7 @@ pub trait VectorOperations {
     fn is_valid(&self) -> bool;
 }
 
-/// Implementation of VectorOperations for VectorData
+/// Implementation of `VectorOperations` for `VectorData`
 impl VectorOperations for VectorData {
     fn similarity(&self, other: &VectorData, metric: SimilarityMetric) -> Result<f32, OxidbError> {
         if self.dimension != other.dimension {

@@ -4,7 +4,7 @@ use crate::core::common::OxidbError;
 
 /// Enumeration of supported similarity metrics
 /// Following the Open/Closed Principle - open for extension, closed for modification
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SimilarityMetric {
     /// Cosine similarity (angle between vectors)
     Cosine,
@@ -18,9 +18,9 @@ impl SimilarityMetric {
     /// Calculate similarity between two vectors using this metric
     pub fn calculate(&self, v1: &[f32], v2: &[f32]) -> Result<f32, OxidbError> {
         match self {
-            SimilarityMetric::Cosine => cosine_similarity(v1, v2),
-            SimilarityMetric::DotProduct => dot_product(v1, v2),
-            SimilarityMetric::Euclidean => {
+            Self::Cosine => cosine_similarity(v1, v2),
+            Self::DotProduct => dot_product(v1, v2),
+            Self::Euclidean => {
                 // Convert Euclidean distance to similarity
                 let distance = euclidean_distance(v1, v2)?;
                 Ok(1.0 / (1.0 + distance)) // Normalize to [0,1] range
@@ -29,11 +29,11 @@ impl SimilarityMetric {
     }
 
     /// Get the name of the similarity metric
-    pub fn name(&self) -> &'static str {
+    #[must_use] pub const fn name(&self) -> &'static str {
         match self {
-            SimilarityMetric::Cosine => "cosine",
-            SimilarityMetric::DotProduct => "dot_product",
-            SimilarityMetric::Euclidean => "euclidean",
+            Self::Cosine => "cosine",
+            Self::DotProduct => "dot_product",
+            Self::Euclidean => "euclidean",
         }
     }
 }

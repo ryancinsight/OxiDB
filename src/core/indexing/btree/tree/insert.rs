@@ -33,7 +33,7 @@ impl BPlusTreeIndex {
         }
 
         if current_leaf_node.get_keys().len() >= self.order {
-            self.handle_split(current_leaf_node, path_to_leaf)?
+            self.handle_split(current_leaf_node, path_to_leaf)?;
         } else {
             self.write_node(&current_leaf_node)?;
         }

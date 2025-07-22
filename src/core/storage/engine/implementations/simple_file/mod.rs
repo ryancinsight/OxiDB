@@ -1,4 +1,4 @@
-//! Module for the SimpleFileKvStore implementation.
+//! Module for the `SimpleFileKvStore` implementation.
 
 mod persistence; // Will be pub(super)
 mod recovery;

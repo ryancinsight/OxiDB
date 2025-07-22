@@ -35,7 +35,7 @@ fn get_processor_for_event(event: &Event) -> Box<dyn Processor> {
 /// This function now delegates the actual processing logic to specialized
 /// `Processor` implementations, adhering to the "Flat Logic" principle.
 pub fn process_event(event: &Event) -> EventResult {
-    println!("Processing event via dynamic dispatch: {:?}", event); // Updated logging
+    println!("Processing event via dynamic dispatch: {event:?}"); // Updated logging
 
     // 1. Get the appropriate processor for the event.
     let processor = get_processor_for_event(event);

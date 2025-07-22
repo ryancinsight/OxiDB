@@ -42,7 +42,7 @@ pub struct ParameterContext<'a> {
 }
 
 impl<'a> ParameterContext<'a> {
-    pub fn new(parameters: &'a [crate::core::common::types::Value]) -> Self {
+    #[must_use] pub const fn new(parameters: &'a [crate::core::common::types::Value]) -> Self {
         Self { parameters }
     }
     
@@ -54,7 +54,7 @@ impl<'a> ParameterContext<'a> {
         })
     }
     
-    /// Convert an AstExpressionValue to a DataType, resolving parameters
+    /// Convert an `AstExpressionValue` to a `DataType`, resolving parameters
     pub fn resolve_expression_value(&self, expr: &crate::core::query::sql::ast::AstExpressionValue) -> Result<DataType, OxidbError> {
         match expr {
             crate::core::query::sql::ast::AstExpressionValue::Literal(literal) => {
@@ -163,7 +163,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 
         if index_manager.get_index("default_value_index").is_none() {
             index_manager.create_index("default_value_index".to_string(), "hash").map_err(|e| {
-                OxidbError::Index(format!("Failed to create default_value_index: {}", e))
+                OxidbError::Index(format!("Failed to create default_value_index: {e}"))
             })?;
         }
 
@@ -172,7 +172,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         transaction_manager.add_committed_tx_id(TransactionId(0)); // Use TransactionId struct
         let index_manager_arc = Arc::new(RwLock::new(index_manager)); // Wrap in RwLock
 
-        let mut executor = QueryExecutor {
+        let mut executor = Self {
             store: Arc::new(RwLock::new(store)),
             transaction_manager,
             lock_manager: LockManager::new(),
@@ -195,29 +195,27 @@ impl QueryExecutor<SimpleFileKvStore> {
         self.store
             .read()
             .map_err(|e| {
-                OxidbError::LockTimeout(format!("Failed to acquire read lock on store for persist: {}", e))
+                OxidbError::LockTimeout(format!("Failed to acquire read lock on store for persist: {e}"))
             })?
             .persist()?;
         self.index_manager
             .read()
             .map_err(|e| {
                 OxidbError::LockTimeout(format!(
-                    "Failed to acquire read lock on index manager for persist: {}",
-                    e
+                    "Failed to acquire read lock on index manager for persist: {e}"
                 ))
             })?
             .save_all_indexes()
     }
 
-    pub fn index_base_path(&self) -> PathBuf {
+    #[must_use] pub fn index_base_path(&self) -> PathBuf {
         // Using expect here as base_path is not expected to fail often and is not directly part of core query execution flow.
         // A more robust solution might propagate the error.
         self.index_manager
             .read()
             .map_err(|e| {
                 OxidbError::LockTimeout(format!(
-                    "Failed to acquire read lock on index manager for base_path: {}",
-                    e
+                    "Failed to acquire read lock on index manager for base_path: {e}"
                 ))
             })
             .expect("Failed to get lock for index_base_path; this should not happen in normal operation as it's a read lock.")
@@ -231,12 +229,12 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
     /// Helper function to construct the key used for storing a table's schema.
     fn schema_key(table_name: &str) -> Vec<u8> {
-        format!("_schema_{}", table_name).into_bytes()
+        format!("_schema_{table_name}").into_bytes()
     }
 
     /// Retrieves the schema for a given table name.
-    /// This involves constructing the schema key and using the store's get_schema method.
-    /// It uses snapshot_id = 0 (read committed state) as schemas are DDL and should be stable.
+    /// This involves constructing the schema key and using the store's `get_schema` method.
+    /// It uses `snapshot_id` = 0 (read committed state) as schemas are DDL and should be stable.
     pub(crate) fn get_table_schema(
         &self,
         table_name: &str,
@@ -256,8 +254,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             .read()
             .map_err(|e| {
                 OxidbError::LockTimeout(format!(
-                    "Failed to acquire read lock on store for get_table_schema: {}",
-                    e
+                    "Failed to acquire read lock on store for get_table_schema: {e}"
                 ))
             })?
             .get_schema(&schema_key, 0, &committed_ids)?
@@ -289,15 +286,14 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             .read()
             .map_err(|e| {
                 OxidbError::LockTimeout(format!(
-                    "Failed to acquire read lock on index manager for check_uniqueness: {}",
-                    e
+                    "Failed to acquire read lock on index manager for check_uniqueness: {e}"
                 ))
             })?
             .find_by_index(&index_name, &serialized_value)
         {
             Ok(Some(pks)) => {
                 if pks.is_empty() {
-                    eprintln!("[Executor::check_uniqueness] Warning: Value {:?} found in index '{}' but with no associated primary keys.", value_to_check, index_name);
+                    eprintln!("[Executor::check_uniqueness] Warning: Value {value_to_check:?} found in index '{index_name}' but with no associated primary keys.");
                     Ok(())
                 } else {
                     match current_row_pk_bytes {
@@ -420,7 +416,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                         crate::core::transaction::UndoOperation::IndexRevertInsert {
                             index_name: "default_value_index".to_string(),
                             key: key.clone(),
-                            value_for_index: new_value_for_index_bytes.clone(),
+                            value_for_index: new_value_for_index_bytes,
                         },
                     );
                 }
@@ -443,7 +439,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         // For "default_value_index", use the already serialized `value_bytes` (from serialize_data_type).
         let serialized_value_for_index = value_bytes;
         indexed_values_map
-            .insert("default_value_index".to_string(), serialized_value_for_index.clone());
+            .insert("default_value_index".to_string(), serialized_value_for_index);
 
         self.index_manager.write().unwrap().on_insert_data(&indexed_values_map, &key)?; // Acquire write lock
 
@@ -478,34 +474,31 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         let result_bytes_opt =
             self.store.read().unwrap().get(&key, snapshot_id.0, &committed_ids_set)?;
 
-        match result_bytes_opt {
-            Some(bytes) => {
-                println!(
-                    "[QE::handle_get] Bytes before deserializing for key '{:?}': {:?}",
-                    String::from_utf8_lossy(&key),
-                    bytes
-                );
-                println!(
-                    "[QE::handle_get] Bytes as string for key '{:?}': '{}'",
-                    String::from_utf8_lossy(&key),
-                    String::from_utf8_lossy(&bytes)
-                );
-                // Deserialize using the project's standard deserialization
-                let value_dt = crate::core::common::serialization::deserialize_data_type(&bytes)?;
-                println!(
-                    "[QE::handle_get] Deserialized DataType for key '{:?}': {:?}",
-                    String::from_utf8_lossy(&key),
-                    value_dt
-                );
-                Ok(ExecutionResult::Value(Some(value_dt)))
-            }
-            None => {
-                println!(
-                    "[QE::handle_get] Key '{:?}' not found in store.",
-                    String::from_utf8_lossy(&key)
-                ); // Debug print
-                Ok(ExecutionResult::Value(None))
-            }
+        if let Some(bytes) = result_bytes_opt {
+            println!(
+                "[QE::handle_get] Bytes before deserializing for key '{:?}': {:?}",
+                String::from_utf8_lossy(&key),
+                bytes
+            );
+            println!(
+                "[QE::handle_get] Bytes as string for key '{:?}': '{}'",
+                String::from_utf8_lossy(&key),
+                String::from_utf8_lossy(&bytes)
+            );
+            // Deserialize using the project's standard deserialization
+            let value_dt = crate::core::common::serialization::deserialize_data_type(&bytes)?;
+            println!(
+                "[QE::handle_get] Deserialized DataType for key '{:?}': {:?}",
+                String::from_utf8_lossy(&key),
+                value_dt
+            );
+            Ok(ExecutionResult::Value(Some(value_dt)))
+        } else {
+            println!(
+                "[QE::handle_get] Key '{:?}' not found in store.",
+                String::from_utf8_lossy(&key)
+            ); // Debug print
+            Ok(ExecutionResult::Value(None))
         }
     }
 
@@ -660,8 +653,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         // 4. Execute the plan
         // The DeleteOperator's iterator now yields (Key, SerializedRowData) tuples.
         let mut deleted_items_info: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
-        let mut result_iterator = physical_plan_root.execute()?;
-        while let Some(result_tuple_res) = result_iterator.next() {
+        let result_iterator = physical_plan_root.execute()?;
+        for result_tuple_res in result_iterator {
             let tuple = result_tuple_res?; // This tuple is Vec<DataType>
             if tuple.len() == 2 {
                 let key_bytes_opt = match &tuple[0] {
@@ -698,7 +691,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
         let deleted_count = deleted_items_info.len();
         let schema_arc = self.get_table_schema(&table_name)?.ok_or_else(|| {
-            OxidbError::Execution(format!("Table '{}' not found for DELETE.", table_name))
+            OxidbError::Execution(format!("Table '{table_name}' not found for DELETE."))
         })?;
         let schema = schema_arc.as_ref();
 
@@ -726,8 +719,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 }
                 _ => {
                     return Err(OxidbError::Execution(format!(
-                        "Deleted row data is not a map or expected placeholder. Type: {:?}",
-                        deleted_row_datatype
+                        "Deleted row data is not a map or expected placeholder. Type: {deleted_row_datatype:?}"
                     )))
                 }
             };
@@ -970,7 +962,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
         // Scan all rows in the table to find the maximum value
         // This is inefficient but works for our current implementation
-        let table_prefix = format!("{}_pk_{}_", table_name, column_name);
+        let table_prefix = format!("{table_name}_pk_{column_name}_");
 
         let committed_ids: HashSet<u64> = HashSet::new();
         let snapshot_id = 0;
@@ -982,7 +974,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         // This assumes primary keys are sequential integers starting from 1
         for i in 1..=10000 {
             // Scan up to 10000 records
-            let pk_key = format!("{}{}", table_prefix, i);
+            let pk_key = format!("{table_prefix}{i}");
             if let Ok(Some(row_data)) =
                 store.get(&pk_key.as_bytes().to_vec(), snapshot_id, &committed_ids)
             {
@@ -993,7 +985,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 {
                     if let crate::core::types::DataType::Map(map) = data_type {
                         // Look for the column by matching the key directly
-                        for (key_bytes, value) in map.0.iter() {
+                        for (key_bytes, value) in &map.0 {
                             // Try to decode the key as UTF-8 string
                             if let Ok(key_str) = String::from_utf8(key_bytes.clone()) {
                                 // Check if this is the column we're looking for
@@ -1029,8 +1021,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         if actual_param_count != expected_param_count {
             return Err(OxidbError::InvalidInput {
                 message: format!(
-                    "Parameter count mismatch: expected {} parameters, got {}",
-                    expected_param_count, actual_param_count
+                    "Parameter count mismatch: expected {expected_param_count} parameters, got {actual_param_count}"
                 )
             });
         }
@@ -1116,7 +1107,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         }
     }
 
-    fn count_parameters_in_expression_value(&self, expr: &crate::core::query::sql::ast::AstExpressionValue) -> usize {
+    const fn count_parameters_in_expression_value(&self, expr: &crate::core::query::sql::ast::AstExpressionValue) -> usize {
         use crate::core::query::sql::ast::AstExpressionValue;
         match expr {
             AstExpressionValue::Parameter(_) => 1,

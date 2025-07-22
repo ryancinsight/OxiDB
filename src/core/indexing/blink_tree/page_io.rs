@@ -13,7 +13,7 @@ pub const PAGE_SIZE: u64 = 4096;
 pub const SENTINEL_PAGE_ID: PageId = u64::MAX;
 
 /// Size of metadata section at the beginning of file
-/// Format: order (4 bytes) + root_page_id (8 bytes) + next_available_page_id (8 bytes) + free_list_head_page_id (8 bytes)
+/// Format: order (4 bytes) + `root_page_id` (8 bytes) + `next_available_page_id` (8 bytes) + `free_list_head_page_id` (8 bytes)
 pub const METADATA_SIZE: u64 = 4 + 8 + 8 + 8;
 
 /// Page manager for Blink tree with concurrent access support
@@ -70,11 +70,11 @@ impl BlinkPageManager {
         } else {
             return Err(BlinkTreeError::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("Blink tree file not found: {:?}", path),
+                format!("Blink tree file not found: {path:?}"),
             )));
         };
 
-        let mut manager = BlinkPageManager {
+        let mut manager = Self {
             file_handle: Mutex::new(file),
             order,
             root_page_id: SENTINEL_PAGE_ID,
@@ -158,12 +158,12 @@ impl BlinkPageManager {
 
     /// Get the order of the Blink tree
     #[allow(dead_code)]
-    pub fn get_order(&self) -> usize {
+    pub const fn get_order(&self) -> usize {
         self.order
     }
 
     /// Get the root page ID
-    pub fn get_root_page_id(&self) -> PageId {
+    pub const fn get_root_page_id(&self) -> PageId {
         self.root_page_id
     }
 
@@ -225,8 +225,7 @@ impl BlinkPageManager {
 
         if data_length == 0 || data_length > (PAGE_SIZE as usize - 4) {
             return Err(BlinkTreeError::Generic(format!(
-                "Invalid data length {} for page {}",
-                data_length, page_id
+                "Invalid data length {data_length} for page {page_id}"
             )));
         }
 

@@ -29,8 +29,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             .read()
             .map_err(|e| {
                 OxidbError::LockTimeout(format!(
-                    "Failed to acquire read lock on index manager for find: {}",
-                    e
+                    "Failed to acquire read lock on index manager for find: {e}"
                 ))
             })?
             .find_by_index(&index_name, &value)?; // Propagate error from find_by_index
@@ -76,8 +75,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                 .read()
                 .map_err(|e| {
                     OxidbError::LockTimeout(format!(
-                        "Failed to acquire read lock on store for find by index: {}",
-                        e
+                        "Failed to acquire read lock on store for find by index: {e}"
                     ))
                 })?
                 .get(&primary_key, snapshot_id.0, &committed_ids_for_store)
@@ -100,8 +98,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                                 // deserialize_data_type already returns OxidbError.
                                 // Log the original error context if needed, then propagate.
                                 eprintln!(
-                                    "Error deserializing data (via deserialize_data_type) for key {:?}: {}",
-                                    primary_key, deserialize_err
+                                    "Error deserializing data (via deserialize_data_type) for key {primary_key:?}: {deserialize_err}"
                                 );
                                 return Err(deserialize_err);
                             }
@@ -133,7 +130,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         // For now, assume CREATE TABLE should fail if table (schema) already exists.
         // The get_schema method uses snapshot_id 0 and default committed_ids.
         if self.get_table_schema(&table_name)?.is_some() {
-            return Err(OxidbError::AlreadyExists { name: format!("Table '{}'", table_name) });
+            return Err(OxidbError::AlreadyExists { name: format!("Table '{table_name}'") });
         }
 
         let schema_to_store = crate::core::types::schema::Schema::new(columns);
@@ -141,8 +138,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         // Serialize the Schema object. Assuming JSON serialization for now.
         let serialized_schema = serde_json::to_vec(&schema_to_store).map_err(|e| {
             OxidbError::Serialization(format!(
-                "Failed to serialize schema for table '{}': {}",
-                table_name, e
+                "Failed to serialize schema for table '{table_name}': {e}"
             ))
         })?;
 
@@ -156,9 +152,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         // Use the current transaction context (which will be Tx0 if auto-committing)
         let current_tx = self
             .transaction_manager
-            .get_active_transaction()
-            .map(|tx| tx.clone_for_store()) // Clone for store usage if active
-            .unwrap_or_else(|| Transaction::new(TransactionId(0))); // Fallback to new Tx0 if somehow none (should be set by execute_command)
+            .get_active_transaction().map_or_else(|| Transaction::new(TransactionId(0)), crate::core::transaction::Transaction::clone_for_store); // Fallback to new Tx0 if somehow none (should be set by execute_command)
 
         // Ensure prev_lsn is updated for the active transaction (likely Tx0)
         if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
@@ -169,8 +163,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             .write()
             .map_err(|e| {
                 OxidbError::LockTimeout(format!(
-                    "Failed to acquire write lock on store for create table: {}",
-                    e
+                    "Failed to acquire write lock on store for create table: {e}"
                 ))
             })?
             .put(
@@ -181,7 +174,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             )?;
 
         // Iterate through columns to create indexes for primary key or unique columns
-        for col_def in schema_to_store.columns.iter() {
+        for col_def in &schema_to_store.columns {
             if col_def.is_primary_key || col_def.is_unique {
                 let index_name = format!("idx_{}_{}", table_name, col_def.name);
                 // Using "hash" as the index type for simplicity, good for exact lookups.
@@ -192,14 +185,13 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                     .write()
                     .map_err(|e| {
                         OxidbError::LockTimeout(format!(
-                            "Failed to acquire write lock on index manager for create index: {}",
-                            e
+                            "Failed to acquire write lock on index manager for create index: {e}"
                         ))
                     })?
                     .create_index(index_name.clone(), "hash")
                 {
                     // Acquire write lock
-                    Ok(_) => {
+                    Ok(()) => {
                         eprintln!("[Executor::handle_create_table] Successfully created index '{}' for table '{}', column '{}'.", index_name, table_name, col_def.name);
                     }
                     Err(OxidbError::Index(msg)) if msg.contains("already exists") => {
@@ -208,7 +200,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
                         // and index naming convention is followed.
                         // We can choose to ignore this error or propagate it.
                         // For now, let's print a warning and continue, as the goal is to have the index.
-                        eprintln!("[Executor::handle_create_table] Warning: Index '{}' already exists. Assuming it's usable.", index_name);
+                        eprintln!("[Executor::handle_create_table] Warning: Index '{index_name}' already exists. Assuming it's usable.");
                     }
                     Err(e) => {
                         // For other errors during index creation, propagate them.

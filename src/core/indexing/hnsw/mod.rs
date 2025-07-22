@@ -17,23 +17,23 @@ fn map_hnsw_error_to_common(hnsw_error: HnswError) -> CommonError {
         HnswError::Io(io_err) => CommonError::Io(io_err),
         HnswError::Serialization(ser_err) => CommonError::Serialization(ser_err),
         HnswError::NodeNotFound(node_id) => {
-            CommonError::Index(format!("HNSW node not found: {}", node_id))
+            CommonError::Index(format!("HNSW node not found: {node_id}"))
         }
-        HnswError::InvalidVector(msg) => CommonError::Index(format!("Invalid vector: {}", msg)),
+        HnswError::InvalidVector(msg) => CommonError::Index(format!("Invalid vector: {msg}")),
         HnswError::DimensionMismatch { expected, actual } => {
             CommonError::VectorDimensionMismatch { dim1: expected, dim2: actual }
         }
-        HnswError::GraphError(msg) => CommonError::Index(format!("HNSW graph error: {}", msg)),
-        HnswError::Generic(msg) => CommonError::Index(format!("HNSW error: {}", msg)),
+        HnswError::GraphError(msg) => CommonError::Index(format!("HNSW graph error: {msg}")),
+        HnswError::Generic(msg) => CommonError::Index(format!("HNSW error: {msg}")),
         HnswError::LayerIndexOutOfBounds { index } => {
-            CommonError::Index(format!("HNSW layer index out of bounds: {}", index))
+            CommonError::Index(format!("HNSW layer index out of bounds: {index}"))
         }
         HnswError::MaxConnectionsExceeded { current, max } => {
-            CommonError::Index(format!("HNSW max connections exceeded: {}/{}", current, max))
+            CommonError::Index(format!("HNSW max connections exceeded: {current}/{max}"))
         }
         HnswError::EmptyGraph => CommonError::Index("HNSW graph is empty".to_string()),
         HnswError::InvalidEntryPoint { node_id } => {
-            CommonError::Index(format!("HNSW invalid entry point: {}", node_id))
+            CommonError::Index(format!("HNSW invalid entry point: {node_id}"))
         }
     }
 }

@@ -20,7 +20,7 @@ pub struct DeleteOperator<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'st
     pub primary_key_column_index: usize,
     pub committed_ids: Arc<HashSet<u64>>, // Added committed_ids
     // deleted_count will be stored in the iterator after execute
-    /// Tracks if perform_deletes has already been called.
+    /// Tracks if `perform_deletes` has already been called.
     processed_input: bool,
     /// The schema of the table being deleted from.
     schema: Arc<Schema>, // Added schema field
@@ -55,9 +55,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<
     ///
     /// This method iterates through tuples provided by the input operator, extracts
     /// the primary key, and deletes the corresponding row from the key-value store.
-    /// It also logs the delete operation via the LogManager.
+    /// It also logs the delete operation via the `LogManager`.
     ///
-    /// Returns a list of (primary_key, serialized_row_data) for each successfully
+    /// Returns a list of (`primary_key`, `serialized_row_data`) for each successfully
     /// deleted row, which can be used for updating indexes or other post-deletion tasks.
     fn perform_deletes(&mut self) -> Result<Vec<(Key, Vec<u8>)>, OxidbError> {
         let mut deleted_rows_info = Vec::new();
@@ -78,8 +78,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<
                 DataType::RawBytes(b) => b.clone(), // Handle RawBytes
                 _ => {
                     return Err(OxidbError::Execution(format!(
-                        "Unsupported primary key type {:?} for DELETE.",
-                        pk_data_type
+                        "Unsupported primary key type {pk_data_type:?} for DELETE."
                     )))
                 }
             };
@@ -105,7 +104,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<
                 .store
                 .write()
                 .map_err(|e| {
-                    OxidbError::LockTimeout(format!("Failed to acquire write lock on store: {}", e))
+                    OxidbError::LockTimeout(format!("Failed to acquire write lock on store: {e}"))
                 })?
                 .delete(&primary_key, &tx_for_store, lsn, &self.committed_ids)?;
             if was_deleted {
@@ -174,7 +173,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> ExecutionOperat
 /// Each item is a `Tuple` representing a deleted row, containing the primary key
 /// and the serialized row data as `DataType::RawBytes`.
 struct DeleteResultIterator {
-    /// A vector of (primary_key, serialized_row_data) for the deleted rows.
+    /// A vector of (`primary_key`, `serialized_row_data`) for the deleted rows.
     deleted_rows: Vec<(Key, Vec<u8>)>,
     /// The current index into the `deleted_rows` vector.
     current_index: usize,

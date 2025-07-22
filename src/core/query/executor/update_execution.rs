@@ -23,7 +23,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     ///    c. Applying the specified assignments to a temporary copy.
     ///    d. Performing constraint checks (NOT NULL, UNIQUE) on the modified data.
     ///    e. Updating relevant column-specific indexes.
-    ///    f. Updating the main "default_value_index" if the entire row data changed.
+    ///    f. Updating the main "`default_value_index`" if the entire row data changed.
     ///    g. Writing the updated row data to the store with a new LSN.
     ///    h. Recording undo operations for both data and index changes.
     /// 3. Returning the count of updated rows.
@@ -83,7 +83,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         let mut select_execution_tree = self.build_execution_tree(
             optimized_select_plan,
             plan_snapshot_id.0, // Pass u64
-            plan_committed_ids_u64_set.clone(),
+            plan_committed_ids_u64_set,
         )?;
         let mut keys_to_update: Vec<Key> = Vec::new();
         let rows_iter = select_execution_tree.execute()?;
@@ -99,10 +99,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             match tuple[0].clone() {
                 DataType::RawBytes(key_bytes) => keys_to_update.push(key_bytes),
                 val => {
-                    eprintln!("[DEBUG] handle_update unsupported key type from plan: {:?}", val);
+                    eprintln!("[DEBUG] handle_update unsupported key type from plan: {val:?}");
                     return Err(OxidbError::Type(format!(
-                        "Unsupported key type {:?} from UPDATE selection plan. Expected RawBytes.",
-                        val
+                        "Unsupported key type {val:?} from UPDATE selection plan. Expected RawBytes."
                     )));
                 }
             }
@@ -117,7 +116,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
         // Fetch schema once
         let schema_arc = self.get_table_schema(&source_table_name)?.ok_or_else(|| {
-            OxidbError::Execution(format!("Table '{}' not found for UPDATE.", source_table_name))
+            OxidbError::Execution(format!("Table '{source_table_name}' not found for UPDATE."))
         })?;
         let schema = schema_arc.as_ref();
 
@@ -242,7 +241,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                                         serialize_data_type(&old_value_for_column)?;
                                     self.index_manager
                                         .write()
-                                        .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for update (delete part): {}", e)))?
+                                        .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for update (delete part): {e}")))?
                                         .delete_from_index(
                                             &index_name,
                                             &old_serialized_column_value,
@@ -271,7 +270,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                                         serialize_data_type(&new_value_for_column)?;
                                     self.index_manager
                                         .write()
-                                        .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for update (insert part): {}", e)))?
+                                        .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for update (insert part): {e}")))?
                                         .insert_into_index(
                                             &index_name,
                                             &new_serialized_column_value,
@@ -370,7 +369,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                         .insert("default_value_index".to_string(), updated_value_bytes.clone());
                     self.index_manager
                         .write()
-                        .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for default_value_index update: {}", e)))?
+                        .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for default_value_index update: {e}")))?
                         .on_update_data(
                         // Acquire write lock
                         &old_map_for_index,
@@ -405,8 +404,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     .write()
                     .map_err(|e| {
                         OxidbError::LockTimeout(format!(
-                            "Failed to acquire write lock on store for update (put): {}",
-                            e
+                            "Failed to acquire write lock on store for update (put): {e}"
                         ))
                     })?
                     .put(

@@ -3,7 +3,7 @@ pub type KeyType = Vec<u8>;
 pub type PageId = u64; // Represents a page ID or offset in a file
 pub type PrimaryKey = Vec<u8>; // Represents the primary key of a record
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum BPlusTreeNode {
     Internal {
         page_id: PageId, // ID of this node's page
@@ -20,7 +20,7 @@ pub enum BPlusTreeNode {
     },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SerializationError {
     IoError(String),
     InvalidFormat(String),
@@ -29,66 +29,66 @@ pub enum SerializationError {
 
 impl From<std::io::Error> for SerializationError {
     fn from(err: std::io::Error) -> Self {
-        SerializationError::IoError(err.to_string())
+        Self::IoError(err.to_string())
     }
 }
 
 impl BPlusTreeNode {
     // --- Node Properties ---
-    pub fn get_page_id(&self) -> PageId {
+    #[must_use] pub const fn get_page_id(&self) -> PageId {
         match self {
-            BPlusTreeNode::Internal { page_id, .. } => *page_id,
-            BPlusTreeNode::Leaf { page_id, .. } => *page_id,
+            Self::Internal { page_id, .. } => *page_id,
+            Self::Leaf { page_id, .. } => *page_id,
         }
     }
 
-    pub fn get_parent_page_id(&self) -> Option<PageId> {
+    #[must_use] pub const fn get_parent_page_id(&self) -> Option<PageId> {
         match self {
-            BPlusTreeNode::Internal { parent_page_id, .. } => *parent_page_id,
-            BPlusTreeNode::Leaf { parent_page_id, .. } => *parent_page_id,
+            Self::Internal { parent_page_id, .. } => *parent_page_id,
+            Self::Leaf { parent_page_id, .. } => *parent_page_id,
         }
     }
 
     pub fn set_parent_page_id(&mut self, parent_id: Option<PageId>) {
         match self {
-            BPlusTreeNode::Internal { parent_page_id, .. } => *parent_page_id = parent_id,
-            BPlusTreeNode::Leaf { parent_page_id, .. } => *parent_page_id = parent_id,
+            Self::Internal { parent_page_id, .. } => *parent_page_id = parent_id,
+            Self::Leaf { parent_page_id, .. } => *parent_page_id = parent_id,
         }
     }
 
-    pub fn get_keys(&self) -> &Vec<KeyType> {
+    #[must_use] pub const fn get_keys(&self) -> &Vec<KeyType> {
         match self {
-            BPlusTreeNode::Internal { keys, .. } => keys,
-            BPlusTreeNode::Leaf { keys, .. } => keys,
+            Self::Internal { keys, .. } => keys,
+            Self::Leaf { keys, .. } => keys,
         }
     }
 
-    pub fn is_leaf(&self) -> bool {
-        matches!(self, BPlusTreeNode::Leaf { .. })
+    #[must_use] pub const fn is_leaf(&self) -> bool {
+        matches!(self, Self::Leaf { .. })
     }
 
     pub fn get_children(&self) -> Result<&Vec<PageId>, super::OxidbError> {
         // Changed error type path
         match self {
-            BPlusTreeNode::Internal { children, .. } => Ok(children),
-            BPlusTreeNode::Leaf { .. } => Err(super::OxidbError::TreeLogicError(
+            Self::Internal { children, .. } => Ok(children),
+            Self::Leaf { .. } => Err(super::OxidbError::TreeLogicError(
                 "Leaf nodes do not have children.".to_string(),
             )), // Changed error type path
         }
     }
 
-    pub fn is_full(&self, order: usize) -> bool {
+    #[must_use] pub fn is_full(&self, order: usize) -> bool {
         match self {
-            BPlusTreeNode::Internal { keys, .. } => keys.len() >= order.saturating_sub(1), // Max keys for internal node
-            BPlusTreeNode::Leaf { keys, .. } => keys.len() >= order.saturating_sub(1), // Max keys for leaf node (can be different, but often same as internal for simplicity)
+            Self::Internal { keys, .. } => keys.len() >= order.saturating_sub(1), // Max keys for internal node
+            Self::Leaf { keys, .. } => keys.len() >= order.saturating_sub(1), // Max keys for leaf node (can be different, but often same as internal for simplicity)
         }
     }
 
-    pub fn can_lend_or_merge(&self, order: usize) -> bool {
+    #[must_use] pub fn can_lend_or_merge(&self, order: usize) -> bool {
         let min_keys = order.saturating_sub(1) / 2;
         match self {
-            BPlusTreeNode::Internal { keys, .. } => keys.len() > min_keys,
-            BPlusTreeNode::Leaf { keys, .. } => keys.len() > min_keys,
+            Self::Internal { keys, .. } => keys.len() > min_keys,
+            Self::Leaf { keys, .. } => keys.len() > min_keys,
         }
     }
 
@@ -100,7 +100,7 @@ impl BPlusTreeNode {
     /// If `key >= keys[len-1]`, returns `len`.
     pub fn find_child_index(&self, key: &KeyType) -> Result<usize, &'static str> {
         match self {
-            BPlusTreeNode::Internal { keys, .. } => {
+            Self::Internal { keys, .. } => {
                 // Perform a binary search for the appropriate child index
                 // In a B+ tree internal node with keys [k1, k2, ..., kn] and children [c0, c1, ..., cn]:
                 // - Child c0 contains keys < k1
@@ -114,13 +114,13 @@ impl BPlusTreeNode {
                 // This gives us the correct child index to follow.
                 Ok(keys.partition_point(|k_partition| k_partition.as_slice() <= key.as_slice()))
             }
-            BPlusTreeNode::Leaf { .. } => {
+            Self::Leaf { .. } => {
                 Err("find_child_index is only applicable to Internal nodes")
             }
         }
     }
 
-    /// Inserts a key and corresponding value (PageId for Internal, Vec<PrimaryKey> for Leaf)
+    /// Inserts a key and corresponding value (`PageId` for Internal, Vec<PrimaryKey> for Leaf)
     /// into the node, maintaining sorted order of keys. This is a simplified version
     /// that does not handle splits. It's intended for use when it's known that the
     /// node has space.
@@ -139,8 +139,8 @@ impl BPlusTreeNode {
         }
 
         let keys_vec = match self {
-            BPlusTreeNode::Internal { keys, .. } => keys,
-            BPlusTreeNode::Leaf { keys, .. } => keys,
+            Self::Internal { keys, .. } => keys,
+            Self::Leaf { keys, .. } => keys,
         };
 
         // Find the correct position to insert the key to maintain sorted order.
@@ -153,22 +153,22 @@ impl BPlusTreeNode {
         let insertion_point = keys_vec.partition_point(|k| k.as_slice() < key.as_slice());
 
         match (self, value) {
-            (BPlusTreeNode::Internal { keys, children, .. }, InsertValue::Page(page_id)) => {
+            (Self::Internal { keys, children, .. }, InsertValue::Page(page_id)) => {
                 keys.insert(insertion_point, key);
                 // The new page_id becomes the right child of the newly inserted key.
                 // So, it's inserted at insertion_point + 1 in the children vector.
                 children.insert(insertion_point.saturating_add(1), page_id);
                 Ok(())
             }
-            (BPlusTreeNode::Leaf { keys, values, .. }, InsertValue::PrimaryKeys(pk_vec)) => {
+            (Self::Leaf { keys, values, .. }, InsertValue::PrimaryKeys(pk_vec)) => {
                 keys.insert(insertion_point, key);
                 values.insert(insertion_point, pk_vec);
                 Ok(())
             }
-            (BPlusTreeNode::Internal { .. }, InsertValue::PrimaryKeys(_)) => {
+            (Self::Internal { .. }, InsertValue::PrimaryKeys(_)) => {
                 Err("Attempted to insert primary keys into an internal node.")
             }
-            (BPlusTreeNode::Leaf { .. }, InsertValue::Page(_)) => {
+            (Self::Leaf { .. }, InsertValue::Page(_)) => {
                 Err("Attempted to insert a page ID into a leaf node.")
             }
         }
@@ -185,7 +185,7 @@ impl BPlusTreeNode {
         &mut self,
         order: usize,
         new_page_id: PageId,
-    ) -> Result<(KeyType, BPlusTreeNode), &'static str> {
+    ) -> Result<(KeyType, Self), &'static str> {
         if !self.is_full(order) {
             // Technically, splits can happen before "full" in some strategies (e.g. to maintain a minimum fill factor proactively)
             // but for a basic implementation, we usually split when it's strictly full.
@@ -195,7 +195,7 @@ impl BPlusTreeNode {
         let mid_point = order.saturating_sub(1) / 2; // Index of the median key for promotion/copying
 
         match self {
-            BPlusTreeNode::Internal { page_id: _page_id, parent_page_id, keys, children } => {
+            Self::Internal { page_id: _page_id, parent_page_id, keys, children } => {
                 // A node is split when it has 'order' keys (i.e., it's overfull).
                 // Max keys is order-1. So, an overfull node has order keys.
                 // Or, if split is called pre-emptively on a "just full" node (order-1 keys)
@@ -214,7 +214,7 @@ impl BPlusTreeNode {
                 let new_children =
                     children.drain(mid_point.saturating_add(1)..).collect::<Vec<PageId>>(); // Children after median
 
-                let new_internal_node = BPlusTreeNode::Internal {
+                let new_internal_node = Self::Internal {
                     page_id: new_page_id,
                     parent_page_id: *parent_page_id, // New node shares the same parent initially
                     keys: new_keys,
@@ -223,7 +223,7 @@ impl BPlusTreeNode {
                 // `self` is now the left node, already modified by `drain`.
                 Ok((median_key, new_internal_node))
             }
-            BPlusTreeNode::Leaf { page_id: _page_id, parent_page_id, keys, values, next_leaf } => {
+            Self::Leaf { page_id: _page_id, parent_page_id, keys, values, next_leaf } => {
                 // Similar to internal nodes, a leaf is split when it has 'order' keys/values.
                 if keys.len() < order {
                     return Err("Leaf node not overfull enough to split (requires 'order' key-value pairs).");
@@ -238,7 +238,7 @@ impl BPlusTreeNode {
                 let original_next_leaf = *next_leaf; // Save original next_leaf for the new node
                 *next_leaf = Some(new_page_id); // Current node points to the new sibling
 
-                let new_leaf_node = BPlusTreeNode::Leaf {
+                let new_leaf_node = Self::Leaf {
                     page_id: new_page_id,
                     parent_page_id: *parent_page_id, // New node shares the same parent initially
                     keys: new_keys,
@@ -256,10 +256,10 @@ impl BPlusTreeNode {
     pub fn to_bytes(&self) -> Result<Vec<u8>, SerializationError> {
         let mut bytes = Vec::new();
         match self {
-            BPlusTreeNode::Internal { page_id, parent_page_id, keys, children } => {
+            Self::Internal { page_id, parent_page_id, keys, children } => {
                 bytes.push(0u8); // 0 for Internal Node
                 bytes.extend_from_slice(&page_id.to_be_bytes());
-                bytes.extend_from_slice(&(parent_page_id.is_some() as u8).to_be_bytes());
+                bytes.extend_from_slice(&u8::from(parent_page_id.is_some()).to_be_bytes());
                 if let Some(pid) = parent_page_id {
                     bytes.extend_from_slice(&pid.to_be_bytes());
                 }
@@ -293,10 +293,10 @@ impl BPlusTreeNode {
                     bytes.extend_from_slice(&child_id.to_be_bytes());
                 }
             }
-            BPlusTreeNode::Leaf { page_id, parent_page_id, keys, values, next_leaf } => {
+            Self::Leaf { page_id, parent_page_id, keys, values, next_leaf } => {
                 bytes.push(1u8); // 1 for Leaf Node
                 bytes.extend_from_slice(&page_id.to_be_bytes());
-                bytes.extend_from_slice(&(parent_page_id.is_some() as u8).to_be_bytes());
+                bytes.extend_from_slice(&u8::from(parent_page_id.is_some()).to_be_bytes());
                 if let Some(pid) = parent_page_id {
                     bytes.extend_from_slice(&pid.to_be_bytes());
                 }
@@ -348,7 +348,7 @@ impl BPlusTreeNode {
                     }
                 }
                 // Serialize next_leaf option
-                bytes.extend_from_slice(&(next_leaf.is_some() as u8).to_be_bytes());
+                bytes.extend_from_slice(&u8::from(next_leaf.is_some()).to_be_bytes());
                 if let Some(id) = next_leaf {
                     bytes.extend_from_slice(&id.to_be_bytes());
                 }
@@ -379,7 +379,7 @@ impl BPlusTreeNode {
                 for _ in 0..num_children {
                     children.push(read_u64(&mut cursor)?);
                 }
-                Ok(BPlusTreeNode::Internal { page_id, parent_page_id, keys, children })
+                Ok(Self::Internal { page_id, parent_page_id, keys, children })
             }
             1 => {
                 // Leaf Node
@@ -402,7 +402,7 @@ impl BPlusTreeNode {
                 }
                 let has_next_leaf = read_bool(&mut cursor)?;
                 let next_leaf = if has_next_leaf { Some(read_u64(&mut cursor)?) } else { None };
-                Ok(BPlusTreeNode::Leaf { page_id, parent_page_id, keys, values, next_leaf })
+                Ok(Self::Leaf { page_id, parent_page_id, keys, values, next_leaf })
             }
             _ => Err(SerializationError::UnknownNodeType(node_type)),
         }

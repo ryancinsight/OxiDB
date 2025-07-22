@@ -16,7 +16,7 @@ pub struct Frame {
 
 impl Frame {
     fn new() -> Self {
-        Frame {
+        Self {
             page_id: None,
             data: Arc::new(RwLock::new([0u8; PAGE_SIZE])),
             pin_count: 0,
@@ -52,7 +52,7 @@ impl BufferPoolManager {
             free_list.push_back(i);
         }
 
-        BufferPoolManager {
+        Self {
             frames,
             page_table: HashMap::new(),
             free_list,
@@ -255,7 +255,7 @@ impl BufferPoolManager {
         // Collect all page IDs currently in the buffer pool.
         // Cloning is important here to avoid issues with borrowing self.page_table
         // while calling self.flush_page (which also borrows self).
-        let page_ids: Vec<CommonPageId> = self.page_table.keys().cloned().collect();
+        let page_ids: Vec<CommonPageId> = self.page_table.keys().copied().collect();
 
         for page_id in page_ids {
             self.flush_page(page_id)?;

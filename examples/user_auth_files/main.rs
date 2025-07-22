@@ -88,7 +88,7 @@ fn ensure_tables_exist(db: &mut Oxidb) -> Result<(), OxidbError> {
                 && !e.to_string().to_lowercase().contains("duplicate table name")
             {
                 eprintln!("Error creating/ensuring table '{}': {:?}", USERS_TABLE, e);
-                return Err(e.into());
+                return Err(e);
             }
         }
     }
@@ -105,7 +105,7 @@ fn ensure_tables_exist(db: &mut Oxidb) -> Result<(), OxidbError> {
                 && !e.to_string().to_lowercase().contains("duplicate table name")
             {
                 eprintln!("Error creating/ensuring table '{}': {:?}", USER_FILES_TABLE, e);
-                return Err(e.into());
+                return Err(e);
             }
         }
     }

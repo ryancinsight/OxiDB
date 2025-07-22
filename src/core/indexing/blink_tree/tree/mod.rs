@@ -37,7 +37,7 @@ impl BlinkTreeIndex {
         let page_manager = BlinkPageManager::new(&path, order, true)?;
         let root_page_id = page_manager.get_root_page_id();
 
-        let mut tree = BlinkTreeIndex { name, path, order, root_page_id, page_manager };
+        let mut tree = Self { name, path, order, root_page_id, page_manager };
 
         // If this is a new tree (no root), create the initial root leaf node
         if tree.root_page_id == SENTINEL_PAGE_ID {
@@ -182,12 +182,12 @@ impl BlinkTreeIndex {
     }
 
     /// Get the order of this tree
-    pub fn get_order(&self) -> usize {
+    pub const fn get_order(&self) -> usize {
         self.order
     }
 
     /// Get the current root page ID
-    pub fn get_root_page_id(&self) -> PageId {
+    pub const fn get_root_page_id(&self) -> PageId {
         self.root_page_id
     }
 }

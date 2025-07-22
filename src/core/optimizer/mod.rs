@@ -24,7 +24,7 @@ pub struct Optimizer {
 
 impl Optimizer {
     /// Create a new optimizer
-    pub fn new() -> Self {
+    #[must_use] pub fn new() -> Self {
         Self {
             planner: CostBasedPlanner::new(),
             rule_manager: RuleManager::new(),
@@ -32,12 +32,12 @@ impl Optimizer {
     }
     
     /// Get the cost-based planner
-    pub fn planner(&self) -> &CostBasedPlanner {
+    #[must_use] pub const fn planner(&self) -> &CostBasedPlanner {
         &self.planner
     }
     
     /// Get the rule manager
-    pub fn rule_manager(&self) -> &RuleManager {
+    #[must_use] pub const fn rule_manager(&self) -> &RuleManager {
         &self.rule_manager
     }
     
@@ -205,7 +205,7 @@ impl Optimizer {
     }
     
     /// Optimize a logical plan using optimization rules
-    pub fn optimize(&self, plan: QueryPlanNode) -> Result<QueryPlanNode, crate::core::common::error::OxidbError> {
+    pub const fn optimize(&self, plan: QueryPlanNode) -> Result<QueryPlanNode, crate::core::common::error::OxidbError> {
         // For now, just return the plan as-is
         // In the future, this would apply optimization rules
         Ok(plan)
@@ -280,7 +280,7 @@ impl Optimizer {
         }
     }
     
-    /// Try to convert a Filter over TableScan to an IndexScan
+    /// Try to convert a Filter over `TableScan` to an `IndexScan`
     fn try_convert_to_index_scan(
         &self, 
         table_name: &str, 
@@ -336,7 +336,7 @@ impl Optimizer {
     /// Find a suitable index for the given predicate
     fn find_suitable_index(&self, predicate: &SimplePredicate, index_manager: &std::sync::Arc<std::sync::RwLock<crate::core::indexing::manager::IndexManager>>) -> Result<Option<String>, crate::core::common::error::OxidbError> {
         let _index_manager_guard = index_manager.read().map_err(|e| {
-            crate::core::common::error::OxidbError::LockTimeout(format!("Failed to acquire read lock on index manager: {}", e))
+            crate::core::common::error::OxidbError::LockTimeout(format!("Failed to acquire read lock on index manager: {e}"))
         })?;
         
         if predicate.operator == "=" {

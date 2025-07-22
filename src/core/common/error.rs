@@ -100,27 +100,27 @@ pub enum OxidbError {
 impl From<crate::core::indexing::btree::OxidbError> for OxidbError {
     fn from(err: crate::core::indexing::btree::OxidbError) -> Self {
         match err {
-            crate::core::indexing::btree::OxidbError::Io(e) => OxidbError::Io(e),
+            crate::core::indexing::btree::OxidbError::Io(e) => Self::Io(e),
             crate::core::indexing::btree::OxidbError::Serialization(se) => {
-                OxidbError::Serialization(format!("BTree Node Serialization: {:?}", se))
+                Self::Serialization(format!("BTree Node Serialization: {se:?}"))
             }
             crate::core::indexing::btree::OxidbError::NodeNotFound(page_id) => {
-                OxidbError::Index(format!("BTree Node not found on page: {}", page_id))
+                Self::Index(format!("BTree Node not found on page: {page_id}"))
             }
             crate::core::indexing::btree::OxidbError::PageFull(s) => {
-                OxidbError::Index(format!("BTree PageFull: {}", s))
+                Self::Index(format!("BTree PageFull: {s}"))
             }
             crate::core::indexing::btree::OxidbError::UnexpectedNodeType => {
-                OxidbError::Index("BTree Unexpected Node Type".to_string())
+                Self::Index("BTree Unexpected Node Type".to_string())
             }
             crate::core::indexing::btree::OxidbError::TreeLogicError(s) => {
-                OxidbError::Index(format!("BTree Logic Error: {}", s))
+                Self::Index(format!("BTree Logic Error: {s}"))
             }
             crate::core::indexing::btree::OxidbError::BorrowError(s) => {
-                OxidbError::LockTimeout(format!("BTree Borrow Error: {}", s)) // Or a new specific variant
+                Self::LockTimeout(format!("BTree Borrow Error: {s}")) // Or a new specific variant
             }
             crate::core::indexing::btree::OxidbError::Generic(s) => {
-                OxidbError::Internal(format!("BTree Generic Error: {}", s))
+                Self::Internal(format!("BTree Generic Error: {s}"))
             }
         }
     }
@@ -129,9 +129,10 @@ impl From<crate::core::indexing::btree::OxidbError> for OxidbError {
 impl OxidbError {
     /// Create an IO error with a custom message
     /// This maintains compatibility with existing code
+    #[must_use]
     pub fn io_error(message: String) -> Self {
         use std::io::{Error, ErrorKind};
-        OxidbError::Io(Error::new(ErrorKind::Other, message))
+        Self::Io(Error::new(ErrorKind::Other, message))
     }
 }
 

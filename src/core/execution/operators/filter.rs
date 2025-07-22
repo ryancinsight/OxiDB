@@ -12,8 +12,8 @@ pub struct FilterOperator {
 }
 
 impl FilterOperator {
-    pub fn new(input: Box<dyn ExecutionOperator + Send + Sync>, predicate: Expression) -> Self {
-        FilterOperator { input, predicate }
+    #[must_use] pub fn new(input: Box<dyn ExecutionOperator + Send + Sync>, predicate: Expression) -> Self {
+        Self { input, predicate }
     }
 
     // Static version of evaluate_predicate for use in the closure
@@ -70,7 +70,7 @@ impl FilterOperator {
                         _ => Err(OxidbError::Type("Type mismatch for '<=' operator".into())),
                     },
                     _ => Err(OxidbError::NotImplemented {
-                        feature: format!("Operator '{}' not implemented in CompareOp.", op),
+                        feature: format!("Operator '{op}' not implemented in CompareOp."),
                     }),
                 }
             }
@@ -95,7 +95,7 @@ impl FilterOperator {
                         Self::static_evaluate_predicate(tuple, right)
                     }
                     _ => Err(OxidbError::NotImplemented {
-                        feature: format!("Logical operator '{}' not implemented in BinaryOp.", op),
+                        feature: format!("Logical operator '{op}' not implemented in BinaryOp."),
                     }),
                 }
             }
@@ -105,9 +105,9 @@ impl FilterOperator {
         }
     }
 
-    /// Helper function to evaluate an expression to a concrete DataType.
+    /// Helper function to evaluate an expression to a concrete `DataType`.
     /// Supports Literal and Column expressions.
-    /// For Column expressions, it attempts to resolve column names against a DataType::Map
+    /// For Column expressions, it attempts to resolve column names against a `DataType::Map`
     /// assumed to be the first element of the tuple.
     fn evaluate_expression_to_datatype<'a>(
         // Lifetime 'a tied to tuple
@@ -158,8 +158,7 @@ impl FilterOperator {
 
 
                             Err(OxidbError::InvalidInput { message: format!(
-                                "Column '{}' not found in map at tuple[1]. Available keys: {:?}",
-                                col_name, available_keys
+                                "Column '{col_name}' not found in map at tuple[1]. Available keys: {available_keys:?}"
                             )})
                         }
                         _ => Err(OxidbError::Type(format!(
@@ -188,7 +187,7 @@ impl ExecutionOperator for FilterOperator {
 
         let iterator = input_iter.filter_map(move |tuple_result| match tuple_result {
             Ok(tuple) => {
-                match FilterOperator::static_evaluate_predicate(&tuple, &predicate_clone) {
+                match Self::static_evaluate_predicate(&tuple, &predicate_clone) {
                     Ok(true) => Some(Ok(tuple)),
                     Ok(false) => None,
                     Err(e) => Some(Err(e)),

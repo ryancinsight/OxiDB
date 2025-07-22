@@ -49,24 +49,24 @@ pub(super) fn replay_wal_into_cache(
             Err(OxidbError::Io(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
             Err(OxidbError::Deserialization(msg)) => {
                 // Changed
-                eprintln!("WAL corruption detected (Deserialization error): {}. Replay stopped. Data up to this point is recovered.", msg);
+                eprintln!("WAL corruption detected (Deserialization error): {msg}. Replay stopped. Data up to this point is recovered.");
                 break;
             }
             Err(e) => {
                 // This e is now OxidbError
-                eprintln!("Error during WAL replay: {}. Replay stopped. Data up to this point is recovered.", e);
+                eprintln!("Error during WAL replay: {e}. Replay stopped. Data up to this point is recovered.");
                 break;
             }
         }
     }
 
     // Second Pass: Apply committed operations
-    println!("[replay_wal] Committed transactions for replay: {:?}", committed_transactions);
-    println!("[replay_wal] Rolled back transactions for replay: {:?}", rolled_back_transactions);
+    println!("[replay_wal] Committed transactions for replay: {committed_transactions:?}");
+    println!("[replay_wal] Rolled back transactions for replay: {rolled_back_transactions:?}");
 
-    let mut tx_ids: Vec<u64> = transaction_operations.keys().cloned().collect();
+    let mut tx_ids: Vec<u64> = transaction_operations.keys().copied().collect();
     tx_ids.sort_unstable();
-    println!("[replay_wal] Processing tx_ids in order: {:?}", tx_ids);
+    println!("[replay_wal] Processing tx_ids in order: {tx_ids:?}");
 
     for tx_id in tx_ids {
         // If tx_id is 0 (auto-commit/non-transactional in store WAL) or explicitly committed,
@@ -75,12 +75,11 @@ pub(super) fn replay_wal_into_cache(
             && !rolled_back_transactions.contains(&tx_id)
         {
             println!(
-                "[replay_wal] Applying operations for tx_id: {} (implicit or committed)",
-                tx_id
+                "[replay_wal] Applying operations for tx_id: {tx_id} (implicit or committed)"
             );
             if let Some(operations) = transaction_operations.get(&tx_id) {
                 for entry in operations {
-                    println!("[replay_wal] Applying entry: {:?}", entry);
+                    println!("[replay_wal] Applying entry: {entry:?}");
                     match entry {
                         WalEntry::Put { lsn: _, key, value, transaction_id } => {
                             let versions = cache.entry(key.clone()).or_default();
@@ -102,8 +101,7 @@ pub(super) fn replay_wal_into_cache(
                             versions.push(new_version);
                             if key == b"key_a_wal_restart".as_slice() {
                                 println!(
-                                    "[replay_wal] Cache for key_a after Put({}): {:?}",
-                                    tx_id, versions
+                                    "[replay_wal] Cache for key_a after Put({tx_id}): {versions:?}"
                                 );
                             }
                         }
@@ -135,8 +133,7 @@ pub(super) fn replay_wal_into_cache(
             }
         } else {
             println!(
-                "[replay_wal] Skipping operations for tx_id: {} (not committed or was rolled back)",
-                tx_id
+                "[replay_wal] Skipping operations for tx_id: {tx_id} (not committed or was rolled back)"
             );
         }
     }

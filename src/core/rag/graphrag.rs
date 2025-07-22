@@ -1,4 +1,4 @@
-//! GraphRAG implementation for Oxidb
+//! `GraphRAG` implementation for Oxidb
 //!
 //! This module combines graph database capabilities with Retrieval-Augmented Generation (RAG)
 //! to provide enhanced knowledge retrieval and reasoning. Following SOLID principles with
@@ -39,7 +39,7 @@ pub struct KnowledgeEdge {
     pub weight: Option<f64>,
 }
 
-/// GraphRAG query context for enhanced retrieval
+/// `GraphRAG` query context for enhanced retrieval
 #[derive(Debug, Clone)]
 pub struct GraphRAGContext {
     pub query_embedding: Embedding,
@@ -50,7 +50,7 @@ pub struct GraphRAGContext {
     pub entity_types: Vec<String>,
 }
 
-/// GraphRAG result containing retrieved information and reasoning paths
+/// `GraphRAG` result containing retrieved information and reasoning paths
 #[derive(Debug, Clone)]
 pub struct GraphRAGResult {
     pub documents: Vec<Document>,
@@ -101,7 +101,7 @@ struct EdgeInfo {
     weight: Option<f64>,
 }
 
-/// Implementation of GraphRAG engine
+/// Implementation of `GraphRAG` engine
 pub struct GraphRAGEngineImpl {
     graph_store: InMemoryGraphStore,
     document_retriever: Box<dyn Retriever>,
@@ -111,8 +111,8 @@ pub struct GraphRAGEngineImpl {
 }
 
 impl GraphRAGEngineImpl {
-    /// Create a new GraphRAG engine
-    pub fn new(document_retriever: Box<dyn Retriever>) -> Self {
+    /// Create a new `GraphRAG` engine
+    #[must_use] pub fn new(document_retriever: Box<dyn Retriever>) -> Self {
         Self {
             graph_store: InMemoryGraphStore::new(),
             document_retriever,
@@ -171,7 +171,7 @@ impl GraphRAGEngineImpl {
             let entity = KnowledgeNode {
                 id: temp_id, // Unique temporary ID
                 entity_type: "ENTITY".to_string(),
-                name: keyword.to_string(),
+                name: (*keyword).to_string(),
                 description: Some(format!("Entity extracted from document: {}", document.id)),
                 embedding: document.embedding.clone(),
                 properties: {
@@ -222,7 +222,7 @@ impl GraphRAGEngineImpl {
         if let (Some(emb1), Some(emb2)) = (self.entity_embeddings.get(&entity1_id), self.entity_embeddings.get(&entity2_id)) {
             use crate::core::vector::similarity::cosine_similarity;
             let similarity = cosine_similarity(emb1.as_slice(), emb2.as_slice())?;
-            Ok(similarity as f64)
+            Ok(f64::from(similarity))
         } else {
             Ok(0.0)
         }
@@ -243,7 +243,7 @@ impl GraphRAGEngineImpl {
             // Try to get the node information to extract relationship details
             if let Ok(Some(from_node_data)) = self.graph_store.get_node(from_node) {
                 // Generate a synthetic edge ID (in a real implementation, we'd store edge mappings)
-                let edge_id = ((from_node as u64) << 32) | (to_node as u64);
+                let edge_id = (from_node << 32) | to_node;
                 
                 // Extract relationship type from node properties or use a default
                 let relationship_type = from_node_data.data.get_property("relationship_type")
@@ -257,7 +257,7 @@ impl GraphRAGEngineImpl {
                 return Ok(Some(EdgeInfo {
                     edge_id,
                     relationship_type,
-                    description: Some(format!("Relationship from {} to {}", from_node, to_node)),
+                    description: Some(format!("Relationship from {from_node} to {to_node}")),
                     confidence_score,
                     weight: Some(1.0),
                 }));
@@ -293,7 +293,7 @@ impl GraphRAGEngineImpl {
         for (&entity_id, entity_embedding) in &self.entity_embeddings {
             use crate::core::vector::similarity::cosine_similarity;
             let similarity = cosine_similarity(query_embedding.as_slice(), entity_embedding.as_slice())?;
-            let similarity_f64 = similarity as f64;
+            let similarity_f64 = f64::from(similarity);
             
             if similarity_f64 >= min_similarity {
                 similarities.push((entity_id, similarity_f64));
@@ -361,7 +361,7 @@ impl GraphRAGEngineImpl {
         }
         
         if edge_count > 0 {
-            Ok(total_score / edge_count as f64)
+            Ok(total_score / f64::from(edge_count))
         } else {
             Ok(0.0)
         }
@@ -454,7 +454,7 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
                     entity_type: node.data.label.clone(),
                     name: node.data.get_property("name")
                         .and_then(|v| if let Value::Text(s) = v { Some(s.clone()) } else { None })
-                        .unwrap_or_else(|| format!("Entity_{}", entity_id)),
+                        .unwrap_or_else(|| format!("Entity_{entity_id}")),
                     description: None,
                     embedding: self.entity_embeddings.get(&entity_id).cloned(),
                     properties: node.data.properties.clone(),
@@ -467,7 +467,7 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
         }
         
         // Collect relationships between relevant entities
-        let expanded_entities_set: HashSet<NodeId> = expanded_entities.iter().cloned().collect();
+        let expanded_entities_set: HashSet<NodeId> = expanded_entities.iter().copied().collect();
         for &entity_id in &expanded_entities {
             if let Ok(neighbors) = self.graph_store.get_neighbors(entity_id, TraversalDirection::Outgoing) {
                 for neighbor_id in neighbors {
@@ -571,7 +571,7 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
                         entity_type: node.data.label.clone(),
                         name: node.data.get_property("name")
                             .and_then(|v| if let Value::Text(s) = v { Some(s.clone()) } else { None })
-                            .unwrap_or_else(|| format!("Entity_{}", id)),
+                            .unwrap_or_else(|| format!("Entity_{id}")),
                         description: None,
                         embedding: self.entity_embeddings.get(&id).cloned(),
                         properties: node.data.properties.clone(),
@@ -608,17 +608,17 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
     }
 }
 
-/// Factory for creating GraphRAG engines
+/// Factory for creating `GraphRAG` engines
 pub struct GraphRAGFactory;
 
 impl GraphRAGFactory {
-    /// Create a new GraphRAG engine with default settings
-    pub fn create_engine(document_retriever: Box<dyn Retriever>) -> Box<dyn GraphRAGEngine> {
+    /// Create a new `GraphRAG` engine with default settings
+    #[must_use] pub fn create_engine(document_retriever: Box<dyn Retriever>) -> Box<dyn GraphRAGEngine> {
         Box::new(GraphRAGEngineImpl::new(document_retriever))
     }
     
-    /// Create a GraphRAG engine with custom configuration
-    pub fn create_engine_with_config(
+    /// Create a `GraphRAG` engine with custom configuration
+    #[must_use] pub fn create_engine_with_config(
         document_retriever: Box<dyn Retriever>,
         confidence_threshold: f64,
         relationship_weights: HashMap<String, f64>,
