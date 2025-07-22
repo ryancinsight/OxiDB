@@ -242,7 +242,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                     // The current structure should be fine as they are separate entries in the undo log.
                     executor.handle_insert(kv_key.clone(), row_data_type)?;
                 }
-                Ok(ExecutionResult::Success) // TODO: Return rows affected (values.len())
+                Ok(ExecutionResult::Updated { count: values.len() }) // Return rows affected
             }
             Command::SqlDelete { table_name, condition } => {
                 executor.handle_sql_delete(table_name.clone(), condition.clone())

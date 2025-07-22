@@ -41,10 +41,16 @@ pub mod core;
 pub mod event_engine;
 
 // Re-export key types for easier use by library consumers.
-// Oxidb is the main entry point for database operations.
+// Connection is the main entry point for database operations (new ergonomic API).
+pub use api::Connection;
+// Legacy Oxidb API is still available for backward compatibility.
 pub use api::Oxidb;
+// Query result types for the new API.
+pub use api::{QueryResult, QueryResultData, Row};
+// Value type for parameterized queries.
+pub use crate::core::common::types::Value;
 // OxidbError is the primary error type used throughout the crate.
-pub use crate::core::common::OxidbError; // Changed
+pub use crate::core::common::OxidbError;
 
 #[cfg(test)]
 mod tests {
@@ -74,14 +80,14 @@ mod tests {
 
         match db.get(key1.clone()) {
             Ok(Some(v_str)) => assert_eq!(v_str, value1_str),
-            assert!(false, "Key not found after insert");
-            assert!(false, "Error during get: {e:?}");
+            Ok(None) => panic!("Key not found after insert"),
+            Err(e) => panic!("Error during get: {e:?}"),
         }
 
         match db.delete(key1.clone()) {
             Ok(true) => (),
-            assert!(false, "Key not found for deletion");
-            Err(e) => assert!(false, "Error during delete: {e:?}"),
+            Ok(false) => panic!("Key not found for deletion"),
+            Err(e) => panic!("Error during delete: {e:?}"),
         }
 
         match db.get(key1.clone()) {

@@ -145,26 +145,17 @@ impl FilterOperator {
                         DataType::Map(map_data) => {
                             let key_bytes = col_name.as_bytes().to_vec();
 
-                            // First try direct lookup with raw bytes
+                            // Direct lookup with raw bytes - this should work since INSERT stores column names as raw bytes
                             if let Some(data_type_value) = map_data.0.get(&key_bytes) {
                                 return Ok(Cow::Borrowed(data_type_value));
-                            }
-
-                            // If direct lookup fails, try to find the key by iterating through all keys
-                            // This handles cases where keys might be stored differently
-                            for (stored_key, stored_value) in &map_data.0 {
-                                // Try to decode the stored key as UTF-8 and compare (no allocation)
-                                if let Ok(stored_key_str) = std::str::from_utf8(stored_key) {
-                                    if stored_key_str == *col_name {
-                                        return Ok(Cow::Borrowed(stored_value));
-                                    }
-                                }
                             }
 
                             // Debug: Print available keys to help diagnose the issue
                             let available_keys: Vec<String> = map_data.0.keys()
                                 .map(|k| String::from_utf8_lossy(k).to_string())
                                 .collect();
+                            
+
 
                             Err(OxidbError::InvalidInput { message: format!(
                                 "Column '{}' not found in map at tuple[1]. Available keys: {:?}",

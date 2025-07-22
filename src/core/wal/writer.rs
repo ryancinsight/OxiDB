@@ -1025,7 +1025,7 @@ mod tests {
         thread::sleep(StdDuration::from_millis(flush_interval_ms / 2));
 
         let LogRecord::BeginTransaction { lsn: prev_lsn_for_commit, .. } = record1 else {
-            assert!(false, "Expected BeginTransaction record for record1")
+            panic!("Expected BeginTransaction record for record1")
         };
         let record_commit = LogRecord::CommitTransaction {
             lsn: next_lsn(),
@@ -1105,7 +1105,7 @@ mod tests {
         // Adding a commit record now. The periodic flush should trigger first for record1.
         // Then the commit record is added and immediately flushed because it's a commit.
         let LogRecord::BeginTransaction { lsn: prev_lsn_for_commit2, .. } = record1 else {
-            assert!(false, "Expected BeginTransaction record for record1")
+            panic!("Expected BeginTransaction record for record1")
         };
         let record_commit = LogRecord::CommitTransaction {
             lsn: next_lsn(),
@@ -1195,7 +1195,7 @@ mod tests {
         );
 
         let LogRecord::BeginTransaction { lsn: prev_lsn_for_commit3, .. } = record1 else {
-            assert!(false, "Expected BeginTransaction record for record1")
+            panic!("Expected BeginTransaction record for record1")
         };
         let record_commit = LogRecord::CommitTransaction {
             lsn: next_lsn(),

@@ -51,15 +51,24 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for TableScanOp
         let store_guard = self.store.read().map_err(|e| {
             OxidbError::LockTimeout(format!("Failed to acquire read lock on store: {}", e))
         })?;
+        
+
         let all_kvs = store_guard.scan()?; // This can return OxidbError
                                            // Drop the guard explicitly after scan is done if possible, though iterator might hold it implicitly.
                                            // For filter_map, the guard might be held longer. This needs careful thought in real async scenarios.
                                            // For now, this synchronous version should be okay.
 
+        let table_name = self.table_name.clone();
         let iterator = all_kvs.into_iter().filter_map(move |(key_bytes, value_bytes)| {
             // Filter out schema keys (and potentially other internal metadata)
             if key_bytes.starts_with(b"_schema_") {
                 return None; // Skip schema entries
+            }
+            
+            // Filter by table name - keys should start with the table name
+            let key_str = String::from_utf8_lossy(&key_bytes);
+            if !key_str.starts_with(&table_name) {
+                return None; // Skip entries from other tables
             }
 
             match deserialize_data_type(&value_bytes) {
