@@ -36,7 +36,8 @@ impl Default for TransactionManager {
 }
 
 impl TransactionManager {
-    #[must_use] pub fn new(wal_writer: WalWriter, log_manager: Arc<LogManager>) -> Self {
+    #[must_use]
+    pub fn new(wal_writer: WalWriter, log_manager: Arc<LogManager>) -> Self {
         Self {
             active_transactions: HashMap::new(),
             next_transaction_id: CommonTransactionId(1), // Initialize with TransactionId struct
@@ -120,7 +121,8 @@ impl TransactionManager {
         Ok(transaction)
     }
 
-    #[must_use] pub fn get_active_transaction(&self) -> Option<&Transaction> {
+    #[must_use]
+    pub fn get_active_transaction(&self) -> Option<&Transaction> {
         self.current_active_transaction_id.and_then(|id| self.active_transactions.get(&id))
     }
 
@@ -128,7 +130,8 @@ impl TransactionManager {
         self.current_active_transaction_id.and_then(move |id| self.active_transactions.get_mut(&id))
     }
 
-    #[must_use] pub const fn current_active_transaction_id(&self) -> Option<CommonTransactionId> {
+    #[must_use]
+    pub const fn current_active_transaction_id(&self) -> Option<CommonTransactionId> {
         // Use CommonTransactionId
         self.current_active_transaction_id
     }
@@ -212,12 +215,14 @@ impl TransactionManager {
         Ok(())
     }
 
-    #[must_use] pub fn is_committed(&self, tx_id: CommonTransactionId) -> bool {
+    #[must_use]
+    pub fn is_committed(&self, tx_id: CommonTransactionId) -> bool {
         // Use CommonTransactionId
         self.committed_tx_ids.binary_search(&tx_id).is_ok()
     }
 
-    #[must_use] pub fn get_committed_tx_ids_snapshot(&self) -> Vec<CommonTransactionId> {
+    #[must_use]
+    pub fn get_committed_tx_ids_snapshot(&self) -> Vec<CommonTransactionId> {
         // Use CommonTransactionId
         self.committed_tx_ids.clone()
     }
@@ -229,12 +234,14 @@ impl TransactionManager {
         }
     }
 
-    #[must_use] pub fn get_oldest_active_tx_id(&self) -> Option<CommonTransactionId> {
+    #[must_use]
+    pub fn get_oldest_active_tx_id(&self) -> Option<CommonTransactionId> {
         // Use CommonTransactionId
         self.active_transactions.values().map(|tx| tx.id).min()
     }
 
-    #[must_use] pub const fn get_next_transaction_id_peek(&self) -> CommonTransactionId {
+    #[must_use]
+    pub const fn get_next_transaction_id_peek(&self) -> CommonTransactionId {
         // Use CommonTransactionId
         self.next_transaction_id
     }

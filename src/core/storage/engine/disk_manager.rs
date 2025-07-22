@@ -112,12 +112,12 @@ impl DiskManager {
         match self.db_file.read_exact(page_data_buf) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == ErrorKind::UnexpectedEof => Err(OxidbError::io_error(format!(
-                "Unexpected EOF when reading page {}: not enough bytes", page_id.0
+                "Unexpected EOF when reading page {}: not enough bytes",
+                page_id.0
             ))),
-            Err(e) => Err(OxidbError::io_error(format!(
-                "Failed to read page {}: {}",
-                page_id.0, e
-            ))),
+            Err(e) => {
+                Err(OxidbError::io_error(format!("Failed to read page {}: {}", page_id.0, e)))
+            }
         }
     }
 

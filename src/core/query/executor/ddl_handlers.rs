@@ -150,9 +150,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         // The schema itself is stored as a Vec<u8> value.
         // The `handle_insert` is for DataType values, so use store.put directly.
         // Use the current transaction context (which will be Tx0 if auto-committing)
-        let current_tx = self
-            .transaction_manager
-            .get_active_transaction().map_or_else(|| Transaction::new(TransactionId(0)), crate::core::transaction::Transaction::clone_for_store); // Fallback to new Tx0 if somehow none (should be set by execute_command)
+        let current_tx = self.transaction_manager.get_active_transaction().map_or_else(
+            || Transaction::new(TransactionId(0)),
+            crate::core::transaction::Transaction::clone_for_store,
+        ); // Fallback to new Tx0 if somehow none (should be set by execute_command)
 
         // Ensure prev_lsn is updated for the active transaction (likely Tx0)
         if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {

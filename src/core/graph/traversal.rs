@@ -3,7 +3,7 @@
 //! This module provides various graph traversal strategies and algorithms.
 //! Following SOLID principles with extensible traversal strategies.
 
-use super::types::{NodeId, EdgeId};
+use super::types::{EdgeId, NodeId};
 use crate::core::common::OxidbError;
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -25,14 +25,26 @@ pub enum TraversalStrategy {
 /// Graph traversal trait following Interface Segregation Principle
 pub trait GraphTraversal {
     /// Perform breadth-first traversal
-    fn breadth_first_search(&self, start: NodeId, max_depth: Option<usize>) -> Result<Vec<NodeId>, OxidbError>;
-    
+    fn breadth_first_search(
+        &self,
+        start: NodeId,
+        max_depth: Option<usize>,
+    ) -> Result<Vec<NodeId>, OxidbError>;
+
     /// Perform depth-first traversal
-    fn depth_first_search(&self, start: NodeId, max_depth: Option<usize>) -> Result<Vec<NodeId>, OxidbError>;
-    
+    fn depth_first_search(
+        &self,
+        start: NodeId,
+        max_depth: Option<usize>,
+    ) -> Result<Vec<NodeId>, OxidbError>;
+
     /// Find all nodes within a certain distance
-    fn find_nodes_within_distance(&self, start: NodeId, distance: usize) -> Result<Vec<NodeId>, OxidbError>;
-    
+    fn find_nodes_within_distance(
+        &self,
+        start: NodeId,
+        distance: usize,
+    ) -> Result<Vec<NodeId>, OxidbError>;
+
     /// Get all connected components
     fn connected_components(&self) -> Result<Vec<Vec<NodeId>>, OxidbError>;
 }
@@ -41,10 +53,16 @@ pub trait GraphTraversal {
 pub trait TraversalVisitor {
     /// Called when visiting a node
     fn visit_node(&mut self, node_id: NodeId, depth: usize) -> Result<bool, OxidbError>; // Return false to stop traversal
-    
+
     /// Called when visiting an edge
-    fn visit_edge(&mut self, edge_id: EdgeId, from: NodeId, to: NodeId, depth: usize) -> Result<bool, OxidbError>;
-    
+    fn visit_edge(
+        &mut self,
+        edge_id: EdgeId,
+        from: NodeId,
+        to: NodeId,
+        depth: usize,
+    ) -> Result<bool, OxidbError>;
+
     /// Called when backtracking (for DFS)
     fn backtrack(&mut self, node_id: NodeId, depth: usize) -> Result<(), OxidbError>;
 }
@@ -60,7 +78,8 @@ pub struct TraversalResult {
 
 impl TraversalResult {
     /// Create a new traversal result
-    #[must_use] pub fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self {
             path: Vec::new(),
             depths: HashMap::new(),
@@ -80,27 +99,30 @@ impl TraversalResult {
     }
 
     /// Get the depth of a node
-    #[must_use] pub fn get_depth(&self, node_id: NodeId) -> Option<usize> {
+    #[must_use]
+    pub fn get_depth(&self, node_id: NodeId) -> Option<usize> {
         self.depths.get(&node_id).copied()
     }
 
     /// Get the parent of a node
-    #[must_use] pub fn get_parent(&self, node_id: NodeId) -> Option<NodeId> {
+    #[must_use]
+    pub fn get_parent(&self, node_id: NodeId) -> Option<NodeId> {
         self.parent_map.get(&node_id).copied()
     }
 
     /// Reconstruct path from start to a specific node
-    #[must_use] pub fn path_to_node(&self, target: NodeId) -> Option<Vec<NodeId>> {
+    #[must_use]
+    pub fn path_to_node(&self, target: NodeId) -> Option<Vec<NodeId>> {
         let mut path = Vec::new();
         let mut current = target;
-        
+
         path.push(current);
-        
+
         while let Some(parent) = self.get_parent(current) {
             path.push(parent);
             current = parent;
         }
-        
+
         path.reverse();
         Some(path)
     }
@@ -242,7 +264,7 @@ impl TraversalEngine {
 
         while let Some(current) = queue.pop_front() {
             let neighbors = get_neighbors(current)?;
-            
+
             for neighbor in neighbors {
                 if !visited.contains(&neighbor) {
                     visited.insert(neighbor);
@@ -253,14 +275,14 @@ impl TraversalEngine {
                         // Reconstruct path
                         let mut path = Vec::new();
                         let mut current_node = target;
-                        
+
                         while let Some(&prev) = parent.get(&current_node) {
                             path.push(current_node);
                             current_node = prev;
                         }
                         path.push(start);
                         path.reverse();
-                        
+
                         return Ok(Some(path));
                     }
                 }
@@ -322,11 +344,9 @@ pub struct CollectingVisitor {
 }
 
 impl CollectingVisitor {
-    #[must_use] pub const fn new() -> Self {
-        Self {
-            visited_nodes: Vec::new(),
-            visited_edges: Vec::new(),
-        }
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { visited_nodes: Vec::new(), visited_edges: Vec::new() }
     }
 }
 
@@ -342,7 +362,13 @@ impl TraversalVisitor for CollectingVisitor {
         Ok(true) // Continue traversal
     }
 
-    fn visit_edge(&mut self, edge_id: EdgeId, _from: NodeId, _to: NodeId, _depth: usize) -> Result<bool, OxidbError> {
+    fn visit_edge(
+        &mut self,
+        edge_id: EdgeId,
+        _from: NodeId,
+        _to: NodeId,
+        _depth: usize,
+    ) -> Result<bool, OxidbError> {
         self.visited_edges.push(edge_id);
         Ok(true) // Continue traversal
     }
@@ -360,11 +386,9 @@ pub struct TargetVisitor {
 }
 
 impl TargetVisitor {
-    #[must_use] pub const fn new(target: NodeId) -> Self {
-        Self {
-            target,
-            found: false,
-        }
+    #[must_use]
+    pub const fn new(target: NodeId) -> Self {
+        Self { target, found: false }
     }
 }
 
@@ -378,7 +402,13 @@ impl TraversalVisitor for TargetVisitor {
         }
     }
 
-    fn visit_edge(&mut self, _edge_id: EdgeId, _from: NodeId, _to: NodeId, _depth: usize) -> Result<bool, OxidbError> {
+    fn visit_edge(
+        &mut self,
+        _edge_id: EdgeId,
+        _from: NodeId,
+        _to: NodeId,
+        _depth: usize,
+    ) -> Result<bool, OxidbError> {
         Ok(true) // Continue traversal
     }
 
@@ -394,19 +424,19 @@ mod tests {
     #[test]
     fn test_traversal_result() {
         let mut result = TraversalResult::new();
-        
+
         result.add_node(1, 0, None);
         result.add_node(2, 1, Some(1));
         result.add_node(3, 2, Some(2));
-        
+
         assert_eq!(result.get_depth(1), Some(0));
         assert_eq!(result.get_depth(2), Some(1));
         assert_eq!(result.get_depth(3), Some(2));
-        
+
         assert_eq!(result.get_parent(2), Some(1));
         assert_eq!(result.get_parent(3), Some(2));
         assert_eq!(result.get_parent(1), None);
-        
+
         let path = result.path_to_node(3).unwrap();
         assert_eq!(path, vec![1, 2, 3]);
     }
@@ -414,11 +444,11 @@ mod tests {
     #[test]
     fn test_collecting_visitor() {
         let mut visitor = CollectingVisitor::new();
-        
+
         visitor.visit_node(1, 0).unwrap();
         visitor.visit_node(2, 1).unwrap();
         visitor.visit_edge(1, 1, 2, 1).unwrap();
-        
+
         assert_eq!(visitor.visited_nodes, vec![1, 2]);
         assert_eq!(visitor.visited_edges, vec![1]);
     }
@@ -426,7 +456,7 @@ mod tests {
     #[test]
     fn test_target_visitor() {
         let mut visitor = TargetVisitor::new(5);
-        
+
         assert!(visitor.visit_node(1, 0).unwrap()); // Continue
         assert!(visitor.visit_node(3, 1).unwrap()); // Continue
         assert!(!visitor.visit_node(5, 2).unwrap()); // Stop - found target
@@ -464,7 +494,7 @@ mod tests {
 
         let all_nodes = vec![1, 2, 3, 4];
         let components = TraversalEngine::connected_components(all_nodes, get_neighbors).unwrap();
-        
+
         assert_eq!(components.len(), 2);
         assert!(components.contains(&vec![1, 2]));
         assert!(components.contains(&vec![3, 4]));

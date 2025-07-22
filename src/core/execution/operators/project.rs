@@ -10,7 +10,8 @@ pub struct ProjectOperator {
 }
 
 impl ProjectOperator {
-    #[must_use] pub fn new(
+    #[must_use]
+    pub fn new(
         input: Box<dyn ExecutionOperator + Send + Sync>,
         column_indices: Vec<usize>,
     ) -> Self {

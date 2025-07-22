@@ -21,7 +21,8 @@ pub struct TransactionTable {
 
 impl TransactionTable {
     /// Creates a new empty transaction table.
-    #[must_use] pub fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self { transactions: HashMap::new() }
     }
 
@@ -31,7 +32,8 @@ impl TransactionTable {
     }
 
     /// Gets transaction information by ID.
-    #[must_use] pub fn get(&self, tx_id: &TransactionId) -> Option<&TransactionInfo> {
+    #[must_use]
+    pub fn get(&self, tx_id: &TransactionId) -> Option<&TransactionInfo> {
         self.transactions.get(tx_id)
     }
 
@@ -46,17 +48,20 @@ impl TransactionTable {
     }
 
     /// Returns true if the transaction table contains the given transaction ID.
-    #[must_use] pub fn contains(&self, tx_id: &TransactionId) -> bool {
+    #[must_use]
+    pub fn contains(&self, tx_id: &TransactionId) -> bool {
         self.transactions.contains_key(tx_id)
     }
 
     /// Returns the number of transactions in the table.
-    #[must_use] pub fn len(&self) -> usize {
+    #[must_use]
+    pub fn len(&self) -> usize {
         self.transactions.len()
     }
 
     /// Returns true if the transaction table is empty.
-    #[must_use] pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
         self.transactions.is_empty()
     }
 
@@ -72,7 +77,9 @@ impl TransactionTable {
 
     /// Updates the last LSN for a transaction, creating it if it doesn't exist.
     pub fn update_transaction(&mut self, tx_id: TransactionId, lsn: Lsn) {
-        if let Some(tx_info) = self.transactions.get_mut(&tx_id) { tx_info.update_last_lsn(lsn) } else {
+        if let Some(tx_info) = self.transactions.get_mut(&tx_id) {
+            tx_info.update_last_lsn(lsn);
+        } else {
             let tx_info = TransactionInfo::new_active(tx_id, lsn);
             self.transactions.insert(tx_id, tx_info);
         }
@@ -121,7 +128,8 @@ pub struct DirtyPageInfo {
 
 impl DirtyPageInfo {
     /// Creates a new `DirtyPageInfo`.
-    #[must_use] pub const fn new(page_id: PageId, recovery_lsn: Lsn) -> Self {
+    #[must_use]
+    pub const fn new(page_id: PageId, recovery_lsn: Lsn) -> Self {
         Self { page_id, recovery_lsn }
     }
 }
@@ -138,7 +146,8 @@ pub struct DirtyPageTable {
 
 impl DirtyPageTable {
     /// Creates a new empty dirty page table.
-    #[must_use] pub fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self { pages: HashMap::new() }
     }
 
@@ -158,7 +167,8 @@ impl DirtyPageTable {
     }
 
     /// Gets dirty page information by page ID.
-    #[must_use] pub fn get(&self, page_id: &PageId) -> Option<&DirtyPageInfo> {
+    #[must_use]
+    pub fn get(&self, page_id: &PageId) -> Option<&DirtyPageInfo> {
         self.pages.get(page_id)
     }
 
@@ -168,17 +178,20 @@ impl DirtyPageTable {
     }
 
     /// Returns true if the dirty page table contains the given page ID.
-    #[must_use] pub fn contains(&self, page_id: &PageId) -> bool {
+    #[must_use]
+    pub fn contains(&self, page_id: &PageId) -> bool {
         self.pages.contains_key(page_id)
     }
 
     /// Returns the number of dirty pages in the table.
-    #[must_use] pub fn len(&self) -> usize {
+    #[must_use]
+    pub fn len(&self) -> usize {
         self.pages.len()
     }
 
     /// Returns true if the dirty page table is empty.
-    #[must_use] pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
         self.pages.is_empty()
     }
 
@@ -190,12 +203,14 @@ impl DirtyPageTable {
     /// Returns the minimum recovery LSN across all dirty pages.
     ///
     /// This is used to determine the starting point for the Redo phase.
-    #[must_use] pub fn min_recovery_lsn(&self) -> Option<Lsn> {
+    #[must_use]
+    pub fn min_recovery_lsn(&self) -> Option<Lsn> {
         self.pages.values().map(|page_info| page_info.recovery_lsn).min()
     }
 
     /// Returns all page IDs that have a recovery LSN less than or equal to the given LSN.
-    #[must_use] pub fn pages_to_redo(&self, max_lsn: Lsn) -> Vec<PageId> {
+    #[must_use]
+    pub fn pages_to_redo(&self, max_lsn: Lsn) -> Vec<PageId> {
         self.pages
             .values()
             .filter(|page_info| page_info.recovery_lsn <= max_lsn)

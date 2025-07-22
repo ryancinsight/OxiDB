@@ -1,8 +1,8 @@
 // src/core/query/commands.rs
 
-use crate::core::types::{DataType, VectorData}; // Added VectorData
-use crate::core::query::sql::ast::Statement;
 use crate::core::common::types::Value as ParamValue;
+use crate::core::query::sql::ast::Statement;
+use crate::core::types::{DataType, VectorData}; // Added VectorData
 
 /// Represents a key for operations.
 pub type Key = Vec<u8>;

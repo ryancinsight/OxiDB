@@ -60,8 +60,7 @@ impl SqlParser {
             }
             self.consume(Token::Comma)?;
             match self.peek() {
-                Some(Token::Identifier(_) | Token::Asterisk) => { /* Good, loop will continue */
-                }
+                Some(Token::Identifier(_) | Token::Asterisk) => { /* Good, loop will continue */ }
                 Some(next_token) => {
                     return Err(SqlParseError::UnexpectedToken {
                         expected: "column name or '*' after comma".to_string(),
@@ -138,13 +137,18 @@ impl SqlParser {
 
     // Helper to attempt parsing a literal value. Does not consume if it's not a clear literal start.
     // Parse an expression value (literal or parameter)
-    pub(super) fn parse_expression_value(&mut self, context: &str) -> Result<ast::AstExpressionValue, SqlParseError> {
+    pub(super) fn parse_expression_value(
+        &mut self,
+        context: &str,
+    ) -> Result<ast::AstExpressionValue, SqlParseError> {
         if self.match_token(Token::Parameter) {
             self.consume(Token::Parameter)?;
             let param_index = self.parameter_count;
             self.parameter_count += 1;
             Ok(ast::AstExpressionValue::Parameter(param_index))
-        } else if let Some(literal_val) = self.try_parse_literal_value()? { Ok(ast::AstExpressionValue::Literal(literal_val)) } else {
+        } else if let Some(literal_val) = self.try_parse_literal_value()? {
+            Ok(ast::AstExpressionValue::Literal(literal_val))
+        } else {
             // Try parsing as identifier (column reference)
             let col_ident = self.parse_qualified_identifier(context)?;
             Ok(ast::AstExpressionValue::ColumnIdentifier(col_ident))
@@ -154,8 +158,12 @@ impl SqlParser {
     // Returns Ok(None) if not a literal, Ok(Some(value)) if a literal, Err if parsing starts but fails.
     fn try_parse_literal_value(&mut self) -> Result<Option<AstLiteralValue>, SqlParseError> {
         match self.peek() {
-            Some(Token::StringLiteral(_) | Token::NumericLiteral(_) |
-            Token::BooleanLiteral(_) | Token::LBracket) => {
+            Some(
+                Token::StringLiteral(_)
+                | Token::NumericLiteral(_)
+                | Token::BooleanLiteral(_)
+                | Token::LBracket,
+            ) => {
                 // For vector literals
                 // These are definitively literals.
                 self.parse_literal_value("literal value").map(Some)
@@ -221,7 +229,9 @@ impl SqlParser {
                 let param_index = self.parameter_count;
                 self.parameter_count += 1;
                 ast::AstExpressionValue::Parameter(param_index)
-            } else if let Some(literal_val) = self.try_parse_literal_value()? { ast::AstExpressionValue::Literal(literal_val) } else {
+            } else if let Some(literal_val) = self.try_parse_literal_value()? {
+                ast::AstExpressionValue::Literal(literal_val)
+            } else {
                 // Not a literal, try parsing as a qualified identifier
                 let col_ident = self.parse_qualified_identifier(
                     "Expected literal, parameter (?), or column identifier for RHS of condition",

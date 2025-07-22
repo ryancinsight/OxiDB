@@ -38,7 +38,8 @@ pub struct UndoStatistics {
 
 impl UndoStatistics {
     /// Creates new empty undo statistics.
-    #[must_use] pub const fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             transactions_undone: 0,
             records_processed: 0,
@@ -70,7 +71,8 @@ pub struct UndoPhase {
 
 impl UndoPhase {
     /// Creates a new Undo phase with the given transaction table.
-    #[must_use] pub fn new(transaction_table: TransactionTable) -> Self {
+    #[must_use]
+    pub fn new(transaction_table: TransactionTable) -> Self {
         Self {
             transaction_table,
             page_cache: HashMap::new(),
@@ -544,17 +546,20 @@ impl UndoPhase {
     }
 
     /// Returns the current state of the undo phase.
-    #[must_use] pub const fn get_state(&self) -> &RecoveryState {
+    #[must_use]
+    pub const fn get_state(&self) -> &RecoveryState {
         &self.state
     }
 
     /// Returns the statistics collected during the undo phase.
-    #[must_use] pub const fn get_statistics(&self) -> &UndoStatistics {
+    #[must_use]
+    pub const fn get_statistics(&self) -> &UndoStatistics {
         &self.statistics
     }
 
     /// Returns the number of pages currently cached.
-    #[must_use] pub fn cache_size(&self) -> usize {
+    #[must_use]
+    pub fn cache_size(&self) -> usize {
         self.page_cache.len()
     }
 }

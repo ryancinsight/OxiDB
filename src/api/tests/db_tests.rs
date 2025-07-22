@@ -750,7 +750,10 @@ fn test_execute_query_str_update_ok() {
         Ok(ExecutionResult::Updated { count }) => {
             // TODO: When WHERE clause filtering is implemented, change this back to assert_eq!(count, 0)
             // For now, just verify that we got a valid count (any non-negative number)
-            println!("UPDATE with non-matching WHERE clause updated {} rows (optimizer limitation)", count);
+            println!(
+                "UPDATE with non-matching WHERE clause updated {} rows (optimizer limitation)",
+                count
+            );
         }
         _ => panic!("UPDATE no match: Expected Updated {{ count }}, got {:?}", result_no_match),
     }

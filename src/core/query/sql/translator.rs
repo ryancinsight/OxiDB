@@ -214,7 +214,7 @@ fn translate_expression_value(expr: &ast::AstExpressionValue) -> Result<DataType
         ast::AstExpressionValue::ColumnIdentifier(col_name) => {
             // Column references in VALUES clauses are not typically supported
             Err(OxidbError::InvalidInput {
-                message: format!("Column reference '{col_name}' not supported in this context")
+                message: format!("Column reference '{col_name}' not supported in this context"),
             })
         }
     }
@@ -478,7 +478,9 @@ mod tests {
     fn test_translate_assignment_string() {
         let ast_assign = TestAssignment {
             column: "email".to_string(),
-            value: ast::AstExpressionValue::Literal(TestAstLiteralValue::String("new@example.com".to_string())),
+            value: ast::AstExpressionValue::Literal(TestAstLiteralValue::String(
+                "new@example.com".to_string(),
+            )),
         };
         let expected_sql_assign = commands::SqlAssignment {
             column: "email".to_string(),
@@ -614,7 +616,9 @@ mod tests {
             source: "products".to_string(),
             assignments: vec![TestAssignment {
                 column: "price".to_string(),
-                value: ast::AstExpressionValue::Literal(TestAstLiteralValue::Number("19.99".to_string())),
+                value: ast::AstExpressionValue::Literal(TestAstLiteralValue::Number(
+                    "19.99".to_string(),
+                )),
             }],
             condition: Some(ast::ConditionTree::Comparison(TestCondition {
                 column: "product_id".to_string(),

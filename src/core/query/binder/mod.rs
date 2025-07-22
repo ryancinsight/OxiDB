@@ -19,7 +19,8 @@ pub struct BoundStatement {
 pub struct Binder {}
 
 impl Binder {
-    #[must_use] pub const fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self {}
     }
 

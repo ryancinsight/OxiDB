@@ -68,7 +68,8 @@ pub enum UndoOperation {
 
 impl Transaction {
     /// Creates a new transaction with the given ID and an initial state of `Active`.
-    #[must_use] pub const fn new(id: TransactionId) -> Self {
+    #[must_use]
+    pub const fn new(id: TransactionId) -> Self {
         // Changed id type from u64
         Self {
             id,
@@ -91,7 +92,8 @@ impl Transaction {
 
     /// Clones the transaction for storage operations, excluding logs.
     /// The store itself doesn't need to know about the undo/redo logs for its basic put/get/delete.
-    #[must_use] pub fn clone_for_store(&self) -> Self {
+    #[must_use]
+    pub fn clone_for_store(&self) -> Self {
         Self {
             id: self.id,
             state: self.state.clone(), // State might be relevant for some store implementations (e.g. MVCC visibility)

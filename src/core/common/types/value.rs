@@ -13,7 +13,8 @@ pub enum Value {
 }
 
 impl Value {
-    #[must_use] pub const fn get_type(&self) -> DataType {
+    #[must_use]
+    pub const fn get_type(&self) -> DataType {
         match self {
             Self::Integer(_) => DataType::Integer,
             Self::Float(_) => DataType::Float,

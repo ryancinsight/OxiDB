@@ -1,5 +1,5 @@
 //! Optimization Rule Trait
-//! 
+//!
 //! This module defines the trait for query optimization rules,
 //! following SOLID's Open/Closed Principle for extensible optimization.
 
@@ -11,15 +11,15 @@ use crate::core::query::sql::ast::ConditionTree;
 pub trait OptimizationRule: std::fmt::Debug {
     /// Apply the optimization rule to a condition tree
     fn apply(&self, condition: &ConditionTree) -> Result<ConditionTree, OxidbError>;
-    
+
     /// Get the name of this optimization rule
     fn name(&self) -> &'static str;
-    
+
     /// Check if this rule is applicable to the given condition
     fn is_applicable(&self, _condition: &ConditionTree) -> bool {
         true // By default, rules are always applicable
     }
-    
+
     /// Get the priority of this rule (higher values are applied first)
     fn priority(&self) -> u32 {
         100 // Default priority
@@ -34,34 +34,34 @@ pub struct RuleManager {
 
 impl RuleManager {
     /// Create a new rule manager
-    #[must_use] pub fn new() -> Self {
-        Self {
-            rules: Vec::new(),
-        }
+    #[must_use]
+    pub fn new() -> Self {
+        Self { rules: Vec::new() }
     }
-    
+
     /// Add a rule to the manager
     pub fn add_rule(&mut self, rule: Box<dyn OptimizationRule>) {
         self.rules.push(rule);
         // Sort by priority (highest first)
         self.rules.sort_by(|a, b| b.priority().cmp(&a.priority()));
     }
-    
+
     /// Apply all applicable rules to a condition tree
     pub fn apply_rules(&self, condition: &ConditionTree) -> Result<ConditionTree, OxidbError> {
         let mut current_condition = condition.clone();
-        
+
         for rule in &self.rules {
             if rule.is_applicable(&current_condition) {
                 current_condition = rule.apply(&current_condition)?;
             }
         }
-        
+
         Ok(current_condition)
     }
-    
+
     /// Get the number of rules
-    #[must_use] pub fn rule_count(&self) -> usize {
+    #[must_use]
+    pub fn rule_count(&self) -> usize {
         self.rules.len()
     }
 }
@@ -74,44 +74,42 @@ impl Default for RuleManager {
 
 impl std::fmt::Debug for RuleManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RuleManager")
-            .field("rules_count", &self.rules.len())
-            .finish()
+        f.debug_struct("RuleManager").field("rules_count", &self.rules.len()).finish()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::query::sql::ast::{Condition, AstExpressionValue, AstLiteralValue};
+    use crate::core::query::sql::ast::{AstExpressionValue, AstLiteralValue, Condition};
 
     #[derive(Debug)]
     struct TestRule;
-    
+
     impl OptimizationRule for TestRule {
         fn apply(&self, condition: &ConditionTree) -> Result<ConditionTree, OxidbError> {
             // Simple test rule that just returns the input
             Ok(condition.clone())
         }
-        
+
         fn name(&self) -> &'static str {
             "TestRule"
         }
     }
-    
+
     #[test]
     fn test_rule_manager() {
         let mut manager = RuleManager::new();
         manager.add_rule(Box::new(TestRule));
-        
+
         assert_eq!(manager.rule_count(), 1);
-        
+
         let condition = ConditionTree::Comparison(Condition {
             column: "test".to_string(),
             operator: "=".to_string(),
             value: AstExpressionValue::Literal(AstLiteralValue::Boolean(true)),
         });
-        
+
         let result = manager.apply_rules(&condition).unwrap();
         assert_eq!(result, condition);
     }

@@ -16,7 +16,7 @@ impl Default for WalWriterConfig {
     fn default() -> Self {
         Self {
             max_buffer_size: DEFAULT_MAX_BUFFER_SIZE, // Default max buffer size (number of records)
-            flush_interval_ms: Some(1000), // Default 1 second interval
+            flush_interval_ms: Some(1000),            // Default 1 second interval
         }
     }
 }
@@ -26,7 +26,7 @@ impl Default for WalWriterConfig {
 /// Users can override this value by modifying the `DEFAULT_MAX_BUFFER_SIZE` constant.
 pub const DEFAULT_MAX_BUFFER_SIZE: usize = 100;
 /// Write-Ahead Log writer for reliable durability guarantees.
-/// 
+///
 /// The `WalWriter` buffers log records in memory and flushes them to disk
 /// based on configurable policies including commit-based flushing,
 /// buffer size limits, and periodic intervals.
@@ -44,31 +44,23 @@ pub struct WalWriter {
 
 impl WalWriter {
     /// Create a new WAL writer.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `wal_file_path` - Path where the WAL file will be stored
     /// * `config` - Configuration for flush behavior
     #[must_use]
     pub fn new(wal_file_path: PathBuf, config: WalWriterConfig) -> Self {
-        let last_flush_time = if config.flush_interval_ms.is_some() {
-            Some(Instant::now())
-        } else {
-            None
-        };
-        
-        Self {
-            buffer: Vec::new(),
-            wal_file_path,
-            config,
-            last_flush_time,
-        }
+        let last_flush_time =
+            if config.flush_interval_ms.is_some() { Some(Instant::now()) } else { None };
+
+        Self { buffer: Vec::new(), wal_file_path, config, last_flush_time }
     }
 
     /// Add a log record to the buffer and optionally trigger a flush.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns `IoError` if:
     /// - Automatic flush is triggered and fails
     /// - File system errors occur during write operations
@@ -102,12 +94,12 @@ impl WalWriter {
     }
 
     /// Flush all buffered records to disk.
-    /// 
+    ///
     /// This operation ensures durability by writing all records to the WAL file
     /// and calling fsync to guarantee persistence.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns `IoError` if:
     /// - File creation or opening fails
     /// - Serialization of records fails
@@ -119,15 +111,11 @@ impl WalWriter {
         }
 
         let mut file = if self.wal_file_path.exists() {
-            OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&self.wal_file_path)
-                .map_err(|e| {
-                    let error_msg = format!("Failed to open existing WAL file: {e}");
-                    eprintln!("[core::wal::writer::WalWriter::flush] {error_msg}");
-                    IoError::new(IoErrorKind::Other, error_msg)
-                })?
+            OpenOptions::new().create(true).append(true).open(&self.wal_file_path).map_err(|e| {
+                let error_msg = format!("Failed to open existing WAL file: {e}");
+                eprintln!("[core::wal::writer::WalWriter::flush] {error_msg}");
+                IoError::new(IoErrorKind::Other, error_msg)
+            })?
         } else {
             // Ensure parent directory exists
             if let Some(parent) = self.wal_file_path.parent() {
@@ -137,7 +125,7 @@ impl WalWriter {
                     IoError::new(IoErrorKind::Other, error_msg)
                 })?;
             }
-            
+
             std::fs::File::create(&self.wal_file_path).map_err(|e| {
                 let error_msg = format!("Failed to create WAL file: {e}");
                 eprintln!("[core::wal::writer::WalWriter::flush] {error_msg}");
@@ -165,18 +153,18 @@ impl WalWriter {
                     ),
                 )
             })?;
-            
+
             file.write_all(&len.to_be_bytes())?;
             file.write_all(&serialized_record)?;
         }
 
         // Ensure durability
         file.sync_all()?;
-        
+
         // Clear buffer and update flush time
         self.buffer.clear();
         self.last_flush_time = Some(Instant::now());
-        
+
         Ok(())
     }
 
@@ -1152,7 +1140,10 @@ mod tests {
         };
 
         writer
-            .add_record(&LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1300) })
+            .add_record(&LogRecord::BeginTransaction {
+                lsn: next_lsn(),
+                tx_id: TransactionId(1300),
+            })
             .unwrap();
         assert_eq!(
             writer.last_flush_time, initial_last_flush_time,
@@ -1160,7 +1151,10 @@ mod tests {
         );
 
         writer
-            .add_record(&LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1301) })
+            .add_record(&LogRecord::BeginTransaction {
+                lsn: next_lsn(),
+                tx_id: TransactionId(1301),
+            })
             .unwrap(); // Triggers size-based flush
         assert!(
             writer.last_flush_time > initial_last_flush_time,

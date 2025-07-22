@@ -1,5 +1,5 @@
 //! Result and Error Utilities
-//! 
+//!
 //! This module provides common utilities for handling Results and Errors
 //! throughout the Oxidb codebase, following DRY principles.
 
@@ -29,7 +29,7 @@ pub trait ResultExt<T, E> {
     fn with_context<F>(self, f: F) -> Result<T, OxidbError>
     where
         F: FnOnce() -> String;
-    
+
     /// Convert to `OxidbError` with a static context
     fn with_static_context(self, context: &'static str) -> Result<T, OxidbError>;
 }
@@ -44,7 +44,7 @@ where
     {
         self.map_err(|e| OxidbError::Other(format!("{}: {:?}", f(), e)))
     }
-    
+
     fn with_static_context(self, context: &'static str) -> Result<T, OxidbError> {
         self.map_err(|e| OxidbError::Other(format!("{context}: {e:?}")))
     }
@@ -56,7 +56,7 @@ where
 pub trait TestResultExt<T> {
     /// Unwrap for tests with better error messages
     fn unwrap_test(self) -> T;
-    
+
     /// Unwrap with custom test message
     fn unwrap_test_with_msg(self, msg: &str) -> T;
 }
@@ -69,7 +69,7 @@ impl<T> TestResultExt<T> for Result<T, OxidbError> {
             Err(e) => panic!("Test failed with error: {:?}", e),
         }
     }
-    
+
     fn unwrap_test_with_msg(self, msg: &str) -> T {
         match self {
             Ok(val) => val,
@@ -86,7 +86,7 @@ impl<T> TestResultExt<T> for Option<T> {
             None => panic!("Test failed: Option was None"),
         }
     }
-    
+
     fn unwrap_test_with_msg(self, msg: &str) -> T {
         match self {
             Some(val) => val,

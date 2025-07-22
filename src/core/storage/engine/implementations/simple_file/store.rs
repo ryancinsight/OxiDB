@@ -51,7 +51,8 @@ impl SimpleFileKvStore {
         Ok(Self { file_path: path_buf, cache, wal_writer })
     }
 
-    #[must_use] pub fn file_path(&self) -> &Path {
+    #[must_use]
+    pub fn file_path(&self) -> &Path {
         &self.file_path
     }
 

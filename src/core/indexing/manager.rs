@@ -100,11 +100,13 @@ impl IndexManager {
         Ok(())
     }
 
-    #[must_use] pub fn get_index(&self, index_name: &str) -> Option<SharedIndex> {
+    #[must_use]
+    pub fn get_index(&self, index_name: &str) -> Option<SharedIndex> {
         self.indexes.get(index_name).cloned()
     }
 
-    #[must_use] pub fn base_path(&self) -> PathBuf {
+    #[must_use]
+    pub fn base_path(&self) -> PathBuf {
         self.base_path.clone()
     }
 
@@ -161,9 +163,7 @@ impl IndexManager {
                 })?;
                 index.delete(value, primary_key)
             }
-            None => {
-                Err(OxidbError::Index(format!("Index '{index_name}' not found for deletion.")))
-            }
+            None => Err(OxidbError::Index(format!("Index '{index_name}' not found for deletion."))),
         }
     }
 

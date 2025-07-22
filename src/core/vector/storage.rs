@@ -23,7 +23,8 @@ pub struct VectorEntry {
 
 impl VectorEntry {
     /// Create a new vector entry
-    #[must_use] pub fn new(id: String, vector: VectorData) -> Self {
+    #[must_use]
+    pub fn new(id: String, vector: VectorData) -> Self {
         Self {
             id,
             vector,
@@ -36,7 +37,8 @@ impl VectorEntry {
     }
 
     /// Create a vector entry with metadata
-    #[must_use] pub fn with_metadata(
+    #[must_use]
+    pub fn with_metadata(
         id: String,
         vector: VectorData,
         metadata: HashMap<String, String>,
@@ -58,7 +60,8 @@ impl VectorEntry {
     }
 
     /// Get metadata value
-    #[must_use] pub fn get_metadata(&self, key: &str) -> Option<&String> {
+    #[must_use]
+    pub fn get_metadata(&self, key: &str) -> Option<&String> {
         self.metadata.get(key)
     }
 }
@@ -93,7 +96,8 @@ pub struct InMemoryVectorStore {
 
 impl InMemoryVectorStore {
     /// Create a new in-memory vector store
-    #[must_use] pub fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self { vectors: HashMap::new() }
     }
 
@@ -103,7 +107,8 @@ impl InMemoryVectorStore {
     }
 
     /// Get all vectors (for testing/debugging)
-    #[must_use] pub const fn get_all(&self) -> &HashMap<String, VectorEntry> {
+    #[must_use]
+    pub const fn get_all(&self) -> &HashMap<String, VectorEntry> {
         &self.vectors
     }
 }
@@ -141,7 +146,8 @@ pub struct VectorStoreFactory;
 
 impl VectorStoreFactory {
     /// Create an in-memory vector store
-    #[must_use] pub fn create_in_memory_store() -> Box<dyn VectorStore> {
+    #[must_use]
+    pub fn create_in_memory_store() -> Box<dyn VectorStore> {
         Box::new(InMemoryVectorStore::new())
     }
 

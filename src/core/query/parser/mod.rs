@@ -10,7 +10,7 @@ use crate::core::query::commands::{Command, Key};
 use crate::core::types::{DataType, VectorData}; // Added VectorData
 
 // Imports for the new SQL parser integration
-use crate::core::query::sql::{self, parser::SqlParser, tokenizer::Tokenizer, ast::Statement};
+use crate::core::query::sql::{self, ast::Statement, parser::SqlParser, tokenizer::Tokenizer};
 
 /// Parse SQL string directly to AST Statement for parameterized queries
 pub fn parse_sql_to_ast(sql: &str) -> Result<Statement, OxidbError> {
@@ -20,15 +20,13 @@ pub fn parse_sql_to_ast(sql: &str) -> Result<Statement, OxidbError> {
 
     // Tokenize the SQL
     let mut tokenizer = Tokenizer::new(sql);
-    let tokens = tokenizer.tokenize().map_err(|e| {
-        OxidbError::SqlParsing(format!("Tokenization error: {e:?}"))
-    })?;
+    let tokens = tokenizer
+        .tokenize()
+        .map_err(|e| OxidbError::SqlParsing(format!("Tokenization error: {e:?}")))?;
 
     // Parse tokens to AST
     let mut parser = SqlParser::new(tokens);
-    parser.parse().map_err(|e| {
-        OxidbError::SqlParsing(format!("Parse error: {e:?}"))
-    })
+    parser.parse().map_err(|e| OxidbError::SqlParsing(format!("Parse error: {e:?}")))
 }
 
 pub fn parse_query_string(query_str: &str) -> Result<Command, OxidbError> {
@@ -320,9 +318,7 @@ fn parse_vector_literal_from_string(s: &str) -> Result<VectorData, OxidbError> {
     for part in inner.split(',') {
         let trimmed_part = part.trim();
         if trimmed_part.is_empty() {
-            return Err(OxidbError::SqlParsing(format!(
-                "Empty element in vector literal: '{s}'"
-            )));
+            return Err(OxidbError::SqlParsing(format!("Empty element in vector literal: '{s}'")));
         }
         match trimmed_part.parse::<f32>() {
             Ok(f) => data.push(f),
@@ -389,9 +385,9 @@ fn parse_similarity_search_command_details(query_str: &str) -> Result<Command, O
     let top_k_str = parts.next().ok_or_else(|| {
         OxidbError::SqlParsing("Missing K value for TOP_K in SIMILARITY_SEARCH".to_string())
     })?;
-    let top_k = top_k_str.parse::<usize>().map_err(|_| {
-        OxidbError::SqlParsing(format!("Invalid K value for TOP_K: '{top_k_str}'"))
-    })?;
+    let top_k = top_k_str
+        .parse::<usize>()
+        .map_err(|_| OxidbError::SqlParsing(format!("Invalid K value for TOP_K: '{top_k_str}'")))?;
     if top_k == 0 {
         return Err(OxidbError::SqlParsing("TOP_K value must be greater than 0".to_string()));
     }

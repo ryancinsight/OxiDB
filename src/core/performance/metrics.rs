@@ -1,7 +1,7 @@
 //! Performance metrics collection and tracking
 
-use std::time::Duration;
 use std::collections::HashMap;
+use std::time::Duration;
 
 /// Comprehensive performance metrics for database operations
 #[derive(Debug, Clone)]
@@ -16,7 +16,8 @@ pub struct PerformanceMetrics {
 
 impl PerformanceMetrics {
     /// Create a new metrics collector
-    #[must_use] pub fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self {
             query_metrics: QueryMetrics::new(),
             transaction_metrics: TransactionMetrics::new(),
@@ -67,7 +68,8 @@ pub struct QueryMetrics {
 
 impl QueryMetrics {
     /// Create new query metrics
-    #[must_use] pub fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self {
             total_queries: 0,
             total_execution_time: Duration::ZERO,
@@ -98,10 +100,7 @@ impl QueryMetrics {
 
         // Track by query type
         let query_type = self.extract_query_type(query);
-        self.execution_times_by_type
-            .entry(query_type)
-            .or_default()
-            .push(duration);
+        self.execution_times_by_type.entry(query_type).or_default().push(duration);
     }
 
     /// Extract query type from SQL string
@@ -148,7 +147,8 @@ pub struct TransactionMetrics {
 
 impl TransactionMetrics {
     /// Create new transaction metrics
-    #[must_use] pub const fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             total_transactions: 0,
             total_duration: Duration::ZERO,
@@ -188,7 +188,8 @@ pub struct StorageMetrics {
 
 impl StorageMetrics {
     /// Create new storage metrics
-    #[must_use] pub const fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             total_bytes_read: 0,
             total_bytes_written: 0,
@@ -200,7 +201,7 @@ impl StorageMetrics {
     /// Record a storage operation
     pub fn record_operation(&mut self, operation: &str, duration: Duration, bytes: u64) {
         self.total_io_operations += 1;
-        
+
         if operation.contains("read") {
             self.total_bytes_read += bytes;
         } else if operation.contains("write") {
@@ -208,9 +209,9 @@ impl StorageMetrics {
         }
 
         // Update average duration
-        self.average_io_duration = 
-            (self.average_io_duration * (self.total_io_operations - 1) as u32 + duration) 
-            / self.total_io_operations as u32;
+        self.average_io_duration =
+            (self.average_io_duration * (self.total_io_operations - 1) as u32 + duration)
+                / self.total_io_operations as u32;
     }
 }
 
@@ -228,7 +229,7 @@ mod tests {
     fn test_query_metrics() {
         let mut metrics = QueryMetrics::new();
         metrics.record_execution("SELECT * FROM users", Duration::from_millis(100), 5);
-        
+
         assert_eq!(metrics.total_queries, 1);
         assert_eq!(metrics.total_rows_affected, 5);
         assert_eq!(metrics.average_execution_time, Duration::from_millis(100));
@@ -246,7 +247,7 @@ mod tests {
     fn test_performance_metrics() {
         let mut metrics = PerformanceMetrics::new();
         metrics.record_query("SELECT * FROM test", Duration::from_millis(50), 10);
-        
+
         assert_eq!(metrics.query_metrics.total_queries, 1);
         assert_eq!(metrics.query_metrics.total_rows_affected, 10);
     }

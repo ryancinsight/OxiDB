@@ -49,7 +49,8 @@ pub struct VectorTransaction {
 
 impl VectorTransaction {
     /// Create a new transaction
-    #[must_use] pub fn new(id: TransactionId) -> Self {
+    #[must_use]
+    pub fn new(id: TransactionId) -> Self {
         Self {
             id,
             state: TransactionState::Active,
@@ -109,7 +110,8 @@ pub struct VectorTransactionManager {
 
 impl VectorTransactionManager {
     /// Create a new transaction manager
-    #[must_use] pub fn new(store: Box<dyn VectorStore + Send>) -> Self {
+    #[must_use]
+    pub fn new(store: Box<dyn VectorStore + Send>) -> Self {
         Self {
             next_tx_id: Arc::new(Mutex::new(1)),
             active_transactions: Arc::new(Mutex::new(HashMap::new())),
@@ -119,10 +121,9 @@ impl VectorTransactionManager {
 
     /// Begin a new transaction (Atomicity)
     pub fn begin_transaction(&self) -> Result<TransactionId, OxidbError> {
-        let mut next_id = self
-            .next_tx_id
-            .lock()
-            .map_err(|_| OxidbError::LockTimeout("Failed to acquire next_tx_id lock".to_string()))?;
+        let mut next_id = self.next_tx_id.lock().map_err(|_| {
+            OxidbError::LockTimeout("Failed to acquire next_tx_id lock".to_string())
+        })?;
 
         let tx_id = *next_id;
         *next_id = next_id.saturating_add(1);

@@ -1,17 +1,17 @@
 //! Performance Monitoring and Analysis Framework for `OxiDB`
 
-pub mod metrics;
-pub mod profiler; 
 pub mod analytics;
+pub mod metrics;
 pub mod monitor;
+pub mod profiler;
 
-pub use metrics::{PerformanceMetrics, QueryMetrics};
-pub use profiler::{PerformanceProfiler, ProfiledOperation};
 pub use analytics::{PerformanceAnalyzer, PerformanceReport};
-pub use monitor::{PerformanceMonitor, MonitoringConfig};
+pub use metrics::{PerformanceMetrics, QueryMetrics};
+pub use monitor::{MonitoringConfig, PerformanceMonitor};
+pub use profiler::{PerformanceProfiler, ProfiledOperation};
 
-use std::time::Duration;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 /// Global performance tracking context for the database instance
 #[derive(Debug, Clone)]
@@ -28,7 +28,8 @@ pub struct PerformanceContext {
 
 impl PerformanceContext {
     /// Create a new performance context with default configuration
-    #[must_use] pub fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self {
             metrics: Arc::new(RwLock::new(PerformanceMetrics::new())),
             profiler: Arc::new(RwLock::new(PerformanceProfiler::new())),
@@ -38,7 +39,12 @@ impl PerformanceContext {
     }
 
     /// Record a query execution with performance metrics
-    pub fn record_query(&self, query: &str, duration: Duration, rows_affected: u64) -> Result<(), crate::core::common::OxidbError> {
+    pub fn record_query(
+        &self,
+        query: &str,
+        duration: Duration,
+        rows_affected: u64,
+    ) -> Result<(), crate::core::common::OxidbError> {
         if let Ok(mut metrics) = self.metrics.write() {
             metrics.record_query(query, duration, rows_affected);
         }
@@ -47,9 +53,10 @@ impl PerformanceContext {
 
     /// Generate a comprehensive performance report
     pub fn generate_report(&self) -> Result<PerformanceReport, crate::core::common::OxidbError> {
-        let metrics = self.metrics.read()
-            .map_err(|e| crate::core::common::OxidbError::Internal(format!("Failed to read metrics: {e}")))?;
-        
+        let metrics = self.metrics.read().map_err(|e| {
+            crate::core::common::OxidbError::Internal(format!("Failed to read metrics: {e}"))
+        })?;
+
         let analyzer = PerformanceAnalyzer::new();
         Ok(analyzer.analyze(&metrics))
     }

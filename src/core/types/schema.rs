@@ -20,14 +20,16 @@ pub struct Schema {
 }
 
 impl Schema {
-    #[must_use] pub const fn new(columns: Vec<ColumnDef>) -> Self {
+    #[must_use]
+    pub const fn new(columns: Vec<ColumnDef>) -> Self {
         Self { columns }
     }
 
     // Helper constructor for ColumnDef, assuming default constraints initially
     // This might be useful if creating ColumnDefs programmatically outside of parsing.
     // For parsing, these will be set explicitly.
-    #[must_use] pub const fn new_column_def(name: String, data_type: DataType) -> ColumnDef {
+    #[must_use]
+    pub const fn new_column_def(name: String, data_type: DataType) -> ColumnDef {
         ColumnDef {
             name,
             data_type,
@@ -38,7 +40,8 @@ impl Schema {
         }
     }
 
-    #[must_use] pub fn get_column_index(&self, column_name: &str) -> Option<usize> {
+    #[must_use]
+    pub fn get_column_index(&self, column_name: &str) -> Option<usize> {
         self.columns.iter().position(|col| col.name == column_name)
     }
 }

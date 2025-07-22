@@ -50,9 +50,9 @@ pub enum Token {
     Comma,
     Asterisk,
     Semicolon,
-    LBracket, // Added [
-    RBracket, // Added ]
-    Dot,      // Added . for qualified names
+    LBracket,  // Added [
+    RBracket,  // Added ]
+    Dot,       // Added . for qualified names
     Parameter, // Added ? for parameter placeholders
 
     // End of File
@@ -117,7 +117,8 @@ pub struct Tokenizer<'a> {
 }
 
 impl<'a> Tokenizer<'a> {
-    #[must_use] pub fn new(input: &'a str) -> Self {
+    #[must_use]
+    pub fn new(input: &'a str) -> Self {
         Tokenizer { input, chars: input.char_indices().peekable(), current_pos: 0 }
     }
 

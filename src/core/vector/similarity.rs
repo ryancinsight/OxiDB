@@ -29,7 +29,8 @@ impl SimilarityMetric {
     }
 
     /// Get the name of the similarity metric
-    #[must_use] pub const fn name(&self) -> &'static str {
+    #[must_use]
+    pub const fn name(&self) -> &'static str {
         match self {
             Self::Cosine => "cosine",
             Self::DotProduct => "dot_product",

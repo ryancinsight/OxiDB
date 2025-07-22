@@ -185,9 +185,10 @@ impl PageManager {
     }
 
     pub fn read_node(&self, page_id: PageId) -> Result<BPlusTreeNode, OxidbError> {
-        let mut file = self.file_handle.lock().map_err(|e| {
-            OxidbError::BorrowError(format!("Mutex lock error for read_node: {e}"))
-        })?;
+        let mut file = self
+            .file_handle
+            .lock()
+            .map_err(|e| OxidbError::BorrowError(format!("Mutex lock error for read_node: {e}")))?;
         let offset = PAGE_SIZE.saturating_add(page_id.saturating_mul(PAGE_SIZE));
         file.seek(SeekFrom::Start(offset))?;
 

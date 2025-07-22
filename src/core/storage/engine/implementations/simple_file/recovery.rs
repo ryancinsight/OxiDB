@@ -74,9 +74,7 @@ pub(super) fn replay_wal_into_cache(
         if (tx_id == 0 || committed_transactions.contains(&tx_id))
             && !rolled_back_transactions.contains(&tx_id)
         {
-            println!(
-                "[replay_wal] Applying operations for tx_id: {tx_id} (implicit or committed)"
-            );
+            println!("[replay_wal] Applying operations for tx_id: {tx_id} (implicit or committed)");
             if let Some(operations) = transaction_operations.get(&tx_id) {
                 for entry in operations {
                     println!("[replay_wal] Applying entry: {entry:?}");

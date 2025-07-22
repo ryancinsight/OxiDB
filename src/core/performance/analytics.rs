@@ -12,21 +12,20 @@ pub struct PerformanceAnalyzer {
 
 impl PerformanceAnalyzer {
     /// Create a new performance analyzer
-    #[must_use] pub const fn new() -> Self {
-        Self {
-            slow_query_threshold: Duration::from_secs(1),
-        }
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { slow_query_threshold: Duration::from_secs(1) }
     }
 
     /// Create analyzer with custom slow query threshold
-    #[must_use] pub const fn with_threshold(threshold: Duration) -> Self {
-        Self {
-            slow_query_threshold: threshold,
-        }
+    #[must_use]
+    pub const fn with_threshold(threshold: Duration) -> Self {
+        Self { slow_query_threshold: threshold }
     }
 
     /// Analyze performance metrics and generate a report
-    #[must_use] pub fn analyze(&self, metrics: &PerformanceMetrics) -> PerformanceReport {
+    #[must_use]
+    pub fn analyze(&self, metrics: &PerformanceMetrics) -> PerformanceReport {
         let query_analysis = self.analyze_queries(metrics);
         let transaction_analysis = self.analyze_transactions(metrics);
         let storage_analysis = self.analyze_storage(metrics);
@@ -44,7 +43,7 @@ impl PerformanceAnalyzer {
     /// Analyze query performance
     fn analyze_queries(&self, metrics: &PerformanceMetrics) -> QueryAnalysis {
         let query_metrics = &metrics.query_metrics;
-        
+
         QueryAnalysis {
             total_queries: query_metrics.total_queries,
             average_execution_time: query_metrics.average_execution_time,
@@ -55,7 +54,8 @@ impl PerformanceAnalyzer {
                 query_metrics.min_execution_time
             },
             queries_per_second: if query_metrics.total_execution_time.as_secs() > 0 {
-                query_metrics.total_queries as f64 / query_metrics.total_execution_time.as_secs_f64()
+                query_metrics.total_queries as f64
+                    / query_metrics.total_execution_time.as_secs_f64()
             } else {
                 0.0
             },
@@ -66,7 +66,7 @@ impl PerformanceAnalyzer {
     /// Analyze transaction performance
     fn analyze_transactions(&self, metrics: &PerformanceMetrics) -> TransactionAnalysis {
         let tx_metrics = &metrics.transaction_metrics;
-        
+
         TransactionAnalysis {
             total_transactions: tx_metrics.total_transactions,
             average_duration: tx_metrics.average_duration,
@@ -86,7 +86,7 @@ impl PerformanceAnalyzer {
     /// Analyze storage performance
     fn analyze_storage(&self, metrics: &PerformanceMetrics) -> StorageAnalysis {
         let storage_metrics = &metrics.storage_metrics;
-        
+
         StorageAnalysis {
             total_bytes_read: storage_metrics.total_bytes_read,
             total_bytes_written: storage_metrics.total_bytes_written,
@@ -116,17 +116,14 @@ impl PerformanceAnalyzer {
 
         // Check transaction abort rate
         let abort_rate = if metrics.transaction_metrics.total_transactions > 0 {
-            metrics.transaction_metrics.aborted_transactions as f64 
+            metrics.transaction_metrics.aborted_transactions as f64
                 / metrics.transaction_metrics.total_transactions as f64
         } else {
             0.0
         };
 
         if abort_rate > 0.1 {
-            bottlenecks.push(format!(
-                "High transaction abort rate: {:.1}%",
-                abort_rate * 100.0
-            ));
+            bottlenecks.push(format!("High transaction abort rate: {:.1}%", abort_rate * 100.0));
             severity = std::cmp::max(severity, BottleneckSeverity::Medium);
         }
 
@@ -139,10 +136,7 @@ impl PerformanceAnalyzer {
             severity = std::cmp::max(severity, BottleneckSeverity::Medium);
         }
 
-        BottleneckAnalysis {
-            bottlenecks,
-            severity,
-        }
+        BottleneckAnalysis { bottlenecks, severity }
     }
 
     /// Generate performance recommendations
@@ -152,28 +146,32 @@ impl PerformanceAnalyzer {
         // Query optimization recommendations
         if metrics.query_metrics.max_execution_time > self.slow_query_threshold {
             recommendations.push("Consider adding indexes for slow queries".to_string());
-            recommendations.push("Review query execution plans for optimization opportunities".to_string());
+            recommendations
+                .push("Review query execution plans for optimization opportunities".to_string());
         }
 
         // Transaction recommendations
         let abort_rate = if metrics.transaction_metrics.total_transactions > 0 {
-            metrics.transaction_metrics.aborted_transactions as f64 
+            metrics.transaction_metrics.aborted_transactions as f64
                 / metrics.transaction_metrics.total_transactions as f64
         } else {
             0.0
         };
 
         if abort_rate > 0.05 {
-            recommendations.push("High abort rate detected - consider reducing transaction scope".to_string());
+            recommendations
+                .push("High abort rate detected - consider reducing transaction scope".to_string());
         }
 
         // Storage recommendations
         if metrics.storage_metrics.average_io_duration > Duration::from_millis(50) {
-            recommendations.push("Consider using faster storage or optimizing I/O patterns".to_string());
+            recommendations
+                .push("Consider using faster storage or optimizing I/O patterns".to_string());
         }
 
         if recommendations.is_empty() {
-            recommendations.push("Performance looks good - no immediate optimizations needed".to_string());
+            recommendations
+                .push("Performance looks good - no immediate optimizations needed".to_string());
         }
 
         recommendations
@@ -277,13 +275,13 @@ mod tests {
     fn test_performance_analyzer() {
         let analyzer = PerformanceAnalyzer::new();
         let mut metrics = PerformanceMetrics::new();
-        
+
         // Add some test data
         metrics.record_query("SELECT * FROM users", Duration::from_millis(100), 5);
         metrics.record_transaction(Duration::from_millis(200), 3);
-        
+
         let report = analyzer.analyze(&metrics);
-        
+
         assert_eq!(report.query_analysis.total_queries, 1);
         assert_eq!(report.transaction_analysis.total_transactions, 1);
         assert!(!report.recommendations.is_empty());
@@ -293,12 +291,12 @@ mod tests {
     fn test_slow_query_detection() {
         let analyzer = PerformanceAnalyzer::with_threshold(Duration::from_millis(50));
         let mut metrics = PerformanceMetrics::new();
-        
+
         // Add a slow query
         metrics.record_query("SELECT * FROM large_table", Duration::from_millis(100), 1000);
-        
+
         let report = analyzer.analyze(&metrics);
-        
+
         assert!(report.query_analysis.slow_queries_detected);
         assert!(report.bottlenecks.severity >= BottleneckSeverity::High);
     }

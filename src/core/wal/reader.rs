@@ -84,7 +84,8 @@ impl WalRecordIterator {
     }
 
     /// Get the number of records read so far
-    #[must_use] pub const fn records_read(&self) -> usize {
+    #[must_use]
+    pub const fn records_read(&self) -> usize {
         self.records_read
     }
 
@@ -144,15 +145,15 @@ impl WalRecordIterator {
     /// Extract LSN from a log record
     const fn extract_lsn(&self, record: &LogRecord) -> Lsn {
         match record {
-            LogRecord::BeginTransaction { lsn, .. } 
-            | LogRecord::CommitTransaction { lsn, .. } 
+            LogRecord::BeginTransaction { lsn, .. }
+            | LogRecord::CommitTransaction { lsn, .. }
             | LogRecord::AbortTransaction { lsn, .. }
-            | LogRecord::InsertRecord { lsn, .. } 
-            | LogRecord::DeleteRecord { lsn, .. } 
-            | LogRecord::UpdateRecord { lsn, .. } 
+            | LogRecord::InsertRecord { lsn, .. }
+            | LogRecord::DeleteRecord { lsn, .. }
+            | LogRecord::UpdateRecord { lsn, .. }
             | LogRecord::NewPage { lsn, .. }
             | LogRecord::CompensationLogRecord { lsn, .. }
-            | LogRecord::CheckpointBegin { lsn, .. } 
+            | LogRecord::CheckpointBegin { lsn, .. }
             | LogRecord::CheckpointEnd { lsn, .. } => *lsn,
         }
     }
@@ -215,12 +216,12 @@ impl WalReader {
 
         while let Some(record) = iterator.next_record()? {
             let record_tx_id = match &record {
-                LogRecord::BeginTransaction { tx_id: id, .. } 
-                | LogRecord::CommitTransaction { tx_id: id, .. } 
+                LogRecord::BeginTransaction { tx_id: id, .. }
+                | LogRecord::CommitTransaction { tx_id: id, .. }
                 | LogRecord::AbortTransaction { tx_id: id, .. }
-                | LogRecord::InsertRecord { tx_id: id, .. } 
-                | LogRecord::DeleteRecord { tx_id: id, .. } 
-                | LogRecord::UpdateRecord { tx_id: id, .. } 
+                | LogRecord::InsertRecord { tx_id: id, .. }
+                | LogRecord::DeleteRecord { tx_id: id, .. }
+                | LogRecord::UpdateRecord { tx_id: id, .. }
                 | LogRecord::NewPage { tx_id: id, .. }
                 | LogRecord::CompensationLogRecord { tx_id: id, .. } => Some(*id),
                 LogRecord::CheckpointBegin { .. } | LogRecord::CheckpointEnd { .. } => None,
@@ -234,11 +235,10 @@ impl WalReader {
         Ok(tx_records)
     }
 
-
     /// Find the last checkpoint record pair in the WAL.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns `WalReaderError` if:
     /// - The WAL file cannot be read
     /// - Record parsing fails
@@ -270,34 +270,56 @@ impl WalReader {
     }
 
     /// Get comprehensive statistics about the WAL file.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns `WalReaderError` if:
     /// - The WAL file cannot be read
     /// - Record parsing fails during iteration
     /// - I/O errors occur during file operations
     pub fn get_statistics(&self) -> Result<WalStatistics, WalReaderError> {
         let mut stats = WalStatistics::default();
-        
+
         for record in WalRecordIterator::new(&self.wal_file_path, self.config)? {
             let record = record?;
             stats.total_records = stats.total_records.saturating_add(1);
-            
+
             match record {
-                LogRecord::BeginTransaction { .. } => stats.begin_transaction_count = stats.begin_transaction_count.saturating_add(1),
-                LogRecord::CommitTransaction { .. } => stats.commit_transaction_count = stats.commit_transaction_count.saturating_add(1),
-                LogRecord::AbortTransaction { .. } => stats.abort_transaction_count = stats.abort_transaction_count.saturating_add(1),
-                LogRecord::InsertRecord { .. } => stats.insert_record_count = stats.insert_record_count.saturating_add(1),
-                LogRecord::DeleteRecord { .. } => stats.delete_record_count = stats.delete_record_count.saturating_add(1),
-                LogRecord::UpdateRecord { .. } => stats.update_record_count = stats.update_record_count.saturating_add(1),
-                LogRecord::NewPage { .. } => stats.new_page_count = stats.new_page_count.saturating_add(1),
-                LogRecord::CompensationLogRecord { .. } => stats.compensation_log_record_count = stats.compensation_log_record_count.saturating_add(1),
-                LogRecord::CheckpointBegin { .. } => stats.checkpoint_begin_count = stats.checkpoint_begin_count.saturating_add(1),
-                LogRecord::CheckpointEnd { .. } => stats.checkpoint_end_count = stats.checkpoint_end_count.saturating_add(1),
+                LogRecord::BeginTransaction { .. } => {
+                    stats.begin_transaction_count = stats.begin_transaction_count.saturating_add(1);
+                }
+                LogRecord::CommitTransaction { .. } => {
+                    stats.commit_transaction_count =
+                        stats.commit_transaction_count.saturating_add(1);
+                }
+                LogRecord::AbortTransaction { .. } => {
+                    stats.abort_transaction_count = stats.abort_transaction_count.saturating_add(1);
+                }
+                LogRecord::InsertRecord { .. } => {
+                    stats.insert_record_count = stats.insert_record_count.saturating_add(1);
+                }
+                LogRecord::DeleteRecord { .. } => {
+                    stats.delete_record_count = stats.delete_record_count.saturating_add(1);
+                }
+                LogRecord::UpdateRecord { .. } => {
+                    stats.update_record_count = stats.update_record_count.saturating_add(1);
+                }
+                LogRecord::NewPage { .. } => {
+                    stats.new_page_count = stats.new_page_count.saturating_add(1);
+                }
+                LogRecord::CompensationLogRecord { .. } => {
+                    stats.compensation_log_record_count =
+                        stats.compensation_log_record_count.saturating_add(1);
+                }
+                LogRecord::CheckpointBegin { .. } => {
+                    stats.checkpoint_begin_count = stats.checkpoint_begin_count.saturating_add(1);
+                }
+                LogRecord::CheckpointEnd { .. } => {
+                    stats.checkpoint_end_count = stats.checkpoint_end_count.saturating_add(1);
+                }
             }
         }
-        
+
         Ok(stats)
     }
 }

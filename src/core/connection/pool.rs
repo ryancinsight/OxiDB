@@ -1,13 +1,13 @@
 //! Connection Pool Implementation
-//! 
+//!
 //! This module provides a thread-safe connection pool for database connections,
 //! following SOLID principles and implementing proper resource management.
 
 use crate::core::common::{OxidbError, ResultExt};
 use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex, Weak};
-use std::time::{Duration, Instant};
 use std::thread;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 /// Trait for database connections that can be pooled
@@ -15,16 +15,16 @@ use uuid::Uuid;
 pub trait PoolableConnection: Send + Sync {
     /// Check if the connection is still valid
     fn is_valid(&self) -> bool;
-    
+
     /// Reset the connection to a clean state
     fn reset(&mut self) -> Result<(), OxidbError>;
-    
+
     /// Get the connection's unique identifier
     fn connection_id(&self) -> Uuid;
-    
+
     /// Get the time when this connection was last used
     fn last_used(&self) -> Instant;
-    
+
     /// Mark the connection as used
     fn mark_used(&mut self);
 }
@@ -69,19 +69,19 @@ pub struct PooledConnection<T: PoolableConnection> {
 
 impl<T: PoolableConnection> PooledConnection<T> {
     /// Create a new pooled connection
-    const fn new(connection: T, pool_inner: Weak<Mutex<PoolInner<T>>>, connection_available: Weak<Condvar>) -> Self {
-        Self {
-            connection: Some(connection),
-            pool_inner,
-            connection_available,
-        }
+    const fn new(
+        connection: T,
+        pool_inner: Weak<Mutex<PoolInner<T>>>,
+        connection_available: Weak<Condvar>,
+    ) -> Self {
+        Self { connection: Some(connection), pool_inner, connection_available }
     }
-    
+
     /// Get a reference to the underlying connection
     pub const fn as_ref(&self) -> Option<&T> {
         self.connection.as_ref()
     }
-    
+
     /// Get a mutable reference to the underlying connection
     pub fn as_mut(&mut self) -> Option<&mut T> {
         self.connection.as_mut()
@@ -119,42 +119,38 @@ struct PoolInner<T: PoolableConnection> {
 
 impl<T: PoolableConnection> PoolInner<T> {
     const fn new(config: PoolConfig) -> Self {
-        Self {
-            available: VecDeque::new(),
-            in_use: 0,
-            config,
-            condvar: Condvar::new(),
-        }
+        Self { available: VecDeque::new(), in_use: 0, config, condvar: Condvar::new() }
     }
-    
+
     fn total_connections(&self) -> usize {
         self.available.len() + self.in_use
     }
-    
+
     fn return_connection(&mut self, mut connection: T) {
         // Reset the connection state
         if connection.reset().is_ok() && connection.is_valid() {
             connection.mark_used();
             self.available.push_back(connection);
         }
-        
+
         // Debug assertion to catch logic errors in development
         debug_assert!(self.in_use > 0, "in_use should always be > 0 when returning a connection");
         self.in_use -= 1;
-        
+
         // This will be notified by the pool when the connection is returned
     }
-    
+
     fn cleanup_idle_connections(&mut self) {
         let now = Instant::now();
         self.available.retain(|conn| {
             let idle_time = now.duration_since(conn.last_used());
             idle_time < self.config.max_idle_time && conn.is_valid()
         });
-        
+
         // Ensure we maintain minimum connections
-        while self.available.len() < self.config.min_connections 
-            && self.total_connections() < self.config.max_connections {
+        while self.available.len() < self.config.min_connections
+            && self.total_connections() < self.config.max_connections
+        {
             // This would require a factory function to create new connections
             // For now, we'll just break to avoid infinite loop
             break;
@@ -175,16 +171,17 @@ pub struct ConnectionPool<T: PoolableConnection> {
 
 impl<T: PoolableConnection + 'static> ConnectionPool<T> {
     /// Create a new connection pool with the given configuration
-    #[must_use] pub fn new(config: PoolConfig) -> Self {
+    #[must_use]
+    pub fn new(config: PoolConfig) -> Self {
         let inner = Arc::new(Mutex::new(PoolInner::new(config.clone())));
         let connection_available = Arc::new(Condvar::new());
         let cleanup_inner = Arc::downgrade(&inner);
-        
+
         // Start cleanup thread
         let cleanup_handle = thread::spawn(move || {
             loop {
                 thread::sleep(config.cleanup_interval);
-                
+
                 if let Some(pool) = cleanup_inner.upgrade() {
                     if let Ok(mut inner) = pool.lock() {
                         inner.cleanup_idle_connections();
@@ -195,28 +192,22 @@ impl<T: PoolableConnection + 'static> ConnectionPool<T> {
                 }
             }
         });
-        
-        Self {
-            inner,
-            connection_available,
-            _cleanup_handle: cleanup_handle,
-        }
+
+        Self { inner, connection_available, _cleanup_handle: cleanup_handle }
     }
-    
+
     /// Get a connection from the pool
     pub fn get_connection(&self) -> Result<PooledConnection<T>, OxidbError> {
         let timeout = {
-            let inner = self.inner.lock()
-                .with_static_context("Failed to acquire pool lock")?;
+            let inner = self.inner.lock().with_static_context("Failed to acquire pool lock")?;
             inner.config.connection_timeout
         };
-        
+
         let start_time = Instant::now();
-        
+
         loop {
-            let mut inner = self.inner.lock()
-                .with_static_context("Failed to acquire pool lock")?;
-            
+            let mut inner = self.inner.lock().with_static_context("Failed to acquire pool lock")?;
+
             // Try to get an available connection
             while let Some(mut connection) = inner.available.pop_front() {
                 if connection.is_valid() {
@@ -224,56 +215,50 @@ impl<T: PoolableConnection + 'static> ConnectionPool<T> {
                     inner.in_use += 1;
                     // Connection is valid, return it
                     return Ok(PooledConnection::new(
-                    connection, 
-                    Arc::downgrade(&self.inner),
-                    Arc::downgrade(&self.connection_available)
-                ));
+                        connection,
+                        Arc::downgrade(&self.inner),
+                        Arc::downgrade(&self.connection_available),
+                    ));
                 }
                 // Connection is invalid, discard it
             }
-            
+
             // Check if we can create a new connection
             if inner.total_connections() < inner.config.max_connections {
                 // Would need a factory function to create new connections
-                return Err(OxidbError::Other(
-                    "Connection factory not implemented".to_string()
-                ));
+                return Err(OxidbError::Other("Connection factory not implemented".to_string()));
             }
-            
+
             // Check timeout
             if start_time.elapsed() >= timeout {
-                return Err(OxidbError::Other(
-                    "Timeout waiting for connection".to_string()
-                ));
+                return Err(OxidbError::Other("Timeout waiting for connection".to_string()));
             }
-            
+
             // Wait for a connection to become available using proper condvar pattern
             // This implements the expected connection pool behavior
-            let (guard, timeout_result) = self.connection_available
+            let (guard, timeout_result) = self
+                .connection_available
                 .wait_timeout(inner, timeout - start_time.elapsed())
                 .with_static_context("Failed to wait for connection")?;
-            
+
             // Update inner with the guard returned from wait_timeout
             #[allow(unused_assignments)]
             {
                 inner = guard;
             }
-            
+
             if timeout_result.timed_out() {
-                return Err(OxidbError::Other(
-                    "Timeout waiting for connection".to_string()
-                ));
+                return Err(OxidbError::Other("Timeout waiting for connection".to_string()));
             }
-            
+
             // After waking up, try again to get a connection
         }
     }
-    
+
     /// Get pool statistics
     pub fn stats(&self) -> Result<PoolStats, OxidbError> {
-        let inner = self.inner.lock()
-            .with_static_context("Failed to acquire pool lock")?;
-        
+        let inner = self.inner.lock().with_static_context("Failed to acquire pool lock")?;
+
         Ok(PoolStats {
             available: inner.available.len(),
             in_use: inner.in_use,
@@ -281,20 +266,17 @@ impl<T: PoolableConnection + 'static> ConnectionPool<T> {
             max_connections: inner.config.max_connections,
         })
     }
-    
+
     /// Add a connection to the pool
     pub fn add_connection(&self, connection: T) -> Result<(), OxidbError> {
-        let mut inner = self.inner.lock()
-            .with_static_context("Failed to acquire pool lock")?;
-        
+        let mut inner = self.inner.lock().with_static_context("Failed to acquire pool lock")?;
+
         if inner.total_connections() < inner.config.max_connections {
             inner.available.push_back(connection);
             self.connection_available.notify_one();
             Ok(())
         } else {
-            Err(OxidbError::Other(
-                "Pool is at maximum capacity".to_string()
-            ))
+            Err(OxidbError::Other("Pool is at maximum capacity".to_string()))
         }
     }
 }
@@ -334,7 +316,7 @@ mod tests {
                 reset_count: AtomicUsize::new(0),
             }
         }
-        
+
         #[allow(dead_code)]
         fn invalidate(&self) {
             self.valid.store(false, Ordering::SeqCst);
@@ -345,20 +327,20 @@ mod tests {
         fn is_valid(&self) -> bool {
             self.valid.load(Ordering::SeqCst)
         }
-        
+
         fn reset(&mut self) -> Result<(), OxidbError> {
             self.reset_count.fetch_add(1, Ordering::SeqCst);
             Ok(())
         }
-        
+
         fn connection_id(&self) -> Uuid {
             self.id
         }
-        
+
         fn last_used(&self) -> Instant {
             self.last_used
         }
-        
+
         fn mark_used(&mut self) {
             self.last_used = Instant::now();
         }
@@ -369,7 +351,7 @@ mod tests {
         let config = PoolConfig::default();
         let pool: ConnectionPool<MockConnection> = ConnectionPool::new(config);
         let stats = pool.stats().unwrap();
-        
+
         assert_eq!(stats.available, 0);
         assert_eq!(stats.in_use, 0);
         assert_eq!(stats.total, 0);
@@ -380,10 +362,10 @@ mod tests {
         let config = PoolConfig::default();
         let pool = ConnectionPool::new(config);
         let connection = MockConnection::new();
-        
+
         pool.add_connection(connection).unwrap();
         let stats = pool.stats().unwrap();
-        
+
         assert_eq!(stats.available, 1);
         assert_eq!(stats.total, 1);
     }
@@ -394,16 +376,16 @@ mod tests {
         let pool = ConnectionPool::new(config);
         let connection = MockConnection::new();
         let _reset_count_before = connection.reset_count.load(Ordering::SeqCst);
-        
+
         pool.add_connection(connection).unwrap();
-        
+
         {
             let _pooled_conn = pool.get_connection().unwrap();
             let stats = pool.stats().unwrap();
             assert_eq!(stats.in_use, 1);
             assert_eq!(stats.available, 0);
         } // Connection should be returned here
-        
+
         let stats = pool.stats().unwrap();
         assert_eq!(stats.in_use, 0);
         assert_eq!(stats.available, 1);
