@@ -1025,7 +1025,7 @@ mod tests {
         thread::sleep(StdDuration::from_millis(flush_interval_ms / 2));
 
         let LogRecord::BeginTransaction { lsn: prev_lsn_for_commit, .. } = record1 else {
-            panic!("Expected BeginTransaction record for record1")
+            assert!(false, "Expected BeginTransaction record for record1")
         };
         let record_commit = LogRecord::CommitTransaction {
             lsn: next_lsn(),
