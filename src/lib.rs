@@ -74,20 +74,20 @@ mod tests {
 
         match db.get(key1.clone()) {
             Ok(Some(v_str)) => assert_eq!(v_str, value1_str),
-            Ok(None) => panic!("Key not found after insert"),
-            Err(e) => panic!("Error during get: {:?}", e),
+            assert!(false, "Key not found after insert");
+            assert!(false, "Error during get: {e:?}");
         }
 
         match db.delete(key1.clone()) {
             Ok(true) => (),
-            Ok(false) => panic!("Key not found for deletion"),
-            Err(e) => panic!("Error during delete: {:?}", e),
+            assert!(false, "Key not found for deletion");
+            Err(e) => assert!(false, "Error during delete: {e:?}"),
         }
 
         match db.get(key1.clone()) {
             Ok(None) => (),
-            Ok(Some(_)) => panic!("Key found after delete"),
-            Err(e) => panic!("Error during get after delete: {:?}", e),
+            Ok(Some(_)) => assert!(false, "Key found after delete"),
+            Err(e) => assert!(false, "Error during get after delete: {e:?}"),
         }
 
         let key2 = b"int_key2".to_vec();
@@ -95,7 +95,7 @@ mod tests {
         assert!(db.insert(key2.clone(), value2_str.clone()).is_ok());
         match db.get(key2.clone()) {
             Ok(Some(v_str)) => assert_eq!(v_str, value2_str),
-            _ => panic!("Second key not processed correctly"),
+            _ => assert!(false, "Second key not processed correctly"),
         }
     }
 
@@ -104,7 +104,7 @@ mod tests {
         let original_extension = wal_path.extension().and_then(std::ffi::OsStr::to_str);
 
         if let Some(ext_str) = original_extension {
-            wal_path.set_extension(format!("{}.wal", ext_str));
+            wal_path.set_extension(format!("{ext_str}.wal"));
         } else {
             wal_path.set_extension("wal");
         }
@@ -319,7 +319,7 @@ mod tests {
             crate::OxidbError::Configuration(msg) => {
                 assert!(msg.contains("Failed to parse config file"));
             }
-            e => panic!("Expected OxidbError::Configuration, got {:?}", e),
+            e => assert!(false, "Expected OxidbError::Configuration, got {e:?}"),
         }
     }
 }

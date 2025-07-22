@@ -1017,23 +1017,22 @@ mod tests {
         };
 
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1100) };
-        assert!(writer.add_record(&record1.clone()).is_ok());
+        assert!(writer.add_record(&record1).is_ok());
         let time_after_record1 = Instant::now();
         writer.last_flush_time = Some(time_after_record1); // Simulate this was the last flush time
 
         // Wait for a duration less than the interval, then commit
         thread::sleep(StdDuration::from_millis(flush_interval_ms / 2));
 
-        let prev_lsn_for_commit = match record1 {
-            LogRecord::BeginTransaction { lsn, .. } => lsn,
-            _ => panic!("Expected BeginTransaction record for record1"),
+        let LogRecord::BeginTransaction { lsn: prev_lsn_for_commit, .. } = record1 else {
+            assert!(false, "Expected BeginTransaction record for record1")
         };
         let record_commit = LogRecord::CommitTransaction {
             lsn: next_lsn(),
             tx_id: TransactionId(1100),
             prev_lsn: prev_lsn_for_commit,
         };
-        assert!(writer.add_record(&record_commit.clone()).is_ok(), "Commit flush failed");
+        assert!(writer.add_record(&record_commit).is_ok(), "Commit flush failed");
         // Commit should have flushed record1 and record_commit
         assert!(writer.buffer.is_empty(), "Buffer should be empty after commit flush");
         assert!(test_file_path.exists(), "WAL file should exist after commit flush");
@@ -1097,7 +1096,7 @@ mod tests {
         };
 
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1200) };
-        assert!(writer.add_record(&record1.clone()).is_ok());
+        assert!(writer.add_record(&record1).is_ok());
         let time_after_record1_add = writer.last_flush_time.unwrap_or_else(Instant::now);
 
         // Wait for periodic flush to be due
@@ -1105,16 +1104,15 @@ mod tests {
 
         // Adding a commit record now. The periodic flush should trigger first for record1.
         // Then the commit record is added and immediately flushed because it's a commit.
-        let prev_lsn_for_commit2 = match record1 {
-            LogRecord::BeginTransaction { lsn, .. } => lsn,
-            _ => panic!("Expected BeginTransaction record for record1"),
+        let LogRecord::BeginTransaction { lsn: prev_lsn_for_commit2, .. } = record1 else {
+            assert!(false, "Expected BeginTransaction record for record1")
         };
         let record_commit = LogRecord::CommitTransaction {
             lsn: next_lsn(),
             tx_id: TransactionId(1200),
             prev_lsn: prev_lsn_for_commit2,
         };
-        assert!(writer.add_record(&record_commit.clone()).is_ok(), "Add record commit failed");
+        assert!(writer.add_record(&record_commit).is_ok(), "Add record commit failed");
 
         // After periodic flush (for record1) and then commit flush (for record_commit)
         assert!(writer.buffer.is_empty(), "Buffer should be empty");
@@ -1190,22 +1188,21 @@ mod tests {
         };
 
         let record1 = LogRecord::BeginTransaction { lsn: next_lsn(), tx_id: TransactionId(1400) };
-        writer.add_record(&record1.clone()).unwrap();
+        writer.add_record(&record1).unwrap();
         assert_eq!(
             writer.last_flush_time, initial_last_flush_time,
             "last_flush_time should not change for non-commit record"
         );
 
-        let prev_lsn_for_commit3 = match record1 {
-            LogRecord::BeginTransaction { lsn, .. } => lsn,
-            _ => panic!("Expected BeginTransaction record for record1"),
+        let LogRecord::BeginTransaction { lsn: prev_lsn_for_commit3, .. } = record1 else {
+            assert!(false, "Expected BeginTransaction record for record1")
         };
         let record_commit = LogRecord::CommitTransaction {
             lsn: next_lsn(),
             tx_id: TransactionId(1400),
             prev_lsn: prev_lsn_for_commit3,
         };
-        writer.add_record(&record_commit.clone()).unwrap(); // Triggers commit-based flush
+        writer.add_record(&record_commit).unwrap(); // Triggers commit-based flush
         assert!(
             writer.last_flush_time > initial_last_flush_time,
             "last_flush_time should update after commit-based flush"
