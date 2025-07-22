@@ -25,3 +25,7 @@ target/
 
 # macOS specific
 .DS_Store
+
+# Database files
+*.db
+*.db.wal
