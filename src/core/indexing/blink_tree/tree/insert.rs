@@ -37,10 +37,9 @@ impl BlinkTreeIndex {
 
             if current_node.is_leaf() {
                 return Ok(current_page_id);
-            } else {
-                // Find the appropriate child to follow
-                current_page_id = self.find_child_for_insertion(&current_node, key)?;
             }
+            // Find the appropriate child to follow
+            current_page_id = self.find_child_for_insertion(&current_node, key)?;
         }
     }
 

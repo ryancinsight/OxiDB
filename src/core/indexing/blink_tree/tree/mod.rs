@@ -87,10 +87,9 @@ impl BlinkTreeIndex {
             if current_node.is_leaf() {
                 // We've reached a leaf node - search for the key
                 return self.search_leaf_node(&current_node, key);
-            } else {
-                // Internal node - find next level to search
-                current_page_id = self.find_next_page_in_internal(&current_node, key)?;
             }
+            // Internal node - find next level to search
+            current_page_id = self.find_next_page_in_internal(&current_node, key)?;
         }
     }
 
@@ -108,10 +107,9 @@ impl BlinkTreeIndex {
                     if let Some(right_page_id) = right_link {
                         let right_node = self.read_node(*right_page_id)?;
                         return self.search_leaf_node(&right_node, search_key);
-                    } else {
-                        // No right sibling, key definitely not found
-                        return Ok(None);
                     }
+                    // No right sibling, key definitely not found
+                    return Ok(None);
                 }
 
                 // Search within this node
@@ -141,10 +139,9 @@ impl BlinkTreeIndex {
                     if let Some(right_page_id) = right_link {
                         let right_node = self.read_node(*right_page_id)?;
                         return self.find_next_page_in_internal(&right_node, search_key);
-                    } else {
-                        // No right sibling, follow rightmost child
-                        return Ok(children[children.len() - 1]);
                     }
+                    // No right sibling, follow rightmost child
+                    return Ok(children[children.len() - 1]);
                 }
 
                 // Find appropriate child to follow

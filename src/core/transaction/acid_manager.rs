@@ -390,10 +390,9 @@ impl AcidTransactionManager {
                         if holder == tx_id.0 {
                             // We hold the lock, can read
                             return true;
-                        } else {
-                            // Another transaction holds exclusive lock, can't read
-                            return false;
                         }
+                        // Another transaction holds exclusive lock, can't read
+                        return false;
                     }
                     
                     // Try to acquire a shared lock to ensure repeatability

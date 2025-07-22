@@ -743,14 +743,14 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         table_name: &str,
         column_name: &str,
     ) -> i64 {
-        let key = format!("{}_{}", table_name, column_name);
+        let key = format!("{table_name}_{column_name}");
         let current_value = self.auto_increment_state.get(&key).copied().unwrap_or(0);
         let next_value = current_value + 1;
-        self.auto_increment_state.insert(key.clone(), next_value);
+        self.auto_increment_state.insert(key, next_value);
 
         // Persist the auto-increment state to disk
         if let Err(e) = self.save_auto_increment_value(table_name, column_name, next_value) {
-            eprintln!("[QueryExecutor] Failed to persist auto-increment value: {}", e);
+            eprintln!("[QueryExecutor] Failed to persist auto-increment value: {e}");
         }
 
         next_value
@@ -764,7 +764,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         column_name: &str,
         value: i64,
     ) {
-        let key = format!("{}_{}", table_name, column_name);
+        let key = format!("{table_name}_{column_name}");
         self.auto_increment_state.insert(key, value);
     }
 
@@ -775,7 +775,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         column_name: &str,
         value: i64,
     ) -> Result<(), OxidbError> {
-        let key = format!("_auto_increment_{}_{}", table_name, column_name);
+        let key = format!("_auto_increment_{table_name}_{column_name}");
         let value_bytes = value.to_le_bytes().to_vec();
 
         // Create a dummy transaction for this operation

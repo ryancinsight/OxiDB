@@ -60,7 +60,7 @@ impl SqlParser {
             }
             self.consume(Token::Comma)?;
             match self.peek() {
-                Some(Token::Identifier(_)) | Some(Token::Asterisk) => { /* Good, loop will continue */
+                Some(Token::Identifier(_) | Token::Asterisk) => { /* Good, loop will continue */
                 }
                 Some(next_token) => {
                     return Err(SqlParseError::UnexpectedToken {
@@ -140,10 +140,8 @@ impl SqlParser {
     // Returns Ok(None) if not a literal, Ok(Some(value)) if a literal, Err if parsing starts but fails.
     fn try_parse_literal_value(&mut self) -> Result<Option<AstLiteralValue>, SqlParseError> {
         match self.peek() {
-            Some(Token::StringLiteral(_))
-            | Some(Token::NumericLiteral(_))
-            | Some(Token::BooleanLiteral(_))
-            | Some(Token::LBracket) => {
+            Some(Token::StringLiteral(_) | Token::NumericLiteral(_) |
+            Token::BooleanLiteral(_) | Token::LBracket) => {
                 // For vector literals
                 // These are definitively literals.
                 self.parse_literal_value("literal value").map(Some)

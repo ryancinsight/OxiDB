@@ -47,18 +47,18 @@ impl DataSerializer<WalEntry> for WalEntry {
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut buffer)?;
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(value, &mut buffer)?;
             }
-            WalEntry::Delete { lsn, transaction_id, key } => {
+            Self::Delete { lsn, transaction_id, key } => {
                 buffer.push(DELETE_OPERATION);
                 buffer.extend_from_slice(&lsn.to_le_bytes());
                 buffer.extend_from_slice(&transaction_id.to_le_bytes());
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(key, &mut buffer)?;
             }
-            WalEntry::TransactionCommit { lsn, transaction_id } => {
+            Self::TransactionCommit { lsn, transaction_id } => {
                 buffer.push(TRANSACTION_COMMIT_OPERATION);
                 buffer.extend_from_slice(&lsn.to_le_bytes());
                 buffer.extend_from_slice(&transaction_id.to_le_bytes());
             }
-            WalEntry::TransactionRollback { lsn, transaction_id } => {
+            Self::TransactionRollback { lsn, transaction_id } => {
                 buffer.push(TRANSACTION_ROLLBACK_OPERATION);
                 buffer.extend_from_slice(&lsn.to_le_bytes());
                 buffer.extend_from_slice(&transaction_id.to_le_bytes());
@@ -162,17 +162,17 @@ impl WalWriter {
     /// by appending ".wal" to its extension (e.g., "data.db" -> "data.db.wal")
     /// or by setting the extension to "wal" if the DB file has no extension.
     pub fn new(db_file_path: &Path) -> Self {
-        eprintln!("[engine::wal::WalWriter::new] Received db_file_path: {:?}", db_file_path);
+        eprintln!("[engine::wal::WalWriter::new] Received db_file_path: {db_file_path:?}");
         let mut wal_file_path_buf = db_file_path.to_path_buf();
         let original_extension = wal_file_path_buf.extension().and_then(std::ffi::OsStr::to_str);
 
         if let Some(ext_str) = original_extension {
-            wal_file_path_buf.set_extension(format!("{}.wal", ext_str));
+            wal_file_path_buf.set_extension(format!("{ext_str}.wal"));
         } else {
             wal_file_path_buf.set_extension("wal");
         }
-        eprintln!("[engine::wal::WalWriter::new] Derived wal_file_path: {:?}", &wal_file_path_buf);
-        WalWriter { wal_file_path: wal_file_path_buf }
+        eprintln!("[engine::wal::WalWriter::new] Derived wal_file_path: {wal_file_path_buf:?}");
+        Self { wal_file_path: wal_file_path_buf }
     }
 
     /// Logs a `WalEntry` to the WAL file.
@@ -198,12 +198,12 @@ impl WalWriter {
                 &self.wal_file_path
             );
         }
-        let file = file_result.map_err(|e| OxidbError::Io(e))?;
+        let file = file_result.map_err(OxidbError::Io)?;
 
         let mut writer = BufWriter::new(file);
         <WalEntry as DataSerializer<WalEntry>>::serialize(entry, &mut writer)?;
-        writer.flush().map_err(|e| OxidbError::Io(e))?;
-        writer.get_ref().sync_all().map_err(|e| OxidbError::Io(e))?;
+        writer.flush().map_err(OxidbError::Io)?;
+        writer.get_ref().sync_all().map_err(OxidbError::Io)?;
 
         Ok(())
     }
@@ -214,7 +214,7 @@ impl WalEntry {
 }
 
 // Now, let's make deserialize_from_reader the official implementation for DataDeserializer<WalEntry>
-impl DataDeserializer<WalEntry> for WalEntry {
+impl DataDeserializer<Self> for WalEntry {
     /// Deserializes a single `WalEntry` from a reader.
     ///
     /// This method reads bytes incrementally to parse one WAL entry. The process is:
@@ -277,7 +277,7 @@ impl DataDeserializer<WalEntry> for WalEntry {
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(&value, &mut temp_value_bytes)?;
                 data_to_checksum.extend_from_slice(&temp_value_bytes);
 
-                WalEntry::Put { lsn, transaction_id, key, value }
+                Self::Put { lsn, transaction_id, key, value }
             }
             DELETE_OPERATION => {
                 let mut lsn_bytes = [0u8; 8];
@@ -300,7 +300,7 @@ impl DataDeserializer<WalEntry> for WalEntry {
                 <Vec<u8> as DataSerializer<Vec<u8>>>::serialize(&key, &mut temp_key_bytes)?;
                 data_to_checksum.extend_from_slice(&temp_key_bytes);
 
-                WalEntry::Delete { lsn, transaction_id, key }
+                Self::Delete { lsn, transaction_id, key }
             }
             TRANSACTION_COMMIT_OPERATION => {
                 let mut lsn_bytes = [0u8; 8];
@@ -316,7 +316,7 @@ impl DataDeserializer<WalEntry> for WalEntry {
                     .map_err(|e| map_eof_error(e, "transaction ID for COMMIT"))?;
                 let transaction_id = u64::from_le_bytes(tx_id_bytes);
                 data_to_checksum.extend_from_slice(&tx_id_bytes);
-                WalEntry::TransactionCommit { lsn, transaction_id }
+                Self::TransactionCommit { lsn, transaction_id }
             }
             TRANSACTION_ROLLBACK_OPERATION => {
                 let mut lsn_bytes = [0u8; 8];
@@ -332,7 +332,7 @@ impl DataDeserializer<WalEntry> for WalEntry {
                     .map_err(|e| map_eof_error(e, "transaction ID for ROLLBACK"))?;
                 let transaction_id = u64::from_le_bytes(tx_id_bytes);
                 data_to_checksum.extend_from_slice(&tx_id_bytes);
-                WalEntry::TransactionRollback { lsn, transaction_id }
+                Self::TransactionRollback { lsn, transaction_id }
             }
             0x00 => {
                 // Specifically check for 0x00
@@ -342,9 +342,8 @@ impl DataDeserializer<WalEntry> for WalEntry {
             }
             _ => {
                 return Err(OxidbError::Deserialization(format!(
-                    "Unknown WAL operation type: {}",
-                    operation_type
-                )))
+                    "Unknown WAL operation type: {operation_type}"
+                ))
             }
         };
 
