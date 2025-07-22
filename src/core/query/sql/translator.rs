@@ -76,8 +76,9 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
                     ast::AstDataType::Float => DataType::Float(0.0),
                     ast::AstDataType::Blob => DataType::RawBytes(Vec::new()), // Assuming RawBytes is the engine type for Blob
                     ast::AstDataType::Vector { dimension } => {
-                        // For schema definition, data is empty. Dimension is key.
-                        crate::core::types::VectorData::new(dimension, vec![])
+                        // For schema definition, create a vector with correct dimension filled with zeros
+                        let placeholder_data = vec![0.0; dimension as usize];
+                        crate::core::types::VectorData::new(dimension, placeholder_data)
                             .map(DataType::Vector)
                             .ok_or_else(|| OxidbError::SqlParsing(format!(
                                 "Invalid dimension {dimension} for VECTOR type in CREATE TABLE (should not happen if parser validated > 0)"

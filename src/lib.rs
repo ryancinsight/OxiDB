@@ -103,13 +103,12 @@
 //! # fn main() -> Result<(), oxidb::OxidbError> {
 //! let mut conn = Connection::open_in_memory()?;
 //!
-//! // Create a table with vector embeddings (using TEXT for now) and unique name
+//! // Create a table with native vector embeddings and unique name
 //! let table_name = format!("documents_{}", std::process::id());
-//! conn.execute(&format!("CREATE TABLE {} (id INTEGER PRIMARY KEY, content TEXT, embedding TEXT)", table_name))?;
+//! conn.execute(&format!("CREATE TABLE {} (id INTEGER PRIMARY KEY, content TEXT, embedding VECTOR[3])", table_name))?;
 //!
-//! // Insert document with vector embedding
-//! let vector_str = "[0.1, 0.2, 0.3]"; // Simplified 3D vector
-//! conn.execute(&format!("INSERT INTO {} (id, content, embedding) VALUES (1, 'Sample document', '{}')", table_name, vector_str))?;
+//! // Insert document with vector embedding (no quotes around vector literal)
+//! conn.execute(&format!("INSERT INTO {} (id, content, embedding) VALUES (1, 'Sample document', [0.1, 0.2, 0.3])", table_name))?;
 //!
 //! // Query documents (similarity search would be implemented via custom functions)
 //! let result = conn.execute(&format!("SELECT * FROM {}", table_name))?;
