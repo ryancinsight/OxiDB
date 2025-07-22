@@ -1105,7 +1105,7 @@ mod tests {
         // Adding a commit record now. The periodic flush should trigger first for record1.
         // Then the commit record is added and immediately flushed because it's a commit.
         let LogRecord::BeginTransaction { lsn: prev_lsn_for_commit2, .. } = record1 else {
-            panic!("Expected BeginTransaction record for record1")
+            assert!(false, "Expected BeginTransaction record for record1")
         };
         let record_commit = LogRecord::CommitTransaction {
             lsn: next_lsn(),
