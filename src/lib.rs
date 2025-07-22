@@ -75,7 +75,7 @@ mod tests {
         match db.get(key1.clone()) {
             Ok(Some(v_str)) => assert_eq!(v_str, value1_str),
             assert!(false, "Key not found after insert");
-            Err(e) => assert!(false, "Error during get: {e:?}"),
+            assert!(false, "Error during get: {e:?}");
         }
 
         match db.delete(key1.clone()) {
