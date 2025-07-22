@@ -80,7 +80,7 @@ mod tests {
 
         match db.delete(key1.clone()) {
             Ok(true) => (),
-            Ok(false) => assert!(false, "Key not found for deletion"),
+            assert!(false, "Key not found for deletion");
             Err(e) => assert!(false, "Error during delete: {e:?}"),
         }
 
