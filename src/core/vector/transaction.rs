@@ -125,7 +125,7 @@ impl VectorTransactionManager {
             .map_err(|_| OxidbError::LockTimeout("Failed to acquire next_tx_id lock".to_string()))?;
 
         let tx_id = *next_id;
-        *next_id += 1;
+        *next_id = next_id.saturating_add(1);
 
         let transaction = VectorTransaction::new(tx_id);
 

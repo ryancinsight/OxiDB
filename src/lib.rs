@@ -199,28 +199,28 @@ mod tests {
 
         match db.get(key1.clone()) {
             Ok(Some(v_str)) => assert_eq!(v_str, value1_str),
-            Ok(None) => panic!("Key not found after insert"),
-            Err(e) => panic!("Error during get: {e:?}"),
+            Ok(None) => unreachable!("Key not found after insert"),
+            Err(e) => unreachable!("Error during get: {e:?}"),
         }
 
         match db.delete(key1.clone()) {
             Ok(true) => (),
-            Ok(false) => panic!("Key not found for deletion"),
-            Err(e) => panic!("Error during delete: {e:?}"),
+            Ok(false) => unreachable!("Key not found for deletion"),
+            Err(e) => unreachable!("Error during delete: {e:?}"),
         }
 
-        match db.get(key1.clone()) {
+        match db.get(key1) {
             Ok(None) => (),
-            Ok(Some(_)) => assert!(false, "Key found after delete"),
-            Err(e) => assert!(false, "Error during get after delete: {e:?}"),
+            Ok(Some(_)) => unreachable!("Key found after delete"),
+            Err(e) => unreachable!("Error during get after delete: {e:?}"),
         }
 
         let key2 = b"int_key2".to_vec();
         let value2_str = "int_value2".to_string();
         assert!(db.insert(key2.clone(), value2_str.clone()).is_ok());
-        match db.get(key2.clone()) {
+        match db.get(key2) {
             Ok(Some(v_str)) => assert_eq!(v_str, value2_str),
-            _ => assert!(false, "Second key not processed correctly"),
+            _ => unreachable!("Second key not processed correctly"),
         }
     }
 
@@ -266,11 +266,11 @@ mod tests {
                 Oxidb::new(&db_path).expect("Failed to create Oxidb (instance 2)");
 
             assert_eq!(
-                db_restarted.get(key_a.clone()).unwrap(),
+                db_restarted.get(key_a).unwrap(),
                 Some(val_a_updated_str.clone()),
                 "Key A should have updated value"
             );
-            assert_eq!(db_restarted.get(key_b.clone()).unwrap(), None, "Key B should be deleted");
+            assert_eq!(db_restarted.get(key_b).unwrap(), None, "Key B should be deleted");
 
             db_restarted.persist().unwrap();
             assert!(
@@ -311,12 +311,12 @@ mod tests {
         {
             let mut db3 = Oxidb::new(db_path).expect("Failed to create Oxidb (instance 3)");
             assert_eq!(
-                db3.get(key_c.clone()).unwrap(),
+                db3.get(key_c).unwrap(),
                 Some(val_c_str.clone()),
                 "Key C should be present in instance 3"
             );
             assert_eq!(
-                db3.get(key_d.clone()).unwrap(),
+                db3.get(key_d).unwrap(),
                 Some(val_d_str.clone()),
                 "Key D should be present in instance 3"
             );
@@ -341,9 +341,9 @@ mod tests {
            wal_enabled = true
            index_base_path = "{}/{}"
            "#,
-            custom_data_dir.to_str().unwrap().replace("\\", "/"),
+            custom_data_dir.to_str().unwrap().replace('\\', "/"),
             custom_db_filename,
-            custom_data_dir.to_str().unwrap().replace("\\", "/"), // Assuming index dir is also under custom_data_dir for this test
+            custom_data_dir.to_str().unwrap().replace('\\', "/"), // Assuming index dir is also under custom_data_dir for this test
             custom_index_dir
         );
 
@@ -404,7 +404,7 @@ mod tests {
 
         let key = b"test_key_defaults".to_vec();
         let value = "test_value_defaults".to_string();
-        db.insert(key.clone(), value.clone()).unwrap();
+        db.insert(key, value).unwrap();
         db.persist().unwrap();
         drop(db);
 
@@ -444,7 +444,7 @@ mod tests {
             crate::OxidbError::Configuration(msg) => {
                 assert!(msg.contains("Failed to parse config file"));
             }
-            e => assert!(false, "Expected OxidbError::Configuration, got {e:?}"),
+            e => unreachable!("Expected OxidbError::Configuration, got {e:?}"),
         }
     }
 }

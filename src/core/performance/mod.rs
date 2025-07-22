@@ -1,4 +1,4 @@
-//! Performance Monitoring and Analysis Framework for OxiDB
+//! Performance Monitoring and Analysis Framework for `OxiDB`
 
 pub mod metrics;
 pub mod profiler; 
@@ -28,7 +28,7 @@ pub struct PerformanceContext {
 
 impl PerformanceContext {
     /// Create a new performance context with default configuration
-    pub fn new() -> Self {
+    #[must_use] pub fn new() -> Self {
         Self {
             metrics: Arc::new(RwLock::new(PerformanceMetrics::new())),
             profiler: Arc::new(RwLock::new(PerformanceProfiler::new())),
@@ -48,10 +48,10 @@ impl PerformanceContext {
     /// Generate a comprehensive performance report
     pub fn generate_report(&self) -> Result<PerformanceReport, crate::core::common::OxidbError> {
         let metrics = self.metrics.read()
-            .map_err(|e| crate::core::common::OxidbError::Internal(format!("Failed to read metrics: {}", e)))?;
+            .map_err(|e| crate::core::common::OxidbError::Internal(format!("Failed to read metrics: {e}")))?;
         
         let analyzer = PerformanceAnalyzer::new();
-        Ok(analyzer.analyze(&*metrics))
+        Ok(analyzer.analyze(&metrics))
     }
 }
 
