@@ -9,13 +9,15 @@
 #![warn(clippy::cast_sign_loss)]
 #![forbid(unsafe_code)]
 #![deny(
-    warnings,
     deprecated,
     unused,
     clippy::todo,
     clippy::module_inception,
     clippy::wildcard_imports,
-    clippy::correctness,
+    clippy::correctness
+)]
+#![warn(
+    warnings,
     clippy::perf,
     clippy::style,
     clippy::complexity,

@@ -189,7 +189,7 @@ fn test_execute_query_str_get_ok() {
         Ok(ExecutionResult::Value(Some(DataType::String(val_str)))) => {
             assert_eq!(val_str, "myvalue")
         }
-        _ => panic!("Expected Value(Some(DataType::String(...))), got {:?}", result),
+        _ => assert!(false, "Expected Value(Some(DataType::String(...))), got {:?}", result),
     }
 }
 
@@ -212,7 +212,7 @@ fn test_constraint_not_null_violation_insert() {
         Err(OxidbError::ConstraintViolation(message)) => {
             assert!(message.contains("NOT NULL constraint failed for column 'email'"));
         }
-        _ => panic!("Expected ConstraintViolation for NULL email, got {:?}", result1),
+        _ => assert!(false, "Expected ConstraintViolation for NULL email, got {:?}", result1),
     }
 
     // Attempt to insert without providing email (implicitly NULL)

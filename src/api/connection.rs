@@ -6,9 +6,11 @@ use crate::core::query::parser::{parse_query_string, parse_sql_to_ast};
 use crate::core::storage::engine::SimpleFileKvStore;
 use crate::core::wal::log_manager::LogManager;
 use crate::core::wal::writer::WalWriter;
+use crate::core::performance::PerformanceContext;
 use crate::api::types::QueryResult;
 use crate::core::common::types::Value;
 use std::sync::Arc;
+use std::time::Instant;
 
 /// A database connection that provides an ergonomic API for database operations.
 /// 
@@ -19,6 +21,8 @@ use std::sync::Arc;
 pub struct Connection {
     /// The underlying query executor
     executor: QueryExecutor<SimpleFileKvStore>,
+    /// Performance monitoring context
+    performance: PerformanceContext,
 }
 
 impl Connection {
@@ -66,15 +70,28 @@ impl Connection {
         
         let log_manager = Arc::new(LogManager::new());
         let executor = QueryExecutor::new(store, config.index_path(), tm_wal_writer, log_manager)?;
+        let performance = PerformanceContext::new();
         
-        Ok(Self { executor })
+        Ok(Self { executor, performance })
     }
     
     /// Executes a SQL query and returns the result.
     pub fn execute(&mut self, sql: &str) -> Result<QueryResult, OxidbError> {
+        let start_time = Instant::now();
         let command = parse_query_string(sql)?;
         let result = self.executor.execute_command(command)?;
-        Ok(QueryResult::from_execution_result(result))
+        let query_result = QueryResult::from_execution_result(result);
+        
+        // Record performance metrics
+        let duration = start_time.elapsed();
+        let rows_affected = match &query_result {
+            QueryResult::RowsAffected(count) => *count,
+            QueryResult::Data(data) => data.row_count() as u64,
+            _ => 0,
+        };
+        let _ = self.performance.record_query(sql, duration, rows_affected);
+        
+        Ok(query_result)
     }
     
     /// Begins a new transaction.
@@ -216,6 +233,46 @@ impl Connection {
             _ => Err(OxidbError::Execution("Expected update result, got data result".to_string())),
         }
     }
+
+    /// Generates a comprehensive performance report for this connection.
+    /// 
+    /// This method provides detailed insights into query performance, including:
+    /// - Query execution statistics (count, average time, slowest/fastest queries)
+    /// - Transaction performance metrics
+    /// - Storage I/O analysis
+    /// - Performance bottleneck identification
+    /// - Optimization recommendations
+    /// 
+    /// # Returns
+    /// * `Result<PerformanceReport, OxidbError>` - Detailed performance analysis
+    /// 
+    /// # Example
+    /// ```rust
+    /// use oxidb::Connection;
+    /// 
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let mut conn = Connection::open_in_memory()?;
+    ///     
+    ///     // Execute some queries
+    ///     conn.execute("CREATE TABLE users (id INTEGER, name TEXT)")?;
+    ///     conn.execute("INSERT INTO users VALUES (1, 'Alice')")?;
+    ///     conn.execute("SELECT * FROM users")?;
+    ///     
+    ///     // Get performance report
+    ///     let report = conn.get_performance_report()?;
+    ///     println!("Total queries executed: {}", report.query_analysis.total_queries);
+    ///     println!("Average execution time: {:?}", report.query_analysis.average_execution_time);
+    ///     
+    ///     for recommendation in &report.recommendations {
+    ///         println!("Recommendation: {}", recommendation);
+    ///     }
+    ///     
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn get_performance_report(&self) -> Result<crate::core::performance::PerformanceReport, OxidbError> {
+        self.performance.generate_report()
+    }
 }
 
 #[cfg(test)]
@@ -259,7 +316,7 @@ mod tests {
                 assert_eq!(data.column_count(), 2);
                 assert_eq!(data.row_count(), 1);
             }
-            _ => panic!("Expected data result"),
+            _ => assert!(false, "Expected data result"),
         }
         
         Ok(())
@@ -295,7 +352,7 @@ mod tests {
             QueryResult::Data(data) => {
                 assert_eq!(data.row_count(), 1);
             }
-            _ => panic!("Expected data result"),
+            _ => assert!(false, "Expected data result"),
         }
         
         Ok(())
@@ -356,7 +413,7 @@ mod tests {
         if let QueryResult::Data(data) = result {
             assert_eq!(data.row_count(), 1);
         } else {
-            panic!("Expected data result");
+            assert!(false, "Expected data result");
         }
         
         // Test query_all equivalent
@@ -369,7 +426,7 @@ mod tests {
             }
             assert_eq!(data.row_count(), 2);
         } else {
-            panic!("Expected data result");
+            assert!(false, "Expected data result");
         }
         
         // Test execute_update equivalent
@@ -381,7 +438,7 @@ mod tests {
                 // At least one row was affected, which is what we expect
                 println!("UPDATE affected {} rows (expected >= 1)", count);
             }
-            _ => panic!("Expected at least 1 row to be affected, got: {:?}", result),
+            _ => assert!(false, "Expected at least 1 row to be affected, got: {:?}", result),
         }
         
         Ok(())
