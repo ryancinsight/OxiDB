@@ -620,7 +620,7 @@ mod tests {
                 // Changed
                 // Check for the specific error message propagated from the new parser logic
                 assert!(
-                    msg.contains("Expected literal or column identifier for RHS of condition")
+                    msg.contains("Expected literal, parameter (?), or column identifier for RHS of condition")
                         || msg.contains("Expected identifier")
                 );
             }

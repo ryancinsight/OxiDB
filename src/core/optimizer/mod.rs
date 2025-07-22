@@ -4,6 +4,7 @@
 //! optimization, rule-based optimization, and query planning.
 
 use crate::core::types::DataType;
+use crate::core::common::error::OxidbError;
 
 pub mod planner; // Cost-based query planner
 pub mod rule; // Optimization rule trait
@@ -157,11 +158,11 @@ impl Optimizer {
                             AstLiteralValue::Boolean(b) => crate::core::types::DataType::Boolean(*b),
                             AstLiteralValue::Null => crate::core::types::DataType::Null,
                             AstLiteralValue::Vector(_) => {
-                                // For vector literals, fall back to placeholder
-                                return Ok(Expression::CompareOp {
-                                    left: Box::new(Expression::Column("1".to_string())),
-                                    op: "=".to_string(),
-                                    right: Box::new(Expression::Literal(crate::core::types::DataType::Integer(1))),
+                                // Vector literals in WHERE clauses are not yet supported
+                                // Returning a placeholder that evaluates to true (1=1) would be dangerous
+                                // as it could cause DELETE/UPDATE to affect all rows unintentionally
+                                return Err(OxidbError::NotImplemented {
+                                    feature: "Vector literals in WHERE clauses".to_string()
                                 });
                             }
                         };
@@ -173,11 +174,11 @@ impl Optimizer {
                         })
                     },
                     AstExpressionValue::ColumnIdentifier(_) => {
-                        // For column = column conditions, fall back to placeholder for now
-                        Ok(Expression::CompareOp {
-                            left: Box::new(Expression::Column("1".to_string())),
-                            op: "=".to_string(),
-                            right: Box::new(Expression::Literal(crate::core::types::DataType::Integer(1))),
+                        // Column-to-column comparisons are not yet supported
+                        // Returning a placeholder that evaluates to true (1=1) would be dangerous
+                        // as it could cause DELETE/UPDATE to affect all rows unintentionally
+                        Err(OxidbError::NotImplemented {
+                            feature: "Column-to-column comparisons in WHERE clauses".to_string()
                         })
                     },
                     AstExpressionValue::Parameter(_param_index) => {
@@ -193,11 +194,11 @@ impl Optimizer {
                 }
             },
             _ => {
-                // For non-comparison conditions (AND, OR, etc.), use a placeholder for now
-                Ok(Expression::CompareOp {
-                    left: Box::new(Expression::Column("1".to_string())),
-                    op: "=".to_string(),
-                    right: Box::new(Expression::Literal(crate::core::types::DataType::Integer(1))),
+                // Complex conditions (AND, OR, NOT) are not yet fully supported in the optimizer
+                // Returning a placeholder that evaluates to true (1=1) would be dangerous
+                // as it could cause DELETE/UPDATE to affect all rows unintentionally
+                Err(OxidbError::NotImplemented {
+                    feature: "Complex condition trees (AND, OR, NOT) in optimizer".to_string()
                 })
             }
         }

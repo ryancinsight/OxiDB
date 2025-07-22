@@ -1022,6 +1022,19 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         statement: &crate::core::query::sql::ast::Statement,
         parameters: &[crate::core::common::types::Value],
     ) -> Result<ExecutionResult, OxidbError> {
+        // First, validate parameter count
+        let expected_param_count = self.count_parameters_in_statement(statement);
+        let actual_param_count = parameters.len();
+        
+        if actual_param_count != expected_param_count {
+            return Err(OxidbError::InvalidInput {
+                message: format!(
+                    "Parameter count mismatch: expected {} parameters, got {}",
+                    expected_param_count, actual_param_count
+                )
+            });
+        }
+        
         // Create a parameter context for resolving parameters during execution
         let param_context = ParameterContext::new(parameters);
         
@@ -1042,6 +1055,72 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             _ => Err(OxidbError::NotImplemented {
                 feature: "Parameterized execution for this statement type".to_string(),
             }),
+        }
+    }
+
+    /// Count the number of parameters (? placeholders) in a SQL statement
+    fn count_parameters_in_statement(&self, statement: &crate::core::query::sql::ast::Statement) -> usize {
+        use crate::core::query::sql::ast::Statement;
+        match statement {
+            Statement::Select(select_stmt) => {
+                let mut count = 0;
+                if let Some(ref condition) = select_stmt.condition {
+                    count += self.count_parameters_in_condition_tree(condition);
+                }
+                count
+            }
+            Statement::Insert(insert_stmt) => {
+                let mut count = 0;
+                for row in &insert_stmt.values {
+                    for value in row {
+                        count += self.count_parameters_in_expression_value(value);
+                    }
+                }
+                count
+            }
+            Statement::Update(update_stmt) => {
+                let mut count = 0;
+                // Count parameters in assignments
+                for assignment in &update_stmt.assignments {
+                    count += self.count_parameters_in_expression_value(&assignment.value);
+                }
+                // Count parameters in WHERE condition
+                if let Some(ref condition) = update_stmt.condition {
+                    count += self.count_parameters_in_condition_tree(condition);
+                }
+                count
+            }
+            Statement::Delete(delete_stmt) => {
+                let mut count = 0;
+                if let Some(ref condition) = delete_stmt.condition {
+                    count += self.count_parameters_in_condition_tree(condition);
+                }
+                count
+            }
+            _ => 0, // Other statement types don't support parameters yet
+        }
+    }
+
+    fn count_parameters_in_condition_tree(&self, condition_tree: &crate::core::query::sql::ast::ConditionTree) -> usize {
+        use crate::core::query::sql::ast::ConditionTree;
+        match condition_tree {
+            ConditionTree::Comparison(condition) => {
+                self.count_parameters_in_expression_value(&condition.value)
+            }
+            ConditionTree::And(left, right) | ConditionTree::Or(left, right) => {
+                self.count_parameters_in_condition_tree(left) + self.count_parameters_in_condition_tree(right)
+            }
+            ConditionTree::Not(inner) => {
+                self.count_parameters_in_condition_tree(inner)
+            }
+        }
+    }
+
+    fn count_parameters_in_expression_value(&self, expr: &crate::core::query::sql::ast::AstExpressionValue) -> usize {
+        use crate::core::query::sql::ast::AstExpressionValue;
+        match expr {
+            AstExpressionValue::Parameter(_) => 1,
+            AstExpressionValue::Literal(_) | AstExpressionValue::ColumnIdentifier(_) => 0,
         }
     }
 

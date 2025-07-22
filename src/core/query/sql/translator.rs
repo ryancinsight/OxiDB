@@ -480,7 +480,7 @@ mod tests {
     fn test_translate_assignment_string() {
         let ast_assign = TestAssignment {
             column: "email".to_string(),
-            value: TestAstLiteralValue::String("new@example.com".to_string()),
+            value: ast::AstExpressionValue::Literal(TestAstLiteralValue::String("new@example.com".to_string())),
         };
         let expected_sql_assign = commands::SqlAssignment {
             column: "email".to_string(),
@@ -495,7 +495,7 @@ mod tests {
     fn test_translate_assignment_boolean() {
         let ast_assign = TestAssignment {
             column: "is_active".to_string(),
-            value: TestAstLiteralValue::Boolean(true),
+            value: ast::AstExpressionValue::Literal(TestAstLiteralValue::Boolean(true)),
         };
         let expected_sql_assign = commands::SqlAssignment {
             column: "is_active".to_string(),
@@ -616,7 +616,7 @@ mod tests {
             source: "products".to_string(),
             assignments: vec![TestAssignment {
                 column: "price".to_string(),
-                value: TestAstLiteralValue::Number("19.99".to_string()),
+                value: ast::AstExpressionValue::Literal(TestAstLiteralValue::Number("19.99".to_string())),
             }],
             condition: Some(ast::ConditionTree::Comparison(TestCondition {
                 column: "product_id".to_string(),

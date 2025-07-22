@@ -39,6 +39,4 @@ members = [
 ]
 resolver = "2"
 
-[[bin]]
-name = "test_secure_params"
-path = "test_secure_params.rs"
+
