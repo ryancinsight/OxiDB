@@ -5,6 +5,7 @@ pub mod execution; // Added execution module
 pub mod graph; // Added graph database module
 pub mod indexing;
 pub mod optimizer; // Added optimizer module
+pub mod performance; // Added performance monitoring module
 pub mod query;
 pub mod rag; // Added RAG module
 pub mod recovery; // Added recovery module
