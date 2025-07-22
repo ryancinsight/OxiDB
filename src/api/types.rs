@@ -211,7 +211,7 @@ impl QueryResult {
             DataType::RawBytes(b) => crate::core::common::types::Value::Blob(b),
             DataType::Vector(v) => crate::core::common::types::Value::Vector(v.data),
             DataType::Null => crate::core::common::types::Value::Null,
-            DataType::Map(_) => crate::core::common::types::Value::Text("Map".to_string()), // Simplified conversion
+            DataType::Map(map) => crate::core::common::types::Value::Text(serde_json::to_string(&map.0).unwrap_or_else(|_| "{}".to_string())), // Serialize map to JSON string
             DataType::JsonBlob(json) => crate::core::common::types::Value::Text(json.to_string()),
         }
     }
