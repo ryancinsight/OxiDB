@@ -73,7 +73,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         });
 
         let initial_plan = self.optimizer.build_initial_plan(&ast_statement)?;
-        let optimized_plan = self.optimizer.optimize(initial_plan)?;
+        let optimized_plan = self.optimizer.optimize_with_indexes(initial_plan, &self.index_manager)?;
 
         let mut execution_tree_root = self.build_execution_tree(
             optimized_plan,
@@ -82,16 +82,19 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         )?; // Pass snapshot_id.0 (u64)
 
         let results_iter = execution_tree_root.execute()?;
-        let mut all_datatypes_from_tuples: Vec<DataType> = Vec::new();
+        let mut rows: Vec<Vec<DataType>> = Vec::new();
 
         for tuple_result in results_iter {
             let tuple = tuple_result?;
-            for data_type in tuple {
-                all_datatypes_from_tuples.push(data_type);
-            }
+            rows.push(tuple);
         }
 
-        Ok(ExecutionResult::Values(all_datatypes_from_tuples))
+        // Convert to RankedResults format with distance 0.0 for all rows
+        let ranked_results: Vec<(f32, Vec<DataType>)> = rows.into_iter()
+            .map(|row| (0.0, row))
+            .collect();
+
+        Ok(ExecutionResult::RankedResults(ranked_results))
     }
 }
 

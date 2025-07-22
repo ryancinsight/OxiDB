@@ -53,6 +53,7 @@ pub enum Token {
     LBracket, // Added [
     RBracket, // Added ]
     Dot,      // Added . for qualified names
+    Parameter, // Added ? for parameter placeholders
 
     // End of File
     EOF,
@@ -102,6 +103,7 @@ impl fmt::Debug for Token {
             Token::LBracket => write!(f, "LBracket"),
             Token::RBracket => write!(f, "RBracket"),
             Token::Dot => write!(f, "Dot"),
+            Token::Parameter => write!(f, "Parameter"),
             Token::Autoincrement => write!(f, "Autoincrement"),
             Token::EOF => write!(f, "EOF"),
         }
@@ -325,6 +327,11 @@ impl<'a> Tokenizer<'a> {
                         ']' => {
                             self.chars.next();
                             tokens.push(Token::RBracket);
+                            self.current_pos = idx + 1;
+                        }
+                        '?' => {
+                            self.chars.next();
+                            tokens.push(Token::Parameter);
                             self.current_pos = idx + 1;
                         }
                         '\'' | '"' => {

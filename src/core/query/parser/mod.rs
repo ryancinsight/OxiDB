@@ -10,7 +10,26 @@ use crate::core::query::commands::{Command, Key};
 use crate::core::types::{DataType, VectorData}; // Added VectorData
 
 // Imports for the new SQL parser integration
-use crate::core::query::sql::{self, parser::SqlParser, tokenizer::Tokenizer};
+use crate::core::query::sql::{self, parser::SqlParser, tokenizer::Tokenizer, ast::Statement};
+
+/// Parse SQL string directly to AST Statement for parameterized queries
+pub fn parse_sql_to_ast(sql: &str) -> Result<Statement, OxidbError> {
+    if sql.trim().is_empty() {
+        return Err(OxidbError::SqlParsing("Input SQL string cannot be empty.".to_string()));
+    }
+
+    // Tokenize the SQL
+    let mut tokenizer = Tokenizer::new(sql);
+    let tokens = tokenizer.tokenize().map_err(|e| {
+        OxidbError::SqlParsing(format!("Tokenization error: {:?}", e))
+    })?;
+
+    // Parse tokens to AST
+    let mut parser = SqlParser::new(tokens);
+    parser.parse().map_err(|e| {
+        OxidbError::SqlParsing(format!("Parse error: {:?}", e))
+    })
+}
 
 pub fn parse_query_string(query_str: &str) -> Result<Command, OxidbError> {
     // Changed
@@ -601,7 +620,7 @@ mod tests {
                 // Changed
                 // Check for the specific error message propagated from the new parser logic
                 assert!(
-                    msg.contains("Expected literal or column identifier for RHS of condition")
+                    msg.contains("Expected literal, parameter (?), or column identifier for RHS of condition")
                         || msg.contains("Expected identifier")
                 );
             }

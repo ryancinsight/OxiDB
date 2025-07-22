@@ -139,7 +139,7 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
             for row_values_ast in insert_ast.values {
                 let mut translated_row = Vec::new();
                 for val_ast in row_values_ast {
-                    translated_row.push(translate_literal(&val_ast)?);
+                    translated_row.push(translate_expression_value(&val_ast)?);
                 }
                 translated_values_list.push(translated_row);
             }
@@ -202,6 +202,26 @@ pub fn translate_datatype_to_ast_literal(
     }
 }
 
+// Translate an expression value (literal, parameter, or column reference)
+// For parameterized queries, parameters should be resolved at execution time
+fn translate_expression_value(expr: &ast::AstExpressionValue) -> Result<DataType, OxidbError> {
+    match expr {
+        ast::AstExpressionValue::Literal(literal) => translate_literal(literal),
+        ast::AstExpressionValue::Parameter(_) => {
+            // Parameters should be resolved at execution time, not translation time
+            Err(OxidbError::InvalidInput {
+                message: "Parameter placeholders cannot be resolved at translation time. Use parameterized execution instead.".to_string()
+            })
+        }
+        ast::AstExpressionValue::ColumnIdentifier(col_name) => {
+            // Column references in VALUES clauses are not typically supported
+            Err(OxidbError::InvalidInput {
+                message: format!("Column reference '{}' not supported in this context", col_name)
+            })
+        }
+    }
+}
+
 fn translate_literal(literal: &ast::AstLiteralValue) -> Result<DataType, OxidbError> {
     // Changed
     match literal {
@@ -260,6 +280,12 @@ fn translate_condition_tree_to_sql_condition_tree(
         ast::ConditionTree::Comparison(ast_cond) => {
             let value = match &ast_cond.value {
                 ast::AstExpressionValue::Literal(literal_val) => translate_literal(literal_val)?,
+                ast::AstExpressionValue::Parameter(_) => {
+                    // Parameters should be resolved at execution time, not translation time
+                    return Err(OxidbError::InvalidInput {
+                        message: "Parameter placeholders in WHERE clauses cannot be resolved at translation time. Use parameterized execution instead.".to_string()
+                    });
+                }
                 ast::AstExpressionValue::ColumnIdentifier(col_name) => {
                     // TODO: This would be a column-to-column comparison.
                     // For now, SqlSimpleCondition only supports column-to-literal.
@@ -297,7 +323,7 @@ fn translate_assignment_to_sql_assignment(
     ast_assignment: &ast::Assignment,
 ) -> Result<commands::SqlAssignment, OxidbError> {
     // Changed
-    let value = translate_literal(&ast_assignment.value)?;
+    let value = translate_expression_value(&ast_assignment.value)?;
     Ok(commands::SqlAssignment { column: ast_assignment.column.clone(), value })
 }
 
@@ -454,7 +480,7 @@ mod tests {
     fn test_translate_assignment_string() {
         let ast_assign = TestAssignment {
             column: "email".to_string(),
-            value: TestAstLiteralValue::String("new@example.com".to_string()),
+            value: ast::AstExpressionValue::Literal(TestAstLiteralValue::String("new@example.com".to_string())),
         };
         let expected_sql_assign = commands::SqlAssignment {
             column: "email".to_string(),
@@ -469,7 +495,7 @@ mod tests {
     fn test_translate_assignment_boolean() {
         let ast_assign = TestAssignment {
             column: "is_active".to_string(),
-            value: TestAstLiteralValue::Boolean(true),
+            value: ast::AstExpressionValue::Literal(TestAstLiteralValue::Boolean(true)),
         };
         let expected_sql_assign = commands::SqlAssignment {
             column: "is_active".to_string(),
@@ -590,7 +616,7 @@ mod tests {
             source: "products".to_string(),
             assignments: vec![TestAssignment {
                 column: "price".to_string(),
-                value: TestAstLiteralValue::Number("19.99".to_string()),
+                value: ast::AstExpressionValue::Literal(TestAstLiteralValue::Number("19.99".to_string())),
             }],
             condition: Some(ast::ConditionTree::Comparison(TestCondition {
                 column: "product_id".to_string(),

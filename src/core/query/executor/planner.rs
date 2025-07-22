@@ -20,11 +20,13 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         snapshot_id: u64,
         committed_ids: Arc<HashSet<u64>>,
     ) -> Result<Box<dyn ExecutionOperator + Send + Sync>, OxidbError> {
+
         match plan {
             QueryPlanNode::TableScan { table_name, alias: _ } => {
+
                 let operator = TableScanOperator::new(
                     self.store.clone(),
-                    table_name,
+                    table_name.clone(),
                     snapshot_id,
                     committed_ids.clone(),
                 );

@@ -1,6 +1,8 @@
 // src/core/query/commands.rs
 
 use crate::core::types::{DataType, VectorData}; // Added VectorData
+use crate::core::query::sql::ast::Statement;
+use crate::core::common::types::Value as ParamValue;
 
 /// Represents a key for operations.
 pub type Key = Vec<u8>;
@@ -45,6 +47,14 @@ pub struct SqlOrderByExpr {
 pub enum SqlOrderDirection {
     Asc,
     Desc,
+}
+
+/// A parameterized SQL statement with separate parameter values
+/// This provides secure parameterized query execution
+#[derive(Debug, Clone)]
+pub struct ParameterizedCommand {
+    pub statement: Statement,
+    pub parameters: Vec<ParamValue>,
 }
 
 /// Enum defining the different types of commands the database can execute.
@@ -106,6 +116,11 @@ pub enum Command {
     DropTable {
         table_name: String,
         if_exists: bool,
+    },
+    // Parameterized SQL statement execution
+    ParameterizedSql {
+        statement: Statement,
+        parameters: Vec<ParamValue>,
     },
     // Potentially others later, like:
     // Scan { prefix: Option<Key> },

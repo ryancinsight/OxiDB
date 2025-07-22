@@ -17,6 +17,7 @@ pub mod utils;
 // Necessary imports for struct definitions and the `new` method
 use crate::core::common::types::TransactionId; // Ensure TransactionId is imported
 use crate::core::common::OxidbError;
+use crate::core::query::sql::ast::AstLiteralValue;
 use crate::core::indexing::manager::IndexManager;
 use crate::core::optimizer::Optimizer;
 use crate::core::storage::engine::traits::KeyValueStore;
@@ -32,6 +33,93 @@ use std::collections::{HashMap, HashSet}; // Added HashMap and HashSet import
                                           // For base64 decoding - using a simple approach since we know the format
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use uuid;
+
+/// Context for resolving parameter placeholders during execution
+#[derive(Debug)]
+pub struct ParameterContext<'a> {
+    parameters: &'a [crate::core::common::types::Value],
+}
+
+impl<'a> ParameterContext<'a> {
+    pub fn new(parameters: &'a [crate::core::common::types::Value]) -> Self {
+        Self { parameters }
+    }
+    
+    /// Resolve a parameter by its index
+    pub fn resolve_parameter(&self, index: u32) -> Result<&crate::core::common::types::Value, OxidbError> {
+        let idx = index as usize;
+        self.parameters.get(idx).ok_or_else(|| OxidbError::InvalidInput {
+            message: format!("Parameter index {} out of bounds (have {} parameters)", index, self.parameters.len())
+        })
+    }
+    
+    /// Convert an AstExpressionValue to a DataType, resolving parameters
+    pub fn resolve_expression_value(&self, expr: &crate::core::query::sql::ast::AstExpressionValue) -> Result<DataType, OxidbError> {
+        match expr {
+            crate::core::query::sql::ast::AstExpressionValue::Literal(literal) => {
+                // Convert literal to DataType
+                self.convert_literal_to_datatype(literal)
+            }
+            crate::core::query::sql::ast::AstExpressionValue::Parameter(index) => {
+                // Resolve parameter and convert to DataType
+                let param_value = self.resolve_parameter(*index)?;
+                Ok(self.convert_value_to_datatype(param_value))
+            }
+            crate::core::query::sql::ast::AstExpressionValue::ColumnIdentifier(_) => {
+                Err(OxidbError::InvalidInput {
+                    message: "Column identifiers cannot be resolved in this context".to_string()
+                })
+            }
+        }
+    }
+    
+    fn convert_literal_to_datatype(&self, literal: &crate::core::query::sql::ast::AstLiteralValue) -> Result<DataType, OxidbError> {
+        use crate::core::query::sql::ast::AstLiteralValue;
+        match literal {
+            AstLiteralValue::String(s) => Ok(DataType::String(s.clone())),
+            AstLiteralValue::Number(n) => {
+                // Try to parse as integer first, then float
+                if let Ok(i) = n.parse::<i64>() {
+                    Ok(DataType::Integer(i))
+                } else if let Ok(f) = n.parse::<f64>() {
+                    Ok(DataType::Float(f))
+                } else {
+                    Ok(DataType::String(n.clone()))
+                }
+            }
+            AstLiteralValue::Boolean(b) => Ok(DataType::Boolean(*b)),
+            AstLiteralValue::Null => Ok(DataType::Null),
+            AstLiteralValue::Vector(_) => {
+                Err(OxidbError::NotImplemented {
+                    feature: "Vector literal conversion".to_string()
+                })
+            }
+        }
+    }
+    
+    fn convert_value_to_datatype(&self, value: &crate::core::common::types::Value) -> DataType {
+        use crate::core::common::types::Value;
+        match value {
+            Value::Integer(i) => DataType::Integer(*i),
+            Value::Float(f) => DataType::Float(*f),
+            Value::Text(s) => DataType::String(s.clone()),
+            Value::Boolean(b) => DataType::Boolean(*b),
+            Value::Blob(b) => DataType::RawBytes(b.clone()),
+            Value::Vector(v) => {
+                // Create VectorData from Vec<f32>
+                let dimension = v.len() as u32;
+                if let Some(vector_data) = crate::core::types::VectorData::new(dimension, v.clone()) {
+                    DataType::Vector(vector_data)
+                } else {
+                    // Fallback to raw bytes if vector creation fails
+                    DataType::RawBytes(v.iter().flat_map(|f| f.to_le_bytes().to_vec()).collect())
+                }
+            },
+            Value::Null => DataType::Null,
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum ExecutionResult {
@@ -925,5 +1013,301 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         }
 
         Ok(max_value)
+    }
+
+    /// Execute a parameterized SQL statement with separate parameter values
+    /// This provides secure execution without SQL injection risks
+    pub fn execute_parameterized_statement(
+        &mut self,
+        statement: &crate::core::query::sql::ast::Statement,
+        parameters: &[crate::core::common::types::Value],
+    ) -> Result<ExecutionResult, OxidbError> {
+        // First, validate parameter count
+        let expected_param_count = self.count_parameters_in_statement(statement);
+        let actual_param_count = parameters.len();
+        
+        if actual_param_count != expected_param_count {
+            return Err(OxidbError::InvalidInput {
+                message: format!(
+                    "Parameter count mismatch: expected {} parameters, got {}",
+                    expected_param_count, actual_param_count
+                )
+            });
+        }
+        
+        // Create a parameter context for resolving parameters during execution
+        let param_context = ParameterContext::new(parameters);
+        
+        // Execute the statement with parameter resolution
+        match statement {
+            crate::core::query::sql::ast::Statement::Select(select_stmt) => {
+                self.execute_parameterized_select(select_stmt, &param_context)
+            }
+            crate::core::query::sql::ast::Statement::Insert(insert_stmt) => {
+                self.execute_parameterized_insert(insert_stmt, &param_context)
+            }
+            crate::core::query::sql::ast::Statement::Update(update_stmt) => {
+                self.execute_parameterized_update(update_stmt, &param_context)
+            }
+            crate::core::query::sql::ast::Statement::Delete(delete_stmt) => {
+                self.execute_parameterized_delete(delete_stmt, &param_context)
+            }
+            _ => Err(OxidbError::NotImplemented {
+                feature: "Parameterized execution for this statement type".to_string(),
+            }),
+        }
+    }
+
+    /// Count the number of parameters (? placeholders) in a SQL statement
+    fn count_parameters_in_statement(&self, statement: &crate::core::query::sql::ast::Statement) -> usize {
+        use crate::core::query::sql::ast::Statement;
+        match statement {
+            Statement::Select(select_stmt) => {
+                let mut count = 0;
+                if let Some(ref condition) = select_stmt.condition {
+                    count += self.count_parameters_in_condition_tree(condition);
+                }
+                count
+            }
+            Statement::Insert(insert_stmt) => {
+                let mut count = 0;
+                for row in &insert_stmt.values {
+                    for value in row {
+                        count += self.count_parameters_in_expression_value(value);
+                    }
+                }
+                count
+            }
+            Statement::Update(update_stmt) => {
+                let mut count = 0;
+                // Count parameters in assignments
+                for assignment in &update_stmt.assignments {
+                    count += self.count_parameters_in_expression_value(&assignment.value);
+                }
+                // Count parameters in WHERE condition
+                if let Some(ref condition) = update_stmt.condition {
+                    count += self.count_parameters_in_condition_tree(condition);
+                }
+                count
+            }
+            Statement::Delete(delete_stmt) => {
+                let mut count = 0;
+                if let Some(ref condition) = delete_stmt.condition {
+                    count += self.count_parameters_in_condition_tree(condition);
+                }
+                count
+            }
+            _ => 0, // Other statement types don't support parameters yet
+        }
+    }
+
+    fn count_parameters_in_condition_tree(&self, condition_tree: &crate::core::query::sql::ast::ConditionTree) -> usize {
+        use crate::core::query::sql::ast::ConditionTree;
+        match condition_tree {
+            ConditionTree::Comparison(condition) => {
+                self.count_parameters_in_expression_value(&condition.value)
+            }
+            ConditionTree::And(left, right) | ConditionTree::Or(left, right) => {
+                self.count_parameters_in_condition_tree(left) + self.count_parameters_in_condition_tree(right)
+            }
+            ConditionTree::Not(inner) => {
+                self.count_parameters_in_condition_tree(inner)
+            }
+        }
+    }
+
+    fn count_parameters_in_expression_value(&self, expr: &crate::core::query::sql::ast::AstExpressionValue) -> usize {
+        use crate::core::query::sql::ast::AstExpressionValue;
+        match expr {
+            AstExpressionValue::Parameter(_) => 1,
+            AstExpressionValue::Literal(_) | AstExpressionValue::ColumnIdentifier(_) => 0,
+        }
+    }
+
+    // Parameterized execution methods - implement the core logic for secure parameter handling
+    
+    fn execute_parameterized_select(
+        &mut self,
+        select_stmt: &crate::core::query::sql::ast::SelectStatement,
+        param_context: &ParameterContext,
+    ) -> Result<ExecutionResult, OxidbError> {
+        // For now, implement a basic version that converts the parameterized SELECT
+        // to the existing SELECT execution path by resolving parameters first
+        
+        // Create a modified select statement with parameters resolved
+        let mut resolved_select = select_stmt.clone();
+        
+        // Resolve parameters in WHERE conditions
+        if let Some(ref condition_tree) = select_stmt.condition {
+            resolved_select.condition = Some(self.resolve_condition_tree_parameters(condition_tree, param_context)?);
+        }
+        
+        // For now, use the existing SELECT execution infrastructure
+        // This is a temporary implementation - ideally we'd modify the execution engine
+        // to handle parameters natively throughout the pipeline
+        
+        // Convert the AST to the internal command format and execute
+        let sql_command = crate::core::query::sql::translator::translate_ast_to_command(
+            crate::core::query::sql::ast::Statement::Select(resolved_select)
+        )?;
+        
+        // Execute using existing infrastructure
+        match sql_command {
+            crate::core::query::commands::Command::Select { columns, source, condition, .. } => {
+                self.handle_select(columns, source, condition)
+            }
+            _ => Err(OxidbError::Internal("Unexpected command type from SELECT translation".to_string()))
+        }
+    }
+    
+    /// Helper method to resolve parameters in condition trees
+    fn resolve_condition_tree_parameters(
+        &self,
+        condition_tree: &crate::core::query::sql::ast::ConditionTree,
+        param_context: &ParameterContext,
+    ) -> Result<crate::core::query::sql::ast::ConditionTree, OxidbError> {
+        use crate::core::query::sql::ast::{ConditionTree, Condition, AstExpressionValue};
+        
+        match condition_tree {
+            ConditionTree::Comparison(condition) => {
+                let resolved_value = match &condition.value {
+                    AstExpressionValue::Parameter(index) => {
+                        // Resolve parameter to literal value
+                        let param_value = param_context.resolve_parameter(*index)?;
+                        self.convert_param_value_to_ast_literal(param_value)?
+                    }
+                    AstExpressionValue::Literal(literal) => literal.clone(),
+                    AstExpressionValue::ColumnIdentifier(_) => {
+                        return Err(OxidbError::NotImplemented {
+                            feature: "Column-to-column comparisons in parameterized queries".to_string()
+                        });
+                    }
+                };
+                
+                Ok(ConditionTree::Comparison(Condition {
+                    column: condition.column.clone(),
+                    operator: condition.operator.clone(),
+                    value: AstExpressionValue::Literal(resolved_value),
+                }))
+            }
+            ConditionTree::And(left, right) => {
+                let resolved_left = self.resolve_condition_tree_parameters(left, param_context)?;
+                let resolved_right = self.resolve_condition_tree_parameters(right, param_context)?;
+                Ok(ConditionTree::And(Box::new(resolved_left), Box::new(resolved_right)))
+            }
+            ConditionTree::Or(left, right) => {
+                let resolved_left = self.resolve_condition_tree_parameters(left, param_context)?;
+                let resolved_right = self.resolve_condition_tree_parameters(right, param_context)?;
+                Ok(ConditionTree::Or(Box::new(resolved_left), Box::new(resolved_right)))
+            }
+            ConditionTree::Not(inner) => {
+                let resolved_inner = self.resolve_condition_tree_parameters(inner, param_context)?;
+                Ok(ConditionTree::Not(Box::new(resolved_inner)))
+            }
+        }
+    }
+    
+    /// Convert a parameter Value to an AST literal
+    fn convert_param_value_to_ast_literal(&self, value: &crate::core::common::types::Value) -> Result<AstLiteralValue, OxidbError> {
+        use crate::core::common::types::Value;
+        use crate::core::query::sql::ast::AstLiteralValue;
+        
+        match value {
+            Value::Integer(i) => Ok(AstLiteralValue::Number(i.to_string())),
+            Value::Float(f) => Ok(AstLiteralValue::Number(f.to_string())),
+            Value::Text(s) => Ok(AstLiteralValue::String(s.clone())),
+            Value::Boolean(b) => Ok(AstLiteralValue::Boolean(*b)),
+            Value::Null => Ok(AstLiteralValue::Null),
+            Value::Blob(_) => Err(OxidbError::NotImplemented {
+                feature: "Blob parameters in WHERE clauses".to_string()
+            }),
+            Value::Vector(_) => Err(OxidbError::NotImplemented {
+                feature: "Vector parameters in WHERE clauses".to_string()
+            }),
+        }
+    }
+
+    fn execute_parameterized_insert(
+        &mut self,
+        insert_stmt: &crate::core::query::sql::ast::InsertStatement,
+        param_context: &ParameterContext,
+    ) -> Result<ExecutionResult, OxidbError> {
+        // Get the table schema
+        let schema = self.get_table_schema(&insert_stmt.table_name)?
+            .ok_or_else(|| OxidbError::InvalidInput {
+                message: format!("Table '{}' does not exist", insert_stmt.table_name)
+            })?;
+
+        // Process each row of values
+        let mut insert_count = 0;
+        for row_values in &insert_stmt.values {
+            // Resolve parameters in the row values
+            let mut resolved_values = Vec::new();
+            for expr in row_values {
+                let data_type = param_context.resolve_expression_value(expr)?;
+                resolved_values.push(data_type);
+            }
+
+            // Create a row map with column names and values
+            let column_names = if let Some(ref columns) = insert_stmt.columns {
+                // Use specified columns
+                columns.clone()
+            } else {
+                // Use all columns from schema in order
+                schema.columns.iter().map(|col| col.name.clone()).collect()
+            };
+
+            if column_names.len() != resolved_values.len() {
+                return Err(OxidbError::InvalidInput {
+                    message: format!(
+                        "Column count mismatch: expected {}, got {}",
+                        column_names.len(),
+                        resolved_values.len()
+                    )
+                });
+            }
+
+            // Create row data as a map
+            let mut row_map = std::collections::HashMap::new();
+            for (col_name, value) in column_names.iter().zip(resolved_values.iter()) {
+                row_map.insert(col_name.as_bytes().to_vec(), value.clone());
+            }
+
+            // Generate a simple primary key (for now, use a UUID-like approach)
+            // TODO: Implement proper primary key generation based on schema
+            let primary_key = format!("{}_{}", insert_stmt.table_name, uuid::Uuid::new_v4())
+                .as_bytes()
+                .to_vec();
+            row_map.insert(b"_kv_key".to_vec(), DataType::RawBytes(primary_key.clone()));
+
+            // Create the final data structure
+            let row_data = DataType::Map(crate::core::types::JsonSafeMap(row_map));
+
+            // Insert the row
+            self.handle_insert(primary_key, row_data)?;
+            insert_count += 1;
+        }
+
+        Ok(ExecutionResult::Updated { count: insert_count })
+    }
+
+    fn execute_parameterized_update(
+        &mut self,
+        _update_stmt: &crate::core::query::sql::ast::UpdateStatement,
+        _param_context: &ParameterContext,
+    ) -> Result<ExecutionResult, OxidbError> {
+        Err(OxidbError::NotImplemented {
+            feature: "Parameterized UPDATE execution".to_string(),
+        })
+    }
+
+    fn execute_parameterized_delete(
+        &mut self,
+        _delete_stmt: &crate::core::query::sql::ast::DeleteStatement,
+        _param_context: &ParameterContext,
+    ) -> Result<ExecutionResult, OxidbError> {
+        Err(OxidbError::NotImplemented {
+            feature: "Parameterized DELETE execution".to_string(),
+        })
     }
 }

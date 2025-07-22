@@ -1247,9 +1247,8 @@ fn test_physical_wal_lsn_integration() {
     // Schema Put (0), Alice Put (2), Bob Put (4), Alicia Update Put (6), Bob Delete (8)
     // Charlie Put (Tx1) (11), AliceNewName Update Put (Tx1) (12)
     // These LSNs are from the physical store's WAL.
-    // LSNs consumed by TM WAL: SchemaCommit (1), AliceCommit (3), BobCommit (5), AliciaCommit (8), BeginTx1 (10), CharlieCommit (15)
-    // NOTE: DELETE operation was skipped due to optimizer limitation, so LSN 8 is missing and subsequent LSNs shifted
-    let expected_physical_lsns = [0, 2, 4, 6, 7, 11, 12, 13, 14];
+    // LSNs consumed by TM WAL: SchemaCommit (1), AliceCommit (3), BobCommit (5), AliciaCommit (7), DeleteCommit (9), BeginTx1 (10), CharlieCommit (13)
+    let expected_physical_lsns = [0, 2, 4, 6, 8, 11, 12];
 
     assert_eq!(
         wal_entries.len(),
@@ -1290,18 +1289,15 @@ fn test_physical_wal_lsn_integration() {
     }
 
     // Expected physical data operations:
-    // 1. Put Schema (_schema_test_lsn) - Tx0
-    // 2. Put (1, "Alice") - Tx0
-    // 3. Put (2, "Bob") - Tx0
-    // 4. Put (1, "Alicia") for UPDATE - Tx0 (LSN 6)
-    // 5. Put (2, "Alicia") for UPDATE - Tx0 (LSN 7) - additional UPDATE operation
-    // 6. DELETE (id=2) - SKIPPED due to optimizer limitation
-    // 7. Put (3, "Charlie") - Tx1 (LSN 11)
-    // 8. Put (1, "AliceNewName") for UPDATE in TX1 - Tx1 (LSN 12)
-    // 9. Put (2, "AliceNewName") for UPDATE in TX1 - Tx1 (LSN 13)
-    // 10. Put (3, "AliceNewName") for UPDATE in TX1 - Tx1 (LSN 14)
-    assert_eq!(physical_data_ops, 9, "Expected 9 data operations in physical WAL (DELETE skipped)");
-    assert_eq!(wal_entries.len(), 9, "Total physical WAL entries should be 9");
+    // 1. Put Schema (_schema_test_lsn) - Tx0 (LSN 0)
+    // 2. Put (1, "Alice") - Tx0 (LSN 2)
+    // 3. Put (2, "Bob") - Tx0 (LSN 4)
+    // 4. Put (1, "Alicia") for UPDATE WHERE id=1 - Tx0 (LSN 6)
+    // 5. Delete (2) for DELETE WHERE id=2 - Tx0 (LSN 8)
+    // 6. Put (3, "Charlie") - Tx1 (LSN 11)
+    // 7. Put (1, "AliceNewName") for UPDATE WHERE id=1 in TX1 - Tx1 (LSN 12)
+    assert_eq!(physical_data_ops, 7, "Expected 7 data operations in physical WAL");
+    assert_eq!(wal_entries.len(), 7, "Total physical WAL entries should be 7");
 
     temp_dir.close().expect("Failed to remove temp dir");
 }

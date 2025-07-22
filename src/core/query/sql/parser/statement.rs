@@ -278,7 +278,7 @@ impl SqlParser {
                 // Check if not empty list like "()"
                 loop {
                     current_values_set
-                        .push(self.parse_literal_value("Expected value in VALUES clause")?);
+                        .push(self.parse_expression_value("Expected value in VALUES clause")?);
                     if self.match_token(Token::RParen) {
                         break;
                     }

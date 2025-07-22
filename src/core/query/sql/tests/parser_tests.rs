@@ -179,7 +179,7 @@ fn test_update_missing_value_in_condition() {
         assert!(
             expected
                 .to_lowercase()
-                .contains("expected literal or column identifier for rhs of condition")
+                .contains("expected literal, parameter (?), or column identifier for rhs of condition")
                 || expected.to_lowercase().contains("expected identifier") // If parse_qualified_identifier fails early
         );
         assert!(found.to_lowercase().contains("semicolon"));
@@ -866,7 +866,7 @@ fn test_parse_update_simple() {
             assert_eq!(update_stmt.assignments[0].column, "name");
             assert_eq!(
                 update_stmt.assignments[0].value,
-                AstLiteralValue::String("New Name".to_string())
+                ast::AstExpressionValue::Literal(AstLiteralValue::String("New Name".to_string()))
             );
             assert!(update_stmt.condition.is_some());
             match update_stmt.condition.unwrap() {
@@ -899,12 +899,12 @@ fn test_parse_update_multiple_assignments() {
             assert_eq!(update_stmt.assignments[0].column, "price");
             assert_eq!(
                 update_stmt.assignments[0].value,
-                AstLiteralValue::Number("99.50".to_string())
+                ast::AstExpressionValue::Literal(AstLiteralValue::Number("99.50".to_string()))
             );
             assert_eq!(update_stmt.assignments[1].column, "stock");
             assert_eq!(
                 update_stmt.assignments[1].value,
-                AstLiteralValue::Number("500".to_string())
+                ast::AstExpressionValue::Literal(AstLiteralValue::Number("500".to_string()))
             );
 
             assert!(update_stmt.condition.is_some());
@@ -973,7 +973,7 @@ fn test_unexpected_token_instead_of_literal() {
         result
     );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
-        assert_eq!(expected, "Expected literal or column identifier for RHS of condition");
+        assert_eq!(expected, "Expected literal, parameter (?), or column identifier for RHS of condition");
         assert!(found.contains("Select"));
     } else {
         panic!("Wrong error type for unexpected token: {:?}", result);
@@ -1109,7 +1109,7 @@ fn test_select_missing_value_in_condition() {
         assert!(
             expected
                 .to_lowercase()
-                .contains("expected literal or column identifier for rhs of condition")
+                .contains("expected literal, parameter (?), or column identifier for rhs of condition")
                 || expected.to_lowercase().contains("expected identifier") // If parse_qualified_identifier fails early
         );
         assert!(found.to_lowercase().contains("semicolon"));
@@ -1213,7 +1213,7 @@ fn test_update_set_null_value() {
     match result {
         Statement::Update(update_stmt) => {
             assert_eq!(update_stmt.assignments[0].column, "value");
-            assert_eq!(update_stmt.assignments[0].value, AstLiteralValue::Null);
+            assert_eq!(update_stmt.assignments[0].value, ast::AstExpressionValue::Literal(AstLiteralValue::Null));
             match update_stmt.condition.unwrap() {
                 ConditionTree::Comparison(cond) => {
                     assert_eq!(cond.column, "id");
@@ -1290,10 +1290,10 @@ fn test_parse_insert_simple() {
             assert_eq!(insert_stmt.columns, Some(vec!["name".to_string(), "email".to_string()]));
             assert_eq!(insert_stmt.values.len(), 1);
             assert_eq!(insert_stmt.values[0].len(), 2);
-            assert_eq!(insert_stmt.values[0][0], AstLiteralValue::String("Alice".to_string()));
+            assert_eq!(insert_stmt.values[0][0], ast::AstExpressionValue::Literal(AstLiteralValue::String("Alice".to_string())));
             assert_eq!(
                 insert_stmt.values[0][1],
-                AstLiteralValue::String("alice@example.com".to_string())
+                ast::AstExpressionValue::Literal(AstLiteralValue::String("alice@example.com".to_string()))
             );
         }
         _ => panic!("Expected InsertStatement"),
@@ -1316,19 +1316,19 @@ fn test_parse_insert_multiple_values() {
             assert_eq!(insert_stmt.values.len(), 3, "Expected 3 sets of values for TC1");
             // Check first set
             assert_eq!(insert_stmt.values[0].len(), 3);
-            assert_eq!(insert_stmt.values[0][0], AstLiteralValue::Number("1".to_string()));
-            assert_eq!(insert_stmt.values[0][1], AstLiteralValue::String("Laptop".to_string()));
-            assert_eq!(insert_stmt.values[0][2], AstLiteralValue::Number("1200.00".to_string()));
+            assert_eq!(insert_stmt.values[0][0], ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string())));
+            assert_eq!(insert_stmt.values[0][1], ast::AstExpressionValue::Literal(AstLiteralValue::String("Laptop".to_string())));
+            assert_eq!(insert_stmt.values[0][2], ast::AstExpressionValue::Literal(AstLiteralValue::Number("1200.00".to_string())));
             // Check second set
             assert_eq!(insert_stmt.values[1].len(), 3);
-            assert_eq!(insert_stmt.values[1][0], AstLiteralValue::Number("2".to_string()));
-            assert_eq!(insert_stmt.values[1][1], AstLiteralValue::String("Mouse".to_string()));
-            assert_eq!(insert_stmt.values[1][2], AstLiteralValue::Number("25.00".to_string()));
+            assert_eq!(insert_stmt.values[1][0], ast::AstExpressionValue::Literal(AstLiteralValue::Number("2".to_string())));
+            assert_eq!(insert_stmt.values[1][1], ast::AstExpressionValue::Literal(AstLiteralValue::String("Mouse".to_string())));
+            assert_eq!(insert_stmt.values[1][2], ast::AstExpressionValue::Literal(AstLiteralValue::Number("25.00".to_string())));
             // Check third set
             assert_eq!(insert_stmt.values[2].len(), 3);
-            assert_eq!(insert_stmt.values[2][0], AstLiteralValue::Number("3".to_string()));
-            assert_eq!(insert_stmt.values[2][1], AstLiteralValue::String("Keyboard".to_string()));
-            assert_eq!(insert_stmt.values[2][2], AstLiteralValue::Number("75.50".to_string()));
+            assert_eq!(insert_stmt.values[2][0], ast::AstExpressionValue::Literal(AstLiteralValue::Number("3".to_string())));
+            assert_eq!(insert_stmt.values[2][1], ast::AstExpressionValue::Literal(AstLiteralValue::String("Keyboard".to_string())));
+            assert_eq!(insert_stmt.values[2][2], ast::AstExpressionValue::Literal(AstLiteralValue::Number("75.50".to_string())));
         }
         _ => panic!("Expected InsertStatement for TC1"),
     }
@@ -1344,11 +1344,11 @@ fn test_parse_insert_multiple_values() {
             assert!(insert_stmt.columns.is_none());
             assert_eq!(insert_stmt.values.len(), 2, "Expected 2 sets of values for TC2");
             assert_eq!(insert_stmt.values[0].len(), 2);
-            assert_eq!(insert_stmt.values[0][0], AstLiteralValue::String("USA".to_string()));
-            assert_eq!(insert_stmt.values[0][1], AstLiteralValue::String("New York".to_string()));
+            assert_eq!(insert_stmt.values[0][0], ast::AstExpressionValue::Literal(AstLiteralValue::String("USA".to_string())));
+            assert_eq!(insert_stmt.values[0][1], ast::AstExpressionValue::Literal(AstLiteralValue::String("New York".to_string())));
             assert_eq!(insert_stmt.values[1].len(), 2);
-            assert_eq!(insert_stmt.values[1][0], AstLiteralValue::String("CAN".to_string()));
-            assert_eq!(insert_stmt.values[1][1], AstLiteralValue::String("Toronto".to_string()));
+            assert_eq!(insert_stmt.values[1][0], ast::AstExpressionValue::Literal(AstLiteralValue::String("CAN".to_string())));
+            assert_eq!(insert_stmt.values[1][1], ast::AstExpressionValue::Literal(AstLiteralValue::String("Toronto".to_string())));
         }
         _ => panic!("Expected InsertStatement for TC2"),
     }
@@ -1365,7 +1365,7 @@ fn test_parse_insert_multiple_values() {
             assert_eq!(insert_stmt.values[0].len(), 1);
             assert_eq!(
                 insert_stmt.values[0][0],
-                AstLiteralValue::String("Finish report".to_string())
+                ast::AstExpressionValue::Literal(AstLiteralValue::String("Finish report".to_string()))
             );
         }
         _ => panic!("Expected InsertStatement for TC3"),
@@ -1467,7 +1467,7 @@ fn test_parse_vector_literal_mixed_types_and_nested() {
             assert_eq!(insert_stmt.values[0].len(), 1);
             let vector_val = &insert_stmt.values[0][0];
             match vector_val {
-                AstLiteralValue::Vector(elements) => {
+                ast::AstExpressionValue::Literal(AstLiteralValue::Vector(elements)) => {
                     assert_eq!(elements.len(), 4);
                     assert_eq!(elements[0], AstLiteralValue::Number("1".to_string()));
                     match &elements[1] {

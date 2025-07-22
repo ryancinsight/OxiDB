@@ -102,8 +102,8 @@ impl SqlParser {
             // For now, assume simple identifier for SET column = ...
             let column = self.expect_identifier("Expected column name for assignment")?;
             self.expect_operator("=", "Expected '=' after column name in SET clause")?;
-            let value = self.parse_literal_value("Expected value for assignment")?;
-            assignments.push(Assignment { column, value }); // Value here is AstLiteralValue
+            let value = self.parse_expression_value("Expected value for assignment")?;
+            assignments.push(Assignment { column, value }); // Value here is AstExpressionValue
             if !self.match_token(Token::Comma) {
                 break;
             }
@@ -137,6 +137,25 @@ impl SqlParser {
     }
 
     // Helper to attempt parsing a literal value. Does not consume if it's not a clear literal start.
+    // Parse an expression value (literal or parameter)
+    pub(super) fn parse_expression_value(&mut self, context: &str) -> Result<ast::AstExpressionValue, SqlParseError> {
+        if self.match_token(Token::Parameter) {
+            self.consume(Token::Parameter)?;
+            let param_index = self.parameter_count;
+            self.parameter_count += 1;
+            Ok(ast::AstExpressionValue::Parameter(param_index))
+        } else {
+            match self.try_parse_literal_value()? {
+                Some(literal_val) => Ok(ast::AstExpressionValue::Literal(literal_val)),
+                None => {
+                    // Try parsing as identifier (column reference)
+                    let col_ident = self.parse_qualified_identifier(context)?;
+                    Ok(ast::AstExpressionValue::ColumnIdentifier(col_ident))
+                }
+            }
+        }
+    }
+
     // Returns Ok(None) if not a literal, Ok(Some(value)) if a literal, Err if parsing starts but fails.
     fn try_parse_literal_value(&mut self) -> Result<Option<AstLiteralValue>, SqlParseError> {
         match self.peek() {
@@ -198,15 +217,25 @@ impl SqlParser {
                 "Expected comparison operator in condition",
             )?;
 
-            // Attempt to parse RHS as literal, then as qualified identifier
-            let rhs_value = match self.try_parse_literal_value()? {
-                Some(literal_val) => ast::AstExpressionValue::Literal(literal_val),
-                None => {
-                    // Not a literal, try parsing as a qualified identifier
-                    let col_ident = self.parse_qualified_identifier(
-                        "Expected literal or column identifier for RHS of condition",
-                    )?;
-                    ast::AstExpressionValue::ColumnIdentifier(col_ident)
+            // Attempt to parse RHS as literal, parameter, or qualified identifier
+            let rhs_value = if self.match_token(Token::Parameter) {
+                // Handle parameter placeholder
+                self.consume(Token::Parameter)?;
+                // For now, we'll use a simple counter for parameter indices
+                // This will need to be enhanced to track parameter positions properly
+                let param_index = self.parameter_count;
+                self.parameter_count += 1;
+                ast::AstExpressionValue::Parameter(param_index)
+            } else {
+                match self.try_parse_literal_value()? {
+                    Some(literal_val) => ast::AstExpressionValue::Literal(literal_val),
+                    None => {
+                        // Not a literal, try parsing as a qualified identifier
+                        let col_ident = self.parse_qualified_identifier(
+                            "Expected literal, parameter (?), or column identifier for RHS of condition",
+                        )?;
+                        ast::AstExpressionValue::ColumnIdentifier(col_ident)
+                    }
                 }
             };
 
