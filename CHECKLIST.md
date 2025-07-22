@@ -7,7 +7,7 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
 **✅ ALL TESTS PASSING: 682 unit tests + 1 doctest (683 total)**
 
 ### Recent Achievements:
-- ✅ **Fixed Critical UPDATE Bug**: Resolved optimizer incorrectly using unsuitable indexes for WHERE clause filtering
+- ✅ **Fixed FilterOperator Bug**: Corrected column lookup logic in maps by removing an incorrect fallback mechanism.
 - ✅ **Implemented DELETE Support**: Added full DELETE statement support in the optimizer and query execution
 - ✅ **Enhanced FilterOperator**: Fixed column lookup in JsonSafeMap data structures  
 - ✅ **WAL Integration**: All Write-Ahead Log LSN tests now passing with correct DELETE operation handling
