@@ -267,6 +267,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                     feature: "DropTable command processing".to_string(),
                 })
             }
+            Command::ParameterizedSql { statement, parameters } => {
+                // Handle parameterized SQL execution
+                executor.execute_parameterized_statement(statement, parameters)
+            }
         }
     }
 }

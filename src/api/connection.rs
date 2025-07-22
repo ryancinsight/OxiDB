@@ -2,7 +2,7 @@ use std::path::Path;
 use crate::core::common::error::OxidbError;
 use crate::core::config::Config;
 use crate::core::query::executor::QueryExecutor;
-use crate::core::query::parser::parse_query_string;
+use crate::core::query::parser::{parse_query_string, parse_sql_to_ast};
 use crate::core::storage::engine::SimpleFileKvStore;
 use crate::core::wal::log_manager::LogManager;
 use crate::core::wal::writer::WalWriter;
@@ -96,9 +96,9 @@ impl Connection {
     
     /// Executes a parameterized SQL query with the given parameters.
     /// 
-    /// This method provides a simple parameter substitution mechanism.
-    /// Parameters in the SQL string are represented as `?` and are replaced
-    /// with the corresponding values from the `params` slice.
+    /// This method provides secure parameter substitution that prevents SQL injection
+    /// attacks. Parameters in the SQL string are represented as `?` placeholders and
+    /// are passed separately to the execution engine, never mixed with the SQL string.
     /// 
     /// # Arguments
     /// * `sql` - The SQL query string with `?` placeholders
@@ -106,6 +106,12 @@ impl Connection {
     /// 
     /// # Returns
     /// * `Result<QueryResult, OxidbError>` - The query result or an error
+    /// 
+    /// # Security
+    /// This method is designed to prevent SQL injection attacks by:
+    /// - Never interpolating parameter values into the SQL string
+    /// - Passing parameters separately to the execution engine
+    /// - Resolving parameters only during expression evaluation
     /// 
     /// # Example
     /// ```rust
@@ -135,32 +141,18 @@ impl Connection {
     /// }
     /// ```
     pub fn execute_with_params(&mut self, sql: &str, params: &[Value]) -> Result<QueryResult, OxidbError> {
-        // Simple parameter substitution
-        let mut parameterized_sql = sql.to_string();
-        for param in params {
-            // Find the first occurrence of '?' and replace it with the parameter value
-            if let Some(pos) = parameterized_sql.find('?') {
-                let param_str = match param {
-                    Value::Integer(i) => i.to_string(),
-                    Value::Float(f) => f.to_string(),
-                    Value::Text(s) => format!("'{}'", s.replace('\'', "''")), // Escape single quotes
-                    Value::Boolean(b) => if *b { "1".to_string() } else { "0".to_string() },
-                    Value::Blob(b) => format!("X'{}'", hex::encode(b)),
-                    Value::Vector(v) => format!("'{}'", serde_json::to_string(v).unwrap_or_default()),
-                    Value::Null => "NULL".to_string(),
-                };
-                parameterized_sql.replace_range(pos..pos+1, &param_str);
-            } else {
-                return Err(OxidbError::Execution("More parameters provided than placeholders in query".to_string()));
-            }
-        }
+        // Parse the SQL with parameter placeholders
+        let statement = parse_sql_to_ast(sql)?;
         
-        // Check if there are remaining placeholders
-        if parameterized_sql.contains('?') {
-            return Err(OxidbError::Execution("Fewer parameters provided than placeholders in query".to_string()));
-        }
+        // Create a parameterized command
+        let parameterized_command = crate::core::query::commands::Command::ParameterizedSql {
+            statement,
+            parameters: params.to_vec(),
+        };
         
-        self.execute(&parameterized_sql)
+        // Execute the parameterized command
+        let result = self.executor.execute_command(parameterized_command)?;
+        Ok(QueryResult::from_execution_result(result))
     }
     
     /// Executes a query and returns the first row, if any.

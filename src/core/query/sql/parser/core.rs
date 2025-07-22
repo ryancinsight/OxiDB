@@ -5,11 +5,12 @@ use crate::core::query::sql::tokenizer::Token;
 pub struct SqlParser {
     pub(super) tokens: Vec<Token>, // pub(super) for access from statement.rs and expression.rs
     pub(super) current: usize,     // pub(super)
+    pub(super) parameter_count: u32, // Track parameter placeholders for indexing
 }
 
 impl SqlParser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        SqlParser { tokens, current: 0 }
+        SqlParser { tokens, current: 0, parameter_count: 0 }
     }
 
     pub(super) fn current_token_pos(&self) -> usize {

@@ -12,6 +12,7 @@ pub enum AstExpressionValue {
     // ADDED
     Literal(AstLiteralValue),
     ColumnIdentifier(String),
+    Parameter(u32), // Parameter placeholder with index (0-based)
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -34,7 +35,7 @@ pub enum ConditionTree {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Assignment {
     pub column: String,
-    pub value: AstLiteralValue,
+    pub value: AstExpressionValue,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -129,7 +130,7 @@ pub struct CreateTableStatement {
 pub struct InsertStatement {
     pub table_name: String,
     pub columns: Option<Vec<String>>,
-    pub values: Vec<Vec<AstLiteralValue>>,
+    pub values: Vec<Vec<AstExpressionValue>>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

@@ -179,6 +179,16 @@ impl Optimizer {
                             op: "=".to_string(),
                             right: Box::new(Expression::Literal(crate::core::types::DataType::Integer(1))),
                         })
+                    },
+                    AstExpressionValue::Parameter(_param_index) => {
+                        // Parameters should be resolved at execution time
+                        // For optimizer purposes, create a placeholder expression
+                        // The actual parameter substitution will happen during execution
+                        Ok(Expression::CompareOp {
+                            left: Box::new(Expression::Column(cond.column.clone())),
+                            op: cond.operator.clone(),
+                            right: Box::new(Expression::Literal(crate::core::types::DataType::Null)), // Placeholder
+                        })
                     }
                 }
             },
