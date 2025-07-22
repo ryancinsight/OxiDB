@@ -1195,7 +1195,7 @@ mod tests {
         );
 
         let LogRecord::BeginTransaction { lsn: prev_lsn_for_commit3, .. } = record1 else {
-            panic!("Expected BeginTransaction record for record1")
+            assert!(false, "Expected BeginTransaction record for record1")
         };
         let record_commit = LogRecord::CommitTransaction {
             lsn: next_lsn(),
