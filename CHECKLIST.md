@@ -412,6 +412,16 @@ This checklist outlines the tasks required to create a pure Rust, minimal depend
         *   [ ] Sub-subtask: Add missing Eq derives where appropriate
         *   [ ] Sub-subtask: Make functions const where possible
     *   [~] **Validation:** Major progress made - 48% of clippy warnings resolved (1,111 fixed, 1,181 remaining)
+    
+**Phase 5.2: Benchmarking Anti-Pattern Fixes (COMPLETED)**
+*   [x] **Critical Performance Benchmark Improvements**
+    *   [x] **FIXED:** Eliminated `format!` macro usage in benchmark measurement loops
+        *   [x] Sub-subtask: Replaced string concatenation with parameterized queries
+        *   [x] Sub-subtask: Used `execute_with_params` API for accurate performance measurement
+        *   [x] Sub-subtask: Separated query preparation cost from execution measurement
+    *   [x] **Security Enhancement:** Eliminated SQL injection vulnerabilities in benchmarks
+    *   [x] **Performance Accuracy:** Benchmarks now measure database operations, not string allocation
+    *   [x] **Validation:** All benchmark tests pass - accurate performance measurement established
 
 14. **Dependency Minimization and Code Polish:**
     *   [~] Review all external dependencies.
