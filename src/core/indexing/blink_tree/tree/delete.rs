@@ -51,9 +51,8 @@ impl BlinkTreeIndex {
         if !leaf_node.is_safe_for_key(key) {
             if let Some(right_page_id) = leaf_node.get_right_link() {
                 return self.delete_from_leaf(right_page_id, key, primary_key);
-            } else {
-                return Ok(false); // Key not found
             }
+            return Ok(false); // Key not found
         }
 
         match &mut leaf_node {

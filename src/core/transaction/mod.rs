@@ -70,7 +70,7 @@ impl Transaction {
     /// Creates a new transaction with the given ID and an initial state of `Active`.
     pub fn new(id: TransactionId) -> Self {
         // Changed id type from u64
-        Transaction {
+        Self {
             id,
             state: TransactionState::Active,
             prev_lsn: INVALID_LSN, // Initialize prev_lsn with an invalid LSN
@@ -92,7 +92,7 @@ impl Transaction {
     /// Clones the transaction for storage operations, excluding logs.
     /// The store itself doesn't need to know about the undo/redo logs for its basic put/get/delete.
     pub fn clone_for_store(&self) -> Self {
-        Transaction {
+        Self {
             id: self.id,
             state: self.state.clone(), // State might be relevant for some store implementations (e.g. MVCC visibility)
             prev_lsn: self.prev_lsn,   // Clone prev_lsn

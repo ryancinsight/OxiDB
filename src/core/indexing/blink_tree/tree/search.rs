@@ -63,10 +63,9 @@ impl BlinkTreeIndex {
 
             if current_node.is_leaf() {
                 return Ok(current_page_id);
-            } else {
-                // Find the leftmost child that might contain our key
-                current_page_id = self.find_leftmost_child_for_key(&current_node, key)?;
             }
+            // Find the leftmost child that might contain our key
+            current_page_id = self.find_leftmost_child_for_key(&current_node, key)?;
         }
     }
 

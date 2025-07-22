@@ -266,7 +266,6 @@ impl<T: PoolableConnection + 'static> ConnectionPool<T> {
             }
             
             // After waking up, try again to get a connection
-            continue;
         }
     }
     

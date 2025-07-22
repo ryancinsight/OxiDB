@@ -80,10 +80,9 @@ impl BufferPoolManager {
                     // Drop the guard before returning, though it would drop anyway
                     drop(frame_guard);
                     return Some(frame_idx);
-                } else {
-                    // It's pinned, add it back to the end of the queue
-                    self.replacer_queue.push_back(frame_idx);
                 }
+                // It's pinned, add it back to the end of the queue
+                self.replacer_queue.push_back(frame_idx);
             } else {
                 // Should not happen if loop condition is based on replacer_queue.len()
                 // but as a safeguard, if queue is empty, break.
