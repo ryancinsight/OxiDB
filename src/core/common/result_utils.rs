@@ -112,7 +112,8 @@ where
             Ok(result) => return Ok(result),
             Err(e) if attempts >= max_attempts => return Err(e),
             Err(_) => {
-let delay = base_delay_ms.saturating_mul(2_u64.saturating_pow(attempts.saturating_sub(1) as u32));
+                let delay = base_delay_ms
+                    .saturating_mul(2_u64.saturating_pow(attempts.saturating_sub(1) as u32));
                 std::thread::sleep(std::time::Duration::from_millis(delay));
             }
         }

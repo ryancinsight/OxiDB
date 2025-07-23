@@ -3,7 +3,7 @@
 //! This module provides query optimization capabilities including cost-based
 //! optimization, rule-based optimization, and query planning.
 
-use crate::core::common::error::OxidbError;
+use crate::core::common::OxidbError;
 use crate::core::types::DataType;
 
 pub mod planner; // Cost-based query planner

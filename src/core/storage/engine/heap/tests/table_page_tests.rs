@@ -2,8 +2,8 @@
 
 #![cfg(test)]
 
-use crate::core::common::error::OxidbError;
 use crate::core::common::types::ids::SlotId;
+use crate::core::common::OxidbError;
 use crate::core::storage::engine::heap::table_page::{
     Slot,
     TablePage,
