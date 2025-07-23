@@ -117,6 +117,22 @@ All examples have been tested and verified to work correctly with OxiDB. Each ex
 
 ---
 
+### 9. **Scheduler Demo** (`scheduler_demo.rs`)
+**Purpose:** Comprehensive task scheduling with fully implemented statistics  
+**Features:**
+- Task scheduling with priority levels (Low, Normal, High, Critical)
+- Complete task lifecycle management (schedule, start, complete, fail, cancel)
+- **Fully implemented get_stats() method** (NOT a placeholder)
+- Real-time performance metrics and execution time tracking
+- Priority distribution analysis
+- Task cleanup and memory management
+- Thread-safe concurrent operations
+- Dynamic statistics updates
+
+**Run:** `cargo run --example scheduler_demo`
+
+---
+
 ## 🏗️ **Project Examples**
 
 ### Simple Blog Application (`examples/simple_blog/`)
