@@ -271,6 +271,16 @@ impl<'a> Tokenizer<'a> {
         Ok(Token::NumericLiteral(num_str.to_string()))
     }
 
+    /// Tokenizes the input SQL string into a vector of tokens
+    ///
+    /// Parses the SQL string character by character, identifying keywords, identifiers,
+    /// literals, operators, and other SQL syntax elements.
+    ///
+    /// # Errors
+    /// Returns `SqlTokenizerError` if:
+    /// - Invalid characters are encountered
+    /// - String literals are unterminated
+    /// - Numeric literals have invalid format
     pub fn tokenize(&mut self) -> Result<Vec<Token>, SqlTokenizerError> {
         let mut tokens = Vec::new();
 

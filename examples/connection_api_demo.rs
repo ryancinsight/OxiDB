@@ -63,10 +63,17 @@ fn main() -> Result<(), OxidbError> {
     conn.rollback()?;
     println!("✓ Rolled back transaction");
 
-    // Verify rollback worked
-    let count_sql = format!("SELECT COUNT(*) FROM {}", table_name);
-    let result = conn.execute(&count_sql)?;
-    println!("✓ Count after rollback: {:?}", result);
+    // Verify rollback worked - use simple SELECT * instead of COUNT(*)
+    let verify_sql = format!("SELECT * FROM {}", table_name);
+    let result = conn.execute(&verify_sql)?;
+    println!("✓ Records after rollback: {:?}", result);
+    
+    match result {
+        QueryResult::Data(data) => {
+            println!("Record count after rollback: {}", data.row_count());
+        }
+        _ => println!("Unexpected result type for verification"),
+    }
 
     // Test file-based database
     println!("\n--- Testing File-based Database ---");

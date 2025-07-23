@@ -190,6 +190,9 @@ impl TablePage {
 
     /// Initializes a new `TablePage` structure on a raw `page_data` buffer.
     /// Sets `num_records` to 0 and `free_space_pointer` to the start of where data can be written.
+    ///
+    /// # Errors
+    /// Returns `OxidbError::Storage` if the page data is too small to hold the basic header
     pub fn init(page_data: &mut [u8]) -> Result<(), OxidbError> {
         if page_data.len() < SLOTS_ARRAY_DATA_OFFSET {
             // Check if page can even hold the basic header
@@ -206,6 +209,16 @@ impl TablePage {
         Ok(())
     }
 
+    /// Inserts a record into the table page
+    ///
+    /// Allocates space for the record data and creates a slot entry pointing to it.
+    /// Returns the SlotId that can be used to retrieve the record later.
+    ///
+    /// # Errors
+    /// Returns `OxidbError` if:
+    /// - Record data is empty or zero length
+    /// - Not enough free space on the page
+    /// - Page data is too small to hold metadata
     pub fn insert_record(page_data: &mut [u8], data: &[u8]) -> Result<SlotId, OxidbError> {
         if data.is_empty() {
             return Err(OxidbError::InvalidInput {

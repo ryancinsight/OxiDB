@@ -54,7 +54,15 @@ impl TransactionManager {
         id
     }
 
-    // Changed to return Result<Transaction, IoError>
+    /// Begins a new transaction
+    ///
+    /// Creates a new transaction with a unique ID, logs a BEGIN record to the WAL,
+    /// and adds it to the active transactions list.
+    ///
+    /// # Errors
+    /// Returns `IoError` if:
+    /// - Writing the BEGIN record to the WAL fails
+    /// - Flushing the WAL fails
     pub fn begin_transaction(&mut self) -> Result<Transaction, IoError> {
         let id: CommonTransactionId = self.generate_tx_id(); // id is CommonTransactionId
         let mut transaction = Transaction::new(id); // Pass TransactionId struct
@@ -136,6 +144,16 @@ impl TransactionManager {
         self.current_active_transaction_id
     }
 
+    /// Commits the current active transaction
+    ///
+    /// Logs a COMMIT record to the WAL, removes the transaction from active transactions,
+    /// and marks it as committed.
+    ///
+    /// # Errors
+    /// Returns `IoError` if:
+    /// - No active transaction exists
+    /// - Transaction not found in active transactions
+    /// - Writing the COMMIT record to the WAL fails
     pub fn commit_transaction(&mut self) -> Result<(), IoError> {
         let current_tx_id = match self.current_active_transaction_id.take() {
             Some(id) => id,
@@ -176,7 +194,16 @@ impl TransactionManager {
         Ok(())
     }
 
-    // New method for aborting a transaction with logging
+    /// Aborts the current active transaction
+    ///
+    /// Logs an ABORT record to the WAL, removes the transaction from active transactions,
+    /// and marks it as aborted.
+    ///
+    /// # Errors
+    /// Returns `IoError` if:
+    /// - No active transaction exists
+    /// - Transaction not found in active transactions
+    /// - Writing the ABORT record to the WAL fails
     pub fn abort_transaction(&mut self) -> Result<(), IoError> {
         let current_tx_id = match self.current_active_transaction_id.take() {
             Some(id) => id,

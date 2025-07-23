@@ -168,6 +168,15 @@ impl BufferPoolManager {
         Ok(Arc::clone(&victim_frame.data))
     }
 
+    /// Unpins a page in the buffer pool
+    ///
+    /// Decreases the pin count for the specified page. If the pin count reaches zero,
+    /// the page becomes eligible for eviction.
+    ///
+    /// # Errors
+    /// Returns `OxidbError::BufferPool` if:
+    /// - Page is not found in the buffer pool
+    /// - Page pin count is already zero
     pub fn unpin_page(&mut self, page_id: CommonPageId, is_dirty: bool) -> Result<(), OxidbError> {
         let frame_idx = self.page_table.get(&page_id).ok_or_else(|| {
             OxidbError::BufferPool(format!(
@@ -207,6 +216,15 @@ impl BufferPoolManager {
         Ok(())
     }
 
+    /// Flushes a specific page to disk if it's dirty
+    ///
+    /// Writes the page data to disk and marks it as clean. If the page is not
+    /// in the buffer pool or not dirty, the operation succeeds without action.
+    ///
+    /// # Errors
+    /// Returns `OxidbError::BufferPool` if:
+    /// - Page ID in frame doesn't match expected page ID
+    /// - Disk write operation fails
     pub fn flush_page(&mut self, page_id: CommonPageId) -> Result<(), OxidbError> {
         if let Some(&frame_idx) = self.page_table.get(&page_id) {
             let mut frame = self.frames[frame_idx].lock().unwrap();
@@ -234,6 +252,15 @@ impl BufferPoolManager {
         Ok(())
     }
 
+    /// Allocates a new page and returns its ID and data reference
+    ///
+    /// Creates a new page in the disk manager and loads it into the buffer pool.
+    /// The page is returned pinned with a reference count of 1.
+    ///
+    /// # Errors
+    /// Returns `OxidbError` if:
+    /// - Page allocation in disk manager fails
+    /// - Fetching the new page into buffer pool fails
     pub fn new_page(&mut self) -> Result<(CommonPageId, Arc<RwLock<[u8; PAGE_SIZE]>>), OxidbError> {
         let new_page_id = self.disk_manager.lock().unwrap().allocate_page()?;
 

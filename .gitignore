@@ -29,3 +29,5 @@ target/
 # Database files
 *.db
 *.db.wal
+*.wal
+*.idx

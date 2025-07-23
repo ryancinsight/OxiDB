@@ -15,6 +15,16 @@ pub struct DiskManager {
 }
 
 impl DiskManager {
+    /// Opens a database file and creates a new DiskManager instance
+    ///
+    /// If the database file doesn't exist, it will be created. The next page ID
+    /// is calculated based on the existing file size.
+    ///
+    /// # Errors
+    /// Returns `OxidbError` if:
+    /// - The database file cannot be opened or created
+    /// - File metadata cannot be read
+    /// - File I/O operations fail
     pub fn open(db_path: PathBuf) -> Result<Self, OxidbError> {
         let is_new_db = !db_path.exists();
 
@@ -57,6 +67,14 @@ impl DiskManager {
         })
     }
 
+    /// Writes a page to disk at the specified page ID
+    ///
+    /// # Errors
+    /// Returns `OxidbError` if:
+    /// - Page data length doesn't match PAGE_SIZE
+    /// - File seek operation fails
+    /// - File write operation fails
+    /// - File sync operation fails
     pub fn write_page(&mut self, page_id: PageId, page_data: &[u8]) -> Result<(), OxidbError> {
         if page_data.len() != PAGE_SIZE {
             return Err(OxidbError::io_error(format!(

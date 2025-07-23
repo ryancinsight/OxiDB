@@ -146,6 +146,12 @@ impl PoolConfig {
     }
 
     /// Validates the configuration
+    ///
+    /// # Errors
+    /// Returns `OxidbError::Configuration` if:
+    /// - `min_connections` is greater than `max_connections`
+    /// - `max_connections` is zero
+    /// - `acquire_timeout` is zero
     pub fn validate(&self) -> Result<(), OxidbError> {
         if self.min_connections > self.max_connections {
             return Err(OxidbError::Configuration(
@@ -254,6 +260,10 @@ impl PoolConfigBuilder {
         self
     }
 
+    /// Builds the `PoolConfig` from the builder
+    ///
+    /// # Errors
+    /// Returns `OxidbError::Configuration` if the configuration validation fails
     pub fn build(self) -> Result<PoolConfig, OxidbError> {
         let config = PoolConfig {
             min_connections: self.min_connections.unwrap_or(5),
