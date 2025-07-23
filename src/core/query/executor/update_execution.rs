@@ -78,7 +78,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             });
 
         let initial_select_plan = self.optimizer.build_initial_plan(&ast_statement_for_select)?;
-        let optimized_select_plan = self.optimizer.optimize_with_indexes(initial_select_plan, &self.index_manager)?;
+        let optimized_select_plan =
+            self.optimizer.optimize_with_indexes(initial_select_plan, &self.index_manager)?;
 
         let mut select_execution_tree = self.build_execution_tree(
             optimized_select_plan,

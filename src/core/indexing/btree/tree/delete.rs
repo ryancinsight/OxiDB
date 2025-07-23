@@ -41,7 +41,8 @@ impl BPlusTreeIndex {
                         key_removed_from_structure = true;
                         modification_made = true;
                     }
-                } else { /* Key not found */ }
+                } else { /* Key not found */
+                }
             }
             _ => return Err(OxidbError::UnexpectedNodeType),
         }

@@ -41,9 +41,7 @@ impl Oxidb {
 
         eprintln!("[Oxidb::new_with_config] SFKS main DB path: {store_path:?}");
         // Actual SFKS WAL path is derived internally by SFKS, e.g. store_path.with_extension(...)
-        eprintln!(
-            "[Oxidb::new_with_config] Using TM WAL path for QueryExecutor: {tm_wal_path:?}"
-        );
+        eprintln!("[Oxidb::new_with_config] Using TM WAL path for QueryExecutor: {tm_wal_path:?}");
 
         let tm_wal_writer = WalWriter::new(tm_wal_path, wal_writer_config);
 
@@ -165,9 +163,9 @@ impl Oxidb {
                     },
                 }))
             }
-            Ok(unexpected_result) => Err(OxidbError::Internal(format!(
-                "Get: Expected Value, got {unexpected_result:?}"
-            ))),
+            Ok(unexpected_result) => {
+                Err(OxidbError::Internal(format!("Get: Expected Value, got {unexpected_result:?}")))
+            }
             Err(e) => Err(e),
         }
     }
@@ -244,12 +242,14 @@ impl Oxidb {
 
     /// Returns the path to the main database file.
     #[allow(clippy::unwrap_used)] // Panicking on poisoned lock is acceptable here
-    #[must_use] pub fn database_path(&self) -> PathBuf {
+    #[must_use]
+    pub fn database_path(&self) -> PathBuf {
         self.executor.store.read().unwrap().file_path().to_path_buf()
     }
 
     /// Returns the base path for index storage.
-    #[must_use] pub fn index_path(&self) -> PathBuf {
+    #[must_use]
+    pub fn index_path(&self) -> PathBuf {
         self.executor.index_base_path()
     }
 

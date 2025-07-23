@@ -51,7 +51,11 @@ fn test_from_serde_json_error() {
     match oxidb_err {
         OxidbError::Json(e) => {
             // The error is stored as String, check the message contains JSON parsing error
-            assert!(e.to_string().contains("EOF") || e.to_string().contains("expected"), "Error message should contain JSON parsing error, got: '{}'", e);
+            assert!(
+                e.to_string().contains("EOF") || e.to_string().contains("expected"),
+                "Error message should contain JSON parsing error, got: '{}'",
+                e
+            );
             assert!(original_error_msg.contains("EOF") || original_error_msg.contains("expected"));
         }
         _ => panic!("Expected OxidbError::Json variant"),

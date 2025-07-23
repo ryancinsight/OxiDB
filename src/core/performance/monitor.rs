@@ -13,23 +13,20 @@ pub struct PerformanceMonitor {
 
 impl PerformanceMonitor {
     /// Create a new performance monitor
-    #[must_use] pub fn new() -> Self {
-        Self {
-            config: MonitoringConfig::default(),
-            active_alerts: Vec::new(),
-        }
+    #[must_use]
+    pub fn new() -> Self {
+        Self { config: MonitoringConfig::default(), active_alerts: Vec::new() }
     }
 
     /// Create monitor with custom configuration
-    #[must_use] pub const fn with_config(config: MonitoringConfig) -> Self {
-        Self {
-            config,
-            active_alerts: Vec::new(),
-        }
+    #[must_use]
+    pub const fn with_config(config: MonitoringConfig) -> Self {
+        Self { config, active_alerts: Vec::new() }
     }
 
     /// Check for performance alerts
-    #[must_use] pub fn check_alerts(&self) -> Vec<String> {
+    #[must_use]
+    pub fn check_alerts(&self) -> Vec<String> {
         self.active_alerts.clone()
     }
 
@@ -107,27 +104,24 @@ mod tests {
     #[test]
     fn test_performance_monitor() {
         let mut monitor = PerformanceMonitor::new();
-        
+
         monitor.add_alert("Test alert".to_string(), AlertLevel::Warning);
         let alerts = monitor.check_alerts();
-        
+
         assert_eq!(alerts.len(), 1);
         assert!(alerts[0].contains("Test alert"));
     }
 
     #[test]
     fn test_alert_filtering() {
-        let config = MonitoringConfig {
-            min_alert_level: AlertLevel::Error,
-            ..Default::default()
-        };
+        let config = MonitoringConfig { min_alert_level: AlertLevel::Error, ..Default::default() };
         let mut monitor = PerformanceMonitor::with_config(config);
-        
+
         // This should be filtered out
         monitor.add_alert("Warning message".to_string(), AlertLevel::Warning);
         // This should be included
         monitor.add_alert("Error message".to_string(), AlertLevel::Error);
-        
+
         let alerts = monitor.check_alerts();
         assert_eq!(alerts.len(), 1);
         assert!(alerts[0].contains("Error message"));
@@ -136,7 +130,7 @@ mod tests {
     #[test]
     fn test_monitoring_config() {
         let config = MonitoringConfig::default();
-        
+
         assert!(config.enable_monitoring);
         assert!(!config.enable_profiling);
         assert_eq!(config.min_alert_level, AlertLevel::Warning);

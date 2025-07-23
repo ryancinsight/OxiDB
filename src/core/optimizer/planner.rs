@@ -1,10 +1,10 @@
 //! Query Planning and Optimization
-//! 
+//!
 //! This module provides cost-based query optimization following SOLID and CUPID principles.
 
 use crate::core::common::OxidbError;
-use crate::core::query::sql::ast::{SelectStatement, ConditionTree, JoinType};
-use crate::core::types::{Value, Schema};
+use crate::core::query::sql::ast::{ConditionTree, JoinType, SelectStatement};
+use crate::core::types::{Schema, Value};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -13,10 +13,10 @@ use std::fmt;
 pub trait PlanNode: fmt::Debug + Send + Sync {
     /// Get the estimated cost of executing this node
     fn estimated_cost(&self) -> f64;
-    
+
     /// Get the estimated number of rows this node will produce
     fn estimated_rows(&self) -> usize;
-    
+
     /// Get the output schema of this node
     fn output_schema(&self) -> &Schema;
 }
@@ -34,11 +34,11 @@ impl PlanNode for TableScanNode {
     fn estimated_cost(&self) -> f64 {
         self.estimated_rows as f64 * self.cost_per_row
     }
-    
+
     fn estimated_rows(&self) -> usize {
         self.estimated_rows
     }
-    
+
     fn output_schema(&self) -> &Schema {
         &self.schema
     }
@@ -56,11 +56,11 @@ impl PlanNode for FilterNode {
     fn estimated_cost(&self) -> f64 {
         (self.input.estimated_rows() as f64).mul_add(0.1, self.input.estimated_cost())
     }
-    
+
     fn estimated_rows(&self) -> usize {
         ((self.input.estimated_rows() as f64) * self.selectivity) as usize
     }
-    
+
     fn output_schema(&self) -> &Schema {
         self.input.output_schema()
     }
@@ -81,15 +81,15 @@ impl PlanNode for JoinNode {
         let left_cost = self.left.estimated_cost();
         let right_cost = self.right.estimated_cost();
         let join_cost = (self.left.estimated_rows() * self.right.estimated_rows()) as f64 * 0.01;
-        
+
         left_cost + right_cost + join_cost
     }
-    
+
     fn estimated_rows(&self) -> usize {
         let base_rows = self.left.estimated_rows() * self.right.estimated_rows();
         ((base_rows as f64) * self.selectivity) as usize
     }
-    
+
     fn output_schema(&self) -> &Schema {
         // For simplicity, return left schema. In practice, would merge schemas
         self.left.output_schema()
@@ -122,28 +122,26 @@ pub struct CostBasedPlanner {
 
 impl CostBasedPlanner {
     /// Create a new cost-based planner
-    #[must_use] pub fn new() -> Self {
-        Self {
-            table_stats: HashMap::new(),
-            schemas: HashMap::new(),
-        }
+    #[must_use]
+    pub fn new() -> Self {
+        Self { table_stats: HashMap::new(), schemas: HashMap::new() }
     }
-    
+
     /// Add table statistics
     pub fn add_table_stats(&mut self, table_name: String, stats: TableStats) {
         self.table_stats.insert(table_name, stats);
     }
-    
+
     /// Add table schema
     pub fn add_schema(&mut self, table_name: String, schema: Schema) {
         self.schemas.insert(table_name, schema);
     }
-    
+
     /// Create an optimized query plan
     pub fn create_plan(&self, stmt: &SelectStatement) -> Result<Box<dyn PlanNode>, OxidbError> {
         // Create base scan plan
         let mut plan = self.create_scan_plan(&stmt.from_clause.name)?;
-        
+
         // Add filter if condition exists
         if let Some(ref condition) = stmt.condition {
             plan = Box::new(FilterNode {
@@ -152,7 +150,7 @@ impl CostBasedPlanner {
                 selectivity: self.estimate_selectivity(condition, &stmt.from_clause.name),
             });
         }
-        
+
         // Add joins
         for join in &stmt.joins {
             let right_plan = self.create_scan_plan(&join.right_source.name)?;
@@ -164,18 +162,20 @@ impl CostBasedPlanner {
                 selectivity: 0.1, // Default selectivity
             });
         }
-        
+
         Ok(plan)
     }
-    
+
     /// Create a table scan plan
     fn create_scan_plan(&self, table_name: &str) -> Result<Box<dyn PlanNode>, OxidbError> {
-        let schema = self.schemas.get(table_name)
+        let schema = self
+            .schemas
+            .get(table_name)
             .ok_or_else(|| OxidbError::TableNotFound(table_name.to_string()))?;
-            
+
         let stats = self.table_stats.get(table_name);
         let estimated_rows = stats.map_or(1000, |s| s.row_count);
-        
+
         Ok(Box::new(TableScanNode {
             table_name: table_name.to_string(),
             schema: schema.clone(),
@@ -183,7 +183,7 @@ impl CostBasedPlanner {
             cost_per_row: 1.0,
         }))
     }
-    
+
     /// Estimate selectivity of a condition
     const fn estimate_selectivity(&self, _condition: &ConditionTree, _table_name: &str) -> f64 {
         // Simplified selectivity estimation
@@ -201,8 +201,10 @@ impl Default for CostBasedPlanner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::common::types::{schema::{ColumnDef, Schema}, data_type::DataType};
-
+    use crate::core::common::types::{
+        data_type::DataType,
+        schema::{ColumnDef, Schema},
+    };
 
     #[test]
     fn test_table_scan_cost_estimation() {
@@ -210,34 +212,31 @@ mod tests {
             ColumnDef::new("id".to_string(), DataType::Integer, false),
             ColumnDef::new("name".to_string(), DataType::Text, false),
         ]);
-        
+
         let node = TableScanNode {
             table_name: "users".to_string(),
             schema,
             estimated_rows: 1000,
             cost_per_row: 1.0,
         };
-        
+
         assert_eq!(node.estimated_cost(), 1000.0);
         assert_eq!(node.estimated_rows(), 1000);
     }
-    
+
     #[test]
     fn test_planner_creation() {
         let planner = CostBasedPlanner::new();
         assert!(planner.table_stats.is_empty());
         assert!(planner.schemas.is_empty());
     }
-    
+
     #[test]
     fn test_add_table_stats() {
         let mut planner = CostBasedPlanner::new();
-        let stats = TableStats {
-            row_count: 1000,
-            average_row_size: 100,
-            column_stats: HashMap::new(),
-        };
-        
+        let stats =
+            TableStats { row_count: 1000, average_row_size: 100, column_stats: HashMap::new() };
+
         planner.add_table_stats("users".to_string(), stats);
         assert!(planner.table_stats.contains_key("users"));
     }

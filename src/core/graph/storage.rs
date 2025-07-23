@@ -3,7 +3,7 @@
 //! This module provides both in-memory and persistent storage for graph data.
 //! Following SOLID principles with clear separation of concerns and ACID compliance.
 
-use super::types::{Node, Edge, NodeId, EdgeId, GraphData, Relationship};
+use super::types::{Edge, EdgeId, GraphData, Node, NodeId, Relationship};
 use super::{GraphOperations, GraphQuery, GraphTransaction, TraversalDirection};
 use crate::core::common::error::OxidbError;
 use crate::core::common::types::Value;
@@ -42,7 +42,8 @@ pub struct InMemoryGraphStore {
 
 impl InMemoryGraphStore {
     /// Create a new in-memory graph store
-    #[must_use] pub fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self {
             nodes: HashMap::new(),
             edges: HashMap::new(),
@@ -95,26 +96,32 @@ impl GraphOperations for InMemoryGraphStore {
     fn add_node(&mut self, data: GraphData) -> Result<NodeId, OxidbError> {
         let id = self.next_node_id();
         let node = Node::new(id, data);
-        
+
         if self.transaction_active {
             self.transaction_nodes.insert(id, node);
         } else {
             self.nodes.insert(id, node);
         }
-        
+
         Ok(id)
     }
 
-    fn add_edge(&mut self, from: NodeId, to: NodeId, relationship: Relationship, data: Option<GraphData>) -> Result<EdgeId, OxidbError> {
+    fn add_edge(
+        &mut self,
+        from: NodeId,
+        to: NodeId,
+        relationship: Relationship,
+        data: Option<GraphData>,
+    ) -> Result<EdgeId, OxidbError> {
         // Verify nodes exist
         let nodes = if self.transaction_active { &self.transaction_nodes } else { &self.nodes };
-        
+
         if !nodes.contains_key(&from) && !self.nodes.contains_key(&from) {
             return Err(OxidbError::InvalidInput {
                 message: format!("From node {from} does not exist"),
             });
         }
-        
+
         if !nodes.contains_key(&to) && !self.nodes.contains_key(&to) {
             return Err(OxidbError::InvalidInput {
                 message: format!("To node {to} does not exist"),
@@ -123,17 +130,18 @@ impl GraphOperations for InMemoryGraphStore {
 
         let id = self.next_edge_id();
         let edge = Edge::new(id, from, to, relationship, data);
-        
+
         if self.transaction_active {
             self.transaction_edges.insert(id, edge);
         } else {
             self.edges.insert(id, edge);
             self.add_edge_to_node(from, id);
-            if from != to { // Avoid duplicate entries for self-loops
+            if from != to {
+                // Avoid duplicate entries for self-loops
                 self.add_edge_to_node(to, id);
             }
         }
-        
+
         Ok(id)
     }
 
@@ -144,7 +152,7 @@ impl GraphOperations for InMemoryGraphStore {
                 return Ok(Some(node.clone()));
             }
         }
-        
+
         Ok(self.nodes.get(&node_id).cloned())
     }
 
@@ -155,7 +163,7 @@ impl GraphOperations for InMemoryGraphStore {
                 return Ok(Some(edge.clone()));
             }
         }
-        
+
         Ok(self.edges.get(&edge_id).cloned())
     }
 
@@ -166,14 +174,14 @@ impl GraphOperations for InMemoryGraphStore {
                 self.remove_edge(edge_id)?;
             }
         }
-        
+
         // Remove the node
         let removed = if self.transaction_active {
             self.transaction_nodes.remove(&node_id).is_some()
         } else {
             self.nodes.remove(&node_id).is_some()
         };
-        
+
         Ok(removed)
     }
 
@@ -183,7 +191,7 @@ impl GraphOperations for InMemoryGraphStore {
         } else {
             self.edges.remove(&edge_id)
         };
-        
+
         if let Some(edge) = edge {
             if !self.transaction_active {
                 self.remove_edge_from_node(edge.from_node, edge_id);
@@ -195,9 +203,13 @@ impl GraphOperations for InMemoryGraphStore {
         }
     }
 
-    fn get_neighbors(&self, node_id: NodeId, direction: TraversalDirection) -> Result<Vec<NodeId>, OxidbError> {
+    fn get_neighbors(
+        &self,
+        node_id: NodeId,
+        direction: TraversalDirection,
+    ) -> Result<Vec<NodeId>, OxidbError> {
         let mut neighbors = Vec::new();
-        
+
         // Get edges for this node
         if let Some(edge_ids) = self.node_edges.get(&node_id) {
             for &edge_id in edge_ids {
@@ -224,7 +236,7 @@ impl GraphOperations for InMemoryGraphStore {
                 }
             }
         }
-        
+
         neighbors.sort_unstable();
         neighbors.dedup();
         Ok(neighbors)
@@ -232,9 +244,13 @@ impl GraphOperations for InMemoryGraphStore {
 }
 
 impl GraphQuery for InMemoryGraphStore {
-    fn find_nodes_by_property(&self, property: &str, value: &Value) -> Result<Vec<NodeId>, OxidbError> {
+    fn find_nodes_by_property(
+        &self,
+        property: &str,
+        value: &Value,
+    ) -> Result<Vec<NodeId>, OxidbError> {
         let mut matching_nodes = Vec::new();
-        
+
         for (node_id, node) in &self.nodes {
             if let Some(prop_value) = node.get_property(property) {
                 if prop_value == value {
@@ -242,7 +258,7 @@ impl GraphQuery for InMemoryGraphStore {
                 }
             }
         }
-        
+
         // Also check transaction staging
         if self.transaction_active {
             for (node_id, node) in &self.transaction_nodes {
@@ -253,13 +269,17 @@ impl GraphQuery for InMemoryGraphStore {
                 }
             }
         }
-        
+
         matching_nodes.sort_unstable();
         matching_nodes.dedup();
         Ok(matching_nodes)
     }
 
-    fn find_shortest_path(&self, from: NodeId, to: NodeId) -> Result<Option<Vec<NodeId>>, OxidbError> {
+    fn find_shortest_path(
+        &self,
+        from: NodeId,
+        to: NodeId,
+    ) -> Result<Option<Vec<NodeId>>, OxidbError> {
         if from == to {
             return Ok(Some(vec![from]));
         }
@@ -273,7 +293,7 @@ impl GraphQuery for InMemoryGraphStore {
 
         while let Some(current) = queue.pop_front() {
             let neighbors = self.get_neighbors(current, TraversalDirection::Both)?;
-            
+
             for neighbor in neighbors {
                 if !visited.contains(&neighbor) {
                     visited.insert(neighbor);
@@ -284,14 +304,14 @@ impl GraphQuery for InMemoryGraphStore {
                         // Reconstruct path
                         let mut path = Vec::new();
                         let mut current_node = to;
-                        
+
                         while let Some(&prev) = parent.get(&current_node) {
                             path.push(current_node);
                             current_node = prev;
                         }
                         path.push(from);
                         path.reverse();
-                        
+
                         return Ok(Some(path));
                     }
                 }
@@ -301,29 +321,34 @@ impl GraphQuery for InMemoryGraphStore {
         Ok(None) // No path found
     }
 
-    fn traverse(&self, start: NodeId, strategy: super::TraversalStrategy, max_depth: Option<usize>) -> Result<Vec<NodeId>, OxidbError> {
+    fn traverse(
+        &self,
+        start: NodeId,
+        strategy: super::TraversalStrategy,
+        max_depth: Option<usize>,
+    ) -> Result<Vec<NodeId>, OxidbError> {
         let mut visited = Vec::new();
         let mut to_visit = VecDeque::new();
         let mut visited_set = HashSet::new();
 
         to_visit.push_back((start, 0));
-        
+
         while let Some((current, depth)) = to_visit.pop_front() {
             if let Some(max_d) = max_depth {
                 if depth > max_d {
                     continue;
                 }
             }
-            
+
             if visited_set.contains(&current) {
                 continue;
             }
-            
+
             visited_set.insert(current);
             visited.push(current);
-            
+
             let neighbors = self.get_neighbors(current, TraversalDirection::Both)?;
-            
+
             match strategy {
                 super::TraversalStrategy::BreadthFirst => {
                     for neighbor in neighbors {
@@ -341,13 +366,17 @@ impl GraphQuery for InMemoryGraphStore {
                 }
             }
         }
-        
+
         Ok(visited)
     }
 
-    fn count_nodes_with_relationship(&self, relationship: &Relationship, direction: TraversalDirection) -> Result<usize, OxidbError> {
+    fn count_nodes_with_relationship(
+        &self,
+        relationship: &Relationship,
+        direction: TraversalDirection,
+    ) -> Result<usize, OxidbError> {
         let mut counted_nodes = HashSet::new();
-        
+
         for edge in self.edges.values() {
             if edge.relationship.name == relationship.name {
                 match direction {
@@ -364,7 +393,7 @@ impl GraphQuery for InMemoryGraphStore {
                 }
             }
         }
-        
+
         Ok(counted_nodes.len())
     }
 }
@@ -374,7 +403,7 @@ impl GraphTransaction for InMemoryGraphStore {
         if self.transaction_active {
             return Err(OxidbError::Transaction("Transaction already active".to_string()));
         }
-        
+
         self.transaction_active = true;
         self.transaction_nodes.clear();
         self.transaction_edges.clear();
@@ -385,12 +414,12 @@ impl GraphTransaction for InMemoryGraphStore {
         if !self.transaction_active {
             return Err(OxidbError::Transaction("No active transaction to commit".to_string()));
         }
-        
+
         // Apply all transaction changes
         for (id, node) in self.transaction_nodes.drain() {
             self.nodes.insert(id, node);
         }
-        
+
         // Collect edges first to avoid borrowing issues
         let edges_to_add: Vec<_> = self.transaction_edges.drain().collect();
         for (id, edge) in edges_to_add {
@@ -400,7 +429,7 @@ impl GraphTransaction for InMemoryGraphStore {
             }
             self.edges.insert(id, edge);
         }
-        
+
         self.transaction_active = false;
         Ok(())
     }
@@ -409,7 +438,7 @@ impl GraphTransaction for InMemoryGraphStore {
         if !self.transaction_active {
             return Err(OxidbError::Transaction("No active transaction to rollback".to_string()));
         }
-        
+
         // Discard all transaction changes
         self.transaction_nodes.clear();
         self.transaction_edges.clear();
@@ -435,7 +464,7 @@ impl PersistentGraphStore {
     pub fn new(path: impl AsRef<Path>) -> Result<Self, OxidbError> {
         let storage_path = path.as_ref().to_path_buf();
         let memory_store = InMemoryGraphStore::new();
-        
+
         let mut store = Self {
             storage_path,
             memory_store,
@@ -443,13 +472,13 @@ impl PersistentGraphStore {
             auto_flush_threshold: None,
             operation_count: 0,
         };
-        
+
         // Try to load existing data
         if let Err(e) = store.load_from_disk() {
             // Log warning but continue with empty store
             eprintln!("Warning: Could not load existing data from disk: {e:?}");
         }
-        
+
         Ok(store)
     }
 
@@ -470,7 +499,8 @@ impl PersistentGraphStore {
     }
 
     /// Check if there are uncommitted changes
-    #[must_use] pub const fn is_dirty(&self) -> bool {
+    #[must_use]
+    pub const fn is_dirty(&self) -> bool {
         self.dirty
     }
 
@@ -478,7 +508,7 @@ impl PersistentGraphStore {
     fn mark_dirty(&mut self) -> Result<(), OxidbError> {
         self.dirty = true;
         self.operation_count += 1;
-        
+
         // Auto-flush if threshold is reached
         if let Some(threshold) = self.auto_flush_threshold {
             if self.operation_count >= threshold {
@@ -486,7 +516,7 @@ impl PersistentGraphStore {
                 self.operation_count = 0;
             }
         }
-        
+
         Ok(())
     }
 
@@ -495,18 +525,18 @@ impl PersistentGraphStore {
         // TODO: Implement persistent storage loading
         // This would deserialize nodes and edges from the storage file
         // For now, this is a placeholder (YAGNI - implement when needed)
-        
+
         // Check if file exists
         if !self.storage_path.exists() {
             return Ok(()); // No existing data to load
         }
-        
+
         // Future implementation would:
         // 1. Read serialized data from storage_path
         // 2. Deserialize nodes and edges
         // 3. Populate memory_store
         // 4. Set dirty = false
-        
+
         Ok(())
     }
 
@@ -515,20 +545,20 @@ impl PersistentGraphStore {
         // TODO: Implement persistent storage saving
         // This would serialize nodes and edges to the storage file
         // For now, this is a placeholder (YAGNI - implement when needed)
-        
+
         // Ensure parent directory exists
         if let Some(parent) = self.storage_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        
+
         // Future implementation would:
         // 1. Serialize nodes and edges from memory_store
         // 2. Write to storage_path atomically (write to temp file, then rename)
         // 3. Handle errors properly
-        
+
         // For now, just touch the file to indicate save was called
         std::fs::write(&self.storage_path, b"")?;
-        
+
         Ok(())
     }
 }
@@ -554,7 +584,13 @@ impl GraphOperations for PersistentGraphStore {
         result
     }
 
-    fn add_edge(&mut self, from: NodeId, to: NodeId, relationship: Relationship, data: Option<GraphData>) -> Result<EdgeId, OxidbError> {
+    fn add_edge(
+        &mut self,
+        from: NodeId,
+        to: NodeId,
+        relationship: Relationship,
+        data: Option<GraphData>,
+    ) -> Result<EdgeId, OxidbError> {
         let result = self.memory_store.add_edge(from, to, relationship, data);
         if result.is_ok() {
             self.mark_dirty()?; // Mark as dirty and potentially auto-flush
@@ -586,25 +622,46 @@ impl GraphOperations for PersistentGraphStore {
         result
     }
 
-    fn get_neighbors(&self, node_id: NodeId, direction: TraversalDirection) -> Result<Vec<NodeId>, OxidbError> {
+    fn get_neighbors(
+        &self,
+        node_id: NodeId,
+        direction: TraversalDirection,
+    ) -> Result<Vec<NodeId>, OxidbError> {
         self.memory_store.get_neighbors(node_id, direction)
     }
 }
 
 impl GraphQuery for PersistentGraphStore {
-    fn find_nodes_by_property(&self, property: &str, value: &Value) -> Result<Vec<NodeId>, OxidbError> {
+    fn find_nodes_by_property(
+        &self,
+        property: &str,
+        value: &Value,
+    ) -> Result<Vec<NodeId>, OxidbError> {
         self.memory_store.find_nodes_by_property(property, value)
     }
 
-    fn find_shortest_path(&self, from: NodeId, to: NodeId) -> Result<Option<Vec<NodeId>>, OxidbError> {
+    fn find_shortest_path(
+        &self,
+        from: NodeId,
+        to: NodeId,
+    ) -> Result<Option<Vec<NodeId>>, OxidbError> {
         self.memory_store.find_shortest_path(from, to)
     }
 
-    fn traverse(&self, start: NodeId, strategy: super::TraversalStrategy, max_depth: Option<usize>) -> Result<Vec<NodeId>, OxidbError> {
+    fn traverse(
+        &self,
+        start: NodeId,
+        strategy: super::TraversalStrategy,
+        max_depth: Option<usize>,
+    ) -> Result<Vec<NodeId>, OxidbError> {
         self.memory_store.traverse(start, strategy, max_depth)
     }
 
-    fn count_nodes_with_relationship(&self, relationship: &Relationship, direction: TraversalDirection) -> Result<usize, OxidbError> {
+    fn count_nodes_with_relationship(
+        &self,
+        relationship: &Relationship,
+        direction: TraversalDirection,
+    ) -> Result<usize, OxidbError> {
         self.memory_store.count_nodes_with_relationship(relationship, direction)
     }
 }
@@ -636,29 +693,28 @@ impl GraphStore for PersistentGraphStore {}
 mod tests {
     use super::*;
 
-
     #[test]
     fn test_in_memory_graph_operations() {
         let mut store = InMemoryGraphStore::new();
-        
+
         // Add nodes
         let node1_data = GraphData::new("user".to_string())
             .with_property("name".to_string(), Value::Text("Alice".to_string()));
         let node1_id = store.add_node(node1_data).unwrap();
-        
+
         let node2_data = GraphData::new("user".to_string())
             .with_property("name".to_string(), Value::Text("Bob".to_string()));
         let node2_id = store.add_node(node2_data).unwrap();
-        
+
         // Add edge
         let relationship = Relationship::new("FOLLOWS".to_string());
         let edge_id = store.add_edge(node1_id, node2_id, relationship, None).unwrap();
-        
+
         // Test retrieval
         assert!(store.get_node(node1_id).unwrap().is_some());
         assert!(store.get_node(node2_id).unwrap().is_some());
         assert!(store.get_edge(edge_id).unwrap().is_some());
-        
+
         // Test neighbors
         let neighbors = store.get_neighbors(node1_id, TraversalDirection::Outgoing).unwrap();
         assert_eq!(neighbors.len(), 1);
@@ -668,20 +724,20 @@ mod tests {
     #[test]
     fn test_graph_transactions() {
         let mut store = InMemoryGraphStore::new();
-        
+
         // Start transaction
         store.begin_transaction().unwrap();
-        
+
         // Add node in transaction
         let node_data = GraphData::new("test".to_string());
         let node_id = store.add_node(node_data).unwrap();
-        
+
         // Node should not be visible outside transaction yet
         assert!(store.transaction_active);
-        
+
         // Commit transaction
         store.commit_transaction().unwrap();
-        
+
         // Node should now be visible
         assert!(store.get_node(node_id).unwrap().is_some());
         assert!(!store.transaction_active);
@@ -690,16 +746,16 @@ mod tests {
     #[test]
     fn test_shortest_path() {
         let mut store = InMemoryGraphStore::new();
-        
+
         // Create a simple path: 1 -> 2 -> 3
         let node1 = store.add_node(GraphData::new("node".to_string())).unwrap();
         let node2 = store.add_node(GraphData::new("node".to_string())).unwrap();
         let node3 = store.add_node(GraphData::new("node".to_string())).unwrap();
-        
+
         let rel = Relationship::new("CONNECTS".to_string());
         store.add_edge(node1, node2, rel.clone(), None).unwrap();
         store.add_edge(node2, node3, rel, None).unwrap();
-        
+
         // Find shortest path
         let path = store.find_shortest_path(node1, node3).unwrap().unwrap();
         assert_eq!(path, vec![node1, node2, node3]);
@@ -709,28 +765,28 @@ mod tests {
     fn test_persistent_store_dirty_tracking() {
         let temp_dir = std::env::temp_dir();
         let storage_path = temp_dir.join("test_graph.db");
-        
+
         // Clean up any existing file
         let _ = std::fs::remove_file(&storage_path);
-        
+
         let mut store = PersistentGraphStore::new(&storage_path).unwrap();
-        
+
         // Initially not dirty
         assert!(!store.is_dirty());
-        
+
         // Add node should mark as dirty
         let node_data = GraphData::new("test".to_string());
         let node_id = store.add_node(node_data).unwrap();
         assert!(store.is_dirty());
-        
+
         // Flush should clear dirty flag
         store.flush().unwrap();
         assert!(!store.is_dirty());
-        
+
         // Remove node should mark as dirty
         store.remove_node(node_id).unwrap();
         assert!(store.is_dirty());
-        
+
         // Clean up
         let _ = std::fs::remove_file(&storage_path);
     }
@@ -739,22 +795,22 @@ mod tests {
     fn test_persistent_store_auto_flush() {
         let temp_dir = std::env::temp_dir();
         let storage_path = temp_dir.join("test_graph_auto_flush.db");
-        
+
         // Clean up any existing file
         let _ = std::fs::remove_file(&storage_path);
-        
+
         let mut store = PersistentGraphStore::with_auto_flush(&storage_path, 2).unwrap();
-        
+
         // Add first node - should be dirty
         let node_data1 = GraphData::new("test1".to_string());
         store.add_node(node_data1).unwrap();
         assert!(store.is_dirty());
-        
+
         // Add second node - should trigger auto-flush
         let node_data2 = GraphData::new("test2".to_string());
         store.add_node(node_data2).unwrap();
         assert!(!store.is_dirty()); // Auto-flushed
-        
+
         // Clean up
         let _ = std::fs::remove_file(&storage_path);
     }
@@ -763,26 +819,26 @@ mod tests {
     fn test_persistent_store_transaction_commit_persistence() {
         let temp_dir = std::env::temp_dir();
         let storage_path = temp_dir.join("test_graph_transaction.db");
-        
+
         // Clean up any existing file
         let _ = std::fs::remove_file(&storage_path);
-        
+
         let mut store = PersistentGraphStore::new(&storage_path).unwrap();
-        
+
         // Start transaction
         store.begin_transaction().unwrap();
-        
+
         // Add node in transaction
         let node_data = GraphData::new("test".to_string());
         store.add_node(node_data).unwrap();
-        
+
         // Should not be dirty yet (changes are staged)
         // Note: This behavior depends on implementation details
-        
+
         // Commit should flush to disk
         store.commit_transaction().unwrap();
         assert!(!store.is_dirty()); // Should be flushed
-        
+
         // Clean up
         let _ = std::fs::remove_file(&storage_path);
     }
@@ -791,17 +847,17 @@ mod tests {
     fn test_persistent_store_error_propagation() {
         // Test with invalid path to trigger error
         let invalid_path = "/invalid/path/that/cannot/be/created/test.db";
-        
+
         let mut store = PersistentGraphStore::new(invalid_path).unwrap(); // This should succeed (creates in-memory)
-        
+
         // Add node to make it dirty
         let node_data = GraphData::new("test".to_string());
         store.add_node(node_data).unwrap();
-        
+
         // Flush should return error due to invalid path
         let result = store.flush();
         assert!(result.is_err());
-        
+
         // Should still be dirty after failed flush
         assert!(store.is_dirty());
     }

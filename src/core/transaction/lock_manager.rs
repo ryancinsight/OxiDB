@@ -47,7 +47,8 @@ impl Default for LockManager {
 
 impl LockManager {
     /// Creates a new, empty `LockManager`.
-    #[must_use] pub fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self { lock_table: HashMap::new(), transaction_locks: HashMap::new() }
     }
 
@@ -126,9 +127,11 @@ impl LockManager {
     }
 
     /// Get the current lock holder for a resource (if any)
-    #[must_use] pub fn get_lock_holder(&self, key: &str) -> Option<u64> {
+    #[must_use]
+    pub fn get_lock_holder(&self, key: &str) -> Option<u64> {
         let key_bytes = key.as_bytes().to_vec();
-        self.lock_table.get(&key_bytes)
+        self.lock_table
+            .get(&key_bytes)
             .and_then(|locks| locks.first())
             .map(|req| req.transaction_id)
     }

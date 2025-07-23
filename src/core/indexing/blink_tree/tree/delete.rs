@@ -290,7 +290,8 @@ impl BlinkTreeStats {
         Self::new()
     }
 
-    #[must_use] pub fn average_keys_per_node(&self) -> f64 {
+    #[must_use]
+    pub fn average_keys_per_node(&self) -> f64 {
         if self.total_nodes > 0 {
             self.total_keys as f64 / self.total_nodes as f64
         } else {
@@ -298,7 +299,8 @@ impl BlinkTreeStats {
         }
     }
 
-    #[must_use] pub fn average_values_per_key(&self) -> f64 {
+    #[must_use]
+    pub fn average_values_per_key(&self) -> f64 {
         if self.total_keys > 0 {
             self.total_values as f64 / self.total_keys as f64
         } else {

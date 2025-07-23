@@ -63,7 +63,9 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for IndexScanOp
             .index_manager
             .read()
             .map_err(|e| {
-                OxidbError::LockTimeout(format!("Failed to acquire read lock on index manager: {e}"))
+                OxidbError::LockTimeout(format!(
+                    "Failed to acquire read lock on index manager: {e}"
+                ))
             })?
             .find_by_index(&self.index_name, &self.scan_value)?) // Acquire read lock
         .unwrap_or_default();

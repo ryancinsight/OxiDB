@@ -8,12 +8,9 @@ pub struct ColumnDef {
 }
 
 impl ColumnDef {
-    #[must_use] pub const fn new(name: String, data_type: DataType, is_nullable: bool) -> Self {
-        Self {
-            name,
-            data_type,
-            is_nullable,
-        }
+    #[must_use]
+    pub const fn new(name: String, data_type: DataType, is_nullable: bool) -> Self {
+        Self { name, data_type, is_nullable }
     }
 }
 
@@ -23,11 +20,13 @@ pub struct Schema {
 }
 
 impl Schema {
-    #[must_use] pub const fn new(columns: Vec<ColumnDef>) -> Self {
+    #[must_use]
+    pub const fn new(columns: Vec<ColumnDef>) -> Self {
         Self { columns }
     }
 
-    #[must_use] pub fn get_column_index(&self, name: &str) -> Option<usize> {
+    #[must_use]
+    pub fn get_column_index(&self, name: &str) -> Option<usize> {
         self.columns.iter().position(|col| col.name == name)
     }
 }

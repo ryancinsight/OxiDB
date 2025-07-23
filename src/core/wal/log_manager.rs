@@ -15,12 +15,14 @@ pub struct LogManager {
 impl LogManager {
     /// Creates a new `LogManager`.
     /// LSNs will start from 0.
-    #[must_use] pub fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self { lsn_counter: Arc::new(AtomicU64::new(0)) }
     }
 
     /// Allocates and returns a new LSN.
-    #[must_use] pub fn next_lsn(&self) -> Lsn {
+    #[must_use]
+    pub fn next_lsn(&self) -> Lsn {
         // For now, LSN is u64. A specific Lsn type might be introduced later.
         self.lsn_counter.fetch_add(1, Ordering::SeqCst)
     }
@@ -28,7 +30,8 @@ impl LogManager {
     /// Returns the current LSN without incrementing it.
     /// Useful for knowing what the next LSN *would be* or the last assigned one (if called after `next_lsn`).
     /// Note: another thread might have already incremented it.
-    #[must_use] pub fn current_lsn(&self) -> Lsn {
+    #[must_use]
+    pub fn current_lsn(&self) -> Lsn {
         self.lsn_counter.load(Ordering::SeqCst)
     }
 }

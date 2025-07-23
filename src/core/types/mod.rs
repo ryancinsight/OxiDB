@@ -10,7 +10,7 @@ pub use crate::core::common::types::ids::{PageId, SlotId, TransactionId};
 
 // Re-export common types from the common module
 pub use crate::core::common::types::{
-    DataType as CommonDataType, Value, Schema, ColumnDef, Row, Lsn
+    ColumnDef, DataType as CommonDataType, Lsn, Row, Schema, Value,
 };
 
 pub mod schema;
@@ -61,7 +61,8 @@ pub enum DataType {
 
 // Optional: Helper methods for DataType if needed, e.g., for type checking
 impl DataType {
-    #[must_use] pub const fn type_name(&self) -> &'static str {
+    #[must_use]
+    pub const fn type_name(&self) -> &'static str {
         match self {
             Self::Integer(_) => "Integer",
             Self::String(_) => "String",
@@ -86,7 +87,8 @@ pub struct VectorData {
 impl VectorData {
     /// Creates a new `VectorData`, ensuring the data matches the dimension.
     /// Returns None if the data length does not match the dimension.
-    #[must_use] pub fn new(dimension: u32, data: Vec<f32>) -> Option<Self> {
+    #[must_use]
+    pub fn new(dimension: u32, data: Vec<f32>) -> Option<Self> {
         if data.len() as u32 == dimension {
             // This covers both (0, empty_vec) and (N, vec_of_N_elements)
             // Note: A dimension of 0 might be valid for an "empty" vector concept.
@@ -98,7 +100,8 @@ impl VectorData {
 
     /// Calculates the Euclidean distance between this vector and another.
     /// Returns None if dimensions do not match or if dimension is 0.
-    #[must_use] pub fn euclidean_distance(&self, other: &Self) -> Option<f32> {
+    #[must_use]
+    pub fn euclidean_distance(&self, other: &Self) -> Option<f32> {
         if self.dimension != other.dimension || self.dimension == 0 {
             return None;
         }

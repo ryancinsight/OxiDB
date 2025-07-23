@@ -20,10 +20,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         snapshot_id: u64,
         committed_ids: Arc<HashSet<u64>>,
     ) -> Result<Box<dyn ExecutionOperator + Send + Sync>, OxidbError> {
-
         match plan {
             QueryPlanNode::TableScan { table_name, alias: _ } => {
-
                 let operator = TableScanOperator::new(
                     self.store.clone(),
                     table_name,
@@ -108,7 +106,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     self.log_manager.clone(), // 4. log_manager: Arc<LogManager>
                     crate::core::common::types::TransactionId(snapshot_id), // 5. transaction_id: TransactionId
                     primary_key_column_index, // 6. primary_key_column_index: usize
-                    committed_ids,    // 7. committed_ids: Arc<HashSet<u64>>
+                    committed_ids,            // 7. committed_ids: Arc<HashSet<u64>>
                     schema_arc,               // 8. schema: Arc<Schema>
                 );
                 Ok(Box::new(delete_operator))

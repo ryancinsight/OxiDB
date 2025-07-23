@@ -17,9 +17,9 @@ pub mod utils;
 // Necessary imports for struct definitions and the `new` method
 use crate::core::common::types::TransactionId; // Ensure TransactionId is imported
 use crate::core::common::OxidbError;
-use crate::core::query::sql::ast::AstLiteralValue;
 use crate::core::indexing::manager::IndexManager;
 use crate::core::optimizer::Optimizer;
+use crate::core::query::sql::ast::AstLiteralValue;
 use crate::core::storage::engine::traits::KeyValueStore;
 use crate::core::storage::engine::SimpleFileKvStore;
 use crate::core::transaction::lock_manager::LockManager;
@@ -42,20 +42,31 @@ pub struct ParameterContext<'a> {
 }
 
 impl<'a> ParameterContext<'a> {
-    #[must_use] pub const fn new(parameters: &'a [crate::core::common::types::Value]) -> Self {
+    #[must_use]
+    pub const fn new(parameters: &'a [crate::core::common::types::Value]) -> Self {
         Self { parameters }
     }
-    
+
     /// Resolve a parameter by its index
-    pub fn resolve_parameter(&self, index: u32) -> Result<&crate::core::common::types::Value, OxidbError> {
+    pub fn resolve_parameter(
+        &self,
+        index: u32,
+    ) -> Result<&crate::core::common::types::Value, OxidbError> {
         let idx = index as usize;
         self.parameters.get(idx).ok_or_else(|| OxidbError::InvalidInput {
-            message: format!("Parameter index {} out of bounds (have {} parameters)", index, self.parameters.len())
+            message: format!(
+                "Parameter index {} out of bounds (have {} parameters)",
+                index,
+                self.parameters.len()
+            ),
         })
     }
-    
+
     /// Convert an `AstExpressionValue` to a `DataType`, resolving parameters
-    pub fn resolve_expression_value(&self, expr: &crate::core::query::sql::ast::AstExpressionValue) -> Result<DataType, OxidbError> {
+    pub fn resolve_expression_value(
+        &self,
+        expr: &crate::core::query::sql::ast::AstExpressionValue,
+    ) -> Result<DataType, OxidbError> {
         match expr {
             crate::core::query::sql::ast::AstExpressionValue::Literal(literal) => {
                 // Convert literal to DataType
@@ -68,13 +79,16 @@ impl<'a> ParameterContext<'a> {
             }
             crate::core::query::sql::ast::AstExpressionValue::ColumnIdentifier(_) => {
                 Err(OxidbError::InvalidInput {
-                    message: "Column identifiers cannot be resolved in this context".to_string()
+                    message: "Column identifiers cannot be resolved in this context".to_string(),
                 })
             }
         }
     }
-    
-    fn convert_literal_to_datatype(&self, literal: &crate::core::query::sql::ast::AstLiteralValue) -> Result<DataType, OxidbError> {
+
+    fn convert_literal_to_datatype(
+        &self,
+        literal: &crate::core::query::sql::ast::AstLiteralValue,
+    ) -> Result<DataType, OxidbError> {
         use crate::core::query::sql::ast::AstLiteralValue;
         match literal {
             AstLiteralValue::String(s) => Ok(DataType::String(s.clone())),
@@ -91,13 +105,11 @@ impl<'a> ParameterContext<'a> {
             AstLiteralValue::Boolean(b) => Ok(DataType::Boolean(*b)),
             AstLiteralValue::Null => Ok(DataType::Null),
             AstLiteralValue::Vector(_) => {
-                Err(OxidbError::NotImplemented {
-                    feature: "Vector literal conversion".to_string()
-                })
+                Err(OxidbError::NotImplemented { feature: "Vector literal conversion".to_string() })
             }
         }
     }
-    
+
     fn convert_value_to_datatype(&self, value: &crate::core::common::types::Value) -> DataType {
         use crate::core::common::types::Value;
         match value {
@@ -109,13 +121,14 @@ impl<'a> ParameterContext<'a> {
             Value::Vector(v) => {
                 // Create VectorData from Vec<f32>
                 let dimension = v.len() as u32;
-                if let Some(vector_data) = crate::core::types::VectorData::new(dimension, v.clone()) {
+                if let Some(vector_data) = crate::core::types::VectorData::new(dimension, v.clone())
+                {
                     DataType::Vector(vector_data)
                 } else {
                     // Fallback to raw bytes if vector creation fails
                     DataType::RawBytes(v.iter().flat_map(|f| f.to_le_bytes().to_vec()).collect())
                 }
-            },
+            }
             Value::Null => DataType::Null,
         }
     }
@@ -195,7 +208,9 @@ impl QueryExecutor<SimpleFileKvStore> {
         self.store
             .read()
             .map_err(|e| {
-                OxidbError::LockTimeout(format!("Failed to acquire read lock on store for persist: {e}"))
+                OxidbError::LockTimeout(format!(
+                    "Failed to acquire read lock on store for persist: {e}"
+                ))
             })?
             .persist()?;
         self.index_manager
@@ -208,7 +223,8 @@ impl QueryExecutor<SimpleFileKvStore> {
             .save_all_indexes()
     }
 
-    #[must_use] pub fn index_base_path(&self) -> PathBuf {
+    #[must_use]
+    pub fn index_base_path(&self) -> PathBuf {
         // Using expect here as base_path is not expected to fail often and is not directly part of core query execution flow.
         // A more robust solution might propagate the error.
         self.index_manager
@@ -438,8 +454,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         let mut indexed_values_map = std::collections::HashMap::new();
         // For "default_value_index", use the already serialized `value_bytes` (from serialize_data_type).
         let serialized_value_for_index = value_bytes;
-        indexed_values_map
-            .insert("default_value_index".to_string(), serialized_value_for_index);
+        indexed_values_map.insert("default_value_index".to_string(), serialized_value_for_index);
 
         self.index_manager.write().unwrap().on_insert_data(&indexed_values_map, &key)?; // Acquire write lock
 
@@ -864,8 +879,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         );
         let dummy_lsn = 0;
 
-        let mut store =
-            self.store.write().map_err(|_| OxidbError::LockTimeout("Failed to lock store".to_string()))?;
+        let mut store = self
+            .store
+            .write()
+            .map_err(|_| OxidbError::LockTimeout("Failed to lock store".to_string()))?;
         store.put(key.as_bytes().to_vec(), value_bytes, &dummy_tx, dummy_lsn)?;
         Ok(())
     }
@@ -884,8 +901,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
     /// Loads persisted auto-increment values from storage
     fn load_persisted_auto_increment_values(&mut self) -> Result<(), OxidbError> {
-        let _store =
-            self.store.read().map_err(|_| OxidbError::LockTimeout("Failed to lock store".to_string()))?;
+        let _store = self
+            .store
+            .read()
+            .map_err(|_| OxidbError::LockTimeout("Failed to lock store".to_string()))?;
 
         // We need to scan for keys that start with "_auto_increment_"
         // This is a simplified approach - in a production system, we'd have a proper metadata table
@@ -897,8 +916,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     /// Scans existing data to determine the current maximum auto-increment values
     fn scan_and_update_auto_increment_state(&mut self) -> Result<(), OxidbError> {
         // Get all table schemas to find auto-increment columns
-        let store =
-            self.store.read().map_err(|_| OxidbError::LockTimeout("Failed to lock store".to_string()))?;
+        let store = self
+            .store
+            .read()
+            .map_err(|_| OxidbError::LockTimeout("Failed to lock store".to_string()))?;
 
         // Scan for schema keys
         let _schema_prefix = "_schema_";
@@ -956,8 +977,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         table_name: &str,
         column_name: &str,
     ) -> Result<i64, OxidbError> {
-        let store =
-            self.store.read().map_err(|_| OxidbError::LockTimeout("Failed to lock store".to_string()))?;
+        let store = self
+            .store
+            .read()
+            .map_err(|_| OxidbError::LockTimeout("Failed to lock store".to_string()))?;
         let mut max_value = 0i64;
 
         // Scan all rows in the table to find the maximum value
@@ -1017,7 +1040,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         // First, validate parameter count
         let expected_param_count = self.count_parameters_in_statement(statement);
         let actual_param_count = parameters.len();
-        
+
         if actual_param_count != expected_param_count {
             return Err(OxidbError::InvalidInput {
                 message: format!(
@@ -1025,10 +1048,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 )
             });
         }
-        
+
         // Create a parameter context for resolving parameters during execution
         let param_context = ParameterContext::new(parameters);
-        
+
         // Execute the statement with parameter resolution
         match statement {
             crate::core::query::sql::ast::Statement::Select(select_stmt) => {
@@ -1050,7 +1073,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     }
 
     /// Count the number of parameters (? placeholders) in a SQL statement
-    fn count_parameters_in_statement(&self, statement: &crate::core::query::sql::ast::Statement) -> usize {
+    fn count_parameters_in_statement(
+        &self,
+        statement: &crate::core::query::sql::ast::Statement,
+    ) -> usize {
         use crate::core::query::sql::ast::Statement;
         match statement {
             Statement::Select(select_stmt) => {
@@ -1092,22 +1118,27 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         }
     }
 
-    fn count_parameters_in_condition_tree(&self, condition_tree: &crate::core::query::sql::ast::ConditionTree) -> usize {
+    fn count_parameters_in_condition_tree(
+        &self,
+        condition_tree: &crate::core::query::sql::ast::ConditionTree,
+    ) -> usize {
         use crate::core::query::sql::ast::ConditionTree;
         match condition_tree {
             ConditionTree::Comparison(condition) => {
                 self.count_parameters_in_expression_value(&condition.value)
             }
             ConditionTree::And(left, right) | ConditionTree::Or(left, right) => {
-                self.count_parameters_in_condition_tree(left) + self.count_parameters_in_condition_tree(right)
+                self.count_parameters_in_condition_tree(left)
+                    + self.count_parameters_in_condition_tree(right)
             }
-            ConditionTree::Not(inner) => {
-                self.count_parameters_in_condition_tree(inner)
-            }
+            ConditionTree::Not(inner) => self.count_parameters_in_condition_tree(inner),
         }
     }
 
-    const fn count_parameters_in_expression_value(&self, expr: &crate::core::query::sql::ast::AstExpressionValue) -> usize {
+    const fn count_parameters_in_expression_value(
+        &self,
+        expr: &crate::core::query::sql::ast::AstExpressionValue,
+    ) -> usize {
         use crate::core::query::sql::ast::AstExpressionValue;
         match expr {
             AstExpressionValue::Parameter(_) => 1,
@@ -1116,7 +1147,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     }
 
     // Parameterized execution methods - implement the core logic for secure parameter handling
-    
+
     fn execute_parameterized_select(
         &mut self,
         select_stmt: &crate::core::query::sql::ast::SelectStatement,
@@ -1124,41 +1155,44 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     ) -> Result<ExecutionResult, OxidbError> {
         // For now, implement a basic version that converts the parameterized SELECT
         // to the existing SELECT execution path by resolving parameters first
-        
+
         // Create a modified select statement with parameters resolved
         let mut resolved_select = select_stmt.clone();
-        
+
         // Resolve parameters in WHERE conditions
         if let Some(ref condition_tree) = select_stmt.condition {
-            resolved_select.condition = Some(self.resolve_condition_tree_parameters(condition_tree, param_context)?);
+            resolved_select.condition =
+                Some(self.resolve_condition_tree_parameters(condition_tree, param_context)?);
         }
-        
+
         // For now, use the existing SELECT execution infrastructure
         // This is a temporary implementation - ideally we'd modify the execution engine
         // to handle parameters natively throughout the pipeline
-        
+
         // Convert the AST to the internal command format and execute
         let sql_command = crate::core::query::sql::translator::translate_ast_to_command(
-            crate::core::query::sql::ast::Statement::Select(resolved_select)
+            crate::core::query::sql::ast::Statement::Select(resolved_select),
         )?;
-        
+
         // Execute using existing infrastructure
         match sql_command {
-            crate::core::query::commands::Command::Select { columns, source, condition, .. } => {
-                self.handle_select(columns, source, condition)
-            }
-            _ => Err(OxidbError::Internal("Unexpected command type from SELECT translation".to_string()))
+            crate::core::query::commands::Command::Select {
+                columns, source, condition, ..
+            } => self.handle_select(columns, source, condition),
+            _ => Err(OxidbError::Internal(
+                "Unexpected command type from SELECT translation".to_string(),
+            )),
         }
     }
-    
+
     /// Helper method to resolve parameters in condition trees
     fn resolve_condition_tree_parameters(
         &self,
         condition_tree: &crate::core::query::sql::ast::ConditionTree,
         param_context: &ParameterContext,
     ) -> Result<crate::core::query::sql::ast::ConditionTree, OxidbError> {
-        use crate::core::query::sql::ast::{ConditionTree, Condition, AstExpressionValue};
-        
+        use crate::core::query::sql::ast::{AstExpressionValue, Condition, ConditionTree};
+
         match condition_tree {
             ConditionTree::Comparison(condition) => {
                 let resolved_value = match &condition.value {
@@ -1170,11 +1204,12 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     AstExpressionValue::Literal(literal) => literal.clone(),
                     AstExpressionValue::ColumnIdentifier(_) => {
                         return Err(OxidbError::NotImplemented {
-                            feature: "Column-to-column comparisons in parameterized queries".to_string()
+                            feature: "Column-to-column comparisons in parameterized queries"
+                                .to_string(),
                         });
                     }
                 };
-                
+
                 Ok(ConditionTree::Comparison(Condition {
                     column: condition.column.clone(),
                     operator: condition.operator.clone(),
@@ -1183,26 +1218,32 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             }
             ConditionTree::And(left, right) => {
                 let resolved_left = self.resolve_condition_tree_parameters(left, param_context)?;
-                let resolved_right = self.resolve_condition_tree_parameters(right, param_context)?;
+                let resolved_right =
+                    self.resolve_condition_tree_parameters(right, param_context)?;
                 Ok(ConditionTree::And(Box::new(resolved_left), Box::new(resolved_right)))
             }
             ConditionTree::Or(left, right) => {
                 let resolved_left = self.resolve_condition_tree_parameters(left, param_context)?;
-                let resolved_right = self.resolve_condition_tree_parameters(right, param_context)?;
+                let resolved_right =
+                    self.resolve_condition_tree_parameters(right, param_context)?;
                 Ok(ConditionTree::Or(Box::new(resolved_left), Box::new(resolved_right)))
             }
             ConditionTree::Not(inner) => {
-                let resolved_inner = self.resolve_condition_tree_parameters(inner, param_context)?;
+                let resolved_inner =
+                    self.resolve_condition_tree_parameters(inner, param_context)?;
                 Ok(ConditionTree::Not(Box::new(resolved_inner)))
             }
         }
     }
-    
+
     /// Convert a parameter Value to an AST literal
-    fn convert_param_value_to_ast_literal(&self, value: &crate::core::common::types::Value) -> Result<AstLiteralValue, OxidbError> {
+    fn convert_param_value_to_ast_literal(
+        &self,
+        value: &crate::core::common::types::Value,
+    ) -> Result<AstLiteralValue, OxidbError> {
         use crate::core::common::types::Value;
         use crate::core::query::sql::ast::AstLiteralValue;
-        
+
         match value {
             Value::Integer(i) => Ok(AstLiteralValue::Number(i.to_string())),
             Value::Float(f) => Ok(AstLiteralValue::Number(f.to_string())),
@@ -1210,10 +1251,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             Value::Boolean(b) => Ok(AstLiteralValue::Boolean(*b)),
             Value::Null => Ok(AstLiteralValue::Null),
             Value::Blob(_) => Err(OxidbError::NotImplemented {
-                feature: "Blob parameters in WHERE clauses".to_string()
+                feature: "Blob parameters in WHERE clauses".to_string(),
             }),
             Value::Vector(_) => Err(OxidbError::NotImplemented {
-                feature: "Vector parameters in WHERE clauses".to_string()
+                feature: "Vector parameters in WHERE clauses".to_string(),
             }),
         }
     }
@@ -1224,10 +1265,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         param_context: &ParameterContext,
     ) -> Result<ExecutionResult, OxidbError> {
         // Get the table schema
-        let schema = self.get_table_schema(&insert_stmt.table_name)?
-            .ok_or_else(|| OxidbError::InvalidInput {
-                message: format!("Table '{}' does not exist", insert_stmt.table_name)
-            })?;
+        let schema = self.get_table_schema(&insert_stmt.table_name)?.ok_or_else(|| {
+            OxidbError::InvalidInput {
+                message: format!("Table '{}' does not exist", insert_stmt.table_name),
+            }
+        })?;
 
         // Process each row of values
         let mut insert_count = 0;
@@ -1254,7 +1296,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                         "Column count mismatch: expected {}, got {}",
                         column_names.len(),
                         resolved_values.len()
-                    )
+                    ),
                 });
             }
 
@@ -1266,9 +1308,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
             // Generate a simple primary key (for now, use a UUID-like approach)
             // TODO: Implement proper primary key generation based on schema
-            let primary_key = format!("{}_{}", insert_stmt.table_name, uuid::Uuid::new_v4())
-                .as_bytes()
-                .to_vec();
+            let primary_key =
+                format!("{}_{}", insert_stmt.table_name, uuid::Uuid::new_v4()).as_bytes().to_vec();
             row_map.insert(b"_kv_key".to_vec(), DataType::RawBytes(primary_key.clone()));
 
             // Create the final data structure
@@ -1287,9 +1328,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         _update_stmt: &crate::core::query::sql::ast::UpdateStatement,
         _param_context: &ParameterContext,
     ) -> Result<ExecutionResult, OxidbError> {
-        Err(OxidbError::NotImplemented {
-            feature: "Parameterized UPDATE execution".to_string(),
-        })
+        Err(OxidbError::NotImplemented { feature: "Parameterized UPDATE execution".to_string() })
     }
 
     fn execute_parameterized_delete(
@@ -1297,8 +1336,6 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         _delete_stmt: &crate::core::query::sql::ast::DeleteStatement,
         _param_context: &ParameterContext,
     ) -> Result<ExecutionResult, OxidbError> {
-        Err(OxidbError::NotImplemented {
-            feature: "Parameterized DELETE execution".to_string(),
-        })
+        Err(OxidbError::NotImplemented { feature: "Parameterized DELETE execution".to_string() })
     }
 }

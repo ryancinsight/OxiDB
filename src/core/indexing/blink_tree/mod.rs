@@ -21,9 +21,7 @@ fn map_blink_error_to_common(blink_error: BlinkTreeError) -> CommonError {
         BlinkTreeError::NodeNotFound(page_id) => {
             CommonError::Index(format!("Blink tree node not found: {page_id}"))
         }
-        BlinkTreeError::PageFull(msg) => {
-            CommonError::Index(format!("Blink tree page full: {msg}"))
-        }
+        BlinkTreeError::PageFull(msg) => CommonError::Index(format!("Blink tree page full: {msg}")),
         BlinkTreeError::UnexpectedNodeType => {
             CommonError::Index("Unexpected Blink tree node type".into())
         }

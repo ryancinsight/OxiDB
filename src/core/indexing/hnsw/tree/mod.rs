@@ -173,7 +173,8 @@ impl HnswIndex {
     }
 
     /// Get statistics about the index
-    #[must_use] pub fn stats(&self) -> IndexStats {
+    #[must_use]
+    pub fn stats(&self) -> IndexStats {
         IndexStats {
             node_count: self.graph.len(),
             dimension: self.dimension,
@@ -182,12 +183,14 @@ impl HnswIndex {
     }
 
     /// Get the number of vectors in the index
-    #[must_use] pub fn len(&self) -> usize {
+    #[must_use]
+    pub fn len(&self) -> usize {
         self.graph.len()
     }
 
     /// Check if the index is empty
-    #[must_use] pub fn is_empty(&self) -> bool {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
         self.graph.is_empty()
     }
 
@@ -228,7 +231,8 @@ impl HnswIndex {
     }
 
     /// Get a vector by its primary key
-    #[must_use] pub fn get_vector(&self, primary_key: &PrimaryKey) -> Option<&Vector> {
+    #[must_use]
+    pub fn get_vector(&self, primary_key: &PrimaryKey) -> Option<&Vector> {
         if let Some(&node_id) = self.pk_to_node.get(primary_key) {
             self.graph.get_node(node_id).map(|node| &node.vector)
         } else {
@@ -237,7 +241,8 @@ impl HnswIndex {
     }
 
     /// Check if a primary key exists in the index
-    #[must_use] pub fn contains_key(&self, primary_key: &PrimaryKey) -> bool {
+    #[must_use]
+    pub fn contains_key(&self, primary_key: &PrimaryKey) -> bool {
         self.pk_to_node.contains_key(primary_key)
     }
 }

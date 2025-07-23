@@ -75,17 +75,20 @@ pub struct TransactionInfo {
 
 impl TransactionInfo {
     /// Creates a new `TransactionInfo` for an active transaction.
-    #[must_use] pub const fn new_active(tx_id: TransactionId, last_lsn: Lsn) -> Self {
+    #[must_use]
+    pub const fn new_active(tx_id: TransactionId, last_lsn: Lsn) -> Self {
         Self { tx_id, state: TransactionState::Active, last_lsn, undo_next_lsn: Some(last_lsn) }
     }
 
     /// Creates a new `TransactionInfo` for a committed transaction.
-    #[must_use] pub const fn new_committed(tx_id: TransactionId, last_lsn: Lsn) -> Self {
+    #[must_use]
+    pub const fn new_committed(tx_id: TransactionId, last_lsn: Lsn) -> Self {
         Self { tx_id, state: TransactionState::Committed, last_lsn, undo_next_lsn: None }
     }
 
     /// Creates a new `TransactionInfo` for an aborted transaction.
-    #[must_use] pub const fn new_aborted(tx_id: TransactionId, last_lsn: Lsn) -> Self {
+    #[must_use]
+    pub const fn new_aborted(tx_id: TransactionId, last_lsn: Lsn) -> Self {
         Self { tx_id, state: TransactionState::Aborted, last_lsn, undo_next_lsn: None }
     }
 
@@ -110,7 +113,8 @@ impl TransactionInfo {
     }
 
     /// Returns true if the transaction needs to be undone during recovery.
-    #[must_use] pub const fn needs_undo(&self) -> bool {
+    #[must_use]
+    pub const fn needs_undo(&self) -> bool {
         matches!(self.state, TransactionState::Active | TransactionState::Undoing)
     }
 }

@@ -12,7 +12,8 @@ pub struct InMemoryKvStore {
 }
 
 impl InMemoryKvStore {
-    #[must_use] pub fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self { data: HashMap::new() }
     }
 }

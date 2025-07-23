@@ -723,8 +723,11 @@ mod tests {
 
         match result_tx2 {
             Err(OxidbError::LockConflict { message }) => {
-                assert!(message.contains("lock conflict") || message.contains("Lock conflict"), 
-                    "Expected lock conflict message, got: '{}'", message);
+                assert!(
+                    message.contains("lock conflict") || message.contains("Lock conflict"),
+                    "Expected lock conflict message, got: '{}'",
+                    message
+                );
             }
             Ok(_) => {
                 // NOTE: Lock conflict detection is not fully implemented yet
@@ -779,8 +782,11 @@ mod tests {
 
         match result_tx2 {
             Err(OxidbError::LockConflict { message }) => {
-                assert!(message.contains("lock conflict") || message.contains("Lock conflict"), 
-                    "Expected lock conflict message, got: '{}'", message);
+                assert!(
+                    message.contains("lock conflict") || message.contains("Lock conflict"),
+                    "Expected lock conflict message, got: '{}'",
+                    message
+                );
             }
             Ok(_) => {
                 // NOTE: Lock conflict detection is not fully implemented yet

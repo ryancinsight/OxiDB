@@ -12,7 +12,8 @@ pub struct FilterOperator {
 }
 
 impl FilterOperator {
-    #[must_use] pub fn new(input: Box<dyn ExecutionOperator + Send + Sync>, predicate: Expression) -> Self {
+    #[must_use]
+    pub fn new(input: Box<dyn ExecutionOperator + Send + Sync>, predicate: Expression) -> Self {
         Self { input, predicate }
     }
 
@@ -154,8 +155,6 @@ impl FilterOperator {
                             let available_keys: Vec<String> = map_data.0.keys()
                                 .map(|k| String::from_utf8_lossy(k).to_string())
                                 .collect();
-                            
-
 
                             Err(OxidbError::InvalidInput { message: format!(
                                 "Column '{col_name}' not found in map at tuple[1]. Available keys: {available_keys:?}"
@@ -186,13 +185,11 @@ impl ExecutionOperator for FilterOperator {
         let predicate_clone = self.predicate.clone();
 
         let iterator = input_iter.filter_map(move |tuple_result| match tuple_result {
-            Ok(tuple) => {
-                match Self::static_evaluate_predicate(&tuple, &predicate_clone) {
-                    Ok(true) => Some(Ok(tuple)),
-                    Ok(false) => None,
-                    Err(e) => Some(Err(e)),
-                }
-            }
+            Ok(tuple) => match Self::static_evaluate_predicate(&tuple, &predicate_clone) {
+                Ok(true) => Some(Ok(tuple)),
+                Ok(false) => None,
+                Err(e) => Some(Err(e)),
+            },
             Err(e) => Some(Err(e)),
         });
 

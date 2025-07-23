@@ -334,7 +334,10 @@ impl TablePage {
         let mut slot_info = match Self::get_slot_info(page_data, slot_id)? {
             Some(s) if s.length > 0 => s,
             _ => {
-                return Err(OxidbError::NotFound(format!("Record at SlotId {} not found or already deleted", slot_id.0)))
+                return Err(OxidbError::NotFound(format!(
+                    "Record at SlotId {} not found or already deleted",
+                    slot_id.0
+                )))
             }
         };
 
@@ -379,7 +382,10 @@ impl TablePage {
         let current_slot_info = match Self::get_slot_info(page_data, slot_id)? {
             Some(s) if s.length > 0 => s,
             _ => {
-                return Err(OxidbError::NotFound(format!("Record at SlotId {} not found or has been deleted", slot_id.0)))
+                return Err(OxidbError::NotFound(format!(
+                    "Record at SlotId {} not found or has been deleted",
+                    slot_id.0
+                )))
             }
         };
 

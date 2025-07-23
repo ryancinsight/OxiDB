@@ -55,7 +55,8 @@ pub struct PageHeader {
 }
 
 impl PageHeader {
-    #[must_use] pub const fn new(page_id: PageId, page_type: PageType) -> Self {
+    #[must_use]
+    pub const fn new(page_id: PageId, page_type: PageType) -> Self {
         Self {
             page_id,
             page_type,
@@ -101,14 +102,16 @@ pub struct Page {
 }
 
 impl Page {
-    #[must_use] pub fn new(page_id: PageId, page_type: PageType) -> Self {
+    #[must_use]
+    pub fn new(page_id: PageId, page_type: PageType) -> Self {
         let header = PageHeader::new(page_id, page_type);
         // Data initialized to zeros, size of PAGE_SIZE - PAGE_HEADER_SIZE
         let data_size = PAGE_SIZE - PAGE_HEADER_SIZE;
         Self { header, data: vec![0; data_size] }
     }
 
-    #[must_use] pub const fn get_page_id(&self) -> PageId {
+    #[must_use]
+    pub const fn get_page_id(&self) -> PageId {
         self.header.page_id
     }
 
@@ -158,7 +161,8 @@ impl Page {
     }
 
     /// Get the LSN (Log Sequence Number) of this page
-    #[must_use] pub const fn get_lsn(&self) -> Lsn {
+    #[must_use]
+    pub const fn get_lsn(&self) -> Lsn {
         self.header.lsn
     }
 

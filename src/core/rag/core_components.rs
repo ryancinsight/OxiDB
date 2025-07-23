@@ -18,18 +18,21 @@ pub struct Document {
 
 impl Document {
     /// Creates a new document.
-    #[must_use] pub const fn new(id: String, content: String) -> Self {
+    #[must_use]
+    pub const fn new(id: String, content: String) -> Self {
         Self { id, content, metadata: None, embedding: None }
     }
 
     /// Adds metadata to the document.
-    #[must_use] pub fn with_metadata(mut self, metadata: HashMap<String, Value>) -> Self {
+    #[must_use]
+    pub fn with_metadata(mut self, metadata: HashMap<String, Value>) -> Self {
         self.metadata = Some(metadata);
         self
     }
 
     /// Adds an embedding to the document.
-    #[must_use] pub fn with_embedding(mut self, embedding: Embedding) -> Self {
+    #[must_use]
+    pub fn with_embedding(mut self, embedding: Embedding) -> Self {
         self.embedding = Some(embedding);
         self
     }
@@ -56,7 +59,8 @@ impl AsRef<[f32]> for Embedding {
 
 impl Embedding {
     /// Get the embedding as a slice
-    #[must_use] pub fn as_slice(&self) -> &[f32] {
+    #[must_use]
+    pub fn as_slice(&self) -> &[f32] {
         &self.vector
     }
 }

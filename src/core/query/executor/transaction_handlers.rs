@@ -198,7 +198,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         self.store
             .write()
             .map_err(|e| {
-                OxidbError::LockTimeout(format!("Failed to acquire write lock on store for vacuum: {e}"))
+                OxidbError::LockTimeout(format!(
+                    "Failed to acquire write lock on store for vacuum: {e}"
+                ))
             })?
             .gc(low_water_mark.0, &committed_ids)?; // Use low_water_mark.0
         Ok(ExecutionResult::Success)

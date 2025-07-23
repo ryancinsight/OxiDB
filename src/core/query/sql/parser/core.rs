@@ -9,7 +9,8 @@ pub struct SqlParser {
 }
 
 impl SqlParser {
-    #[must_use] pub const fn new(tokens: Vec<Token>) -> Self {
+    #[must_use]
+    pub const fn new(tokens: Vec<Token>) -> Self {
         Self { tokens, current: 0, parameter_count: 0 }
     }
 

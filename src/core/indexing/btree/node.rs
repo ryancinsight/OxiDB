@@ -35,14 +35,16 @@ impl From<std::io::Error> for SerializationError {
 
 impl BPlusTreeNode {
     // --- Node Properties ---
-    #[must_use] pub const fn get_page_id(&self) -> PageId {
+    #[must_use]
+    pub const fn get_page_id(&self) -> PageId {
         match self {
             Self::Internal { page_id, .. } => *page_id,
             Self::Leaf { page_id, .. } => *page_id,
         }
     }
 
-    #[must_use] pub const fn get_parent_page_id(&self) -> Option<PageId> {
+    #[must_use]
+    pub const fn get_parent_page_id(&self) -> Option<PageId> {
         match self {
             Self::Internal { parent_page_id, .. } => *parent_page_id,
             Self::Leaf { parent_page_id, .. } => *parent_page_id,
@@ -56,14 +58,16 @@ impl BPlusTreeNode {
         }
     }
 
-    #[must_use] pub const fn get_keys(&self) -> &Vec<KeyType> {
+    #[must_use]
+    pub const fn get_keys(&self) -> &Vec<KeyType> {
         match self {
             Self::Internal { keys, .. } => keys,
             Self::Leaf { keys, .. } => keys,
         }
     }
 
-    #[must_use] pub const fn is_leaf(&self) -> bool {
+    #[must_use]
+    pub const fn is_leaf(&self) -> bool {
         matches!(self, Self::Leaf { .. })
     }
 
@@ -77,14 +81,16 @@ impl BPlusTreeNode {
         }
     }
 
-    #[must_use] pub fn is_full(&self, order: usize) -> bool {
+    #[must_use]
+    pub fn is_full(&self, order: usize) -> bool {
         match self {
             Self::Internal { keys, .. } => keys.len() >= order.saturating_sub(1), // Max keys for internal node
             Self::Leaf { keys, .. } => keys.len() >= order.saturating_sub(1), // Max keys for leaf node (can be different, but often same as internal for simplicity)
         }
     }
 
-    #[must_use] pub fn can_lend_or_merge(&self, order: usize) -> bool {
+    #[must_use]
+    pub fn can_lend_or_merge(&self, order: usize) -> bool {
         let min_keys = order.saturating_sub(1) / 2;
         match self {
             Self::Internal { keys, .. } => keys.len() > min_keys,
@@ -114,9 +120,7 @@ impl BPlusTreeNode {
                 // This gives us the correct child index to follow.
                 Ok(keys.partition_point(|k_partition| k_partition.as_slice() <= key.as_slice()))
             }
-            Self::Leaf { .. } => {
-                Err("find_child_index is only applicable to Internal nodes")
-            }
+            Self::Leaf { .. } => Err("find_child_index is only applicable to Internal nodes"),
         }
     }
 
