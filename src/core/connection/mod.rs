@@ -62,12 +62,12 @@ impl ConnectionInfo {
     #[allow(dead_code)]
     fn mark_used(&mut self) {
         self.last_used = Instant::now();
-        self.query_count += 1;
+        self.query_count = self.query_count.saturating_add(1);
     }
 
     #[allow(dead_code)]
     fn start_transaction(&mut self) {
-        self.transaction_count += 1;
+        self.transaction_count = self.transaction_count.saturating_add(1);
         self.state = ConnectionState::Active;
     }
 

@@ -105,14 +105,14 @@ pub fn retry_with_backoff<T, F>(
 where
     F: FnMut() -> Result<T, OxidbError>,
 {
-    let mut attempts = 0;
+    let mut attempts: usize = 0;
     loop {
-        attempts += 1;
+        attempts = attempts.saturating_add(1);
         match operation() {
             Ok(result) => return Ok(result),
             Err(e) if attempts >= max_attempts => return Err(e),
             Err(_) => {
-                let delay = base_delay_ms * 2_u64.pow((attempts - 1) as u32);
+                let delay = base_delay_ms.saturating_mul(2_u64.pow(attempts.saturating_sub(1) as u32));
                 std::thread::sleep(std::time::Duration::from_millis(delay));
             }
         }

@@ -123,7 +123,7 @@ impl<T: PoolableConnection> PoolInner<T> {
     }
 
     fn total_connections(&self) -> usize {
-        self.available.len() + self.in_use
+        self.available.len().saturating_add(self.in_use)
     }
 
     fn return_connection(&mut self, mut connection: T) {
@@ -135,7 +135,7 @@ impl<T: PoolableConnection> PoolInner<T> {
 
         // Debug assertion to catch logic errors in development
         debug_assert!(self.in_use > 0, "in_use should always be > 0 when returning a connection");
-        self.in_use -= 1;
+        self.in_use = self.in_use.saturating_sub(1);
 
         // This will be notified by the pool when the connection is returned
     }
@@ -212,7 +212,7 @@ impl<T: PoolableConnection + 'static> ConnectionPool<T> {
             while let Some(mut connection) = inner.available.pop_front() {
                 if connection.is_valid() {
                     connection.mark_used();
-                    inner.in_use += 1;
+                    inner.in_use = inner.in_use.saturating_add(1);
                     // Connection is valid, return it
                     return Ok(PooledConnection::new(
                         connection,
