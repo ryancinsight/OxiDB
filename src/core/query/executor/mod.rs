@@ -204,6 +204,16 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 
 // Methods specific to QueryExecutor when the store is SimpleFileKvStore
 impl QueryExecutor<SimpleFileKvStore> {
+    /// Persists all current data to disk
+    ///
+    /// This method saves both the store data and index data to disk,
+    /// ensuring data durability.
+    ///
+    /// # Errors
+    /// Returns `OxidbError` if:
+    /// - Failed to acquire read lock on store or index manager
+    /// - Store persistence fails
+    /// - Index persistence fails
     pub fn persist(&mut self) -> Result<(), OxidbError> {
         self.store
             .read()

@@ -13,6 +13,12 @@ use crate::core::types::{DataType, VectorData}; // Added VectorData
 use crate::core::query::sql::{self, ast::Statement, parser::SqlParser, tokenizer::Tokenizer};
 
 /// Parse SQL string directly to AST Statement for parameterized queries
+///
+/// # Errors
+/// Returns `OxidbError::SqlParsing` if:
+/// - The input SQL string is empty
+/// - Tokenization fails due to invalid characters or syntax
+/// - Parsing fails due to invalid SQL grammar
 pub fn parse_sql_to_ast(sql: &str) -> Result<Statement, OxidbError> {
     if sql.trim().is_empty() {
         return Err(OxidbError::SqlParsing("Input SQL string cannot be empty.".to_string()));
@@ -29,6 +35,17 @@ pub fn parse_sql_to_ast(sql: &str) -> Result<Statement, OxidbError> {
     parser.parse().map_err(|e| OxidbError::SqlParsing(format!("Parse error: {e:?}")))
 }
 
+/// Parse a query string into a Command
+///
+/// This function attempts to parse SQL-like queries first (SELECT, UPDATE, INSERT INTO, DELETE FROM)
+/// and falls back to legacy command parsing for other operations (GET, INSERT key value, DELETE key, etc.).
+///
+/// # Errors
+/// Returns `OxidbError::SqlParsing` if:
+/// - The input query string is empty or whitespace-only
+/// - SQL tokenization fails due to invalid characters
+/// - SQL parsing fails due to invalid grammar
+/// - Legacy command parsing fails due to invalid syntax or arguments
 pub fn parse_query_string(query_str: &str) -> Result<Command, OxidbError> {
     // Changed
     if query_str.is_empty() {
