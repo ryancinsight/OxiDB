@@ -14,7 +14,7 @@ pub enum Priority {
 }
 
 /// Task status in the scheduler
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskStatus {
     Pending,
     Running,
@@ -61,7 +61,7 @@ pub struct Scheduler {
 
 impl Scheduler {
     /// Create a new scheduler instance
-    pub fn new() -> Self {
+    #[must_use] pub fn new() -> Self {
         Self {
             tasks: Arc::new(Mutex::new(HashMap::new())),
             next_task_id: Arc::new(Mutex::new(1)),
@@ -71,7 +71,7 @@ impl Scheduler {
 
     /// Schedule a new task
     pub fn schedule_task(&self, name: String, priority: Priority) -> Result<u64, String> {
-        let mut next_id = self.next_task_id.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut next_id = self.next_task_id.lock().map_err(|e| format!("Lock error: {e}"))?;
         let task_id = *next_id;
         *next_id += 1;
         drop(next_id);
@@ -87,7 +87,7 @@ impl Scheduler {
             execution_duration: None,
         };
 
-        let mut tasks = self.tasks.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut tasks = self.tasks.lock().map_err(|e| format!("Lock error: {e}"))?;
         tasks.insert(task_id, task);
 
         Ok(task_id)
@@ -95,7 +95,7 @@ impl Scheduler {
 
     /// Start executing a task
     pub fn start_task(&self, task_id: u64) -> Result<(), String> {
-        let mut tasks = self.tasks.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut tasks = self.tasks.lock().map_err(|e| format!("Lock error: {e}"))?;
         
         if let Some(task) = tasks.get_mut(&task_id) {
             if task.status == TaskStatus::Pending {
@@ -103,16 +103,16 @@ impl Scheduler {
                 task.started_at = Some(Instant::now());
                 Ok(())
             } else {
-                Err(format!("Task {} is not in pending state", task_id))
+                Err(format!("Task {task_id} is not in pending state"))
             }
         } else {
-            Err(format!("Task {} not found", task_id))
+            Err(format!("Task {task_id} not found"))
         }
     }
 
     /// Complete a task successfully
     pub fn complete_task(&self, task_id: u64) -> Result<(), String> {
-        let mut tasks = self.tasks.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut tasks = self.tasks.lock().map_err(|e| format!("Lock error: {e}"))?;
         
         if let Some(task) = tasks.get_mut(&task_id) {
             if task.status == TaskStatus::Running {
@@ -126,16 +126,16 @@ impl Scheduler {
                 
                 Ok(())
             } else {
-                Err(format!("Task {} is not in running state", task_id))
+                Err(format!("Task {task_id} is not in running state"))
             }
         } else {
-            Err(format!("Task {} not found", task_id))
+            Err(format!("Task {task_id} not found"))
         }
     }
 
     /// Fail a task with an error message
     pub fn fail_task(&self, task_id: u64, error: String) -> Result<(), String> {
-        let mut tasks = self.tasks.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut tasks = self.tasks.lock().map_err(|e| format!("Lock error: {e}"))?;
         
         if let Some(task) = tasks.get_mut(&task_id) {
             let now = Instant::now();
@@ -148,13 +148,13 @@ impl Scheduler {
             
             Ok(())
         } else {
-            Err(format!("Task {} not found", task_id))
+            Err(format!("Task {task_id} not found"))
         }
     }
 
     /// Cancel a pending task
     pub fn cancel_task(&self, task_id: u64) -> Result<(), String> {
-        let mut tasks = self.tasks.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut tasks = self.tasks.lock().map_err(|e| format!("Lock error: {e}"))?;
         
         if let Some(task) = tasks.get_mut(&task_id) {
             if task.status == TaskStatus::Pending {
@@ -162,10 +162,10 @@ impl Scheduler {
                 task.completed_at = Some(Instant::now());
                 Ok(())
             } else {
-                Err(format!("Task {} cannot be cancelled in current state", task_id))
+                Err(format!("Task {task_id} cannot be cancelled in current state"))
             }
         } else {
-            Err(format!("Task {} not found", task_id))
+            Err(format!("Task {task_id} not found"))
         }
     }
 
@@ -175,7 +175,7 @@ impl Scheduler {
     /// task distribution, and operational metrics. Unlike a placeholder implementation,
     /// this returns actual computed statistics from the scheduler's state.
     pub fn get_stats(&self) -> Result<SchedulerStats, String> {
-        let tasks = self.tasks.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let tasks = self.tasks.lock().map_err(|e| format!("Lock error: {e}"))?;
         
         let mut stats = SchedulerStats {
             uptime: self.start_time.elapsed(),
@@ -231,13 +231,13 @@ impl Scheduler {
 
     /// Get a specific task by ID
     pub fn get_task(&self, task_id: u64) -> Result<Option<Task>, String> {
-        let tasks = self.tasks.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let tasks = self.tasks.lock().map_err(|e| format!("Lock error: {e}"))?;
         Ok(tasks.get(&task_id).cloned())
     }
 
     /// Get all tasks with a specific status
     pub fn get_tasks_by_status(&self, status: TaskStatus) -> Result<Vec<Task>, String> {
-        let tasks = self.tasks.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let tasks = self.tasks.lock().map_err(|e| format!("Lock error: {e}"))?;
         
         let filtered_tasks: Vec<Task> = tasks
             .values()
@@ -250,7 +250,7 @@ impl Scheduler {
 
     /// Get all tasks with a specific priority
     pub fn get_tasks_by_priority(&self, priority: Priority) -> Result<Vec<Task>, String> {
-        let tasks = self.tasks.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let tasks = self.tasks.lock().map_err(|e| format!("Lock error: {e}"))?;
         
         let filtered_tasks: Vec<Task> = tasks
             .values()
@@ -263,8 +263,8 @@ impl Scheduler {
 
     /// Clear completed and failed tasks older than the specified duration
     pub fn cleanup_old_tasks(&self, older_than: Duration) -> Result<u64, String> {
-        let mut tasks = self.tasks.lock().map_err(|e| format!("Lock error: {}", e))?;
-        let cutoff_time = Instant::now() - older_than;
+        let mut tasks = self.tasks.lock().map_err(|e| format!("Lock error: {e}"))?;
+        let cutoff_time = Instant::now().checked_sub(older_than).unwrap();
         let mut removed_count = 0;
 
         let task_ids_to_remove: Vec<u64> = tasks

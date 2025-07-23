@@ -1,6 +1,5 @@
 use oxidb::{Connection, OxidbError, QueryResult};
 use std::thread;
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 fn main() -> Result<(), OxidbError> {

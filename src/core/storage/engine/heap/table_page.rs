@@ -212,7 +212,7 @@ impl TablePage {
     /// Inserts a record into the table page
     ///
     /// Allocates space for the record data and creates a slot entry pointing to it.
-    /// Returns the SlotId that can be used to retrieve the record later.
+    /// Returns the `SlotId` that can be used to retrieve the record later.
     ///
     /// # Errors
     /// Returns `OxidbError` if:
