@@ -9,6 +9,7 @@ pub mod performance; // Added performance monitoring module
 pub mod query;
 pub mod rag; // Added RAG module
 pub mod recovery; // Added recovery module
+pub mod scheduler; // Added scheduler module
 pub mod storage;
 pub mod transaction;
 pub mod types;
