@@ -1,4 +1,4 @@
-use crate::core::common::error::OxidbError;
+use crate::core::common::OxidbError;
 use std::error::Error;
 use std::io; // Import the Error trait
 

@@ -5,8 +5,8 @@
 
 use super::types::{Edge, EdgeId, GraphData, Node, NodeId, Relationship};
 use super::{GraphOperations, GraphQuery, GraphTransaction, TraversalDirection};
-use crate::core::common::error::OxidbError;
 use crate::core::common::types::Value;
+use crate::core::common::OxidbError;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 // Remove unused imports

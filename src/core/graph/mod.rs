@@ -25,8 +25,8 @@ pub use storage::{GraphStorage, GraphStore};
 pub use traversal::{GraphTraversal, TraversalDirection, TraversalStrategy};
 pub use types::{Edge, EdgeId, GraphData, Node, NodeId, Relationship};
 
-use crate::core::common::error::OxidbError;
 use crate::core::common::types::Value;
+use crate::core::common::OxidbError;
 // Remove unused import
 
 /// Core graph operations trait following Interface Segregation Principle

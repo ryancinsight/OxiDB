@@ -1,6 +1,6 @@
 use crate::api::types::QueryResult;
-use crate::core::common::error::OxidbError;
 use crate::core::common::types::Value;
+use crate::core::common::OxidbError;
 use crate::core::config::Config;
 use crate::core::performance::PerformanceContext;
 use crate::core::query::executor::QueryExecutor;

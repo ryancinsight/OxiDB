@@ -130,6 +130,9 @@ impl Oxidb {
     /// * `Ok(Some(String))` if the key is found, containing the string representation of the associated value.
     /// * `Ok(None)` if the key is not found.
     /// * `Err(OxidbError)` if any other error occurs during the operation.
+    ///
+    /// # Errors
+    /// Returns an error if the command execution fails or if there's an issue with the underlying storage engine.
     pub fn get(&mut self, key: Key) -> Result<Option<String>, OxidbError> {
         let command = Command::Get { key };
         match self.executor.execute_command(command) {
@@ -183,6 +186,9 @@ impl Oxidb {
     /// * `Ok(true)` if the key was found and successfully deleted.
     /// * `Ok(false)` if the key was not found.
     /// * `Err(OxidbError)` if the operation fails, for example, due to WAL write issues.
+    ///
+    /// # Errors
+    /// Returns an error if the command execution fails, WAL write fails, or there's an issue with the underlying storage engine.
     pub fn delete(&mut self, key: Key) -> Result<bool, OxidbError> {
         let command = Command::Delete { key };
         match self.executor.execute_command(command) {
