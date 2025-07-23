@@ -59,14 +59,14 @@ impl InMemoryGraphStore {
     /// Get next available node ID
     fn next_node_id(&mut self) -> NodeId {
         let id = self.next_node_id;
-        self.next_node_id += 1;
+        self.next_node_id = self.next_node_id.saturating_add(1);
         id
     }
 
     /// Get next available edge ID
     fn next_edge_id(&mut self) -> EdgeId {
         let id = self.next_edge_id;
-        self.next_edge_id += 1;
+        self.next_edge_id = self.next_edge_id.saturating_add(1);
         id
     }
 

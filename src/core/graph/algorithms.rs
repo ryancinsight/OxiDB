@@ -131,11 +131,11 @@ impl CentralityCalculator {
                     // First time we encounter this neighbor?
                     if distances[&neighbor] < 0 {
                         queue.push_back(neighbor);
-                        distances.insert(neighbor, distances[&current] + 1);
+                        distances.insert(neighbor, distances[&current].saturating_add(1));
                     }
 
                     // Is this a shortest path to neighbor?
-                    if distances[&neighbor] == distances[&current] + 1 {
+                    if distances[&neighbor] == distances[&current].saturating_add(1) {
                         *sigma.get_mut(&neighbor).unwrap() += sigma[&current];
                         predecessors.get_mut(&neighbor).unwrap().push(current);
                     }

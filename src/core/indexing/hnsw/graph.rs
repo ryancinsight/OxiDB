@@ -131,7 +131,7 @@ impl HnswGraph {
         }
 
         let node_id = self.next_node_id;
-        self.next_node_id += 1;
+        self.next_node_id = self.next_node_id.saturating_add(1);
 
         let layer = self.random_layer();
         let mut new_node = HnswNode::new(node_id, vector.clone(), primary_key, layer);
