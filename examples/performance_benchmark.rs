@@ -243,6 +243,7 @@ fn benchmark_concurrent_operations() -> Result<(), OxidbError> {
 }
 
 // Helper function to format duration nicely
+#[allow(dead_code)]
 fn format_duration(duration: Duration) -> String {
     if duration.as_millis() < 1000 {
         format!("{}ms", duration.as_millis())
