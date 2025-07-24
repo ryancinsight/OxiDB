@@ -147,7 +147,6 @@ impl UndoPhase {
         debug!("Undoing transaction {} starting from LSN {}", tx_info.tx_id.0, tx_info.last_lsn);
 
         let mut current_lsn = Some(tx_info.last_lsn);
-        let undo_next_lsn: Option<Lsn> = None;
 
         // Read all records to build a lookup map
         let all_records = reader
@@ -174,7 +173,8 @@ impl UndoPhase {
                     }
                     // Process the undo operation
                     debug!("Processing undo for record at LSN {}: {:?}", lsn, record);
-                    let prev_lsn = self.undo_log_record(record, self.extract_prev_lsn(record))?;
+                    let undo_next_lsn = self.extract_prev_lsn(record);
+                    let prev_lsn = self.undo_log_record(record, undo_next_lsn)?;
                     current_lsn = prev_lsn;
 
                     // Update statistics - only count records that actually need undo operations

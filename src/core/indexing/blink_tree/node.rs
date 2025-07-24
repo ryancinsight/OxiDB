@@ -303,19 +303,19 @@ impl BlinkTreeNode {
                 buffer.write_all(&page_id.to_le_bytes())?;
 
                 // Write parent_page_id
-                buffer.write_all(&[if parent_page_id.is_some() { 1 } else { 0 }])?;
+                buffer.write_all(&[u8::from(parent_page_id.is_some())])?;
                 if let Some(parent_id) = parent_page_id {
                     buffer.write_all(&parent_id.to_le_bytes())?;
                 }
 
                 // Write right_link
-                buffer.write_all(&[if right_link.is_some() { 1 } else { 0 }])?;
+                buffer.write_all(&[u8::from(right_link.is_some())])?;
                 if let Some(link) = right_link {
                     buffer.write_all(&link.to_le_bytes())?;
                 }
 
                 // Write high_key
-                buffer.write_all(&[if high_key.is_some() { 1 } else { 0 }])?;
+                buffer.write_all(&[u8::from(high_key.is_some())])?;
                 if let Some(hkey) = high_key {
                     buffer.write_all(&(hkey.len() as u32).to_le_bytes())?;
                     buffer.write_all(hkey)?;
@@ -342,19 +342,19 @@ impl BlinkTreeNode {
                 buffer.write_all(&page_id.to_le_bytes())?;
 
                 // Write parent_page_id
-                buffer.write_all(&[if parent_page_id.is_some() { 1 } else { 0 }])?;
+                buffer.write_all(&[u8::from(parent_page_id.is_some())])?;
                 if let Some(parent_id) = parent_page_id {
                     buffer.write_all(&parent_id.to_le_bytes())?;
                 }
 
                 // Write right_link
-                buffer.write_all(&[if right_link.is_some() { 1 } else { 0 }])?;
+                buffer.write_all(&[u8::from(right_link.is_some())])?;
                 if let Some(link) = right_link {
                     buffer.write_all(&link.to_le_bytes())?;
                 }
 
                 // Write high_key
-                buffer.write_all(&[if high_key.is_some() { 1 } else { 0 }])?;
+                buffer.write_all(&[u8::from(high_key.is_some())])?;
                 if let Some(hkey) = high_key {
                     buffer.write_all(&(hkey.len() as u32).to_le_bytes())?;
                     buffer.write_all(hkey)?;
