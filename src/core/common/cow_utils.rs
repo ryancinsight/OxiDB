@@ -56,6 +56,7 @@ impl<'a> CowKeyValue<'a> {
 /// Efficient string wrapper that avoids unnecessary allocations
 #[derive(Debug, Clone)]
 pub struct CowString<'a> {
+    /// The underlying string data, either borrowed or owned
     data: Cow<'a, str>,
 }
 
@@ -103,6 +104,7 @@ impl<'a> CowString<'a> {
 /// Efficient bytes wrapper for binary data
 #[derive(Debug, Clone)]
 pub struct CowBytes<'a> {
+    /// The underlying byte data, either borrowed or owned
     data: Cow<'a, [u8]>,
 }
 

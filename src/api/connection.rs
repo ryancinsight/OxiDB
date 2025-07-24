@@ -11,6 +11,7 @@ use crate::core::wal::writer::WalWriter;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
+use std::path::PathBuf;
 
 /// A database connection that provides an ergonomic API for database operations.
 ///
@@ -28,19 +29,19 @@ pub struct Connection {
 impl Connection {
     /// Opens a new database connection at the specified path.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, OxidbError> {
-        let mut config = Config::default();
-        config.database_file = path.as_ref().to_path_buf();
-
-        // Set data directory based on the database path
-        if let Some(parent) = path.as_ref().parent() {
-            config.data_dir = parent.to_path_buf();
+        let path_buf = path.as_ref().to_path_buf();
+        let data_dir = if let Some(parent) = path.as_ref().parent() {
+            parent.to_path_buf()
         } else {
-            config.data_dir =
-                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-        }
-
-        // Set index directory relative to data directory
-        config.index_dir = config.data_dir.join("oxidb_indexes");
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+        };
+        
+        let config = Config {
+            database_file: path_buf,
+            data_dir: data_dir.clone(),
+            index_dir: data_dir.join("oxidb_indexes"),
+            ..Config::default()
+        };
 
         Self::new_with_config(config)
     }
@@ -51,6 +52,7 @@ impl Connection {
 
         // Use a unique temporary file path to avoid conflicts between concurrent tests
         use std::sync::atomic::{AtomicU64, Ordering};
+        /// Counter for generating unique database file names in tests
         static COUNTER: AtomicU64 = AtomicU64::new(0);
         let unique_id = COUNTER.fetch_add(1, Ordering::SeqCst);
 
@@ -77,6 +79,13 @@ impl Connection {
     }
 
     /// Executes a SQL query and returns the result.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns `OxidbError` if:
+    /// - The SQL query cannot be parsed
+    /// - The command execution fails due to storage, transaction, or other database errors
+    /// - Performance metrics recording fails (non-fatal, logged but doesn't fail the operation)
     pub fn execute(&mut self, sql: &str) -> Result<QueryResult, OxidbError> {
         let start_time = Instant::now();
         let command = parse_query_string(sql)?;
@@ -88,7 +97,7 @@ impl Connection {
         let rows_affected = match &query_result {
             QueryResult::RowsAffected(count) => *count,
             QueryResult::Data(data) => data.row_count() as u64,
-            _ => 0,
+            QueryResult::Success => 0,
         };
         let _ = self.performance.record_query(sql, duration, rows_affected);
 
@@ -221,21 +230,20 @@ impl Connection {
         }
     }
 
-    /// Executes a query and returns the number of affected rows.
-    ///
-    /// This is a convenience method for INSERT, UPDATE, DELETE queries.
-    ///
-    /// # Arguments
-    /// * `sql` - The SQL query string to execute
-    ///
-    /// # Returns
-    /// * `Result<u64, OxidbError>` - Number of affected rows or an error
+    /// Executes an UPDATE, INSERT, or DELETE statement and returns the number of affected rows.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns `OxidbError` if:
+    /// - The SQL statement cannot be parsed or executed
+    /// - The statement returns data instead of a row count (e.g., SELECT statements)
+    /// - Underlying database operations fail
     pub fn execute_update(&mut self, sql: &str) -> Result<u64, OxidbError> {
         let result = self.execute(sql)?;
         match result {
             QueryResult::RowsAffected(count) => Ok(count),
             QueryResult::Success => Ok(0),
-            _ => Err(OxidbError::Execution("Expected update result, got data result".to_string())),
+            QueryResult::Data(_) => Err(OxidbError::Execution("Expected update result, got data result".to_string())),
         }
     }
 

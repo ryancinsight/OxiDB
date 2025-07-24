@@ -61,20 +61,21 @@ impl Oxidb {
     /// Returns `OxidbError` if the store cannot be initialized or the executor cannot be created.
     pub fn new(db_path: impl AsRef<Path>) -> Result<Self, OxidbError> {
         let db_path = db_path.as_ref();
-        let mut config = Config::default();
-
-        // Set the specific database file path
-        config.database_file = db_path.to_path_buf();
-
+        let database_file = db_path.to_path_buf();
+        
         // Set data directory based on the database path
-        if let Some(parent) = db_path.parent() {
-            config.data_dir = parent.to_path_buf();
+        let data_dir = if let Some(parent) = db_path.parent() {
+            parent.to_path_buf()
         } else {
-            config.data_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        }
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+        };
 
-        // Set index directory relative to data directory
-        config.index_dir = config.data_dir.join("oxidb_indexes");
+        let config = Config {
+            database_file,
+            data_dir: data_dir.clone(),
+            index_dir: data_dir.join("oxidb_indexes"),
+            ..Config::default()
+        };
 
         Self::new_with_config(config)
     }
@@ -259,17 +260,14 @@ impl Oxidb {
         self.executor.index_base_path()
     }
 
-    /// Finds primary keys by an indexed value.
-    ///
-    /// # Arguments
-    /// * `index_name` - The name of the index to search.
-    /// * `value_to_find` - The `DataType` representing the value to search for in the index.
-    ///
-    /// # Returns
-    /// * `Ok(Some(Vec<DataType>))` if values are found. Each `DataType` in the vector typically
-    ///   represents a primary key or a full record, depending on index implementation.
-    /// * `Ok(None)` if no values are found for the given indexed value.
-    /// * `Err(OxidbError)` if any error occurs.
+    /// Finds records by index value.
+    /// 
+    /// # Errors
+    /// 
+    /// Returns `OxidbError` if:
+    /// - The specified index does not exist
+    /// - Index lookup operations fail due to storage or corruption issues
+    /// - The value type is incompatible with the index type
     pub fn find_by_index(
         &mut self,
         index_name: String,
