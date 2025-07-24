@@ -404,13 +404,13 @@ fn test_delete_internal_borrow_from_right_sibling() -> Result<(), OxidbError> {
 
     // Page IDs (conceptual, will be allocated by PageManager)
     let p_root = 0; // Initial root from setup_tree
-    let p_il0 = 1;
-    let p_l0 = 2;
-    let p_l1 = 3;
-    let p_il1 = 4;
-    let p_l2 = 5;
-    let p_l3 = 6;
-    let p_l4 = 7;
+    let page_internal_left = 1;
+    let page_leaf_0 = 2;
+    let page_leaf_1 = 3;
+    let page_internal_right = 4;
+    let page_leaf_2 = 5;
+    let page_leaf_3 = 6;
+    let page_leaf_4 = 7;
     let next_available_hint = 8;
 
     let nodes = vec![
@@ -419,53 +419,53 @@ fn test_delete_internal_borrow_from_right_sibling() -> Result<(), OxidbError> {
             page_id: p_root,
             parent_page_id: None,
             keys: vec![k("05")],
-            children: vec![p_il0, p_il1],
+            children: vec![page_internal_left, page_internal_right],
         },
         // IL0 (will underflow)
         Internal {
-            page_id: p_il0,
+            page_id: page_internal_left,
             parent_page_id: Some(p_root),
             keys: vec![k("00")],
-            children: vec![p_l0, p_l1],
+            children: vec![page_leaf_0, page_leaf_1],
         },
         Leaf {
-            page_id: p_l0,
-            parent_page_id: Some(p_il0),
+            page_id: page_leaf_0,
+            parent_page_id: Some(page_internal_left),
             keys: vec![k("00")],
             values: vec![vec![pk("v00")]],
-            next_leaf: Some(p_l1),
+            next_leaf: Some(page_leaf_1),
         },
         Leaf {
-            page_id: p_l1,
-            parent_page_id: Some(p_il0),
+            page_id: page_leaf_1,
+            parent_page_id: Some(page_internal_left),
             keys: vec![k("02")],
             values: vec![vec![pk("v02")]],
-            next_leaf: Some(p_l2),
+            next_leaf: Some(page_leaf_2),
         }, // L1 has 1 key (min)
         // IL1 (lender)
         Internal {
-            page_id: p_il1,
+            page_id: page_internal_right,
             parent_page_id: Some(p_root),
             keys: vec![k("10"), k("12")],
-            children: vec![p_l2, p_l3, p_l4],
+            children: vec![page_leaf_2, page_leaf_3, page_leaf_4],
         },
         Leaf {
-            page_id: p_l2,
-            parent_page_id: Some(p_il1),
+            page_id: page_leaf_2,
+            parent_page_id: Some(page_internal_right),
             keys: vec![k("10")],
             values: vec![vec![pk("v10")]],
-            next_leaf: Some(p_l3),
+            next_leaf: Some(page_leaf_3),
         },
         Leaf {
-            page_id: p_l3,
-            parent_page_id: Some(p_il1),
+            page_id: page_leaf_3,
+            parent_page_id: Some(page_internal_right),
             keys: vec![k("12")],
             values: vec![vec![pk("v12")]],
-            next_leaf: Some(p_l4),
+            next_leaf: Some(page_leaf_4),
         },
         Leaf {
-            page_id: p_l4,
-            parent_page_id: Some(p_il1),
+            page_id: page_leaf_4,
+            parent_page_id: Some(page_internal_right),
             keys: vec![k("14")],
             values: vec![vec![pk("v14")]],
             next_leaf: None,
@@ -492,18 +492,18 @@ fn test_delete_internal_borrow_from_right_sibling() -> Result<(), OxidbError> {
     match &root_node_after {
         Internal { keys, children, .. } => {
             assert_eq!(keys.as_slice(), &[k("10")], "Root key incorrect");
-            assert_eq!(children.as_slice(), &[p_il0, p_il1], "Root children incorrect");
+            assert_eq!(children.as_slice(), &[page_internal_left, page_internal_right], "Root children incorrect");
         }
         _ => panic!("Root not internal"),
     }
 
-    let il0_node_after = tree.read_node(p_il0)?;
+    let il0_node_after = tree.read_node(page_internal_left)?;
     match &il0_node_after {
         Internal { keys, children, parent_page_id, .. } => {
             assert_eq!(*parent_page_id, Some(p_root));
             assert_eq!(keys.as_slice(), &[k("05")], "IL0 keys incorrect"); // Was expecting k("03") in failing test
             assert_eq!(children.len(), 2);
-            assert_eq!(children[1], p_l2, "IL0 should have L2 as its second child");
+            assert_eq!(children[1], page_leaf_2, "IL0 should have L2 as its second child");
 
             let merged_l0l1_page_id = children[0]; // L0's page should now host merged L0L1
             let merged_l0l1_node = tree.read_node(merged_l0l1_page_id)?;
@@ -512,11 +512,11 @@ fn test_delete_internal_borrow_from_right_sibling() -> Result<(), OxidbError> {
         _ => panic!("IL0 not internal"),
     }
 
-    let il1_node_after = tree.read_node(p_il1)?;
+    let il1_node_after = tree.read_node(page_internal_right)?;
     match &il1_node_after {
         Internal { keys, children, .. } => {
             assert_eq!(keys.as_slice(), &[k("12")]);
-            assert_eq!(children.as_slice(), &[p_l3, p_l4]);
+            assert_eq!(children.as_slice(), &[page_leaf_3, page_leaf_4]);
         }
         _ => panic!("IL1 not internal"),
     }

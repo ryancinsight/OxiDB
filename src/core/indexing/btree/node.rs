@@ -892,7 +892,7 @@ mod tests {
     fn test_serialization_deserialization_leaf_node() {
         let node = BPlusTreeNode::Leaf {
             page_id: 789,
-            parent_page_id: Some(101112),
+            parent_page_id: Some(101_112),
             keys: vec![k("leaf_key1"), k("leaf_key222")],
             values: vec![vec![pk("pk1a"), pk("pk1b")], vec![pk("pk2")]],
             next_leaf: Some(999),
