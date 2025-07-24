@@ -264,7 +264,7 @@ impl Scheduler {
     /// Clear completed and failed tasks older than the specified duration
     pub fn cleanup_old_tasks(&self, older_than: Duration) -> Result<u64, String> {
         let mut tasks = self.tasks.lock().map_err(|e| format!("Lock error: {e}"))?;
-        let cutoff_time = Instant::now().checked_sub(older_than).unwrap();
+        let cutoff_time = Instant::now().checked_sub(older_than).ok_or_else(|| format!("'older_than' duration ({older_than:?}) is too large and causes an underflow"))?;
         let mut removed_count = 0;
 
         let task_ids_to_remove: Vec<u64> = tasks
