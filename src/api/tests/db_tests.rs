@@ -55,7 +55,7 @@ fn test_oxidb_insert_and_get() {
     assert!(insert_result.is_ok());
 
     // Test get (now returns Option<String>)
-    let get_result = db.get(key.clone());
+    let get_result = db.get(key);
     assert!(get_result.is_ok(), "get operation failed");
     assert_eq!(get_result.expect("get_result was Err"), Some(value_str));
 }
@@ -87,7 +87,7 @@ fn test_oxidb_delete() {
     assert!(delete_result.is_ok(), "Delete operation failed");
     assert!(delete_result.expect("delete_result was Err")); // Key existed and was deleted
 
-    let get_deleted_result = db.get(key.clone());
+    let get_deleted_result = db.get(key);
     assert!(get_deleted_result.is_ok(), "Get after delete failed");
     assert_eq!(get_deleted_result.expect("get_deleted_result was Err"), None); // Verify deleted
 }
@@ -99,7 +99,7 @@ fn test_oxidb_delete_non_existent() {
         Oxidb::new(&db_path).expect("Failed to create Oxidb instance for delete_non_existent test");
     let key = b"api_delete_non_existent".to_vec();
 
-    let delete_result = db.delete(key.clone());
+    let delete_result = db.delete(key);
     assert!(delete_result.is_ok(), "Delete non_existent operation failed");
     assert!(!delete_result.expect("delete_result for non_existent was Err")); // Key did not exist
 }
@@ -119,7 +119,7 @@ fn test_oxidb_update() {
 
     db.insert(key.clone(), value2_str.clone())
         .expect("Second insert (update) failed in update test"); // This is an update
-    let get_v2_result = db.get(key.clone());
+    let get_v2_result = db.get(key);
     assert!(get_v2_result.is_ok(), "Get v2 failed in update test");
     assert_eq!(get_v2_result.expect("get_v2_result was Err"), Some(value2_str));
 }
@@ -169,7 +169,7 @@ fn test_oxidb_persist_method() {
     // Re-load the database
     let mut reloaded_db =
         Oxidb::new(&db_path).expect("Failed to create Oxidb instance for persist test (reloaded)");
-    let get_result = reloaded_db.get(key.clone());
+    let get_result = reloaded_db.get(key);
     assert!(get_result.is_ok(), "Get after reload failed in persist test");
     assert_eq!(get_result.expect("get_result after reload was Err"), Some(value_str));
     // Assert against String value

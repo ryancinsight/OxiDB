@@ -376,17 +376,17 @@ mod tests {
 
         // Create table with unique name
         let table_name = format!("test_users_{}", std::process::id());
-        let create_sql = format!("CREATE TABLE {} (id INTEGER PRIMARY KEY, name TEXT)", table_name);
+        let create_sql = format!("CREATE TABLE {table_name} (id INTEGER PRIMARY KEY, name TEXT)");
         let result = conn.execute(&create_sql)?;
         assert_eq!(result, QueryResult::Success);
 
         // Insert data
-        let insert_sql = format!("INSERT INTO {} (id, name) VALUES (1, 'Alice')", table_name);
+        let insert_sql = format!("INSERT INTO {table_name} (id, name) VALUES (1, 'Alice')");
         let result = conn.execute(&insert_sql)?;
         assert_eq!(result, QueryResult::RowsAffected(1));
 
         // Query data
-        let select_sql = format!("SELECT * FROM {}", table_name);
+        let select_sql = format!("SELECT * FROM {table_name}");
         let result = conn.execute(&select_sql)?;
         match result {
             QueryResult::Data(data) => {
@@ -417,7 +417,7 @@ mod tests {
         assert_eq!(result, QueryResult::RowsAffected(1));
 
         // Test parameterized select
-        let select_sql = format!("SELECT * FROM {} WHERE id = ?", table_name);
+        let select_sql = format!("SELECT * FROM {table_name} WHERE id = ?");
         let result = conn.execute_with_params(&select_sql, &[Value::Integer(1)])?;
         match result {
             QueryResult::Data(data) => {
@@ -444,7 +444,7 @@ mod tests {
         conn.execute(&insert_sql)?;
         conn.commit()?;
 
-        let select_sql = format!("SELECT * FROM {}", table_name);
+        let select_sql = format!("SELECT * FROM {table_name}");
         let result = conn.execute(&select_sql)?;
         // Should have 1 row
         if let QueryResult::Data(data) = result {
