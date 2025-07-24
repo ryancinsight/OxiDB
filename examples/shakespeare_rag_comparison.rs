@@ -38,7 +38,6 @@ struct ShakespeareWork {
 struct PerformanceMetrics {
     retrieval_time: Duration,
     processing_time: Duration,
-    memory_usage: usize,
     result_count: usize,
     relevance_score: f64,
 }
@@ -444,7 +443,6 @@ async fn benchmark_rag_retrieval(
     let metrics = PerformanceMetrics {
         retrieval_time,
         processing_time,
-        memory_usage: std::mem::size_of_val(&results),
         result_count: results.len(),
         relevance_score: calculate_relevance_score(&results, query),
     };
@@ -483,7 +481,6 @@ async fn benchmark_graphrag_retrieval(
     let metrics = PerformanceMetrics {
         retrieval_time,
         processing_time,
-        memory_usage: std::mem::size_of_val(&results),
         result_count: results.documents.len(),
         relevance_score: results.confidence_score,
     };
@@ -526,6 +523,14 @@ fn analyze_and_report_results(results: &[ComparisonResult]) {
         println!("     🔄 Processing time: {:?}", result.graphrag_metrics.processing_time);
         println!("     📊 Results count: {}", result.graphrag_metrics.result_count);
         println!("     🎯 Relevance score: {:.3}", result.graphrag_metrics.relevance_score);
+        
+        // Show sample results
+        if !result.rag_results.is_empty() {
+            println!("   📄 RAG Sample Result: {}", result.rag_results[0].chars().take(120).collect::<String>());
+        }
+        if !result.graphrag_results.is_empty() {
+            println!("   🕸️  GraphRAG Sample Result: {}", result.graphrag_results[0].chars().take(120).collect::<String>());
+        }
         
         // Calculate performance comparison
         let speed_improvement = if result.graphrag_metrics.retrieval_time < result.rag_metrics.retrieval_time {
