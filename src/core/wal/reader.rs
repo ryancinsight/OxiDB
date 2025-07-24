@@ -139,7 +139,7 @@ impl WalRecordIterator {
 
         // Validate LSN ordering if enabled
         if self.config.validate_lsn_ordering {
-            let current_lsn = self.extract_lsn(&log_record);
+            let current_lsn = Self::extract_lsn(&log_record);
             if let Some(last_lsn) = self.last_lsn {
                 if current_lsn < last_lsn {
                     return Err(WalReaderError::LsnOrderingViolation {
@@ -156,7 +156,7 @@ impl WalRecordIterator {
     }
 
     /// Extract LSN from a log record
-    const fn extract_lsn(&self, record: &LogRecord) -> Lsn {
+    const fn extract_lsn(record: &LogRecord) -> Lsn {
         match record {
             LogRecord::BeginTransaction { lsn, .. }
             | LogRecord::CommitTransaction { lsn, .. }
