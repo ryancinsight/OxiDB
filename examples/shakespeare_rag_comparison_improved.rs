@@ -7,7 +7,7 @@
 //! - Comprehensive performance and quality analysis
 
 use oxidb::core::rag::core_components::Document;
-use oxidb::core::rag::embedder::{EmbeddingModel, ShakespeareEmbedder, TfIdfEmbedder};
+use oxidb::core::rag::embedder::{EmbeddingModel, SemanticEmbedder, TfIdfEmbedder};
 use oxidb::core::rag::graphrag::{GraphRAGEngineImpl, GraphRAGContext, KnowledgeNode, KnowledgeEdge};
 use oxidb::core::rag::retriever::{InMemoryRetriever, SimilarityMetric};
 use oxidb::core::rag::{GraphRAGEngine, Retriever};
@@ -95,8 +95,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create TF-IDF embedder for traditional RAG
     let tfidf_embedder = TfIdfEmbedder::new(&raw_documents);
     
-    // Create Shakespeare-specific embedder for GraphRAG
-    let shakespeare_embedder = ShakespeareEmbedder::new(512);
+    // Create semantic embedder for GraphRAG
+    let semantic_embedder = SemanticEmbedder::new(512);
     
     // Generate embeddings for RAG system
     println!("🔢 Generating TF-IDF embeddings for RAG...");
@@ -110,7 +110,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🎨 Generating semantic embeddings for GraphRAG...");
     let mut graphrag_documents = Vec::new();
     for doc in &raw_documents {
-        let embedding = shakespeare_embedder.embed_document(doc).await?;
+        let embedding = semantic_embedder.embed_document(doc).await?;
         graphrag_documents.push(doc.clone().with_embedding(embedding));
     }
 
@@ -137,10 +137,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\n🔎 Testing query: '{}'", query);
         
         // Test traditional RAG
-        let rag_result = benchmark_enhanced_rag_retrieval(&*rag_retriever, query, &shakespeare_embedder).await?;
+        let rag_result = benchmark_enhanced_rag_retrieval(&*rag_retriever, query, &semantic_embedder).await?;
         
         // Test GraphRAG
-        let graphrag_result = benchmark_enhanced_graphrag_retrieval(&graphrag_engine, query, &shakespeare_embedder).await?;
+        let graphrag_result = benchmark_enhanced_graphrag_retrieval(&graphrag_engine, query, &semantic_embedder).await?;
         
         // Analyze quality
         let quality_analysis = analyze_result_quality(query, &rag_result.1, &graphrag_result.1);
@@ -408,7 +408,7 @@ fn get_enhanced_test_queries() -> Vec<String> {
 async fn benchmark_enhanced_rag_retrieval(
     retriever: &InMemoryRetriever,
     query: &str,
-    embedder: &ShakespeareEmbedder,
+    embedder: &SemanticEmbedder,
 ) -> Result<(PerformanceMetrics, Vec<String>), Box<dyn std::error::Error>> {
     let start_time = Instant::now();
     
@@ -447,7 +447,7 @@ async fn benchmark_enhanced_rag_retrieval(
 async fn benchmark_enhanced_graphrag_retrieval(
     engine: &GraphRAGEngineImpl,
     query: &str,
-    embedder: &ShakespeareEmbedder,
+    embedder: &SemanticEmbedder,
 ) -> Result<(PerformanceMetrics, Vec<String>), Box<dyn std::error::Error>> {
     let start_time = Instant::now();
     
