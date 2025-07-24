@@ -160,113 +160,70 @@ impl GraphRAGEngineImpl {
         weights
     }
 
-    /// Extract entities from document text (improved implementation for Shakespeare)
+    /// Extract entities from document text (generic implementation)
     fn extract_entities(&self, document: &Document) -> Result<Vec<KnowledgeNode>, OxidbError> {
         let mut entities = Vec::new();
         let text = &document.content;
         let text_lower = text.to_lowercase();
 
-        // Shakespeare-specific entity patterns
-        let character_patterns = vec![
-            ("ROMEO", vec!["romeo"]),
-            ("JULIET", vec!["juliet"]),
-            ("HAMLET", vec!["hamlet"]),
-            ("MACBETH", vec!["macbeth"]),
-            ("LADY_MACBETH", vec!["lady macbeth"]),
-            ("OPHELIA", vec!["ophelia"]),
-            ("CLAUDIUS", vec!["claudius"]),
-            ("GHOST", vec!["ghost"]),
-            ("MERCUTIO", vec!["mercutio"]),
-            ("TYBALT", vec!["tybalt"]),
-            ("BENVOLIO", vec!["benvolio"]),
-            ("FRIAR", vec!["friar"]),
-            ("NURSE", vec!["nurse"]),
-            ("DUNCAN", vec!["duncan"]),
-            ("BANQUO", vec!["banquo"]),
-            ("MACDUFF", vec!["macduff"]),
-            ("MALCOLM", vec!["malcolm"]),
+        // Generic entity patterns that work across different domains
+        let person_indicators = vec![
+            "mr", "mrs", "ms", "dr", "professor", "captain", "sir", "lady", "lord",
+            "king", "queen", "prince", "princess", "duke", "duchess", "count",
         ];
 
-        let location_patterns = vec![
-            ("VERONA", vec!["verona"]),
-            ("MANTUA", vec!["mantua"]),
-            ("ELSINORE", vec!["elsinore"]),
-            ("DENMARK", vec!["denmark"]),
-            ("SCOTLAND", vec!["scotland"]),
-            ("DUNSINANE", vec!["dunsinane"]),
-            ("BIRNAM", vec!["birnam"]),
-            ("CASTLE", vec!["castle"]),
-            ("COURT", vec!["court"]),
-            ("FOREST", vec!["forest"]),
+        let location_indicators = vec![
+            "city", "town", "village", "country", "nation", "state", "province",
+            "street", "avenue", "road", "building", "house", "castle", "palace",
+            "forest", "mountain", "river", "lake", "ocean", "sea",
         ];
 
+        let organization_indicators = vec![
+            "company", "corporation", "university", "school", "college", "hospital",
+            "government", "department", "agency", "organization", "institution",
+            "church", "temple", "mosque", "synagogue",
+        ];
+
+        // Extract potential named entities (capitalized words)
+        let words: Vec<&str> = text.split_whitespace().collect();
+        let mut potential_entities = std::collections::HashSet::new();
+        
+        for window in words.windows(3) {
+            // Look for capitalized words that might be entities
+            for (i, &word) in window.iter().enumerate() {
+                let clean_word = word.chars().filter(|c| c.is_alphabetic()).collect::<String>();
+                if clean_word.len() > 2 && clean_word.chars().next().unwrap_or(' ').is_uppercase() {
+                    // Check context for entity type indicators
+                    let context = window.join(" ").to_lowercase();
+                    
+                    // Determine entity type based on context
+                    let entity_type = if person_indicators.iter().any(|&indicator| context.contains(indicator)) {
+                        "PERSON"
+                    } else if location_indicators.iter().any(|&indicator| context.contains(indicator)) {
+                        "LOCATION"
+                    } else if organization_indicators.iter().any(|&indicator| context.contains(indicator)) {
+                        "ORGANIZATION"
+                    } else if i > 0 && person_indicators.contains(&window[i-1].to_lowercase().as_str()) {
+                        "PERSON" // Title before name
+                    } else {
+                        "ENTITY" // Generic entity
+                    };
+                    
+                    potential_entities.insert((clean_word.to_lowercase(), entity_type));
+                }
+            }
+        }
+
+        // Extract theme-based entities using common patterns
         let theme_patterns = vec![
-            ("LOVE", vec!["love", "romance", "passion", "affection"]),
-            ("DEATH", vec!["death", "die", "dead", "kill", "murder", "suicide"]),
-            ("REVENGE", vec!["revenge", "vengeance", "avenge"]),
-            ("BETRAYAL", vec!["betray", "treachery", "deceive"]),
-            ("POWER", vec!["power", "crown", "throne", "king", "queen"]),
-            ("AMBITION", vec!["ambition", "ambitious"]),
-            ("FATE", vec!["fate", "destiny", "fortune"]),
-            ("HONOR", vec!["honor", "honour", "noble", "nobility"]),
-            ("FAMILY", vec!["family", "father", "mother", "son", "daughter"]),
-            ("SUPERNATURAL", vec!["ghost", "spirit", "witch", "prophecy", "magic"]),
+            ("EMOTION", vec!["love", "hate", "anger", "joy", "sadness", "fear", "hope"]),
+            ("CONCEPT", vec!["freedom", "justice", "peace", "war", "truth", "beauty", "wisdom"]),
+            ("ACTION", vec!["battle", "fight", "journey", "quest", "discovery", "creation"]),
+            ("RELATIONSHIP", vec!["friendship", "marriage", "betrayal", "alliance", "conflict"]),
+            ("TIME", vec!["past", "present", "future", "ancient", "modern", "eternal"]),
         ];
 
-        // Extract character entities
-        for (character_name, patterns) in character_patterns {
-            for pattern in patterns {
-                if text_lower.contains(pattern) {
-                    let entity_id = self.generate_entity_id(&document.id, character_name);
-                    let entity = KnowledgeNode {
-                        id: entity_id,
-                        entity_type: "CHARACTER".to_string(),
-                        name: character_name.to_string(),
-                        description: Some(format!("Character from {}", document.id)),
-                        embedding: document.embedding.clone(),
-                        properties: {
-                            let mut props = HashMap::new();
-                            props.insert("document_id".to_string(), Value::Text(document.id.clone()));
-                            props.insert("character_type".to_string(), Value::Text("PERSON".to_string()));
-                            props.insert("source_pattern".to_string(), Value::Text(pattern.to_string()));
-                            props
-                        },
-                        confidence_score: 0.9,
-                    };
-                    entities.push(entity);
-                    break; // Only add once per character per document
-                }
-            }
-        }
-
-        // Extract location entities
-        for (location_name, patterns) in location_patterns {
-            for pattern in patterns {
-                if text_lower.contains(pattern) {
-                    let entity_id = self.generate_entity_id(&document.id, location_name);
-                    let entity = KnowledgeNode {
-                        id: entity_id,
-                        entity_type: "LOCATION".to_string(),
-                        name: location_name.to_string(),
-                        description: Some(format!("Location mentioned in {}", document.id)),
-                        embedding: document.embedding.clone(),
-                        properties: {
-                            let mut props = HashMap::new();
-                            props.insert("document_id".to_string(), Value::Text(document.id.clone()));
-                            props.insert("location_type".to_string(), Value::Text("PLACE".to_string()));
-                            props.insert("source_pattern".to_string(), Value::Text(pattern.to_string()));
-                            props
-                        },
-                        confidence_score: 0.8,
-                    };
-                    entities.push(entity);
-                    break;
-                }
-            }
-        }
-
-        // Extract theme entities
-        for (theme_name, patterns) in theme_patterns {
+        for (theme_type, patterns) in theme_patterns {
             let mut theme_strength = 0.0;
             let mut found_patterns = Vec::new();
             
@@ -278,14 +235,14 @@ impl GraphRAGEngineImpl {
             }
             
             if theme_strength > 0.0 {
-                let entity_id = self.generate_entity_id(&document.id, theme_name);
+                let entity_id = self.generate_entity_id(&document.id, theme_type);
                 let normalized_strength = (theme_strength / patterns.len() as f32).min(1.0);
                 
                 let entity = KnowledgeNode {
                     id: entity_id,
                     entity_type: "THEME".to_string(),
-                    name: theme_name.to_string(),
-                    description: Some(format!("Theme present in {}", document.id)),
+                    name: theme_type.to_string(),
+                    description: Some(format!("Theme identified in {}", document.id)),
                     embedding: document.embedding.clone(),
                     properties: {
                         let mut props = HashMap::new();
@@ -298,6 +255,29 @@ impl GraphRAGEngineImpl {
                 };
                 entities.push(entity);
             }
+        }
+
+        // Add the potential named entities
+        for (entity_name, entity_type) in potential_entities {
+            let entity_key = format!("{}_{}", entity_type, entity_name);
+            let entity_id = self.generate_entity_id(&document.id, &entity_key);
+            let confidence = if entity_type == "ENTITY" { 0.6 } else { 0.8 }; // Lower confidence for generic entities
+            
+            let entity = KnowledgeNode {
+                id: entity_id,
+                entity_type: entity_type.to_string(),
+                name: Self::to_title_case(&entity_name),
+                description: Some(format!("{} mentioned in {}", entity_type.to_lowercase(), document.id)),
+                embedding: document.embedding.clone(),
+                properties: {
+                    let mut props = HashMap::new();
+                    props.insert("document_id".to_string(), Value::Text(document.id.clone()));
+                    props.insert("extraction_method".to_string(), Value::Text("pattern_based".to_string()));
+                    props
+                },
+                confidence_score: confidence,
+            };
+            entities.push(entity);
         }
 
         Ok(entities)
@@ -314,7 +294,7 @@ impl GraphRAGEngineImpl {
         hasher.finish() as NodeId
     }
 
-    /// Extract relationships between entities (improved implementation)
+    /// Extract relationships between entities (generic implementation)
     fn extract_relationships(
         &self,
         entities: &[KnowledgeNode],
@@ -323,61 +303,71 @@ impl GraphRAGEngineImpl {
         let mut relationships = Vec::new();
         let text_lower = document.content.to_lowercase();
 
-        // Define relationship patterns for Shakespeare
+        // Generic relationship patterns that work across domains
         let relationship_patterns = vec![
-            ("LOVES", vec!["loves", "love", "beloved", "dear"]),
-            ("KILLS", vec!["kills", "murder", "slay", "death"]),
-            ("BETRAYS", vec!["betray", "deceive", "trick"]),
-            ("SERVES", vec!["serve", "loyal", "obey"]),
-            ("FIGHTS", vec!["fight", "duel", "battle", "combat"]),
-            ("MARRIES", vec!["marry", "wed", "husband", "wife"]),
-            ("RULES", vec!["rule", "king", "queen", "reign"]),
-            ("HAUNTS", vec!["haunt", "ghost", "spirit"]),
-            ("SEEKS_REVENGE", vec!["revenge", "vengeance", "avenge"]),
-            ("RELATED_TO", vec!["father", "mother", "son", "daughter", "brother", "sister"]),
+            ("RELATED_TO", vec!["related", "connected", "associated", "linked"]),
+            ("WORKS_WITH", vec!["works with", "collaborates", "partners", "teams"]),
+            ("LEADS", vec!["leads", "manages", "directs", "heads", "supervises"]),
+            ("BELONGS_TO", vec!["belongs to", "part of", "member of", "owns"]),
+            ("LOCATED_IN", vec!["in", "at", "located", "situated", "based"]),
+            ("CAUSED_BY", vec!["caused by", "due to", "because of", "resulted from"]),
+            ("INFLUENCES", vec!["influences", "affects", "impacts", "shapes"]),
+            ("OPPOSES", vec!["opposes", "against", "conflicts", "disputes"]),
+            ("SUPPORTS", vec!["supports", "helps", "assists", "aids"]),
+            ("CREATES", vec!["creates", "makes", "produces", "generates"]),
         ];
 
-        // Look for character-character relationships
-        let characters: Vec<&KnowledgeNode> = entities.iter()
-            .filter(|e| e.entity_type == "CHARACTER")
+        // Group entities by type for more efficient processing
+        let people: Vec<&KnowledgeNode> = entities.iter()
+            .filter(|e| e.entity_type == "PERSON")
+            .collect();
+        
+        let organizations: Vec<&KnowledgeNode> = entities.iter()
+            .filter(|e| e.entity_type == "ORGANIZATION")
+            .collect();
+        
+        let locations: Vec<&KnowledgeNode> = entities.iter()
+            .filter(|e| e.entity_type == "LOCATION")
+            .collect();
+        
+        let themes: Vec<&KnowledgeNode> = entities.iter()
+            .filter(|e| e.entity_type == "THEME")
             .collect();
 
-        for (i, char1) in characters.iter().enumerate() {
-            for (j, char2) in characters.iter().enumerate() {
-                if i >= j { continue; } // Avoid duplicates and self-relationships
-
-                // Check for relationship patterns between these characters
+        // Look for person-person relationships
+        for (i, person1) in people.iter().enumerate() {
+            for (j, person2) in people.iter().enumerate() {
+                if i >= j { continue; }
+                
                 for (rel_type, patterns) in &relationship_patterns {
                     for pattern in patterns {
-                        // Look for patterns that might connect these characters
-                        let char1_name = char1.name.to_lowercase();
-                        let char2_name = char2.name.to_lowercase();
+                        let person1_name = person1.name.to_lowercase();
+                        let person2_name = person2.name.to_lowercase();
                         
-                        // Check if both characters and the relationship pattern appear in the text
-                        if text_lower.contains(&char1_name) && 
-                           text_lower.contains(&char2_name) && 
+                        if text_lower.contains(&person1_name) && 
+                           text_lower.contains(&person2_name) && 
                            text_lower.contains(pattern) {
                             
-                            // Calculate confidence based on proximity and context
                             let confidence = self.calculate_relationship_confidence(
-                                &text_lower, &char1_name, &char2_name, pattern
+                                &text_lower, &person1_name, &person2_name, pattern
                             );
                             
-                            if confidence > 0.3 { // Threshold for relationship confidence
+                            if confidence > 0.3 {
                                 let relationship = KnowledgeEdge {
-                                    id: self.generate_relationship_id(char1.id, char2.id, rel_type),
-                                    from_entity: char1.id,
-                                    to_entity: char2.id,
+                                    id: self.generate_relationship_id(person1.id, person2.id, rel_type),
+                                    from_entity: person1.id,
+                                    to_entity: person2.id,
                                     relationship_type: rel_type.to_string(),
                                     description: Some(format!(
                                         "{} {} {} in {}", 
-                                        char1.name, rel_type.to_lowercase(), char2.name, document.id
+                                        person1.name, rel_type.to_lowercase().replace('_', " "), 
+                                        person2.name, document.id
                                     )),
                                     confidence_score: confidence,
                                     weight: Some(confidence),
                                 };
                                 relationships.push(relationship);
-                                break; // Only add one relationship type per character pair per document
+                                break;
                             }
                         }
                     }
@@ -385,67 +375,84 @@ impl GraphRAGEngineImpl {
             }
         }
 
-        // Look for character-theme relationships
-        let themes: Vec<&KnowledgeNode> = entities.iter()
-            .filter(|e| e.entity_type == "THEME")
-            .collect();
+        // Look for person-organization relationships
+        for person in &people {
+            for org in &organizations {
+                let person_name = person.name.to_lowercase();
+                let org_name = org.name.to_lowercase();
+                
+                if text_lower.contains(&person_name) && text_lower.contains(&org_name) {
+                    let confidence = 0.7; // Default confidence for co-occurrence
+                    
+                    let relationship = KnowledgeEdge {
+                        id: self.generate_relationship_id(person.id, org.id, "AFFILIATED_WITH"),
+                        from_entity: person.id,
+                        to_entity: org.id,
+                        relationship_type: "AFFILIATED_WITH".to_string(),
+                        description: Some(format!(
+                            "{} is affiliated with {} in {}", 
+                            person.name, org.name, document.id
+                        )),
+                        confidence_score: confidence,
+                        weight: Some(confidence),
+                    };
+                    relationships.push(relationship);
+                }
+            }
+        }
 
-        for character in &characters {
+        // Look for entity-location relationships
+        for entity in people.iter().chain(organizations.iter()) {
+            for location in &locations {
+                let entity_name = entity.name.to_lowercase();
+                let location_name = location.name.to_lowercase();
+                
+                if text_lower.contains(&entity_name) && text_lower.contains(&location_name) {
+                    let confidence = 0.6;
+                    
+                    let relationship = KnowledgeEdge {
+                        id: self.generate_relationship_id(entity.id, location.id, "LOCATED_IN"),
+                        from_entity: entity.id,
+                        to_entity: location.id,
+                        relationship_type: "LOCATED_IN".to_string(),
+                        description: Some(format!(
+                            "{} is located in {} in {}", 
+                            entity.name, location.name, document.id
+                        )),
+                        confidence_score: confidence,
+                        weight: Some(confidence),
+                    };
+                    relationships.push(relationship);
+                }
+            }
+        }
+
+        // Look for entity-theme relationships
+        for entity in people.iter().chain(organizations.iter()) {
             for theme in &themes {
-                let char_name = character.name.to_lowercase();
+                let entity_name = entity.name.to_lowercase();
                 let theme_name = theme.name.to_lowercase();
                 
-                // Check if character is associated with theme
-                if text_lower.contains(&char_name) && text_lower.contains(&theme_name) {
+                if text_lower.contains(&entity_name) && text_lower.contains(&theme_name) {
                     let confidence = self.calculate_theme_association_confidence(
-                        &text_lower, &char_name, &theme_name
+                        &text_lower, &entity_name, &theme_name
                     );
                     
                     if confidence > 0.4 {
                         let relationship = KnowledgeEdge {
-                            id: self.generate_relationship_id(character.id, theme.id, "EMBODIES"),
-                            from_entity: character.id,
+                            id: self.generate_relationship_id(entity.id, theme.id, "ASSOCIATED_WITH"),
+                            from_entity: entity.id,
                             to_entity: theme.id,
-                            relationship_type: "EMBODIES".to_string(),
+                            relationship_type: "ASSOCIATED_WITH".to_string(),
                             description: Some(format!(
-                                "{} embodies {} in {}", 
-                                character.name, theme.name, document.id
+                                "{} is associated with {} in {}", 
+                                entity.name, theme.name, document.id
                             )),
                             confidence_score: confidence,
                             weight: Some(confidence),
                         };
                         relationships.push(relationship);
                     }
-                }
-            }
-        }
-
-        // Look for character-location relationships
-        let locations: Vec<&KnowledgeNode> = entities.iter()
-            .filter(|e| e.entity_type == "LOCATION")
-            .collect();
-
-        for character in &characters {
-            for location in &locations {
-                let char_name = character.name.to_lowercase();
-                let loc_name = location.name.to_lowercase();
-                
-                if text_lower.contains(&char_name) && text_lower.contains(&loc_name) {
-                    let confidence = 0.6; // Default confidence for location associations
-                    
-                    let relationship = KnowledgeEdge {
-                        id: self.generate_relationship_id(character.id, location.id, "APPEARS_IN"),
-                        from_entity: character.id,
-                        to_entity: location.id,
-                        relationship_type: "APPEARS_IN".to_string(),
-                        description: Some(format!(
-                            "{} appears in {} in {}", 
-                            character.name, location.name, document.id
-                        )),
-                        confidence_score: confidence,
-                        weight: Some(confidence),
-                    };
-                    relationships.push(relationship);
                 }
             }
         }
@@ -495,6 +502,20 @@ impl GraphRAGEngineImpl {
             let normalized_distance = (min_distance as f64) / max_distance;
             (1.0 - normalized_distance).max(0.0).min(1.0)
         }
+    }
+
+    /// Convert string to title case
+    fn to_title_case(s: &str) -> String {
+        s.chars()
+            .enumerate()
+            .map(|(i, c)| {
+                if i == 0 || s.chars().nth(i - 1).unwrap_or(' ').is_whitespace() {
+                    c.to_uppercase().collect::<String>()
+                } else {
+                    c.to_lowercase().collect::<String>()
+                }
+            })
+            .collect()
     }
 
     /// Calculate theme association confidence
@@ -1110,7 +1131,7 @@ mod tests {
         // Create a document with entities that should be linked
         let document = Document {
             id: "test_doc_42".to_string(),
-            content: "Romeo loves Juliet and fights with Tybalt in Verona".to_string(),
+            content: "Dr. Smith works with Professor Johnson at the university in the city".to_string(),
             embedding: Some(vec![0.1, 0.2, 0.3].into()),
             metadata: Some(HashMap::new()),
         };

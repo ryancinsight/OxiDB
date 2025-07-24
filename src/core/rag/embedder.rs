@@ -23,11 +23,11 @@ pub trait EmbeddingModel: Send + Sync {
     }
 }
 
-/// A TF-IDF based embedding model for more meaningful document representations
+/// A TF-IDF based embedding model for meaningful document representations
 pub struct TfIdfEmbedder {
     vocabulary: HashMap<String, usize>,
     idf_scores: HashMap<String, f32>,
-    dimension: usize,
+    pub dimension: usize,
 }
 
 impl TfIdfEmbedder {
@@ -123,113 +123,171 @@ impl EmbeddingModel for TfIdfEmbedder {
     }
 }
 
-/// An improved semantic embedding model for Shakespeare texts
-pub struct ShakespeareEmbedder {
+/// A generic semantic embedding model that works with any document type
+pub struct SemanticEmbedder {
     dimension: usize,
-    character_weights: HashMap<String, f32>,
-    theme_weights: HashMap<String, f32>,
-    emotion_weights: HashMap<String, f32>,
+    feature_extractors: Vec<Box<dyn FeatureExtractor>>,
 }
 
-impl ShakespeareEmbedder {
-    /// Create a new Shakespeare-specific embedder
-    pub fn new(dimension: usize) -> Self {
-        let mut character_weights = HashMap::new();
-        character_weights.insert("romeo".to_string(), 1.0);
-        character_weights.insert("juliet".to_string(), 1.0);
-        character_weights.insert("hamlet".to_string(), 0.9);
-        character_weights.insert("macbeth".to_string(), 0.9);
-        character_weights.insert("lady".to_string(), 0.8);
-        character_weights.insert("king".to_string(), 0.8);
-        character_weights.insert("queen".to_string(), 0.8);
-        character_weights.insert("prince".to_string(), 0.7);
-        character_weights.insert("duke".to_string(), 0.7);
+/// Trait for extracting features from documents
+pub trait FeatureExtractor: Send + Sync {
+    fn extract_features(&self, text: &str) -> Vec<f32>;
+    fn feature_count(&self) -> usize;
+}
+
+/// Named entity extractor that identifies common entity types
+pub struct NamedEntityExtractor {
+    entity_patterns: HashMap<String, Vec<String>>,
+}
+
+impl NamedEntityExtractor {
+    pub fn new() -> Self {
+        let mut entity_patterns = HashMap::new();
         
-        let mut theme_weights = HashMap::new();
-        theme_weights.insert("love".to_string(), 1.0);
-        theme_weights.insert("death".to_string(), 0.9);
-        theme_weights.insert("revenge".to_string(), 0.9);
-        theme_weights.insert("betrayal".to_string(), 0.8);
-        theme_weights.insert("power".to_string(), 0.8);
-        theme_weights.insert("ambition".to_string(), 0.8);
-        theme_weights.insert("family".to_string(), 0.7);
-        theme_weights.insert("honor".to_string(), 0.7);
-        theme_weights.insert("fate".to_string(), 0.7);
-        theme_weights.insert("supernatural".to_string(), 0.6);
+        // Common person indicators
+        entity_patterns.insert("PERSON".to_string(), vec![
+            "mr".to_string(), "mrs".to_string(), "ms".to_string(), "dr".to_string(),
+            "professor".to_string(), "captain".to_string(), "sir".to_string(),
+        ]);
         
-        let mut emotion_weights = HashMap::new();
-        emotion_weights.insert("joy".to_string(), 0.8);
-        emotion_weights.insert("sorrow".to_string(), 0.8);
-        emotion_weights.insert("anger".to_string(), 0.7);
-        emotion_weights.insert("fear".to_string(), 0.7);
-        emotion_weights.insert("hope".to_string(), 0.6);
-        emotion_weights.insert("despair".to_string(), 0.6);
+        // Common location indicators
+        entity_patterns.insert("LOCATION".to_string(), vec![
+            "city".to_string(), "town".to_string(), "country".to_string(), "street".to_string(),
+            "avenue".to_string(), "road".to_string(), "building".to_string(), "house".to_string(),
+        ]);
         
-        Self {
-            dimension,
-            character_weights,
-            theme_weights,
-            emotion_weights,
-        }
+        // Common organization indicators
+        entity_patterns.insert("ORGANIZATION".to_string(), vec![
+            "company".to_string(), "corporation".to_string(), "university".to_string(),
+            "school".to_string(), "hospital".to_string(), "government".to_string(),
+        ]);
+        
+        Self { entity_patterns }
     }
-    
-    /// Extract semantic features from Shakespeare text
+}
+
+impl Default for NamedEntityExtractor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FeatureExtractor for NamedEntityExtractor {
     fn extract_features(&self, text: &str) -> Vec<f32> {
         let text_lower = text.to_lowercase();
-        let mut features = vec![0.0; self.dimension];
+        let mut features = vec![0.0; self.feature_count()];
         
-        // Character presence (first third of dimensions)
-        let char_dim = self.dimension / 3;
-        let mut char_idx = 0;
-        for (character, weight) in &self.character_weights {
-            if char_idx >= char_dim { break; }
-            if text_lower.contains(character) {
-                features[char_idx] = *weight;
+        let mut feature_idx = 0;
+        for patterns in self.entity_patterns.values() {
+            for pattern in patterns {
+                if text_lower.contains(pattern) {
+                    features[feature_idx] = 1.0;
+                }
+                feature_idx += 1;
             }
-            char_idx += 1;
-        }
-        
-        // Theme presence (second third of dimensions)
-        let theme_start = char_dim;
-        let theme_dim = self.dimension / 3;
-        let mut theme_idx = 0;
-        for (theme, weight) in &self.theme_weights {
-            if theme_idx >= theme_dim { break; }
-            if text_lower.contains(theme) {
-                features[theme_start + theme_idx] = *weight;
-            }
-            theme_idx += 1;
-        }
-        
-        // Emotion presence (final third of dimensions)
-        let emotion_start = theme_start + theme_dim;
-        let emotion_dim = self.dimension - emotion_start;
-        let mut emotion_idx = 0;
-        for (emotion, weight) in &self.emotion_weights {
-            if emotion_idx >= emotion_dim { break; }
-            if text_lower.contains(emotion) {
-                features[emotion_start + emotion_idx] = *weight;
-            }
-            emotion_idx += 1;
-        }
-        
-        // Add some content-based features
-        let word_count = text.split_whitespace().count() as f32;
-        let normalized_length = (word_count / 1000.0).min(1.0); // Normalize to 0-1
-        
-        // Add length and complexity features to remaining dimensions
-        if let Some(last_idx) = features.len().checked_sub(1) {
-            features[last_idx] = normalized_length;
         }
         
         features
     }
+    
+    fn feature_count(&self) -> usize {
+        self.entity_patterns.values().map(|v| v.len()).sum()
+    }
+}
+
+/// Content-based feature extractor that analyzes document structure and content
+pub struct ContentFeatureExtractor;
+
+impl FeatureExtractor for ContentFeatureExtractor {
+    fn extract_features(&self, text: &str) -> Vec<f32> {
+        let mut features = Vec::new();
+        
+        // Document length features
+        let word_count = text.split_whitespace().count() as f32;
+        let char_count = text.len() as f32;
+        let sentence_count = text.matches('.').count() as f32;
+        
+        // Normalize features
+        features.push((word_count / 1000.0).min(1.0)); // Words per 1000
+        features.push((char_count / 5000.0).min(1.0)); // Chars per 5000
+        features.push((sentence_count / 50.0).min(1.0)); // Sentences per 50
+        
+        // Lexical diversity
+        let unique_words: std::collections::HashSet<&str> = text.split_whitespace().collect();
+        let lexical_diversity = if word_count > 0.0 {
+            unique_words.len() as f32 / word_count
+        } else {
+            0.0
+        };
+        features.push(lexical_diversity);
+        
+        // Punctuation density
+        let punctuation_count = text.chars().filter(|c| c.is_ascii_punctuation()).count() as f32;
+        let punctuation_density = if char_count > 0.0 {
+            punctuation_count / char_count
+        } else {
+            0.0
+        };
+        features.push(punctuation_density);
+        
+        // Average word length
+        let avg_word_length = if word_count > 0.0 {
+            text.split_whitespace().map(|w| w.len()).sum::<usize>() as f32 / word_count
+        } else {
+            0.0
+        };
+        features.push((avg_word_length / 10.0).min(1.0)); // Normalize by max length 10
+        
+        features
+    }
+    
+    fn feature_count(&self) -> usize {
+        6 // Number of features extracted
+    }
+}
+
+impl SemanticEmbedder {
+    /// Create a new semantic embedder with default feature extractors
+    pub fn new(dimension: usize) -> Self {
+        let feature_extractors: Vec<Box<dyn FeatureExtractor>> = vec![
+            Box::new(NamedEntityExtractor::new()),
+            Box::new(ContentFeatureExtractor),
+        ];
+        
+        Self {
+            dimension,
+            feature_extractors,
+        }
+    }
+    
+    /// Create a semantic embedder with custom feature extractors
+    pub fn with_extractors(dimension: usize, extractors: Vec<Box<dyn FeatureExtractor>>) -> Self {
+        Self {
+            dimension,
+            feature_extractors: extractors,
+        }
+    }
+    
+    /// Extract all features from text
+    fn extract_all_features(&self, text: &str) -> Vec<f32> {
+        let mut all_features = Vec::new();
+        
+        for extractor in &self.feature_extractors {
+            let mut features = extractor.extract_features(text);
+            all_features.append(&mut features);
+        }
+        
+        // Pad or truncate to desired dimension
+        all_features.resize(self.dimension, 0.0);
+        
+        all_features
+    }
 }
 
 #[async_trait]
-impl EmbeddingModel for ShakespeareEmbedder {
+impl EmbeddingModel for SemanticEmbedder {
     async fn embed_document(&self, document: &Document) -> Result<Embedding, OxidbError> {
-        let features = self.extract_features(&document.content);
+        let features = self.extract_all_features(&document.content);
         
         // Normalize the feature vector
         let magnitude: f32 = features.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -279,30 +337,45 @@ mod tests {
     use crate::core::rag::core_components::Document;
 
     #[tokio::test]
-    async fn test_shakespeare_embedder() {
-        let embedder = ShakespeareEmbedder::new(30);
+    async fn test_semantic_embedder() {
+        let embedder = SemanticEmbedder::new(30);
         let doc = Document::new(
             "test".to_string(),
-            "Romeo loves Juliet with great passion and joy".to_string()
+            "This is a sample document about technology and innovation. Dr. Smith works at the university.".to_string()
         );
         
         let embedding = embedder.embed_document(&doc).await.unwrap();
         assert_eq!(embedding.vector.len(), 30);
         
-        // Should have non-zero values for character and theme features
-        let has_character_features = embedding.vector[..10].iter().any(|&x| x > 0.0);
-        let has_theme_features = embedding.vector[10..20].iter().any(|&x| x > 0.0);
+        // Should have some non-zero values
+        let has_features = embedding.vector.iter().any(|&x| x > 0.0);
+        assert!(has_features, "Should extract some features");
+    }
+    
+    #[tokio::test]
+    async fn test_named_entity_extractor() {
+        let extractor = NamedEntityExtractor::new();
+        let features = extractor.extract_features("Dr. Smith works at the university in the city.");
         
-        assert!(has_character_features, "Should detect character features");
-        assert!(has_theme_features, "Should detect theme features");
+        assert!(!features.is_empty());
+        assert!(features.iter().any(|&x| x > 0.0), "Should detect entities");
+    }
+    
+    #[tokio::test]
+    async fn test_content_feature_extractor() {
+        let extractor = ContentFeatureExtractor;
+        let features = extractor.extract_features("This is a test. It has multiple sentences. Each sentence ends with a period.");
+        
+        assert_eq!(features.len(), 6);
+        assert!(features.iter().all(|&x| x >= 0.0 && x <= 1.0), "Features should be normalized");
     }
     
     #[tokio::test]
     async fn test_tfidf_embedder() {
         let docs = vec![
-            Document::new("1".to_string(), "Romeo loves Juliet".to_string()),
-            Document::new("2".to_string(), "Hamlet seeks revenge".to_string()),
-            Document::new("3".to_string(), "Macbeth desires power".to_string()),
+            Document::new("1".to_string(), "apple banana cherry".to_string()),
+            Document::new("2".to_string(), "banana cherry date".to_string()),
+            Document::new("3".to_string(), "cherry date elderberry".to_string()),
         ];
         
         let embedder = TfIdfEmbedder::new(&docs);
