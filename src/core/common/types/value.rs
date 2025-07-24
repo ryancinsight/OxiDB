@@ -77,7 +77,7 @@ impl PartialOrd for Value {
                 if b_trunc < i64::MIN as f64 { return Some(Ordering::Greater); }
 
                 match a.cmp(&(b_trunc as i64)) {
-                    Ordering::Equal => b.fract().partial_cmp(&0.0).map(|ord| ord.reverse()),
+                    Ordering::Equal => b.fract().partial_cmp(&0.0).map(std::cmp::Ordering::reverse),
                     other => Some(other),
                 }
             }

@@ -1,4 +1,4 @@
-// src/api/api_impl.rs
+// src/api/implementation.rs
 //! Contains the private implementation logic for the API layer.
 
 use super::types::Oxidb; // To refer to the Oxidb struct in types.rs
@@ -64,15 +64,10 @@ impl Oxidb {
         let database_file = db_path.to_path_buf();
         
         // Set data directory based on the database path
-        let data_dir = db_path.parent().map_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), |parent| parent.to_path_buf());
+        let data_dir = db_path.parent().map_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), std::path::Path::to_path_buf);
 
         let index_dir = data_dir.join("oxidb_indexes");
-        let config = Config {
-            database_file,
-            data_dir,
-            index_dir,
-            ..Config::default()
-        };
+        let config = Config { data_dir, database_file, index_dir, ..Config::default() };
 
         Self::new_with_config(&config)
     }
@@ -144,7 +139,7 @@ impl Oxidb {
                     DataType::Null => "NULL".to_string(),
                     DataType::Map(json_safe_map) => { // Match on JsonSafeMap wrapper
                         // Debug print the map content before serialization
-                        println!("[api_impl.rs get() -> Map serialization] Map content before serde_json::to_string:");
+                        println!("[implementation.rs get() -> Map serialization] Map content before serde_json::to_string:");
                         // Iterate over the inner HashMap using .0
                         for (k_bytes, v_datatype) in &json_safe_map.0 {
                             println!("  Key: {:?} (UTF-8: '{}'), Value: {:?}", k_bytes, String::from_utf8_lossy(k_bytes), v_datatype);
@@ -152,7 +147,7 @@ impl Oxidb {
                         // Serialize the JsonSafeMap wrapper itself, which has the #[serde_as] annotations
                         let json_string = serde_json::to_string(&json_safe_map)
                             .unwrap_or_else(|e| format!("Error serializing Map: {e}"));
-                        println!("[api_impl.rs get() -> Map serialization] Serialized JSON string: {json_string}");
+                        println!("[implementation.rs get() -> Map serialization] Serialized JSON string: {json_string}");
                         json_string
                     }
                     DataType::JsonBlob(json_val) => serde_json::to_string(&json_val)

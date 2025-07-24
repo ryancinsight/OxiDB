@@ -67,6 +67,12 @@ pub struct WalRecordIterator {
 
 impl WalRecordIterator {
     /// Create a new WAL record iterator from a file path
+    ///
+    /// # Errors
+    /// Returns `WalReaderError` if:
+    /// - The WAL file does not exist at the specified path
+    /// - File permissions prevent reading the WAL file
+    /// - I/O errors occur during file opening or buffer initialization
     pub fn new<P: AsRef<Path>>(
         wal_file_path: P,
         config: WalReaderConfig,
@@ -90,6 +96,13 @@ impl WalRecordIterator {
     }
 
     /// Read the next log record from the WAL file
+    ///
+    /// # Errors
+    /// Returns `WalReaderError` if:
+    /// - I/O errors occur during file reading
+    /// - Record deserialization fails due to corrupted data
+    /// - Record length prefix is invalid or corrupted
+    /// - Unexpected end of file during record reading
     pub fn next_record(&mut self) -> Result<Option<LogRecord>, WalReaderError> {
         // Read the 4-byte length prefix
         let mut length_bytes = [0u8; 4];

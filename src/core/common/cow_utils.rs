@@ -151,6 +151,7 @@ impl<'a> CowBytes<'a> {
 
 /// Efficient map operations that minimize cloning
 pub struct CowMap<'a> {
+    /// The underlying map data, either borrowed or owned
     data: Cow<'a, HashMap<Vec<u8>, DataType>>,
 }
 

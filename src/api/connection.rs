@@ -37,7 +37,7 @@ impl Connection {
     /// - Index directory creation fails
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, OxidbError> {
         let path_buf = path.as_ref().to_path_buf();
-        let data_dir = path.as_ref().parent().map_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), |parent| parent.to_path_buf());
+        let data_dir = path.as_ref().parent().map_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), std::path::Path::to_path_buf);
         
         let index_dir = data_dir.join("oxidb_indexes");
         let config = Config {
