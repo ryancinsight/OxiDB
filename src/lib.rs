@@ -175,6 +175,7 @@ pub use crate::core::common::OxidbError;
 mod tests {
     // Imports used by tests in this module
     use crate::Oxidb;
+    use crate::core::common::OxidbError;
     use std::fs::{self, File}; // fs and File are used
     use std::io::Write;
     use std::path::{Path, PathBuf}; // Path is used
@@ -436,15 +437,17 @@ mod tests {
         use tempfile::NamedTempFile;
 
         let mut temp_config_file = NamedTempFile::new().unwrap();
-        writeln!(temp_config_file, "this is not valid toml").unwrap();
+
+        // Write the malformed config to temp file
+        temp_config_file.write_all(b"invalid_toml_content = [").unwrap();
 
         let result = Oxidb::new_from_config_file(temp_config_file.path());
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            crate::OxidbError::Configuration(msg) => {
+        match result {
+            Err(OxidbError::Configuration(msg)) => {
                 assert!(msg.contains("Failed to parse config file"));
             }
-            e => unreachable!("Expected OxidbError::Configuration, got {e:?}"),
+            Err(other) => panic!("Expected Configuration error, got: {:?}", other),
+            Ok(_) => panic!("Expected error but got success"),
         }
     }
 }

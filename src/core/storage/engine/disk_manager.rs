@@ -15,7 +15,7 @@ pub struct DiskManager {
 }
 
 impl DiskManager {
-    /// Opens a database file and creates a new DiskManager instance
+    /// Opens a database file and creates a new `DiskManager` instance
     ///
     /// If the database file doesn't exist, it will be created. The next page ID
     /// is calculated based on the existing file size.
@@ -71,7 +71,7 @@ impl DiskManager {
     ///
     /// # Errors
     /// Returns `OxidbError` if:
-    /// - Page data length doesn't match PAGE_SIZE
+    /// - Page data length doesn't match `PAGE_SIZE`
     /// - File seek operation fails
     /// - File write operation fails
     /// - File sync operation fails

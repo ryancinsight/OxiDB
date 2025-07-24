@@ -147,7 +147,7 @@ impl UndoPhase {
         debug!("Undoing transaction {} starting from LSN {}", tx_info.tx_id.0, tx_info.last_lsn);
 
         let mut current_lsn = Some(tx_info.last_lsn);
-        let mut undo_next_lsn: Option<Lsn> = None;
+        let undo_next_lsn: Option<Lsn> = None;
 
         // Read all records to build a lookup map
         let all_records = reader
@@ -165,27 +165,31 @@ impl UndoPhase {
             if let Some(record) = record_map.get(&lsn) {
                 // Only process records for this transaction
                 if self.record_belongs_to_transaction(record, tx_info.tx_id) {
-                    if let LogRecord::CompensationLogRecord { next_undo_lsn: unl, .. } = record {
-                        // For CLRs, skip to the undo_next_lsn
-                        current_lsn = *unl;
+                    if let LogRecord::CompensationLogRecord { next_undo_lsn, .. } = record {
+                        // Skip CLRs during undo - they don't need to be undone
+                        debug!("Skipping CLR at LSN {}: {:?}", lsn, record);
+                        current_lsn = *next_undo_lsn;
+                        debug!("Updated current_lsn to {:?}", current_lsn);
                         continue;
-                    } else {
-                        // Process the undo operation
-                        debug!("Processing undo for record at LSN {}: {:?}", lsn, record);
-                        let prev_lsn = self.undo_log_record(record, undo_next_lsn)?;
-                        undo_next_lsn = Some(lsn);
-                        current_lsn = prev_lsn;
-                        // Only count records that actually need undo operations (not BeginTransaction)
-                        match record {
-                            LogRecord::InsertRecord { .. }
-                            | LogRecord::DeleteRecord { .. }
-                            | LogRecord::UpdateRecord { .. } => {
-                                self.statistics.records_processed += 1;
-                            }
-                            _ => {} // Don't count BeginTransaction and other non-undoable records
-                        }
-                        debug!("CLRs generated so far: {}", self.statistics.clrs_generated);
                     }
+                    // Process the undo operation
+                    debug!("Processing undo for record at LSN {}: {:?}", lsn, record);
+                    let prev_lsn = self.undo_log_record(record, self.extract_prev_lsn(record))?;
+                    current_lsn = prev_lsn;
+
+                    // Update statistics - only count records that actually need undo operations
+                    match record {
+                        LogRecord::InsertRecord { .. }
+                        | LogRecord::DeleteRecord { .. }
+                        | LogRecord::UpdateRecord { .. } => {
+                            self.statistics.records_processed += 1;
+                        }
+                        _ => {} // Don't count BeginTransaction and other non-undoable records
+                    }
+
+                    debug!("Undo operation completed for LSN {}", lsn);
+                    debug!("New current_lsn: {:?}", current_lsn);
+                    debug!("CLRs generated so far: {}", self.statistics.clrs_generated);
                 } else {
                     // This record doesn't belong to our transaction, get prev_lsn
                     current_lsn = self.extract_prev_lsn(record);
