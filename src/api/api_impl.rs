@@ -70,10 +70,11 @@ impl Oxidb {
             std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
         };
 
+        let index_dir = data_dir.join("oxidb_indexes");
         let config = Config {
             database_file,
-            data_dir: data_dir.clone(),
-            index_dir: data_dir.join("oxidb_indexes"),
+            data_dir,
+            index_dir,
             ..Config::default()
         };
 
