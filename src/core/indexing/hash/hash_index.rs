@@ -502,9 +502,9 @@ mod tests {
             "Value should still exist and be unchanged"
         );
         // Ensure no duplicate PKs if insert is called internally
-        let pks = index.store.get(&val1).unwrap();
+        let stored_pks = index.store.get(&val1).unwrap();
         assert_eq!(
-            pks.len(),
+            stored_pks.len(),
             1,
             "PK list should not grow if value is unchanged and PK already exists."
         );

@@ -42,7 +42,7 @@ fn test_update_empty_set_clause() {
     assert!(
         matches!(
             result,
-            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+            Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
         ),
         "Result was: {:?}",
         result
@@ -66,7 +66,7 @@ fn test_update_missing_value_in_assignment() {
     assert!(
         matches!(
             result,
-            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+            Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
         ),
         "Result was: {:?}",
         result
@@ -113,7 +113,7 @@ fn test_update_trailing_comma_in_assignment_list() {
     assert!(
         matches!(
             result,
-            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+            Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
         ),
         "Result was: {:?}",
         result
@@ -140,7 +140,7 @@ fn test_update_empty_where_clause() {
     assert!(
         matches!(
             result,
-            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+            Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
         ),
         "Result was: {:?}",
         result
@@ -170,7 +170,7 @@ fn test_update_missing_value_in_condition() {
     assert!(
         matches!(
             result,
-            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+            Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
         ),
         "Result was: {:?}",
         result
@@ -1048,7 +1048,7 @@ fn test_select_missing_table_name() {
     assert!(
         matches!(
             result,
-            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+            Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
         ),
         "Result was: {:?}",
         result
@@ -1073,7 +1073,7 @@ fn test_select_empty_where_clause() {
     assert!(
         matches!(
             result,
-            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+            Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
         ),
         "Result was: {:?}",
         result
@@ -1102,7 +1102,7 @@ fn test_select_missing_value_in_condition() {
     assert!(
         matches!(
             result,
-            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+            Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
         ),
         "Result was: {:?}",
         result
@@ -1428,7 +1428,7 @@ fn test_parse_insert_multiple_values() {
     assert!(
         matches!(
             result4,
-            Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+            Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
         ),
         "Result was: {:?}",
         result4
@@ -1755,7 +1755,7 @@ fn test_parse_drop_table_missing_table_name() {
     let result = parser.parse();
     assert!(matches!(
         result,
-        Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+        Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
     ));
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert!(expected.to_lowercase().contains("expected table name"));
@@ -1775,7 +1775,7 @@ fn test_parse_drop_table_if_exists_missing_table_name() {
     let result = parser.parse();
     assert!(matches!(
         result,
-        Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+        Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
     ));
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert!(expected.to_lowercase().contains("expected table name"));
@@ -2192,7 +2192,7 @@ fn test_parse_limit_missing_value() {
     let result = parser.parse();
     assert!(matches!(
         result,
-        Err(SqlParseError::UnexpectedToken { .. }) | Err(SqlParseError::UnexpectedEOF)
+        Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
     ));
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert!(expected.to_lowercase().contains("numeric literal for limit"));

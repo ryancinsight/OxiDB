@@ -345,7 +345,7 @@ mod tests {
                 page_populated.data[i] = (i % 256) as u8;
             }
             // Modify header fields to be non-default for better testing
-            page_populated.header.lsn = 101112; // Lsn is u64
+            page_populated.header.lsn = 101_112; // Lsn is u64
             page_populated.header.flags = 0xAA;
 
             let serialized_page_populated =

@@ -2,7 +2,7 @@ use oxidb::core::graph::{GraphData, GraphFactory, Relationship};
 use oxidb::core::rag::graphrag::GraphRAGEngineImpl;
 use oxidb::core::rag::retriever::InMemoryRetriever;
 use oxidb::core::rag::{Document, GraphRAGContext, GraphRAGEngine, KnowledgeEdge, KnowledgeNode};
-use oxidb::core::types::DataType;
+use oxidb::Value;
 use std::collections::HashMap;
 
 #[tokio::main]
@@ -101,13 +101,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Add nodes
     let node1_data = GraphData::new("Person".to_string())
-        .with_property("name".to_string(), DataType::String("Charlie".to_string()))
-        .with_property("age".to_string(), DataType::Integer(30));
+        .with_property("name".to_string(), Value::Text("Charlie".to_string()))
+        .with_property("age".to_string(), Value::Integer(30));
     let node1_id = graph.add_node(node1_data)?;
 
     let node2_data = GraphData::new("Person".to_string())
-        .with_property("name".to_string(), DataType::String("Diana".to_string()))
-        .with_property("age".to_string(), DataType::Integer(28));
+        .with_property("name".to_string(), Value::Text("Diana".to_string()))
+        .with_property("age".to_string(), Value::Integer(28));
     let node2_id = graph.add_node(node2_data)?;
 
     // Add relationship
@@ -136,7 +136,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     graph.begin_transaction()?;
 
     let temp_node_data = GraphData::new("Person".to_string())
-        .with_property("name".to_string(), DataType::String("Eve".to_string()));
+        .with_property("name".to_string(), Value::Text("Eve".to_string()));
     let temp_node_id = graph.add_node(temp_node_data)?;
     println!("  ✅ GraphTransaction - Added node {} in transaction", temp_node_id);
 
@@ -212,8 +212,8 @@ fn create_sample_documents() -> Vec<Document> {
 
 fn create_person_entity(name: &str, role: &str, embedding: Vec<f32>) -> KnowledgeNode {
     let mut properties = HashMap::new();
-    properties.insert("role".to_string(), DataType::String(role.to_string()));
-    properties.insert("type".to_string(), DataType::String("person".to_string()));
+    properties.insert("role".to_string(), Value::Text(role.to_string()));
+    properties.insert("type".to_string(), Value::Text("person".to_string()));
 
     KnowledgeNode {
         id: 0, // Will be assigned by the engine
@@ -228,8 +228,8 @@ fn create_person_entity(name: &str, role: &str, embedding: Vec<f32>) -> Knowledg
 
 fn create_organization_entity(name: &str, description: &str, embedding: Vec<f32>) -> KnowledgeNode {
     let mut properties = HashMap::new();
-    properties.insert("industry".to_string(), DataType::String("technology".to_string()));
-    properties.insert("type".to_string(), DataType::String("organization".to_string()));
+    properties.insert("industry".to_string(), Value::Text("technology".to_string()));
+    properties.insert("type".to_string(), Value::Text("organization".to_string()));
 
     KnowledgeNode {
         id: 0, // Will be assigned by the engine
@@ -271,11 +271,11 @@ async fn demonstrate_clustering_coefficient() -> Result<(), Box<dyn std::error::
     // Create a more interesting graph structure for clustering coefficient demo
     // Triangle: nodes 1-2-3-1 (perfect clustering)
     let node1_data = GraphData::new("person".to_string())
-        .with_property("name".to_string(), DataType::String("Alice".to_string()));
+        .with_property("name".to_string(), Value::Text("Alice".to_string()));
     let node2_data = GraphData::new("person".to_string())
-        .with_property("name".to_string(), DataType::String("Bob".to_string()));
+        .with_property("name".to_string(), Value::Text("Bob".to_string()));
     let node3_data = GraphData::new("person".to_string())
-        .with_property("name".to_string(), DataType::String("Charlie".to_string()));
+        .with_property("name".to_string(), Value::Text("Charlie".to_string()));
 
     let node1 = graph.add_node(node1_data)?;
     let node2 = graph.add_node(node2_data)?;
@@ -289,9 +289,9 @@ async fn demonstrate_clustering_coefficient() -> Result<(), Box<dyn std::error::
 
     // Add a few more nodes for star pattern (zero clustering)
     let node4_data = GraphData::new("person".to_string())
-        .with_property("name".to_string(), DataType::String("Diana".to_string()));
+        .with_property("name".to_string(), Value::Text("Diana".to_string()));
     let node5_data = GraphData::new("person".to_string())
-        .with_property("name".to_string(), DataType::String("Eve".to_string()));
+        .with_property("name".to_string(), Value::Text("Eve".to_string()));
 
     let node4 = graph.add_node(node4_data)?;
     let node5 = graph.add_node(node5_data)?;
@@ -364,15 +364,15 @@ async fn demonstrate_comprehensive_persistence() -> Result<(), Box<dyn std::erro
 
     // Test GraphOperations
     let node1_data = GraphData::new("company".to_string())
-        .with_property("name".to_string(), DataType::String("Oxidb Corp".to_string()))
-        .with_property("founded".to_string(), DataType::Integer(2024));
+        .with_property("name".to_string(), Value::Text("Oxidb Corp".to_string()))
+        .with_property("founded".to_string(), Value::Integer(2024));
 
     let node2_data = GraphData::new("product".to_string())
-        .with_property("name".to_string(), DataType::String("Oxidb Database".to_string()))
-        .with_property("version".to_string(), DataType::String("1.0".to_string()));
+        .with_property("name".to_string(), Value::Text("Oxidb Database".to_string()))
+        .with_property("version".to_string(), Value::Text("1.0".to_string()));
 
     let node3_data = GraphData::new("feature".to_string())
-        .with_property("name".to_string(), DataType::String("GraphRAG".to_string()));
+        .with_property("name".to_string(), Value::Text("GraphRAG".to_string()));
 
     let node1_id = factory_store.add_node(node1_data)?;
     let node2_id = factory_store.add_node(node2_data)?;
@@ -390,7 +390,7 @@ async fn demonstrate_comprehensive_persistence() -> Result<(), Box<dyn std::erro
     println!("  🔍 Testing GraphQuery capabilities (previously inaccessible)...");
 
     let oxidb_nodes = factory_store
-        .find_nodes_by_property("name", &DataType::String("Oxidb Database".to_string()))?;
+        .find_nodes_by_property("name", &Value::Text("Oxidb Database".to_string()))?;
     println!(
         "    ✅ find_nodes_by_property: Found {} nodes with name 'Oxidb Database'",
         oxidb_nodes.len()
@@ -413,7 +413,7 @@ async fn demonstrate_comprehensive_persistence() -> Result<(), Box<dyn std::erro
     println!("    🔄 Transaction started");
 
     let user_data = GraphData::new("user".to_string())
-        .with_property("name".to_string(), DataType::String("Demo User".to_string()));
+        .with_property("name".to_string(), Value::Text("Demo User".to_string()));
     let user_id = factory_store.add_node(user_data)?;
 
     let uses_rel = Relationship::new("USES".to_string());
@@ -441,7 +441,7 @@ async fn demonstrate_comprehensive_persistence() -> Result<(), Box<dyn std::erro
 
     // Find all company nodes and update their status
     let company_nodes = factory_store
-        .find_nodes_by_property("name", &DataType::String("Oxidb Corp".to_string()))?;
+        .find_nodes_by_property("name", &Value::Text("Oxidb Corp".to_string()))?;
     for &company_id in &company_nodes {
         // In a real scenario, you'd update properties here
         println!("    🏢 Processing company node: {}", company_id);

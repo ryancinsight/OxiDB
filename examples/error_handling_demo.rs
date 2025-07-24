@@ -1,4 +1,4 @@
-use oxidb::{Connection, OxidbError, QueryResult};
+use oxidb::Connection;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== OxiDB Error Handling and Edge Cases Demo ===\n");

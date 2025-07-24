@@ -92,10 +92,10 @@ mod tests {
     #[test]
     fn test_profiler_operation() {
         let mut profiler = PerformanceProfiler::new();
-        let profiled = profiler.start_operation("test_op");
+        let operation_guard = profiler.start_operation("test_op");
 
         thread::sleep(Duration::from_millis(10));
-        let result = profiled.complete();
+        let result = operation_guard.complete();
 
         assert_eq!(result.operation, "test_op");
         assert!(result.duration >= Duration::from_millis(10));
