@@ -39,26 +39,26 @@ Seven thematic queries were tested to evaluate both systems:
 | Comedy and Humor | 2.76 | 102.71 | RAG 37.2x faster |
 | Betrayal and Revenge | 2.77 | 101.61 | RAG 36.7x faster |
 
-**Average Performance**: RAG is **37.7x faster** (2.77ms vs 104.44ms)
+**Average Performance**: RAG is **37.5x faster** (2.72ms vs 101.77ms)
 
 ### Quality Comparison
 | Query Category | RAG Relevance | GraphRAG Relevance | Quality Improvement |
 |---|---|---|---|
 | Love and Romance | 0.000 | 0.926 | +92.6% |
-| Tragic Deaths | 0.000 | 0.968 | +96.8% |
-| Family Conflicts | 0.000 | 0.886 | +88.6% |
-| Supernatural Elements | 0.000 | 0.867 | +86.7% |
-| Power and Ambition | 0.000 | 0.958 | +95.8% |
+| Tragic Deaths | 0.200 | 0.968 | +76.8% |
+| Family Conflicts | 0.033 | 0.886 | +85.2% |
+| Supernatural Elements | 0.067 | 0.867 | +80.1% |
+| Power and Ambition | 0.133 | 0.958 | +82.5% |
 | Comedy and Humor | 0.000 | 0.861 | +86.1% |
-| Betrayal and Revenge | 0.000 | 0.852 | +85.2% |
+| Betrayal and Revenge | 0.050 | 0.852 | +80.2% |
 
-**Average Quality**: GraphRAG shows **90.3% higher relevance** scores
+**Average Quality**: RAG 0.069 vs GraphRAG 0.903 (**83.4% improvement**)
 
 ## Key Findings
 
 ### 1. Speed vs Quality Trade-off
-- **RAG Advantage**: Extremely fast retrieval (2.77ms average)
-- **GraphRAG Advantage**: Superior relevance scoring (90.3% improvement)
+- **RAG Advantage**: Extremely fast retrieval (2.72ms average)
+- **GraphRAG Advantage**: Superior relevance scoring (83.4% improvement)
 - **Use Case Implications**: RAG for real-time applications, GraphRAG for research/analysis
 
 ### 2. Knowledge Graph Enhancement
@@ -123,8 +123,8 @@ GraphRAG provided contextual insights:
 
 The Shakespeare corpus analysis demonstrates that **RAG and GraphRAG serve complementary roles** in information retrieval:
 
-- **RAG excels at speed** with 37.7x faster retrieval times, making it ideal for real-time applications
-- **GraphRAG excels at quality** with 90.3% better relevance scores, making it superior for analytical tasks
+- **RAG excels at speed** with 37.5x faster retrieval times, making it ideal for real-time applications
+- **GraphRAG excels at quality** with 83.4% better relevance scores, making it superior for analytical tasks
 
 The choice between approaches should be driven by specific use case requirements, with hybrid approaches potentially offering the best of both worlds through intelligent routing based on query complexity and time constraints.
 
