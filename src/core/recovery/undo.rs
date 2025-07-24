@@ -174,7 +174,7 @@ impl UndoPhase {
                     }
                     // Process the undo operation
                     debug!("Processing undo for record at LSN {}: {:?}", lsn, record);
-                    let prev_lsn = self.undo_log_record(record, undo_next_lsn)?;
+                    let prev_lsn = self.undo_log_record(record, self.extract_prev_lsn(record))?;
                     current_lsn = prev_lsn;
 
                     // Update statistics - only count records that actually need undo operations
