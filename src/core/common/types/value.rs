@@ -51,48 +51,54 @@ impl Value {
 }
 
 impl PartialOrd for Value {
-    /// Compares two values for ordering.
+    /// Implements partial comparison for Value types.
     /// 
-    /// Returns `None` if the values are not comparable (different types except
-    /// for integer/float conversions, or when comparing vectors).
-    /// 
-    /// # Precision Considerations
-    /// 
-    /// When comparing integers with floats, integers are converted to floats
-    /// using safe conversion methods that preserve as much precision as possible.
-    /// However, very large integers (beyond f64's mantissa precision) may lose
-    /// precision in the comparison.
+    /// When comparing integers with floats, this implementation uses robust
+    /// precision-aware comparison that correctly handles large integers that
+    /// cannot be precisely represented as f64. This prevents incorrect query
+    /// results that could occur with naive casting approaches.
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self, other) {
             (Self::Integer(a), Self::Integer(b)) => a.partial_cmp(b),
             (Self::Float(a), Self::Float(b)) => a.partial_cmp(b),
-            // Use safe conversion that checks for precision loss
+            // Robust comparison for Integer vs Float
             (Self::Integer(a), Self::Float(b)) => {
-                // Check if the integer can be exactly represented as f64
+                if b.is_nan() {
+                    return None;
+                }
+                // If `a` can be precisely represented as an `f64`, perform a direct float comparison.
                 if *a == (*a as f64) as i64 {
-                    (*a as f64).partial_cmp(b)
-                } else {
-                    // For very large integers, use a more careful comparison
-                    let a_float = *a as f64;
-                    if a_float.is_infinite() {
-                        if *a > 0 { Some(Ordering::Greater) } else { Some(Ordering::Less) }
-                    } else {
-                        a_float.partial_cmp(b)
-                    }
+                    return (*a as f64).partial_cmp(b);
+                }
+
+                // `a` is a large integer that loses precision. Compare against `b`'s parts.
+                let b_trunc = b.trunc();
+                if b_trunc > i64::MAX as f64 { return Some(Ordering::Less); }
+                if b_trunc < i64::MIN as f64 { return Some(Ordering::Greater); }
+
+                match a.cmp(&(b_trunc as i64)) {
+                    Ordering::Equal => b.fract().partial_cmp(&0.0).map(|ord| ord.reverse()),
+                    other => Some(other),
                 }
             }
+            // Robust comparison for Float vs Integer
             (Self::Float(a), Self::Integer(b)) => {
-                // Check if the integer can be exactly represented as f64
+                if a.is_nan() {
+                    return None;
+                }
+                // If `b` can be precisely represented as an `f64`, perform a direct float comparison.
                 if *b == (*b as f64) as i64 {
-                    a.partial_cmp(&(*b as f64))
-                } else {
-                    // For very large integers, use a more careful comparison
-                    let b_float = *b as f64;
-                    if b_float.is_infinite() {
-                        if *b > 0 { Some(Ordering::Less) } else { Some(Ordering::Greater) }
-                    } else {
-                        a.partial_cmp(&b_float)
-                    }
+                    return a.partial_cmp(&(*b as f64));
+                }
+
+                // `b` is a large integer that loses precision. Compare `a` against it.
+                let a_trunc = a.trunc();
+                if a_trunc > i64::MAX as f64 { return Some(Ordering::Greater); }
+                if a_trunc < i64::MIN as f64 { return Some(Ordering::Less); }
+
+                match (a_trunc as i64).cmp(b) {
+                    Ordering::Equal => a.fract().partial_cmp(&0.0),
+                    other => Some(other),
                 }
             }
             (Self::Text(a), Self::Text(b)) => a.partial_cmp(b),
@@ -105,5 +111,89 @@ impl PartialOrd for Value {
             // All other combinations are non-compatible
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cmp::Ordering;
+
+    #[test]
+    fn test_integer_float_comparison_precision() {
+        // Test case where precision is maintained
+        let small_int = Value::Integer(42);
+        let float_val = Value::Float(42.5);
+        assert_eq!(small_int.partial_cmp(&float_val), Some(Ordering::Less));
+
+        // Test the critical edge case: 2^53 + 1
+        // This integer cannot be precisely represented as f64
+        let large_int = Value::Integer((1i64 << 53) + 1); // 9007199254740993
+        let exact_float = Value::Float((1i64 << 53) as f64); // 9007199254740992.0
+        
+        // The integer should be greater than the float, not equal
+        assert_eq!(large_int.partial_cmp(&exact_float), Some(Ordering::Greater));
+        
+        // Test the reverse comparison
+        assert_eq!(exact_float.partial_cmp(&large_int), Some(Ordering::Less));
+
+        // Test with fractional part
+        let float_with_fract = Value::Float(9007199254740992.5);
+        assert_eq!(large_int.partial_cmp(&float_with_fract), Some(Ordering::Greater));
+        assert_eq!(float_with_fract.partial_cmp(&large_int), Some(Ordering::Less));
+
+        // Test edge case where float fractional part makes it larger
+        let float_larger = Value::Float(9007199254740993.1);
+        assert_eq!(large_int.partial_cmp(&float_larger), Some(Ordering::Less));
+        assert_eq!(float_larger.partial_cmp(&large_int), Some(Ordering::Greater));
+    }
+
+    #[test]
+    fn test_large_negative_integer_comparison() {
+        // Test large negative integers
+        let large_neg_int = Value::Integer(-((1i64 << 53) + 1));
+        let neg_float = Value::Float(-((1i64 << 53) as f64));
+        
+        assert_eq!(large_neg_int.partial_cmp(&neg_float), Some(Ordering::Less));
+        assert_eq!(neg_float.partial_cmp(&large_neg_int), Some(Ordering::Greater));
+    }
+
+    #[test]
+    fn test_float_bounds_comparison() {
+        // Test floats that exceed i64 range
+        let max_int = Value::Integer(i64::MAX);
+        let large_float = Value::Float(i64::MAX as f64 + 1e20);
+        
+        assert_eq!(max_int.partial_cmp(&large_float), Some(Ordering::Less));
+        assert_eq!(large_float.partial_cmp(&max_int), Some(Ordering::Greater));
+
+        let min_int = Value::Integer(i64::MIN);
+        let small_float = Value::Float(i64::MIN as f64 - 1e20);
+        
+        assert_eq!(min_int.partial_cmp(&small_float), Some(Ordering::Greater));
+        assert_eq!(small_float.partial_cmp(&min_int), Some(Ordering::Less));
+    }
+
+    #[test]
+    fn test_nan_comparison() {
+        let int_val = Value::Integer(42);
+        let nan_val = Value::Float(f64::NAN);
+        
+        assert_eq!(int_val.partial_cmp(&nan_val), None);
+        assert_eq!(nan_val.partial_cmp(&int_val), None);
+    }
+
+    #[test]
+    fn test_precise_integer_comparison() {
+        // Test integers that can be precisely represented as f64
+        let precise_int = Value::Integer(1024);
+        let precise_float = Value::Float(1024.0);
+        
+        assert_eq!(precise_int.partial_cmp(&precise_float), Some(Ordering::Equal));
+        assert_eq!(precise_float.partial_cmp(&precise_int), Some(Ordering::Equal));
+        
+        let precise_float_larger = Value::Float(1024.1);
+        assert_eq!(precise_int.partial_cmp(&precise_float_larger), Some(Ordering::Less));
+        assert_eq!(precise_float_larger.partial_cmp(&precise_int), Some(Ordering::Greater));
     }
 }
