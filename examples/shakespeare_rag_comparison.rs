@@ -221,7 +221,7 @@ fn process_shakespeare_text(title: &str, content: &str, genre: &str) -> Vec<Docu
             // Create simple embedding (in real implementation, use proper embedding model)
             let embedding = create_simple_embedding(&scene_content);
             
-            documents.push(            Document {
+            documents.push(Document {
                 id: doc_id,
                 content: scene_content,
                 embedding: Some(embedding),
