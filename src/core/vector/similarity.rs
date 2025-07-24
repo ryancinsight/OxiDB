@@ -167,7 +167,7 @@ mod tests {
         // Magnitude v1 = sqrt(1^2 + 2^2) = sqrt(1 + 4) = sqrt(5)
         // Magnitude v2 = sqrt(3^2 + 4^2) = sqrt(9 + 16) = sqrt(25) = 5
         // Cosine similarity = 11 / (sqrt(5) * 5) = 11 / (2.236067977 * 5) = 11 / 11.180339887 = 0.98386991
-        assert_relative_eq!(cosine_similarity(&v1, &v2).unwrap(), 0.98386991, epsilon = 1e-6);
+        assert_relative_eq!(cosine_similarity(&v1, &v2).unwrap(), 0.983_869_91, epsilon = 1e-6);
     }
 
     #[test]

@@ -1030,10 +1030,10 @@ mod tests {
             "last_flush_time should update after commit flush"
         );
 
-        let records = read_records_from_file(&test_file_path).expect("Read failed");
-        assert_eq!(records.len(), 2);
-        assert_eq!(records[0], record1);
-        assert_eq!(records[1], record_commit);
+        let written_records = read_records_from_file(&test_file_path).expect("Read failed");
+        assert_eq!(written_records.len(), 2);
+        assert_eq!(written_records[0], record1);
+        assert_eq!(written_records[1], record_commit);
 
         let last_flush_after_commit = writer.last_flush_time.unwrap();
 
@@ -1111,14 +1111,14 @@ mod tests {
             "last_flush_time should update"
         );
 
-        let records = read_records_from_file(&test_file_path).expect("Read failed");
+        let flushed_records = read_records_from_file(&test_file_path).expect("Read failed");
         assert_eq!(
-            records.len(),
+            flushed_records.len(),
             2,
             "Should have flushed record1 (periodic) and then record_commit (commit)"
         );
-        assert_eq!(records[0], record1);
-        assert_eq!(records[1], record_commit);
+        assert_eq!(flushed_records[0], record1);
+        assert_eq!(flushed_records[1], record_commit);
 
         cleanup_file(&test_file_path);
     }

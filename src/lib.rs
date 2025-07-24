@@ -287,13 +287,13 @@ mod tests {
         let db_path = temp_db_file.path();
 
         let key_c = b"key_c_persist".to_vec();
-        let val_c_str = "val_c".to_string();
+        let value_c_str = "val_c".to_string();
         let key_d = b"key_d_persist".to_vec();
-        let val_d_str = "val_d".to_string();
+        let value_d_str = "val_d".to_string();
 
         {
             let mut db1 = Oxidb::new(db_path).expect("Failed to create Oxidb (instance 1)");
-            db1.insert(key_c.clone(), val_c_str.clone()).unwrap();
+            db1.insert(key_c.clone(), value_c_str.clone()).unwrap();
             db1.persist().unwrap();
         }
 
@@ -301,11 +301,11 @@ mod tests {
             let mut db2 = Oxidb::new(db_path).expect("Failed to create Oxidb (instance 2)");
             assert_eq!(
                 db2.get(key_c.clone()).unwrap(),
-                Some(val_c_str.clone()),
+                Some(value_c_str.clone()),
                 "Key C should be present in instance 2"
             );
 
-            db2.insert(key_d.clone(), val_d_str.clone()).unwrap();
+            db2.insert(key_d.clone(), value_d_str.clone()).unwrap();
             db2.persist().unwrap();
         }
 
@@ -313,12 +313,12 @@ mod tests {
             let mut db3 = Oxidb::new(db_path).expect("Failed to create Oxidb (instance 3)");
             assert_eq!(
                 db3.get(key_c).unwrap(),
-                Some(val_c_str.clone()),
+                Some(value_c_str.clone()),
                 "Key C should be present in instance 3"
             );
             assert_eq!(
                 db3.get(key_d).unwrap(),
-                Some(val_d_str.clone()),
+                Some(value_d_str.clone()),
                 "Key D should be present in instance 3"
             );
         }
