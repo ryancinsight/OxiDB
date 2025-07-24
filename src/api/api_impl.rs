@@ -28,7 +28,7 @@ impl Oxidb {
     ///
     /// # Errors
     /// Returns `OxidbError` if the store cannot be initialized or the executor cannot be created.
-    pub fn new_with_config(config: Config) -> Result<Self, OxidbError> {
+    pub fn new_with_config(config: &Config) -> Result<Self, OxidbError> {
         let store_path = config.database_path(); // Path for SFKS data file
         let store = SimpleFileKvStore::new(store_path.clone())?; // SFKS derives its physical WAL from store_path
 
@@ -64,11 +64,7 @@ impl Oxidb {
         let database_file = db_path.to_path_buf();
         
         // Set data directory based on the database path
-        let data_dir = if let Some(parent) = db_path.parent() {
-            parent.to_path_buf()
-        } else {
-            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-        };
+        let data_dir = db_path.parent().map_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), |parent| parent.to_path_buf());
 
         let index_dir = data_dir.join("oxidb_indexes");
         let config = Config {
@@ -78,7 +74,7 @@ impl Oxidb {
             ..Config::default()
         };
 
-        Self::new_with_config(config)
+        Self::new_with_config(&config)
     }
 
     /// Creates a new `Oxidb` instance or loads an existing one using a configuration file.
@@ -92,7 +88,7 @@ impl Oxidb {
     /// Returns `OxidbError` if the configuration file cannot be read/parsed or if the store cannot be initialized.
     pub fn new_from_config_file(config_path: impl AsRef<Path>) -> Result<Self, OxidbError> {
         let config = Config::load_from_file(config_path.as_ref())?;
-        Self::new_with_config(config)
+        Self::new_with_config(&config)
     }
 
     /// Inserts a key-value pair into the database.

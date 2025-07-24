@@ -28,13 +28,16 @@ pub struct Connection {
 
 impl Connection {
     /// Opens a new database connection at the specified path.
+    ///
+    /// # Errors
+    /// Returns `OxidbError` if:
+    /// - The database file cannot be created or accessed
+    /// - The directory structure cannot be initialized
+    /// - The storage engine fails to initialize
+    /// - Index directory creation fails
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, OxidbError> {
         let path_buf = path.as_ref().to_path_buf();
-        let data_dir = if let Some(parent) = path.as_ref().parent() {
-            parent.to_path_buf()
-        } else {
-            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
-        };
+        let data_dir = path.as_ref().parent().map_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), |parent| parent.to_path_buf());
         
         let index_dir = data_dir.join("oxidb_indexes");
         let config = Config {
@@ -44,10 +47,16 @@ impl Connection {
             ..Config::default()
         };
 
-        Self::new_with_config(config)
+        Self::new_with_config(&config)
     }
 
     /// Opens a new in-memory database connection.
+    ///
+    /// # Errors
+    /// Returns `OxidbError` if:
+    /// - Temporary file creation fails
+    /// - Storage engine initialization fails
+    /// - Memory allocation for database structures fails
     pub fn open_in_memory() -> Result<Self, OxidbError> {
         let mut config = Config::default();
 
@@ -60,11 +69,11 @@ impl Connection {
         let temp_db_name = format!("temp_oxidb_{}_{}.db", std::process::id(), unique_id);
         config.database_file = std::path::PathBuf::from(temp_db_name);
 
-        Self::new_with_config(config)
+        Self::new_with_config(&config)
     }
 
     /// Creates a connection with a specific config (internal helper)
-    fn new_with_config(config: Config) -> Result<Self, OxidbError> {
+    fn new_with_config(config: &Config) -> Result<Self, OxidbError> {
         let store_path = config.database_path();
         let store = SimpleFileKvStore::new(store_path)?;
 
@@ -106,6 +115,12 @@ impl Connection {
     }
 
     /// Begins a new transaction.
+    ///
+    /// # Errors
+    /// Returns `OxidbError` if:
+    /// - A transaction is already active
+    /// - The transaction manager fails to initialize the transaction
+    /// - WAL logging fails during transaction start
     pub fn begin_transaction(&mut self) -> Result<(), OxidbError> {
         let command = parse_query_string("BEGIN")?;
         self.executor.execute_command(command)?;
@@ -113,6 +128,13 @@ impl Connection {
     }
 
     /// Commits the current transaction.
+    ///
+    /// # Errors
+    /// Returns `OxidbError` if:
+    /// - No active transaction exists
+    /// - WAL flush fails during commit
+    /// - Data persistence to disk fails
+    /// - Transaction state consistency cannot be maintained
     pub fn commit(&mut self) -> Result<(), OxidbError> {
         let command = parse_query_string("COMMIT")?;
         self.executor.execute_command(command)?;
@@ -120,6 +142,13 @@ impl Connection {
     }
 
     /// Rolls back the current transaction.
+    ///
+    /// # Errors
+    /// Returns `OxidbError` if:
+    /// - No active transaction exists
+    /// - Rollback operations fail during undo processing
+    /// - WAL recovery encounters corrupted entries
+    /// - Lock release fails during rollback cleanup
     pub fn rollback(&mut self) -> Result<(), OxidbError> {
         let command = parse_query_string("ROLLBACK")?;
         self.executor.execute_command(command)?;
@@ -127,6 +156,13 @@ impl Connection {
     }
 
     /// Persists any pending changes to disk.
+    ///
+    /// # Errors
+    /// Returns `OxidbError` if:
+    /// - Disk write operations fail due to I/O errors
+    /// - WAL flush encounters storage issues
+    /// - File system permissions prevent write access
+    /// - Insufficient disk space for persistence operations
     pub fn persist(&mut self) -> Result<(), OxidbError> {
         self.executor.persist()
     }
@@ -177,6 +213,12 @@ impl Connection {
     ///     Ok(())
     /// }
     /// ```
+    /// # Errors
+    /// Returns `OxidbError` if:
+    /// - The SQL query cannot be parsed
+    /// - Parameter count doesn't match placeholder count
+    /// - Parameter types are incompatible with query requirements
+    /// - Query execution fails due to storage or transaction errors
     pub fn execute_with_params(
         &mut self,
         sql: &str,
@@ -206,6 +248,12 @@ impl Connection {
     ///
     /// # Returns
     /// * `Result<Option<crate::api::types::Row>, OxidbError>` - The first row or None
+    ///
+    /// # Errors
+    /// Returns `OxidbError` if:
+    /// - The SQL query cannot be parsed
+    /// - Query execution fails due to storage or transaction errors
+    /// - Database access is denied or locked
     pub fn query_row(&mut self, sql: &str) -> Result<Option<crate::api::types::Row>, OxidbError> {
         let result = self.execute(sql)?;
         match result {
@@ -223,6 +271,13 @@ impl Connection {
     ///
     /// # Returns
     /// * `Result<Vec<crate::api::types::Row>, OxidbError>` - All rows or an error
+    ///
+    /// # Errors  
+    /// Returns `OxidbError` if:
+    /// - The SQL query cannot be parsed
+    /// - Query execution fails due to storage or transaction errors
+    /// - Memory allocation fails for large result sets
+    /// - Database access is denied or locked
     pub fn query_all(&mut self, sql: &str) -> Result<Vec<crate::api::types::Row>, OxidbError> {
         let result = self.execute(sql)?;
         match result {
@@ -284,6 +339,12 @@ impl Connection {
     ///     Ok(())
     /// }
     /// ```
+    ///
+    /// # Errors
+    /// Returns `OxidbError` if:
+    /// - Performance data collection fails
+    /// - Memory allocation fails during report generation
+    /// - Internal performance metrics are corrupted
     pub fn get_performance_report(
         &self,
     ) -> Result<crate::core::performance::PerformanceReport, OxidbError> {
