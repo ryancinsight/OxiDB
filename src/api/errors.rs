@@ -4,7 +4,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum ApiError {
+pub enum Error {
     #[error("Invalid request: {0}")]
     InvalidRequest(String),
     // Example:

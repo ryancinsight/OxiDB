@@ -17,12 +17,10 @@ use oxidb::core::rag::retriever::{InMemoryRetriever, SimilarityMetric};
 use oxidb::core::rag::{GraphRAGEngine, Retriever};
 use oxidb::Value;
 use regex::Regex;
-use reqwest;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
-use tokio;
 
 /// Shakespeare work metadata
 #[derive(Debug, Clone)]

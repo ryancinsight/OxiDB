@@ -8,6 +8,7 @@ use crate::core::common::types::Lsn; // Assuming Lsn is u64, or define it here/c
 /// LSNs are unique and monotonically increasing.
 #[derive(Debug)]
 pub struct LogManager {
+    /// Atomic counter for generating unique Log Sequence Numbers
     lsn_counter: Arc<AtomicU64>,
     // Potentially, a handle to the WalWriter or other components if needed later.
 }

@@ -129,13 +129,13 @@ impl BlinkTreeIndex {
 
                 // Then handle this internal node if it's underflowing
                 if self.is_underflowing(&node) {
-                    self.handle_underflowing_internal(page_id)?;
+                    Self::handle_underflowing_internal(page_id)?;
                 }
             }
             BlinkTreeNode::Leaf { .. } => {
                 // Handle underflowing leaf
                 if self.is_underflowing(&node) {
-                    self.handle_underflowing_leaf(page_id)?;
+                    Self::handle_underflowing_leaf(page_id)?;
                 }
             }
         }
@@ -147,7 +147,6 @@ impl BlinkTreeIndex {
     /// In Blink trees, we can be more aggressive about leaving small nodes
     /// since concurrent access is more important than perfect balance
     fn handle_underflowing_leaf(
-        &mut self,
         _leaf_page_id: super::PageId,
     ) -> Result<(), BlinkTreeError> {
         // For now, we'll leave underflowing leaves as-is
@@ -164,7 +163,6 @@ impl BlinkTreeIndex {
 
     /// Handle an underflowing internal node
     fn handle_underflowing_internal(
-        &mut self,
         _internal_page_id: super::PageId,
     ) -> Result<(), BlinkTreeError> {
         // Similar to leaves, we'll defer complex merging operations

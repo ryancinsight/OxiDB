@@ -90,22 +90,32 @@ const fn default_similarity_threshold() -> f32 {
 /// - Open/Closed: Can be extended with new configuration options without modification
 /// - Interface Segregation: Provides focused methods for each configuration aspect
 #[derive(Debug, Clone)]
-pub struct ConfigBuilder {
+pub struct Builder {
+    /// Base directory for database files
     data_dir: Option<PathBuf>,
+    /// Path to the main database file
     database_file: Option<PathBuf>, // Added to store the specific database file path
+    /// Directory for index storage
     index_dir: Option<PathBuf>,
+    /// Maximum cache size in bytes
     max_cache_size: Option<usize>,
+    /// Whether WAL (Write-Ahead Logging) is enabled
     wal_enabled: Option<bool>,
+    /// Automatic checkpoint interval in seconds
     auto_checkpoint_interval: Option<u64>,
+    /// Maximum number of concurrent connections
     max_connections: Option<u32>,
+    /// Query timeout in milliseconds
     query_timeout_ms: Option<u64>,
+    /// Whether vector search capabilities are enabled
     enable_vector_search: Option<bool>,
+    /// Dimension size for vector operations
     vector_dimension: Option<usize>,
     similarity_threshold: Option<f32>,
 }
 
-impl ConfigBuilder {
-    /// Creates a new `ConfigBuilder` with default values
+impl Builder {
+    /// Creates a new `Builder` with default values
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -219,7 +229,7 @@ impl ConfigBuilder {
     }
 }
 
-impl Default for ConfigBuilder {
+impl Default for Builder {
     fn default() -> Self {
         Self::new()
     }
@@ -244,10 +254,10 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Creates a new `ConfigBuilder` for fluent configuration
-    #[must_use]
-    pub const fn builder() -> ConfigBuilder {
-        ConfigBuilder::new()
+    /// Creates a new `Builder` for fluent configuration
+#[must_use]
+pub const fn builder() -> Builder {
+    Builder::new()
     }
 
     /// Validates the configuration

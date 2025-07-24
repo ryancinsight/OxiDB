@@ -1,7 +1,7 @@
 // src/api/traits.rs
 //! Defines abstract patterns of behavior (traits) for the API layer.
 
-use crate::api::errors::ApiError;
+use crate::api::errors::Error as ApiError;
 use crate::api::types::QueryResult;
 use crate::core::query::commands::Command;
 // use crate::core::types::schema::{Schema, TableSchema}; // Future use
@@ -18,6 +18,13 @@ pub trait OxidbApi {
     /// # Returns
     ///
     /// A `Result` containing a `QueryResult` on success, or an `ApiError` on failure.
+    ///
+    /// # Errors
+    /// Returns `ApiError` if:
+    /// - The statement cannot be parsed or validated
+    /// - Database access fails due to locks or permissions
+    /// - The underlying storage engine encounters an error
+    /// - Transaction constraints are violated
     fn execute_statement(&self, statement: &Command) -> Result<QueryResult, ApiError>;
 
     // == Future Placeholder Methods for schema and data type operations ==
