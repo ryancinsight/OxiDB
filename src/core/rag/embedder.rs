@@ -41,10 +41,9 @@ impl TfIdfEmbedder {
         for doc in documents {
             let words: std::collections::HashSet<String> = doc.content
                 .to_lowercase()
-                .split_whitespace()
-                .filter(|word| word.len() > 2) // Filter short words
-                .map(|word| word.chars().filter(|c| c.is_alphabetic()).collect())
-                .filter(|word: &String| !word.is_empty())
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|s| s.len() > 2)
+                .map(String::from)
                 .collect();
             
             for word in words {
