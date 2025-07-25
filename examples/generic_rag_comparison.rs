@@ -392,7 +392,7 @@ fn calculate_relevance_score(query: &str, documents: &[Document]) -> f64 {
         let mut matches = 0;
         
         for query_word in &query_words {
-            if doc_words.iter().any(|&word| word.contains(query_word) || query_word.contains(word)) {
+            if doc_words.iter().any(|&word| word == *query_word) {
                 matches += 1;
             }
         }
