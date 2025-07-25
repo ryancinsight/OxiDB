@@ -284,13 +284,14 @@ impl GraphRAGEngineImpl {
     }
 
     /// Generate consistent entity ID from document and entity name
-    fn generate_entity_id(&self, document_id: &str, entity_name: &str) -> NodeId {
+    /// Generate consistent entity ID from entity name and type
+    fn generate_entity_id(&self, entity_name: &str, entity_type: &str) -> NodeId {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
         
         let mut hasher = DefaultHasher::new();
-        document_id.hash(&mut hasher);
-        entity_name.hash(&mut hasher);
+        entity_name.to_lowercase().hash(&mut hasher); // Hash lowercased name for consistency
+        entity_type.hash(&mut hasher);
         hasher.finish() as NodeId
     }
 
