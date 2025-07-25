@@ -138,12 +138,12 @@ mod tests {
         assert_eq!(exact_float.partial_cmp(&large_int), Some(Ordering::Less));
 
         // Test with fractional part
-        let float_with_fract = Value::Float(9007199254740992.5);
+        let float_with_fract = Value::Float(9_007_199_254_740_992.5);
         assert_eq!(large_int.partial_cmp(&float_with_fract), Some(Ordering::Greater));
         assert_eq!(float_with_fract.partial_cmp(&large_int), Some(Ordering::Less));
 
         // Test edge case where float fractional part makes it larger
-        let float_larger = Value::Float(9007199254740993.1);
+        let float_larger = Value::Float(9_007_199_254_740_993.1);
         assert_eq!(large_int.partial_cmp(&float_larger), Some(Ordering::Less));
         assert_eq!(float_larger.partial_cmp(&large_int), Some(Ordering::Greater));
     }

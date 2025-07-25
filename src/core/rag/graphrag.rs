@@ -160,45 +160,122 @@ impl GraphRAGEngineImpl {
         weights
     }
 
-    /// Extract entities from document text (simplified implementation)
+    /// Extract entities from document text (generic implementation)
     fn extract_entities(&self, document: &Document) -> Result<Vec<KnowledgeNode>, OxidbError> {
-        // This is a simplified implementation. In practice, you would use
-        // Named Entity Recognition (NER) and other NLP techniques
         let mut entities = Vec::new();
         let text = &document.content;
+        let text_lower = text.to_lowercase();
 
-        // Simple keyword-based entity extraction (YAGNI - start simple)
-        let keywords = text
-            .split_whitespace()
-            .filter(|word| word.len() > 3)
-            .filter(|word| word.chars().next().unwrap_or(' ').is_uppercase())
-            .collect::<HashSet<_>>();
+        // Generic entity patterns that work across different domains
+        let person_indicators = vec![
+            "mr", "mrs", "ms", "dr", "professor", "captain", "sir", "lady", "lord",
+            "king", "queen", "prince", "princess", "duke", "duchess", "count",
+        ];
 
-        for (i, keyword) in keywords.iter().enumerate() {
-            // Create unique temporary ID using document ID hash and index
-            use std::collections::hash_map::DefaultHasher;
-            use std::hash::{Hash, Hasher};
-            let mut hasher = DefaultHasher::new();
-            document.id.hash(&mut hasher);
-            let doc_hash = hasher.finish();
-            let temp_id = (doc_hash.wrapping_mul(10000) + i as u64) as NodeId;
+        let location_indicators = vec![
+            "city", "town", "village", "country", "nation", "state", "province",
+            "street", "avenue", "road", "building", "house", "castle", "palace",
+            "forest", "mountain", "river", "lake", "ocean", "sea",
+        ];
 
+        let organization_indicators = vec![
+            "company", "corporation", "university", "school", "college", "hospital",
+            "government", "department", "agency", "organization", "institution",
+            "church", "temple", "mosque", "synagogue",
+        ];
+
+        // Extract potential named entities (capitalized words)
+        let words: Vec<&str> = text.split_whitespace().collect();
+        let mut potential_entities = std::collections::HashSet::new();
+        
+        for window in words.windows(3) {
+            // Look for capitalized words that might be entities
+            for (i, &word) in window.iter().enumerate() {
+                let clean_word = word.chars().filter(|c| c.is_alphabetic()).collect::<String>();
+                if clean_word.len() > 2 && clean_word.chars().next().unwrap_or(' ').is_uppercase() {
+                    // Check context for entity type indicators
+                    let context = window.join(" ").to_lowercase();
+                    
+                    // Determine entity type based on context
+                    let entity_type = if person_indicators.iter().any(|&indicator| context.contains(indicator)) {
+                        "PERSON"
+                    } else if location_indicators.iter().any(|&indicator| context.contains(indicator)) {
+                        "LOCATION"
+                    } else if organization_indicators.iter().any(|&indicator| context.contains(indicator)) {
+                        "ORGANIZATION"
+                    } else if i > 0 && person_indicators.contains(&window[i-1].to_lowercase().as_str()) {
+                        "PERSON" // Title before name
+                    } else {
+                        "ENTITY" // Generic entity
+                    };
+                    
+                    potential_entities.insert((clean_word, entity_type));
+                }
+            }
+        }
+
+        // Extract theme-based entities using common patterns
+        let theme_patterns = vec![
+            ("EMOTION", vec!["love", "hate", "anger", "joy", "sadness", "fear", "hope"]),
+            ("CONCEPT", vec!["freedom", "justice", "peace", "war", "truth", "beauty", "wisdom"]),
+            ("ACTION", vec!["battle", "fight", "journey", "quest", "discovery", "creation"]),
+            ("RELATIONSHIP", vec!["friendship", "marriage", "betrayal", "alliance", "conflict"]),
+            ("TIME", vec!["past", "present", "future", "ancient", "modern", "eternal"]),
+        ];
+
+        for (theme_type, patterns) in theme_patterns {
+            let mut theme_strength = 0.0;
+            let mut found_patterns = Vec::new();
+            
+            for pattern in &patterns {
+                if text_lower.contains(pattern) {
+                    theme_strength += 1.0;
+                    found_patterns.push(pattern.to_string());
+                }
+            }
+            
+            if theme_strength > 0.0 {
+                let entity_id = self.generate_entity_id(&document.id, theme_type);
+                let normalized_strength = (theme_strength / patterns.len() as f32).min(1.0);
+                
+                let entity = KnowledgeNode {
+                    id: entity_id,
+                    entity_type: "THEME".to_string(),
+                    name: theme_type.to_string(),
+                    description: Some(format!("Theme identified in {}", document.id)),
+                    embedding: document.embedding.clone(),
+                    properties: {
+                        let mut props = HashMap::new();
+                        props.insert("document_id".to_string(), Value::Text(document.id.clone()));
+                        props.insert("theme_strength".to_string(), Value::Float(normalized_strength as f64));
+                        props.insert("found_patterns".to_string(), Value::Text(found_patterns.join(", ")));
+                        props
+                    },
+                    confidence_score: normalized_strength as f64,
+                };
+                entities.push(entity);
+            }
+        }
+
+        // Add the potential named entities
+        for (entity_name, entity_type) in potential_entities {
+            let entity_key = format!("{}_{}", entity_type, entity_name);
+            let entity_id = self.generate_entity_id(&document.id, &entity_key);
+            let confidence = if entity_type == "ENTITY" { 0.6 } else { 0.8 }; // Lower confidence for generic entities
+            
             let entity = KnowledgeNode {
-                id: temp_id, // Unique temporary ID
-                entity_type: "ENTITY".to_string(),
-                name: (*keyword).to_string(),
-                description: Some(format!("Entity extracted from document: {}", document.id)),
+                id: entity_id,
+                entity_type: entity_type.to_string(),
+                name: Self::to_title_case(&entity_name),
+                description: Some(format!("{} mentioned in {}", entity_type.to_lowercase(), document.id)),
                 embedding: document.embedding.clone(),
                 properties: {
                     let mut props = HashMap::new();
                     props.insert("document_id".to_string(), Value::Text(document.id.clone()));
-                    props.insert(
-                        "extraction_method".to_string(),
-                        Value::Text("keyword".to_string()),
-                    );
+                    props.insert("extraction_method".to_string(), Value::Text("pattern_based".to_string()));
                     props
                 },
-                confidence_score: 0.7, // Default confidence
+                confidence_score: confidence,
             };
             entities.push(entity);
         }
@@ -206,40 +283,254 @@ impl GraphRAGEngineImpl {
         Ok(entities)
     }
 
-    /// Extract relationships between entities (simplified implementation)
+    /// Generate consistent entity ID from document and entity name
+    /// Generate consistent entity ID from entity name and type
+    fn generate_entity_id(&self, entity_name: &str, entity_type: &str) -> NodeId {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut hasher = DefaultHasher::new();
+        entity_name.to_lowercase().hash(&mut hasher); // Hash lowercased name for consistency
+        entity_type.hash(&mut hasher);
+        hasher.finish() as NodeId
+    }
+
+    /// Extract relationships between entities (generic implementation)
     fn extract_relationships(
         &self,
         entities: &[KnowledgeNode],
         document: &Document,
     ) -> Result<Vec<KnowledgeEdge>, OxidbError> {
         let mut relationships = Vec::new();
+        let text_lower = document.content.to_lowercase();
 
-        // Simple co-occurrence based relationship extraction
-        for (i, entity1) in entities.iter().enumerate() {
-            for (j, entity2) in entities.iter().enumerate() {
-                if i >= j {
-                    continue;
-                } // Avoid duplicates and self-relationships
+        // Generic relationship patterns that work across domains
+        let relationship_patterns = vec![
+            ("RELATED_TO", vec!["related", "connected", "associated", "linked"]),
+            ("WORKS_WITH", vec!["works with", "collaborates", "partners", "teams"]),
+            ("LEADS", vec!["leads", "manages", "directs", "heads", "supervises"]),
+            ("BELONGS_TO", vec!["belongs to", "part of", "member of", "owns"]),
+            ("LOCATED_IN", vec!["in", "at", "located", "situated", "based"]),
+            ("CAUSED_BY", vec!["caused by", "due to", "because of", "resulted from"]),
+            ("INFLUENCES", vec!["influences", "affects", "impacts", "shapes"]),
+            ("OPPOSES", vec!["opposes", "against", "conflicts", "disputes"]),
+            ("SUPPORTS", vec!["supports", "helps", "assists", "aids"]),
+            ("CREATES", vec!["creates", "makes", "produces", "generates"]),
+        ];
 
-                // Check if entities co-occur in the document
-                if document.content.contains(&entity1.name)
-                    && document.content.contains(&entity2.name)
-                {
+        // Group entities by type for more efficient processing
+        let people: Vec<&KnowledgeNode> = entities.iter()
+            .filter(|e| e.entity_type == "PERSON")
+            .collect();
+        
+        let organizations: Vec<&KnowledgeNode> = entities.iter()
+            .filter(|e| e.entity_type == "ORGANIZATION")
+            .collect();
+        
+        let locations: Vec<&KnowledgeNode> = entities.iter()
+            .filter(|e| e.entity_type == "LOCATION")
+            .collect();
+        
+        let themes: Vec<&KnowledgeNode> = entities.iter()
+            .filter(|e| e.entity_type == "THEME")
+            .collect();
+
+        // Look for person-person relationships
+        for (i, person1) in people.iter().enumerate() {
+            for (j, person2) in people.iter().enumerate() {
+                if i >= j { continue; }
+                
+                for (rel_type, patterns) in &relationship_patterns {
+                    for pattern in patterns {
+                        let person1_name = person1.name.to_lowercase();
+                        let person2_name = person2.name.to_lowercase();
+                        
+                        if text_lower.contains(&person1_name) && 
+                           text_lower.contains(&person2_name) && 
+                           text_lower.contains(pattern) {
+                            
+                            let confidence = self.calculate_relationship_confidence(
+                                &text_lower, &person1_name, &person2_name, pattern
+                            );
+                            
+                            if confidence > 0.3 {
+                                let relationship = KnowledgeEdge {
+                                    id: self.generate_relationship_id(person1.id, person2.id, rel_type),
+                                    from_entity: person1.id,
+                                    to_entity: person2.id,
+                                    relationship_type: rel_type.to_string(),
+                                    description: Some(format!(
+                                        "{} {} {} in {}", 
+                                        person1.name, rel_type.to_lowercase().replace('_', " "), 
+                                        person2.name, document.id
+                                    )),
+                                    confidence_score: confidence,
+                                    weight: Some(confidence),
+                                };
+                                relationships.push(relationship);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Look for person-organization relationships
+        for person in &people {
+            for org in &organizations {
+                let person_name = person.name.to_lowercase();
+                let org_name = org.name.to_lowercase();
+                
+                if text_lower.contains(&person_name) && text_lower.contains(&org_name) {
+                    let confidence = 0.7; // Default confidence for co-occurrence
+                    
                     let relationship = KnowledgeEdge {
-                        id: (i * 1000 + j) as EdgeId,
-                        from_entity: entity1.id,
-                        to_entity: entity2.id,
-                        relationship_type: "MENTIONED_WITH".to_string(),
-                        description: Some(format!("Co-occurrence in document: {}", document.id)),
-                        confidence_score: 0.6,
-                        weight: Some(0.5),
+                        id: self.generate_relationship_id(person.id, org.id, "AFFILIATED_WITH"),
+                        from_entity: person.id,
+                        to_entity: org.id,
+                        relationship_type: "AFFILIATED_WITH".to_string(),
+                        description: Some(format!(
+                            "{} is affiliated with {} in {}", 
+                            person.name, org.name, document.id
+                        )),
+                        confidence_score: confidence,
+                        weight: Some(confidence),
                     };
                     relationships.push(relationship);
                 }
             }
         }
 
+        // Look for entity-location relationships
+        for entity in people.iter().chain(organizations.iter()) {
+            for location in &locations {
+                let entity_name = entity.name.to_lowercase();
+                let location_name = location.name.to_lowercase();
+                
+                if text_lower.contains(&entity_name) && text_lower.contains(&location_name) {
+                    let confidence = 0.6;
+                    
+                    let relationship = KnowledgeEdge {
+                        id: self.generate_relationship_id(entity.id, location.id, "LOCATED_IN"),
+                        from_entity: entity.id,
+                        to_entity: location.id,
+                        relationship_type: "LOCATED_IN".to_string(),
+                        description: Some(format!(
+                            "{} is located in {} in {}", 
+                            entity.name, location.name, document.id
+                        )),
+                        confidence_score: confidence,
+                        weight: Some(confidence),
+                    };
+                    relationships.push(relationship);
+                }
+            }
+        }
+
+        // Look for entity-theme relationships
+        for entity in people.iter().chain(organizations.iter()) {
+            for theme in &themes {
+                let entity_name = entity.name.to_lowercase();
+                let theme_name = theme.name.to_lowercase();
+                
+                if text_lower.contains(&entity_name) && text_lower.contains(&theme_name) {
+                    let confidence = self.calculate_theme_association_confidence(
+                        &text_lower, &entity_name, &theme_name
+                    );
+                    
+                    if confidence > 0.4 {
+                        let relationship = KnowledgeEdge {
+                            id: self.generate_relationship_id(entity.id, theme.id, "ASSOCIATED_WITH"),
+                            from_entity: entity.id,
+                            to_entity: theme.id,
+                            relationship_type: "ASSOCIATED_WITH".to_string(),
+                            description: Some(format!(
+                                "{} is associated with {} in {}", 
+                                entity.name, theme.name, document.id
+                            )),
+                            confidence_score: confidence,
+                            weight: Some(confidence),
+                        };
+                        relationships.push(relationship);
+                    }
+                }
+            }
+        }
+
         Ok(relationships)
+    }
+
+    /// Generate consistent relationship ID
+    fn generate_relationship_id(&self, from_id: NodeId, to_id: NodeId, rel_type: &str) -> EdgeId {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut hasher = DefaultHasher::new();
+        from_id.hash(&mut hasher);
+        to_id.hash(&mut hasher);
+        rel_type.hash(&mut hasher);
+        hasher.finish() as EdgeId
+    }
+
+    /// Calculate relationship confidence based on text proximity and context
+    fn calculate_relationship_confidence(&self, text: &str, char1: &str, char2: &str, pattern: &str) -> f64 {
+        let char1_positions: Vec<usize> = text.match_indices(char1).map(|(i, _)| i).collect();
+        let char2_positions: Vec<usize> = text.match_indices(char2).map(|(i, _)| i).collect();
+        let pattern_positions: Vec<usize> = text.match_indices(pattern).map(|(i, _)| i).collect();
+        
+        if char1_positions.is_empty() || char2_positions.is_empty() || pattern_positions.is_empty() {
+            return 0.0;
+        }
+        
+        // Find minimum distance between any character pair and pattern
+        let mut min_distance = usize::MAX;
+        for &c1_pos in &char1_positions {
+            for &c2_pos in &char2_positions {
+                for &p_pos in &pattern_positions {
+                    let distance = c1_pos.max(c2_pos.max(p_pos)) - c1_pos.min(c2_pos.min(p_pos));
+                    min_distance = min_distance.min(distance);
+                }
+            }
+        }
+        
+        // Convert distance to confidence (closer = higher confidence)
+        if min_distance == usize::MAX {
+            0.0
+        } else {
+            // Confidence decreases exponentially with distance
+            let max_distance = 500.0; // Maximum meaningful distance
+            let normalized_distance = (min_distance as f64) / max_distance;
+            (1.0 - normalized_distance).max(0.0).min(1.0)
+        }
+    }
+
+    /// Convert string to title case
+    fn to_title_case(s: &str) -> String {
+        s.chars()
+            .enumerate()
+            .map(|(i, c)| {
+                if i == 0 || s.chars().nth(i - 1).unwrap_or(' ').is_whitespace() {
+                    c.to_uppercase().collect::<String>()
+                } else {
+                    c.to_lowercase().collect::<String>()
+                }
+            })
+            .collect()
+    }
+
+    /// Calculate theme association confidence
+    fn calculate_theme_association_confidence(&self, text: &str, character: &str, theme: &str) -> f64 {
+        let char_count = text.matches(character).count();
+        let theme_count = text.matches(theme).count();
+        
+        if char_count == 0 || theme_count == 0 {
+            return 0.0;
+        }
+        
+        // Higher co-occurrence suggests stronger association
+        let co_occurrence_strength = (char_count.min(theme_count) as f64) / (char_count.max(theme_count) as f64);
+        co_occurrence_strength.min(1.0)
     }
 
     /// Calculate entity similarity using embeddings
@@ -841,7 +1132,7 @@ mod tests {
         // Create a document with entities that should be linked
         let document = Document {
             id: "test_doc_42".to_string(),
-            content: "Alice works with Bob and Charlie at TechCorp".to_string(),
+            content: "Dr. Smith works with Professor Johnson at the university in the city".to_string(),
             embedding: Some(vec![0.1, 0.2, 0.3].into()),
             metadata: Some(HashMap::new()),
         };

@@ -258,7 +258,7 @@ mod tests {
                 page_id: PageId(123),
                 page_type,
                 lsn: 456, // Lsn is u64
-                flags: 0b10101010,
+                flags: 0b1010_1010,
             };
 
             let mut buffer = vec![0u8; PAGE_HEADER_SIZE];
@@ -292,7 +292,7 @@ mod tests {
         let page_id = PageId(123);
         let invalid_page_type_byte = 99u8; // Assuming 99 is not a valid PageType u8 value
         let lsn: Lsn = 456; // Lsn is u64
-        let flags = 0b10101010;
+        let flags = 0b1010_1010;
 
         let mut cursor = Cursor::new(buffer.as_mut_slice());
         cursor.write_u64::<LittleEndian>(page_id.0).expect("Failed to write page_id to cursor");
