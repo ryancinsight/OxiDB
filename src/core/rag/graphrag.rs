@@ -209,7 +209,7 @@ impl GraphRAGEngineImpl {
                         "ENTITY" // Generic entity
                     };
                     
-                    potential_entities.insert((clean_word.to_lowercase(), entity_type));
+                    potential_entities.insert((clean_word, entity_type));
                 }
             }
         }
