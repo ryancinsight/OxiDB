@@ -36,7 +36,7 @@ pub mod row {
 // pub type SimpleMap = HashMap<Vec<u8>, DataType>;
 
 #[serde_as]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct JsonSafeMap(
     // Ensures keys (Vec<u8>) are serialized/deserialized as Base64 strings with standard padding.
     // Values (DataType) use their existing Serialize/Deserialize impls via `Same`.
@@ -45,18 +45,57 @@ pub struct JsonSafeMap(
 
 // Legacy DataType for compatibility with existing code
 // This will be gradually migrated to use CommonDataType and Value
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DataType {
     Integer(i64),
     String(String),
     Boolean(bool),
-    Float(f64),       // Added Float variant
+    Float(OrderedFloat),       // Added Float variant with ordering
     Null,             // Added Null variant
     Map(JsonSafeMap), // Changed to use JsonSafeMap
-    JsonBlob(serde_json::Value),
+    JsonBlob(JsonValue),
     RawBytes(Vec<u8>), // Added RawBytes variant
-    Vector(VectorData), // Added Vector variant
+    Vector(HashableVectorData), // Added Vector variant
                        // Potentially other types like Timestamp, etc. could be added later
+}
+
+/// Wrapper for f64 that implements Eq and Hash for use in DataType
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct OrderedFloat(pub f64);
+
+impl Eq for OrderedFloat {}
+
+impl std::hash::Hash for OrderedFloat {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.to_bits().hash(state);
+    }
+}
+
+/// Wrapper for serde_json::Value that implements Hash and Eq
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JsonValue(pub serde_json::Value);
+
+impl std::hash::Hash for JsonValue {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // Hash based on the JSON string representation
+        self.0.to_string().hash(state);
+    }
+}
+
+/// Wrapper for VectorData that implements Hash and Eq
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HashableVectorData(pub VectorData);
+
+impl Eq for HashableVectorData {}
+
+impl std::hash::Hash for HashableVectorData {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.dimension.hash(state);
+        // Hash each float as bits to ensure consistency
+        for &f in &self.0.data {
+            f.to_bits().hash(state);
+        }
+    }
 }
 
 // Optional: Helper methods for DataType if needed, e.g., for type checking
