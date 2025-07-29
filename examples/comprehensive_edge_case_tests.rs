@@ -350,8 +350,8 @@ fn test_concurrent_write_operations() -> Result<(), OxidbError> {
     let handles: Vec<_> = (0..3).map(|i| {
         let results_clone = Arc::clone(&results);
         thread::spawn(move || {
-            let mut conn = Connection::open_in_memory().unwrap();
-            conn.execute("CREATE TABLE IF NOT EXISTS concurrent_writes (id INTEGER PRIMARY KEY, thread_id INTEGER, value INTEGER)").unwrap();
+            let mut conn = Connection::open_in_memory()?;
+            conn.execute("CREATE TABLE IF NOT EXISTS concurrent_writes (id INTEGER PRIMARY KEY, thread_id INTEGER, value INTEGER)")?;
             
             for j in 0..5 {
                 let sql = format!("INSERT INTO concurrent_writes (thread_id, value) VALUES ({}, {})", i, j);
