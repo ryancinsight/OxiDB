@@ -1084,6 +1084,7 @@ dependencies = [
  "async-trait",
  "bincode",
  "byteorder",
+ "chrono",
  "clap",
  "crc32fast",
  "criterion",
