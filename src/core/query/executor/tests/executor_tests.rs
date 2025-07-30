@@ -248,7 +248,7 @@ mod tests {
     fn test_insert_and_get_json_blob() {
         let mut executor = create_file_executor();
         let key: Key = b"json_key".to_vec();
-        let value = DataType::JsonBlob(json!({ "name": "oxidb", "version": 0.1 }));
+        let value = DataType::JsonBlob(crate::core::types::JsonValue(json!({ "name": "oxidb", "version": 0.1 })));
 
         let insert_command = Command::Insert { key: key.clone(), value: value.clone() };
         assert_eq!(executor.execute_command(insert_command).unwrap(), ExecutionResult::Success);

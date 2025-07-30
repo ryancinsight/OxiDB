@@ -217,16 +217,16 @@ impl QueryResult {
 
         match data_type {
             DataType::Integer(i) => crate::core::common::types::Value::Integer(i),
-            DataType::Float(f) => crate::core::common::types::Value::Float(f),
+            DataType::Float(f) => crate::core::common::types::Value::Float(f.0),
             DataType::String(s) => crate::core::common::types::Value::Text(s),
             DataType::Boolean(b) => crate::core::common::types::Value::Boolean(b),
             DataType::RawBytes(b) => crate::core::common::types::Value::Blob(b),
-            DataType::Vector(v) => crate::core::common::types::Value::Vector(v.data),
+            DataType::Vector(v) => crate::core::common::types::Value::Vector(v.0.data),
             DataType::Null => crate::core::common::types::Value::Null,
             DataType::Map(map) => crate::core::common::types::Value::Text(
                 serde_json::to_string(&map.0).unwrap_or_else(|_| "{}".to_string()),
             ), // Serialize map to JSON string
-            DataType::JsonBlob(json) => crate::core::common::types::Value::Text(json.to_string()),
+            DataType::JsonBlob(json) => crate::core::common::types::Value::Text(json.0.to_string()),
         }
     }
 

@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn test_serialize_deserialize_json_blob() {
-        let original = DataType::JsonBlob(json!({ "name": "oxidb", "version": 0.1 }));
+        let original = DataType::JsonBlob(crate::core::types::JsonValue(json!({ "name": "oxidb", "version": 0.1 })));
         let serialized = serialize_data_type(&original).unwrap();
         let deserialized = deserialize_data_type(&serialized).unwrap();
         assert_eq!(original, deserialized);

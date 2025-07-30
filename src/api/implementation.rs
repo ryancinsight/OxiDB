@@ -135,7 +135,7 @@ impl Oxidb {
                     DataType::Integer(i) => i.to_string(),
                     DataType::String(s) => s,
                     DataType::Boolean(b) => b.to_string(),
-                    DataType::Float(f) => f.to_string(),
+                    DataType::Float(f) => f.0.to_string(),
                     DataType::Null => "NULL".to_string(),
                     DataType::Map(json_safe_map) => { // Match on JsonSafeMap wrapper
                         // Debug print the map content before serialization
@@ -155,7 +155,7 @@ impl Oxidb {
                     DataType::RawBytes(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
                     DataType::Vector(vec) => {
                         // Convert vector to a readable string representation
-                        format!("[{}]", vec.data.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join(", "))
+                        format!("[{}]", vec.0.data.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join(", "))
                     },
                 }))
             }

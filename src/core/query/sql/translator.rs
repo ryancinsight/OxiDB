@@ -73,13 +73,13 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
                     ast::AstDataType::Integer => DataType::Integer(0), // Default value for schema
                     ast::AstDataType::Text => DataType::String(String::new()),
                     ast::AstDataType::Boolean => DataType::Boolean(false),
-                    ast::AstDataType::Float => DataType::Float(0.0),
+                    ast::AstDataType::Float => DataType::Float(crate::core::types::OrderedFloat(0.0)),
                     ast::AstDataType::Blob => DataType::RawBytes(Vec::new()), // Assuming RawBytes is the engine type for Blob
                     ast::AstDataType::Vector { dimension } => {
                         // For schema definition, create a vector with correct dimension filled with zeros
                         let placeholder_data = vec![0.0; dimension as usize];
                         crate::core::types::VectorData::new(dimension, placeholder_data)
-                            .map(DataType::Vector)
+                            .map(|v| DataType::Vector(crate::core::types::HashableVectorData(v)))
                             .ok_or_else(|| OxidbError::SqlParsing(format!(
                                 "Invalid dimension {dimension} for VECTOR type in CREATE TABLE (should not happen if parser validated > 0)"
                             )))?
@@ -185,7 +185,7 @@ pub fn translate_datatype_to_ast_literal(
     match data_type {
         DataType::String(s) => Ok(ast::AstLiteralValue::String(s.clone())),
         DataType::Integer(i) => Ok(ast::AstLiteralValue::Number(i.to_string())),
-        DataType::Float(f) => Ok(ast::AstLiteralValue::Number(f.to_string())),
+        DataType::Float(f) => Ok(ast::AstLiteralValue::Number(f.0.to_string())),
         DataType::Boolean(b) => Ok(ast::AstLiteralValue::Boolean(*b)),
         DataType::Null => Ok(ast::AstLiteralValue::Null),
         DataType::RawBytes(bytes) => Ok(ast::AstLiteralValue::String(hex::encode(bytes))),
@@ -194,7 +194,7 @@ pub fn translate_datatype_to_ast_literal(
         )),
         DataType::Vector(vec) => {
             // Convert vector to a string representation for AST compatibility
-            let vec_str = format!("[{}]", vec.data.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join(","));
+            let vec_str = format!("[{}]", vec.0.data.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join(","));
             Ok(ast::AstLiteralValue::String(vec_str))
         },
     }
@@ -228,7 +228,7 @@ fn translate_literal(literal: &ast::AstLiteralValue) -> Result<DataType, OxidbEr
             if let Ok(i_val) = n_str.parse::<i64>() {
                 Ok(DataType::Integer(i_val))
             } else if let Ok(f_val) = n_str.parse::<f64>() {
-                Ok(DataType::Float(f_val))
+                Ok(DataType::Float(crate::core::types::OrderedFloat(f_val)))
             } else {
                 Err(OxidbError::SqlParsing(format!("Cannot parse numeric literal '{n_str}'")))
                 // Changed
@@ -241,7 +241,7 @@ fn translate_literal(literal: &ast::AstLiteralValue) -> Result<DataType, OxidbEr
             for el_ast in elements_ast {
                 match translate_literal(el_ast)? {
                     DataType::Integer(i) => float_elements.push(i as f32),
-                    DataType::Float(f) => float_elements.push(f as f32),
+                    DataType::Float(f) => float_elements.push(f.0 as f32),
                     // DataType::Number(s) => { // If translate_literal returned Number variant
                     //    match s.parse::<f32>() {
                     //        Ok(f) => float_elements.push(f),
@@ -262,7 +262,7 @@ fn translate_literal(literal: &ast::AstLiteralValue) -> Result<DataType, OxidbEr
             // VectorData::new performs validation if dimension matches data length,
             // which it will by construction here.
             VectorData::new(dimension, float_elements)
-                .map(DataType::Vector)
+                .map(|v| DataType::Vector(crate::core::types::HashableVectorData(v)))
                 .ok_or_else(|| OxidbError::SqlParsing(
                     "Failed to create VectorData from parsed elements (dimension mismatch, should not happen here)".to_string()
                 ))
@@ -374,7 +374,7 @@ mod tests {
     fn test_translate_literal_float() {
         let ast_literal = TestAstLiteralValue::Number("123.45".to_string());
         assert!(
-            matches!(translate_literal(&ast_literal), Ok(DataType::Float(f)) if (f - 123.45).abs() < f64::EPSILON)
+            matches!(translate_literal(&ast_literal), Ok(DataType::Float(f)) if (f.0 - 123.45).abs() < f64::EPSILON)
         );
     }
 
@@ -388,7 +388,7 @@ mod tests {
     fn test_translate_literal_negative_float() {
         let ast_literal = TestAstLiteralValue::Number("-50.75".to_string());
         assert!(
-            matches!(translate_literal(&ast_literal), Ok(DataType::Float(f)) if (f - -50.75).abs() < f64::EPSILON)
+            matches!(translate_literal(&ast_literal), Ok(DataType::Float(f)) if (f.0 - -50.75).abs() < f64::EPSILON)
         );
     }
 
@@ -634,7 +634,7 @@ mod tests {
                 assert_eq!(source, "products");
                 assert_eq!(assignments.len(), 1);
                 assert_eq!(assignments[0].column, "price");
-                assert_eq!(assignments[0].value, DataType::Float(19.99));
+                assert_eq!(assignments[0].value, DataType::Float(crate::core::types::OrderedFloat(19.99)));
                 assert!(condition.is_some());
                 if let Some(commands::SqlConditionTree::Comparison(simple_cond)) = condition {
                     assert_eq!(simple_cond.column, "product_id");

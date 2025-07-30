@@ -150,7 +150,7 @@ impl Optimizer {
                                 if let Ok(i) = n.parse::<i64>() {
                                     crate::core::types::DataType::Integer(i)
                                 } else if let Ok(f) = n.parse::<f64>() {
-                                    crate::core::types::DataType::Float(f)
+                                    crate::core::types::DataType::Float(crate::core::types::OrderedFloat(f))
                                 } else {
                                     // Fallback to string if parsing fails
                                     crate::core::types::DataType::String(n.clone())

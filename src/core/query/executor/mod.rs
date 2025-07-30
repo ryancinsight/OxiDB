@@ -97,7 +97,7 @@ impl<'a> ParameterContext<'a> {
                 if let Ok(i) = n.parse::<i64>() {
                     Ok(DataType::Integer(i))
                 } else if let Ok(f) = n.parse::<f64>() {
-                    Ok(DataType::Float(f))
+                    Ok(DataType::Float(crate::core::types::OrderedFloat(f)))
                 } else {
                     Ok(DataType::String(n.clone()))
                 }
@@ -114,7 +114,7 @@ impl<'a> ParameterContext<'a> {
         use crate::core::common::types::Value;
         match value {
             Value::Integer(i) => DataType::Integer(*i),
-            Value::Float(f) => DataType::Float(*f),
+            Value::Float(f) => DataType::Float(crate::core::types::OrderedFloat(*f)),
             Value::Text(s) => DataType::String(s.clone()),
             Value::Boolean(b) => DataType::Boolean(*b),
             Value::Blob(b) => DataType::RawBytes(b.clone()),
@@ -123,7 +123,7 @@ impl<'a> ParameterContext<'a> {
                 let dimension = v.len() as u32;
                 if let Some(vector_data) = crate::core::types::VectorData::new(dimension, v.clone())
                 {
-                    DataType::Vector(vector_data)
+                    DataType::Vector(crate::core::types::HashableVectorData(vector_data))
                 } else {
                     // Fallback to raw bytes if vector creation fails
                     DataType::RawBytes(v.iter().flat_map(|f| f.to_le_bytes().to_vec()).collect())

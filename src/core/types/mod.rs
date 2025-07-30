@@ -36,12 +36,26 @@ pub mod row {
 // pub type SimpleMap = HashMap<Vec<u8>, DataType>;
 
 #[serde_as]
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JsonSafeMap(
     // Ensures keys (Vec<u8>) are serialized/deserialized as Base64 strings with standard padding.
     // Values (DataType) use their existing Serialize/Deserialize impls via `Same`.
     #[serde_as(as = "HashMap<Base64<Standard, Padded>, Same>")] pub HashMap<Vec<u8>, DataType>, // Made field pub for direct construction/access if needed
 );
+
+impl std::hash::Hash for JsonSafeMap {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // Hash the length of the map
+        self.0.len().hash(state);
+        // Sort keys for consistent hashing
+        let mut entries: Vec<_> = self.0.iter().collect();
+        entries.sort_by_key(|(k, _)| k.as_slice());
+        for (k, v) in entries {
+            k.hash(state);
+            v.hash(state);
+        }
+    }
+}
 
 // Legacy DataType for compatibility with existing code
 // This will be gradually migrated to use CommonDataType and Value

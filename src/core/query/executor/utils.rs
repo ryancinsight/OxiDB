@@ -22,20 +22,20 @@ pub fn compare_data_types(
                     _ => unreachable!(),
                 },
                 (DataType::Float(f1), DataType::Float(f2)) => match operator {
-                    "<" => Ok(f1 < f2),
-                    "<=" => Ok(f1 <= f2),
-                    ">" => Ok(f1 > f2),
-                    ">=" => Ok(f1 >= f2),
+                    "<" => Ok(f1.0 < f2.0),
+                    "<=" => Ok(f1.0 <= f2.0),
+                    ">" => Ok(f1.0 > f2.0),
+                    ">=" => Ok(f1.0 >= f2.0),
                     _ => unreachable!(),
                 },
                 (DataType::Integer(i1), DataType::Float(f2)) => {
                     #[allow(clippy::cast_precision_loss)]
                     let f1 = *i1 as f64;
                     match operator {
-                        "<" => Ok(f1 < *f2),
-                        "<=" => Ok(f1 <= *f2),
-                        ">" => Ok(f1 > *f2),
-                        ">=" => Ok(f1 >= *f2),
+                        "<" => Ok(f1 < f2.0),
+                        "<=" => Ok(f1 <= f2.0),
+                        ">" => Ok(f1 > f2.0),
+                        ">=" => Ok(f1 >= f2.0),
                         _ => unreachable!(),
                     }
                 }
@@ -43,10 +43,10 @@ pub fn compare_data_types(
                     #[allow(clippy::cast_precision_loss)]
                     let f2 = *i2 as f64;
                     match operator {
-                        "<" => Ok(*f1 < f2),
-                        "<=" => Ok(*f1 <= f2),
-                        ">" => Ok(*f1 > f2),
-                        ">=" => Ok(*f1 >= f2),
+                        "<" => Ok(f1.0 < f2),
+                        "<=" => Ok(f1.0 <= f2),
+                        ">" => Ok(f1.0 > f2),
+                        ">=" => Ok(f1.0 >= f2),
                         _ => unreachable!(),
                     }
                 }
@@ -76,7 +76,7 @@ pub fn datatype_to_ast_literal(data_type: &DataType) -> Result<AstLiteralValue, 
         DataType::Integer(i) => Ok(AstLiteralValue::Number(i.to_string())),
         DataType::String(s) => Ok(AstLiteralValue::String(s.clone())),
         DataType::Boolean(b) => Ok(AstLiteralValue::Boolean(*b)),
-        DataType::Float(f) => Ok(AstLiteralValue::Number(f.to_string())), // Consider precision if needed
+        DataType::Float(f) => Ok(AstLiteralValue::Number(f.0.to_string())), // Consider precision if needed
         DataType::Null => Ok(AstLiteralValue::Null),
         DataType::Map(_) => Err(OxidbError::NotImplemented{feature: // Changed
             "Cannot convert Map DataType to AstLiteralValue for SQL conditions".to_string(),
@@ -84,7 +84,7 @@ pub fn datatype_to_ast_literal(data_type: &DataType) -> Result<AstLiteralValue, 
         DataType::JsonBlob(json_val) => {
             // Convert serde_json::Value to a string representation for AstLiteralValue::String
             // This might need refinement based on how JSON literals are handled in SQL (e.g., direct JSON type vs. string)
-            Ok(AstLiteralValue::String(json_val.to_string()))
+            Ok(AstLiteralValue::String(json_val.0.to_string()))
         }
         DataType::RawBytes(bytes) => {
             // Represent bytes as a hex string literal or handle as an error
@@ -96,7 +96,7 @@ pub fn datatype_to_ast_literal(data_type: &DataType) -> Result<AstLiteralValue, 
             // Convert vector to a string representation for AST compatibility
             let vec_str = format!(
                 "[{}]",
-                vec.data.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join(",")
+                vec.0.data.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join(",")
             );
             Ok(AstLiteralValue::String(vec_str))
         }
