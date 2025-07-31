@@ -374,7 +374,7 @@ impl<'a> Iterator for JsonLeafIterator<'a> {
                 }
                 Value::Object(obj) => {
                     // Add object values to stack
-                    self.stack.extend(obj.values().rev());
+                    self.stack.extend(obj.values().collect::<Vec<_>>().into_iter().rev());
                 }
                 leaf => return Some(leaf),
             }
