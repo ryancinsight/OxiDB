@@ -49,4 +49,20 @@ resolver = "2"
 name = "database_benchmarks"
 harness = false
 
+[[example]]
+name = "ecommerce_website"
+path = "examples/ecommerce_website.rs"
+
+[[example]]
+name = "document_search_rag"
+path = "examples/document_search_rag.rs"
+
+[[example]]
+name = "knowledge_graph_rag"
+path = "examples/knowledge_graph_rag.rs"
+
+[[example]]
+name = "sql_compatibility_demo"
+path = "examples/sql_compatibility_demo.rs"
+
 

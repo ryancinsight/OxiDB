@@ -77,6 +77,9 @@ This document outlines the product requirements for oxidb, a pure Rust-based dat
 - **Educational Value**: Clear demonstration of trade-offs between approaches
 
 ### 7.2 Production-Ready Examples
+- **E-commerce Website**: Full backend with product catalog, orders, shopping cart, and vector-based recommendations
+- **Document Search RAG**: Semantic document search with hybrid keyword/vector search capabilities
+- **Knowledge Graph RAG**: GraphRAG implementation for connected information retrieval
 - **Data Type Constraint Tests**: Comprehensive validation scenarios
 - **Simple Blog Example**: Full CRUD operations with authentication
 - **Todo Application**: Task management with persistence
