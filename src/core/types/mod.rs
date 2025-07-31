@@ -108,6 +108,12 @@ impl Ord for OrderedFloat {
     }
 }
 
+/// Implements `Hash` for `OrderedFloat`.
+/// 
+/// This implementation uses the bit representation of the floating-point value
+/// to compute the hash. As a result, `NaN` values are treated as equal if they
+/// have the same bit representation. This behavior is consistent with the IEEE 754
+/// standard but may differ from how `NaN` values are treated in other contexts.
 impl std::hash::Hash for OrderedFloat {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.to_bits().hash(state);
