@@ -10,7 +10,7 @@
 
 use oxidb::Oxidb;
 use oxidb::core::common::OxidbError;
-use oxidb::api::ExecutionResult;
+use oxidb::core::sql::ExecutionResult;
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 

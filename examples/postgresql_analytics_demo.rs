@@ -11,9 +11,9 @@
 
 use oxidb::Oxidb;
 use oxidb::core::common::OxidbError;
-use oxidb::api::ExecutionResult;
+use oxidb::core::sql::ExecutionResult;
 use std::collections::HashMap;
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Utc, Duration, Datelike};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🐘 PostgreSQL-Style Analytics & Data Warehousing Demo");

@@ -9,6 +9,7 @@
 //! - Performance optimizations through compile-time guarantees
 
 use oxidb::{Connection, OxidbError};
+use oxidb::core::types::DataType;
 use oxidb::core::zero_cost::{
     ZeroCopyView, StringView, BytesView, BorrowedSlice, BorrowedStr, 
     RowIterator, ColumnView, IteratorExt, window_functions
@@ -43,11 +44,11 @@ fn demonstrate_zero_copy_views() -> Result<(), Box<dyn std::error::Error>> {
     
     // Sample data that we'll create views over without copying
     let sample_data = vec![
-        vec!["Alice".to_string(), "Engineering".to_string(), "75000".to_string()],
-        vec!["Bob".to_string(), "Sales".to_string(), "65000".to_string()],
-        vec!["Carol".to_string(), "Engineering".to_string(), "80000".to_string()],
-        vec!["David".to_string(), "Marketing".to_string(), "70000".to_string()],
-        vec!["Eve".to_string(), "Engineering".to_string(), "85000".to_string()],
+        vec![DataType::String("Alice".to_string()), DataType::String("Engineering".to_string()), DataType::Integer(75000)],
+        vec![DataType::String("Bob".to_string()), DataType::String("Sales".to_string()), DataType::Integer(65000)],
+        vec![DataType::String("Carol".to_string()), DataType::String("Engineering".to_string()), DataType::Integer(80000)],
+        vec![DataType::String("David".to_string()), DataType::String("Marketing".to_string()), DataType::Integer(70000)],
+        vec![DataType::String("Eve".to_string()), DataType::String("Engineering".to_string()), DataType::Integer(85000)],
     ];
     
     let column_names = vec![
@@ -93,8 +94,8 @@ fn demonstrate_zero_copy_views() -> Result<(), Box<dyn std::error::Error>> {
     
     // Demonstrate string views with zero allocation
     let sample_text = "Hello, Zero-Copy World!";
-    let string_view = StringView::borrowed(sample_text);
-    let bytes_view = BytesView::borrowed(sample_text.as_bytes());
+    let string_view = StringView::Borrowed(sample_text);
+    let bytes_view = BytesView::Borrowed(sample_text.as_bytes());
     
     println!("📝 String view length: {} (borrowed: {})", 
              string_view.len(), !string_view.is_owned());
