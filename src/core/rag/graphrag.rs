@@ -137,6 +137,24 @@ struct EdgeInfo {
     weight: Option<f64>,
 }
 
+/// Configuration for GraphRAG engine
+#[derive(Debug, Clone)]
+pub struct GraphRAGConfig {
+    /// Dimension for default embedding model (if not provided)
+    pub default_embedding_dimension: usize,
+    /// Initial confidence threshold
+    pub confidence_threshold: f64,
+}
+
+impl Default for GraphRAGConfig {
+    fn default() -> Self {
+        Self {
+            default_embedding_dimension: 384,
+            confidence_threshold: 0.5,
+        }
+    }
+}
+
 /// Implementation of `GraphRAG` engine
 pub struct GraphRAGEngineImpl {
     graph_store: InMemoryGraphStore,
@@ -149,16 +167,21 @@ pub struct GraphRAGEngineImpl {
 }
 
 impl GraphRAGEngineImpl {
-    /// Create new GraphRAG engine with default embedding model
+    /// Create new GraphRAG engine with default configuration
     pub fn new(document_retriever: Box<dyn Retriever>) -> Self {
+        Self::with_config(document_retriever, GraphRAGConfig::default())
+    }
+
+    /// Create new GraphRAG engine with custom configuration
+    pub fn with_config(document_retriever: Box<dyn Retriever>, config: GraphRAGConfig) -> Self {
         Self {
             graph_store: InMemoryGraphStore::new(),
             document_retriever,
-            embedding_model: Box::new(SemanticEmbedder::new(384)),
+            embedding_model: Box::new(SemanticEmbedder::new(config.default_embedding_dimension)),
             entity_embeddings: HashMap::new(),
             entity_documents: HashMap::new(),
             relationship_weights: Self::default_relationship_weights(),
-            confidence_threshold: 0.5,
+            confidence_threshold: config.confidence_threshold,
         }
     }
 
@@ -730,6 +753,72 @@ impl GraphRAGEngineImpl {
     }
 }
 
+/// Builder for GraphRAGEngineImpl
+pub struct GraphRAGEngineBuilder {
+    document_retriever: Option<Box<dyn Retriever>>,
+    embedding_model: Option<Box<dyn EmbeddingModel>>,
+    embedding_dimension: Option<usize>,
+    confidence_threshold: f64,
+}
+
+impl Default for GraphRAGEngineBuilder {
+    fn default() -> Self {
+        Self {
+            document_retriever: None,
+            embedding_model: None,
+            embedding_dimension: None,
+            confidence_threshold: 0.5,
+        }
+    }
+}
+
+impl GraphRAGEngineBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_document_retriever(mut self, retriever: Box<dyn Retriever>) -> Self {
+        self.document_retriever = Some(retriever);
+        self
+    }
+
+    pub fn with_embedding_model(mut self, model: Box<dyn EmbeddingModel>) -> Self {
+        self.embedding_model = Some(model);
+        self
+    }
+
+    pub fn with_embedding_dimension(mut self, dimension: usize) -> Self {
+        self.embedding_dimension = Some(dimension);
+        self
+    }
+
+    pub fn with_confidence_threshold(mut self, threshold: f64) -> Self {
+        self.confidence_threshold = threshold;
+        self
+    }
+
+    pub fn build(self) -> Result<GraphRAGEngineImpl, OxidbError> {
+        let document_retriever = self.document_retriever
+            .ok_or_else(|| OxidbError::Configuration("Document retriever not set".to_string()))?;
+
+        let embedding_model = match (self.embedding_model, self.embedding_dimension) {
+            (Some(model), _) => model,
+            (None, Some(dim)) => Box::new(SemanticEmbedder::new(dim)),
+            (None, None) => Box::new(SemanticEmbedder::new(384)), // Default fallback
+        };
+
+        Ok(GraphRAGEngineImpl {
+            graph_store: InMemoryGraphStore::new(),
+            document_retriever,
+            embedding_model,
+            entity_embeddings: HashMap::new(),
+            entity_documents: HashMap::new(),
+            relationship_weights: GraphRAGEngineImpl::default_relationship_weights(),
+            confidence_threshold: self.confidence_threshold,
+        })
+    }
+}
+
 #[async_trait]
 impl GraphRAGEngine for GraphRAGEngineImpl {
     async fn build_knowledge_graph(&mut self, documents: &[Document]) -> Result<(), OxidbError> {
@@ -1073,7 +1162,8 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
             self.embedding_model.embed(q).await
                 .map_err(|e| OxidbError::Internal(format!("Failed to embed query: {}", e)))?
         } else {
-            Embedding::from(vec![0.0; 384]) // Default embedding size
+            // Create zero embedding with the correct dimension
+            Embedding::from(vec![0.0; self.embedding_model.embedding_dimension()])
         };
         
         let documents = self

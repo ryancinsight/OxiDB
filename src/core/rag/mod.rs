@@ -11,6 +11,7 @@ pub use self::core_components::{Document, Embedding};
 pub use self::embedder::{EmbeddingModel, SemanticEmbedder, TfIdfEmbedder};
 pub use self::graphrag::{
     GraphRAGContext, GraphRAGEngine, GraphRAGResult, KnowledgeEdge, KnowledgeNode,
+    GraphRAGConfig, GraphRAGEngineBuilder,
 };
 pub use self::hybrid::{HybridRAGConfig, HybridRAGEngine, HybridRAGEngineBuilder, HybridRAGResult};
 pub use self::retriever::Retriever;

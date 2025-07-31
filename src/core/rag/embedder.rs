@@ -8,6 +8,9 @@ use std::collections::HashMap;
 /// Trait for models that can generate embeddings for documents.
 #[async_trait]
 pub trait EmbeddingModel: Send + Sync {
+    /// Get the dimension of embeddings produced by this model
+    fn embedding_dimension(&self) -> usize;
+
     /// Generates an embedding for a single document.
     async fn embed_document(&self, document: &Document) -> Result<Embedding, OxidbError>;
 
@@ -127,6 +130,10 @@ impl EmbeddingModel for TfIdfEmbedder {
         // Create a temporary document to embed the text
         let doc = Document::new("temp".to_string(), text.to_string());
         self.embed_document(&doc).await
+    }
+
+    fn embedding_dimension(&self) -> usize {
+        self.dimension
     }
 }
 
@@ -320,6 +327,10 @@ impl EmbeddingModel for SemanticEmbedder {
         
         Ok(Embedding::from(normalized_features))
     }
+
+    fn embedding_dimension(&self) -> usize {
+        self.dimension
+    }
 }
 
 /// A simple mock embedding model for testing purposes.
@@ -358,6 +369,10 @@ impl EmbeddingModel for MockEmbeddingModel {
             embeddings.push(embedding);
         }
         Ok(embeddings)
+    }
+
+    fn embedding_dimension(&self) -> usize {
+        self.dimension
     }
 }
 

@@ -73,4 +73,8 @@ path = "examples/simple_oxidb_test.rs"
 name = "hybrid_rag_demo"
 path = "examples/hybrid_rag_demo.rs"
 
+[[example]]
+name = "graphrag_config_demo"
+path = "examples/graphrag_config_demo.rs"
+
 
