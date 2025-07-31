@@ -13,6 +13,16 @@ use std::collections::{HashMap, HashSet}; // Removed AstLiteralValue
 use std::sync::Arc; // Import the helper
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S> {
+    /// Efficiently format key string using iterator combinators
+    /// Reduces allocations and improves performance for key generation
+    fn format_key_string(table_name: &str, pk_column_name: &str, pk_value: &DataType) -> String {
+        format!("{}_pk_{}_{:?}", table_name, pk_column_name, pk_value)
+            .chars()
+            .filter(|&c| c != '(' && c != ')' && c != '"')
+            .collect::<String>()
+            .replace("Integer", "")
+            .replace("String", "")
+    }
     /// Handles an UPDATE command.
     /// This involves:
     /// 1. Planning and executing a SELECT-like sub-query to find rows matching the condition.
@@ -96,9 +106,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             .map(|(idx, col)| (idx, col.name.clone()))
             .ok_or_else(|| OxidbError::Internal("Table has no primary key column".to_string()))?;
         
-        // Use iterator combinators to collect keys efficiently
-        let keys_to_update: Result<Vec<Key>, OxidbError> = select_execution_tree.execute()?
-            .map(|tuple_result| -> Result<Key, OxidbError> {
+        // Use efficient error handling with try_fold to avoid collecting partial results on error
+        let keys_to_update: Vec<Key> = select_execution_tree.execute()?
+            .try_fold(Vec::new(), |mut acc, tuple_result| -> Result<Vec<Key>, OxidbError> {
                 let tuple = tuple_result?;
 
                 if tuple.is_empty() {
@@ -121,27 +131,16 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     // Special convention: if PK column is named _kv_key and is String, use its value directly
                     match pk_value {
                         DataType::String(s) => s.clone(),
-                        _ => format!("{}_pk_{}_{:?}", source_table_name, pk_column_name, pk_value)
-                            .chars()
-                            .filter(|&c| c != '(' && c != ')' && c != '"')
-                            .collect::<String>()
-                            .replace("Integer", "")
-                            .replace("String", "")
+                        _ => Self::format_key_string(&source_table_name, &pk_column_name, pk_value)
                     }
                 } else {
-                    // Standard PK-based key generation using same format as INSERT with iterator-based string processing
-                    format!("{}_pk_{}_{:?}", source_table_name, pk_column_name, pk_value)
-                        .chars()
-                        .filter(|&c| c != '(' && c != ')' && c != '"')
-                        .collect::<String>()
-                        .replace("Integer", "")
-                        .replace("String", "")
+                    // Standard PK-based key generation using efficient helper method
+                    Self::format_key_string(&source_table_name, &pk_column_name, pk_value)
                 };
-                Ok(key_string.into_bytes())
-            })
-            .collect();
-        
-        let keys_to_update = keys_to_update?;
+                
+                acc.push(key_string.into_bytes());
+                Ok(acc)
+            })?;
         if keys_to_update.is_empty() {
             // If no keys matched the condition, 0 rows were updated.
             return Ok(ExecutionResult::Updated { count: 0 });

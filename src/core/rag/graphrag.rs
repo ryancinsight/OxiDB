@@ -210,10 +210,25 @@ impl GraphRAGEngineImpl {
 
     /// Create new GraphRAG engine with custom configuration
     pub fn with_config(document_retriever: Box<dyn Retriever>, config: GraphRAGConfig) -> Self {
+        let embedding_dimension = config.default_embedding_dimension;
+        Self::with_config_and_embedding_model(
+            document_retriever,
+            config,
+            Box::new(SemanticEmbedder::new(embedding_dimension))
+        )
+    }
+
+    /// Create new GraphRAG engine with custom configuration and embedding model
+    /// This enables dependency injection for better testability
+    pub fn with_config_and_embedding_model(
+        document_retriever: Box<dyn Retriever>,
+        config: GraphRAGConfig,
+        embedding_model: Box<dyn EmbeddingModel>,
+    ) -> Self {
         Self {
             graph_store: InMemoryGraphStore::new(),
             document_retriever,
-            embedding_model: Box::new(SemanticEmbedder::new(config.default_embedding_dimension)),
+            embedding_model,
             entity_embeddings: HashMap::new(),
             relationship_weights: Self::default_relationship_weights(),
             confidence_threshold: config.confidence_threshold,
@@ -843,8 +858,38 @@ impl GraphRAGEngineBuilder {
 
         let embedding_model = match (self.embedding_model, self.embedding_dimension) {
             (Some(model), _) => model,
-            (None, Some(dim)) => Box::new(SemanticEmbedder::new(dim)),
-            (None, None) => Box::new(SemanticEmbedder::new(384)), // Default fallback
+            (None, Some(dim)) => Self::create_default_embedding_model(dim),
+            (None, None) => Self::create_default_embedding_model(384), // Default fallback
+        };
+
+        Ok(GraphRAGEngineImpl {
+            graph_store: InMemoryGraphStore::new(),
+            document_retriever,
+            embedding_model,
+            entity_embeddings: HashMap::new(),
+            relationship_weights: GraphRAGEngineImpl::default_relationship_weights(),
+            confidence_threshold: self.confidence_threshold,
+        })
+    }
+
+    /// Create a default embedding model with the specified dimension
+    /// This centralizes the default embedding model creation for better maintainability
+    fn create_default_embedding_model(dimension: usize) -> Box<dyn EmbeddingModel> {
+        Box::new(SemanticEmbedder::new(dimension))
+    }
+
+    /// Build with custom embedding model factory function
+    /// This enables complete dependency injection for testing
+    pub fn build_with_embedding_factory<F>(self, embedding_factory: F) -> Result<GraphRAGEngineImpl, OxidbError>
+    where
+        F: FnOnce(Option<usize>) -> Box<dyn EmbeddingModel>,
+    {
+        let document_retriever = self.document_retriever
+            .ok_or_else(|| OxidbError::Configuration("Document retriever not set".to_string()))?;
+
+        let embedding_model = match self.embedding_model {
+            Some(model) => model,
+            None => embedding_factory(self.embedding_dimension),
         };
 
         Ok(GraphRAGEngineImpl {

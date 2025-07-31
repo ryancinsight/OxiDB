@@ -7,10 +7,7 @@
 //! - Complex queries: JOINs, subqueries, aggregations
 //! - Transactions and constraints
 
-use oxidb::{Oxidb, OxidbError};
-use oxidb::core::types::{DataType, OrderedFloat};
-use chrono::{DateTime, Utc};
-use std::collections::HashMap;
+use oxidb::Oxidb;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== SQL Compatibility Demo ===\n");
