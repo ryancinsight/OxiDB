@@ -133,8 +133,31 @@ impl PartialOrd for JsonValue {
 
 impl Ord for JsonValue {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // Compare by string representation
-        self.0.to_string().cmp(&other.0.to_string())
+        use serde_json::Value;
+        match (&self.0, &other.0) {
+            (Value::Null, Value::Null) => std::cmp::Ordering::Equal,
+            (Value::Null, _) => std::cmp::Ordering::Less,
+            (_, Value::Null) => std::cmp::Ordering::Greater,
+            (Value::Bool(a), Value::Bool(b)) => a.cmp(b),
+            (Value::Bool(_), _) => std::cmp::Ordering::Less,
+            (_, Value::Bool(_)) => std::cmp::Ordering::Greater,
+            (Value::Number(a), Value::Number(b)) => a.as_f64().partial_cmp(&b.as_f64()).unwrap_or(std::cmp::Ordering::Equal),
+            (Value::Number(_), _) => std::cmp::Ordering::Less,
+            (_, Value::Number(_)) => std::cmp::Ordering::Greater,
+            (Value::String(a), Value::String(b)) => a.cmp(b),
+            (Value::String(_), _) => std::cmp::Ordering::Less,
+            (_, Value::String(_)) => std::cmp::Ordering::Greater,
+            (Value::Array(a), Value::Array(b)) => a.cmp(b),
+            (Value::Array(_), _) => std::cmp::Ordering::Less,
+            (_, Value::Array(_)) => std::cmp::Ordering::Greater,
+            (Value::Object(a), Value::Object(b)) => {
+                let mut a_sorted: Vec<_> = a.iter().collect();
+                let mut b_sorted: Vec<_> = b.iter().collect();
+                a_sorted.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+                b_sorted.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+                a_sorted.cmp(&b_sorted)
+            }
+        }
     }
 }
 
