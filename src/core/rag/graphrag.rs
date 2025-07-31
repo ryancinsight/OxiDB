@@ -13,6 +13,7 @@ use crate::core::graph::{
     EdgeId, GraphData, InMemoryGraphStore, NodeId, Relationship,
 };
 use crate::core::graph::traversal::TraversalDirection;
+use crate::core::graph::GraphOperations;
 use crate::core::vector::similarity::cosine_similarity;
 use crate::core::types::VectorData;
 use async_trait::async_trait;
@@ -141,7 +142,7 @@ pub struct GraphRAGEngineImpl {
     graph_store: InMemoryGraphStore,
     document_retriever: Box<dyn Retriever>,
     embedding_model: Box<dyn EmbeddingModel>,
-    entity_embeddings: HashMap<NodeId, VectorData>,
+    entity_embeddings: HashMap<NodeId, Embedding>,
     entity_documents: HashMap<NodeId, Vec<String>>,
     relationship_weights: HashMap<String, f64>,
     confidence_threshold: f64,
@@ -153,7 +154,7 @@ impl GraphRAGEngineImpl {
         Self {
             graph_store: InMemoryGraphStore::new(),
             document_retriever,
-            embedding_model: Box::new(SemanticEmbedder::new()),
+            embedding_model: Box::new(SemanticEmbedder::new(384)),
             entity_embeddings: HashMap::new(),
             entity_documents: HashMap::new(),
             relationship_weights: Self::default_relationship_weights(),
@@ -585,8 +586,10 @@ impl GraphRAGEngineImpl {
             (self.entity_embeddings.get(&entity1_id), self.entity_embeddings.get(&entity2_id))
         {
             use crate::core::vector::similarity::cosine_similarity;
-            let similarity = cosine_similarity(emb1.as_slice(), emb2.as_slice())?;
-            Ok(f64::from(similarity))
+            match cosine_similarity(&emb1.data, &emb2.data) {
+                Ok(similarity) => Ok(similarity as f64),
+                Err(_) => Ok(0.0),
+            }
         } else {
             Ok(0.0)
         }
@@ -643,13 +646,13 @@ impl GraphRAGEngineImpl {
         
         // Calculate similarity with all entity embeddings
         for (node_id, entity_embedding) in &self.entity_embeddings {
-            let similarity = cosine_similarity(
+            if let Ok(similarity) = cosine_similarity(
                 &query_embedding.vector,
-                &entity_embedding.data,
-            );
-            
-            if similarity >= min_confidence {
-                similarities.push((*node_id, similarity));
+                &entity_embedding.vector,
+            ) {
+                if similarity as f64 >= min_confidence {
+                    similarities.push((*node_id, similarity as f64));
+                }
             }
         }
         

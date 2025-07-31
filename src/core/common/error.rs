@@ -32,6 +32,12 @@ pub enum OxidbError {
     #[error("Not Found: {0}")]
     NotFound(String), // Was NotFoundError
 
+    #[error("Invalid Node ID")]
+    InvalidNodeId,
+
+    #[error("Entity Not Found: {0}")]
+    EntityNotFound(String),
+
     #[error("Resource already exists: {name}")]
     AlreadyExists { name: String },
 

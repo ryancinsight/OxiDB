@@ -116,7 +116,7 @@ impl<E: EmbeddingModel + Send + Sync> HybridRAGEngine<E> {
         &self,
         query: &str,
         entity_ids: &[String],
-        context: Option<&GraphRAGContext>,
+        _context: Option<&GraphRAGContext>,
     ) -> Result<Vec<HybridRAGResult>, OxidbError> {
         // Get query embedding
         let query_embedding = self.embedding_model.as_ref().embed(query).await
@@ -208,8 +208,10 @@ impl<E: EmbeddingModel + Send + Sync> HybridRAGEngine<E> {
                     hybrid_score: graph_score * self.config.graph_weight,
                     vector_score: None,
                     graph_score: Some(graph_score),
-                    graph_path: graph_result.reasoning_paths.first().map(|p| p.path_nodes.clone()),
-                    related_entities: graph_result.relevant_entities.iter().map(|e| e.id.clone()).collect(),
+                    graph_path: graph_result.reasoning_paths.first().map(|p| {
+                        p.path_nodes.iter().map(|n| n.to_string()).collect()
+                    }),
+                    related_entities: graph_result.relevant_entities.iter().map(|e| e.name.clone()).collect(),
                 };
 
                 // Optionally calculate vector score if embedding available
@@ -330,15 +332,15 @@ impl<E: EmbeddingModel + Send + Sync> HybridRAGEngine<E> {
             metadata.insert(k, v);
         }
 
-        let mut doc = Document::new(node.id, content).with_metadata(metadata);
+        let mut doc = Document::new(node.id.to_string(), content).with_metadata(metadata);
 
         // Generate embedding if not present
         if node.embedding.is_none() {
             if let Ok(embedding) = self.embedding_model.as_ref().embed(&doc.content).await {
                 doc = doc.with_embedding(embedding);
             }
-        } else if let Some(vec_data) = node.embedding {
-            doc = doc.with_embedding(Embedding::from(vec_data.data));
+        } else if let Some(embedding) = node.embedding {
+            doc = doc.with_embedding(embedding);
         }
 
         Some(doc)
