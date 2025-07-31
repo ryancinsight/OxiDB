@@ -241,6 +241,21 @@ impl VectorData {
         }
         Some(sum_sq_diff.sqrt())
     }
+
+    /// Calculates the magnitude (L2 norm) of the vector
+    #[must_use]
+    pub fn magnitude(&self) -> f64 {
+        self.data.iter()
+            .map(|&x| (x as f64) * (x as f64))
+            .sum::<f64>()
+            .sqrt()
+    }
+
+    /// Calculates the L2 norm of the vector (alias for magnitude)
+    #[must_use]
+    pub fn norm(&self) -> f64 {
+        self.magnitude()
+    }
 }
 
 // Tests module (if any specific to types/mod.rs, otherwise it's usually in individual type files)
