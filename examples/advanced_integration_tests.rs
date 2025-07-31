@@ -1,8 +1,4 @@
-use oxidb::{Connection, OxidbError, QueryResult};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant};
+use oxidb::{Connection, OxidbError};
 
 /// Advanced Integration Tests for OxiDB
 /// Tests complex scenarios combining multiple database features

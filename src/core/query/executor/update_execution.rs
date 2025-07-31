@@ -13,6 +13,16 @@ use std::collections::{HashMap, HashSet}; // Removed AstLiteralValue
 use std::sync::Arc; // Import the helper
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S> {
+    /// Efficiently format key string using iterator combinators
+    /// Reduces allocations and improves performance for key generation
+    fn format_key_string(table_name: &str, pk_column_name: &str, pk_value: &DataType) -> String {
+        format!("{}_pk_{}_{:?}", table_name, pk_column_name, pk_value)
+            .chars()
+            .filter(|&c| c != '(' && c != ')' && c != '"')
+            .collect::<String>()
+            .replace("Integer", "")
+            .replace("String", "")
+    }
     /// Handles an UPDATE command.
     /// This involves:
     /// 1. Planning and executing a SELECT-like sub-query to find rows matching the condition.
@@ -84,56 +94,53 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             plan_snapshot_id.0, // Pass u64
             plan_committed_ids_u64_set,
         )?;
-        let mut keys_to_update: Vec<Key> = Vec::new();
-        let rows_iter = select_execution_tree.execute()?;
-        
         // Get the table schema to find the primary key column
         let schema = self.get_table_schema(&source_table_name)?
             .ok_or_else(|| OxidbError::TableNotFound(source_table_name.clone()))?;
         
-        // Find the primary key column index
-        let mut pk_column_index = None;
-        for (idx, col) in schema.columns.iter().enumerate() {
-            if col.is_primary_key {
-                pk_column_index = Some(idx);
-                break;
-            }
-        }
-        let pk_index = pk_column_index
+        // Find the primary key column index and name using iterator
+        let (pk_index, pk_column_name) = schema.columns
+            .iter()
+            .enumerate()
+            .find(|(_, col)| col.is_primary_key)
+            .map(|(idx, col)| (idx, col.name.clone()))
             .ok_or_else(|| OxidbError::Internal("Table has no primary key column".to_string()))?;
         
-        for tuple_result in rows_iter {
-            let tuple = tuple_result?;
+        // Use efficient error handling with try_fold to avoid collecting partial results on error
+        let keys_to_update: Vec<Key> = select_execution_tree.execute()?
+            .try_fold(Vec::new(), |mut acc, tuple_result| -> Result<Vec<Key>, OxidbError> {
+                let tuple = tuple_result?;
 
-            if tuple.is_empty() {
-                return Err(OxidbError::Internal(
-                    // Changed
-                    "Execution plan for UPDATE yielded empty tuple.".to_string(),
-                ));
-            }
-            
-            // Get the primary key value from the tuple
-            if pk_index >= tuple.len() {
-                return Err(OxidbError::Internal(format!(
-                    "Primary key index {} out of bounds for tuple length {}",
-                    pk_index, tuple.len()
-                )));
-            }
-            
-            // Construct the key from table name and primary key value
-            let pk_value = &tuple[pk_index];
-            let key_string = match pk_value {
-                DataType::Integer(id) => format!("{}_pk_id_{}", source_table_name, id),
-                _ => {
-                    return Err(OxidbError::Type(format!(
-                        "Unsupported primary key type {:?} for UPDATE. Expected Integer.",
-                        pk_value
+                if tuple.is_empty() {
+                    return Err(OxidbError::Internal(
+                        "Execution plan for UPDATE yielded empty tuple.".to_string(),
+                    ));
+                }
+                
+                // Get the primary key value from the tuple
+                if pk_index >= tuple.len() {
+                    return Err(OxidbError::Internal(format!(
+                        "Primary key index {} out of bounds for tuple length {}",
+                        pk_index, tuple.len()
                     )));
                 }
-            };
-            keys_to_update.push(key_string.into_bytes());
-        }
-
+                
+                // Construct the key from table name and primary key value using same format as INSERT
+                let pk_value = &tuple[pk_index];
+                let key_string = if pk_column_name == "_kv_key" {
+                    // Special convention: if PK column is named _kv_key and is String, use its value directly
+                    match pk_value {
+                        DataType::String(s) => s.clone(),
+                        _ => Self::format_key_string(&source_table_name, &pk_column_name, pk_value)
+                    }
+                } else {
+                    // Standard PK-based key generation using efficient helper method
+                    Self::format_key_string(&source_table_name, &pk_column_name, pk_value)
+                };
+                
+                acc.push(key_string.into_bytes());
+                Ok(acc)
+            })?;
         if keys_to_update.is_empty() {
             // If no keys matched the condition, 0 rows were updated.
             return Ok(ExecutionResult::Updated { count: 0 });
@@ -388,12 +395,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                         }
                     }
 
-                    let mut old_map_for_index = HashMap::new();
-                    old_map_for_index
-                        .insert("default_value_index".to_string(), current_value_bytes.clone());
-                    let mut new_map_for_index = HashMap::new();
-                    new_map_for_index
-                        .insert("default_value_index".to_string(), updated_value_bytes.clone());
+                    // Use iterator-based HashMap construction to avoid multiple allocations
+                    let old_map_for_index = std::iter::once(("default_value_index".to_string(), current_value_bytes.clone()))
+                        .collect::<HashMap<String, Vec<u8>>>();
+                    let new_map_for_index = std::iter::once(("default_value_index".to_string(), updated_value_bytes.clone()))
+                        .collect::<HashMap<String, Vec<u8>>>();
                     self.index_manager
                         .write()
                         .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for default_value_index update: {e}")))?

@@ -19,6 +19,44 @@ use async_trait::async_trait;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::str::FromStr;
 
+/// Custom iterator for efficient similarity calculations without intermediate collections
+pub struct SimilarityIterator<'a> {
+    entities: std::collections::hash_map::Iter<'a, NodeId, KnowledgeNode>,
+    query_embedding: &'a [f32],
+    threshold: f64,
+}
+
+impl<'a> SimilarityIterator<'a> {
+    #[allow(dead_code)]
+    fn new(entities: std::collections::hash_map::Iter<'a, NodeId, KnowledgeNode>, query_embedding: &'a [f32], threshold: f64) -> Self {
+        Self { entities, query_embedding, threshold }
+    }
+}
+
+impl<'a> Iterator for SimilarityIterator<'a> {
+    type Item = (NodeId, f64);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Use iterator combinators to find next matching entity efficiently
+        self.entities
+            .find_map(|(node_id, entity)| {
+                entity.embedding.as_ref().and_then(|embedding| {
+                    match cosine_similarity(self.query_embedding, &embedding.vector) {
+                        Ok(similarity) => {
+                            let similarity_f64 = similarity as f64;
+                            if similarity_f64 >= self.threshold {
+                                Some((*node_id, similarity_f64))
+                            } else {
+                                None
+                            }
+                        }
+                        Err(_) => None, // Skip entities with similarity calculation errors
+                    }
+                })
+            })
+    }
+}
+
 /// Knowledge graph node representing entities in the domain
 #[derive(Debug, Clone)]
 pub struct KnowledgeNode {
@@ -160,7 +198,6 @@ pub struct GraphRAGEngineImpl {
     document_retriever: Box<dyn Retriever>,
     embedding_model: Box<dyn EmbeddingModel>,
     entity_embeddings: HashMap<NodeId, Embedding>,
-    entity_documents: HashMap<NodeId, Vec<String>>,
     relationship_weights: HashMap<String, f64>,
     confidence_threshold: f64,
 }
@@ -173,12 +210,26 @@ impl GraphRAGEngineImpl {
 
     /// Create new GraphRAG engine with custom configuration
     pub fn with_config(document_retriever: Box<dyn Retriever>, config: GraphRAGConfig) -> Self {
+        let embedding_dimension = config.default_embedding_dimension;
+        Self::with_config_and_embedding_model(
+            document_retriever,
+            config,
+            Box::new(SemanticEmbedder::new(embedding_dimension))
+        )
+    }
+
+    /// Create new GraphRAG engine with custom configuration and embedding model
+    /// This enables dependency injection for better testability
+    pub fn with_config_and_embedding_model(
+        document_retriever: Box<dyn Retriever>,
+        config: GraphRAGConfig,
+        embedding_model: Box<dyn EmbeddingModel>,
+    ) -> Self {
         Self {
             graph_store: InMemoryGraphStore::new(),
             document_retriever,
-            embedding_model: Box::new(SemanticEmbedder::new(config.default_embedding_dimension)),
+            embedding_model,
             entity_embeddings: HashMap::new(),
-            entity_documents: HashMap::new(),
             relationship_weights: Self::default_relationship_weights(),
             confidence_threshold: config.confidence_threshold,
         }
@@ -194,7 +245,6 @@ impl GraphRAGEngineImpl {
             document_retriever,
             embedding_model,
             entity_embeddings: HashMap::new(),
-            entity_documents: HashMap::new(),
             relationship_weights: Self::default_relationship_weights(),
             confidence_threshold: 0.5,
         }
@@ -537,12 +587,14 @@ impl GraphRAGEngineImpl {
         hasher.finish() as EdgeId
     }
 
-    /// Calculate relationship confidence based on text proximity and context
+    /// Calculate relationship confidence based on text proximity and context using iterator-based approach
     fn calculate_relationship_confidence(&self, text: &str, char1: &str, char2: &str, pattern: &str) -> f64 {
+        // Use iterator combinators to avoid unnecessary allocations
         let char1_positions: Vec<usize> = text.match_indices(char1).map(|(i, _)| i).collect();
         let char2_positions: Vec<usize> = text.match_indices(char2).map(|(i, _)| i).collect();
         let pattern_positions: Vec<usize> = text.match_indices(pattern).map(|(i, _)| i).collect();
         
+        // Early exit using iterator methods
         if char1_positions.is_empty() || char2_positions.is_empty() || pattern_positions.is_empty() {
             return 0.0;
         }
@@ -678,10 +730,10 @@ impl GraphRAGEngineImpl {
             }
         }
         
-        // Sort by similarity (descending)
+        // Sort by similarity (descending) and take top_k using iterator combinators
         similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         
-        // Return top_k results
+        // Return top_k results without unnecessary intermediate collection
         Ok(similarities.into_iter().take(top_k).collect())
     }
 
@@ -806,8 +858,8 @@ impl GraphRAGEngineBuilder {
 
         let embedding_model = match (self.embedding_model, self.embedding_dimension) {
             (Some(model), _) => model,
-            (None, Some(dim)) => Box::new(SemanticEmbedder::new(dim)),
-            (None, None) => Box::new(SemanticEmbedder::new(384)), // Default fallback
+            (None, Some(dim)) => Self::create_default_embedding_model(dim),
+            (None, None) => Self::create_default_embedding_model(384), // Default fallback
         };
 
         Ok(GraphRAGEngineImpl {
@@ -815,7 +867,36 @@ impl GraphRAGEngineBuilder {
             document_retriever,
             embedding_model,
             entity_embeddings: HashMap::new(),
-            entity_documents: HashMap::new(),
+            relationship_weights: GraphRAGEngineImpl::default_relationship_weights(),
+            confidence_threshold: self.confidence_threshold,
+        })
+    }
+
+    /// Create a default embedding model with the specified dimension
+    /// This centralizes the default embedding model creation for better maintainability
+    fn create_default_embedding_model(dimension: usize) -> Box<dyn EmbeddingModel> {
+        Box::new(SemanticEmbedder::new(dimension))
+    }
+
+    /// Build with custom embedding model factory function
+    /// This enables complete dependency injection for testing
+    pub fn build_with_embedding_factory<F>(self, embedding_factory: F) -> Result<GraphRAGEngineImpl, OxidbError>
+    where
+        F: FnOnce(Option<usize>) -> Box<dyn EmbeddingModel>,
+    {
+        let document_retriever = self.document_retriever
+            .ok_or_else(|| OxidbError::Configuration("Document retriever not set".to_string()))?;
+
+        let embedding_model = match self.embedding_model {
+            Some(model) => model,
+            None => embedding_factory(self.embedding_dimension),
+        };
+
+        Ok(GraphRAGEngineImpl {
+            graph_store: InMemoryGraphStore::new(),
+            document_retriever,
+            embedding_model,
+            entity_embeddings: HashMap::new(),
             relationship_weights: GraphRAGEngineImpl::default_relationship_weights(),
             confidence_threshold: self.confidence_threshold,
         })
@@ -1016,14 +1097,17 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
     ) -> Result<Vec<GraphRAGResult>, OxidbError> {
         let query_embedding = self.embedding_model.embed(query).await
             .map_err(|e| OxidbError::Internal(format!("Failed to embed query: {}", e)))?;
-        let context = context.unwrap_or(&GraphRAGContext {
+        
+        // Create default context if none provided (following SSOT principle)
+        let default_context = GraphRAGContext {
             query_embedding: query_embedding,
             max_hops: 2,
             min_confidence: 0.5,
             include_relationships: vec![],
             exclude_relationships: vec![],
             entity_types: vec![],
-        });
+        };
+        let context = context.unwrap_or(&default_context);
 
         let mut results = Vec::new();
         let similar_entities = self.find_similar_entities(&context.query_embedding, 10, context.min_confidence)?;

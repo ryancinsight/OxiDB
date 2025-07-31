@@ -462,6 +462,16 @@ mod tests {
         }
         #[async_trait]
         impl EmbeddingModel for TestModel {
+            fn embedding_dimension(&self) -> usize {
+                self.dimension
+            }
+
+            async fn embed(&self, text: &str) -> Result<Embedding, OxidbError> {
+                // Simple test implementation: use text length as basis for embedding
+                let hash_value = text.len() % 10;
+                Ok(Embedding::from(vec![hash_value as f32; self.dimension]))
+            }
+
             async fn embed_document(&self, document: &Document) -> Result<Embedding, OxidbError> {
                 Ok(Embedding::from(vec![
                     (document.id.chars().last().unwrap_or('0').to_digit(10).unwrap_or(0) % 10)

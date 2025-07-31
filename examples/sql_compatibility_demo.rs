@@ -7,21 +7,18 @@
 //! - Complex queries: JOINs, subqueries, aggregations
 //! - Transactions and constraints
 
-use oxidb::{OxiDB, OxiDBError};
-use oxidb::core::types::{DataType, OrderedFloat};
-use chrono::{DateTime, Utc};
-use std::collections::HashMap;
+use oxidb::Oxidb;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== SQL Compatibility Demo ===\n");
     
-    let db = OxiDB::open("sql_demo.db")?;
+    let mut db = Oxidb::new("sql_demo.db")?;
     
     // Clean up any existing tables
-    let _ = db.execute_sql("DROP TABLE IF EXISTS order_items");
-    let _ = db.execute_sql("DROP TABLE IF EXISTS orders");
-    let _ = db.execute_sql("DROP TABLE IF EXISTS products");
-    let _ = db.execute_sql("DROP TABLE IF EXISTS customers");
+    let _ = db.execute_query_str("DROP TABLE IF EXISTS order_items");
+    let _ = db.execute_query_str("DROP TABLE IF EXISTS orders");
+    let _ = db.execute_query_str("DROP TABLE IF EXISTS products");
+    let _ = db.execute_query_str("DROP TABLE IF EXISTS customers");
     
     println!("1. Creating Tables (PostgreSQL/MySQL compatible syntax)");
     println!("{}", "=".repeat(50));
@@ -37,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             is_active BOOLEAN DEFAULT true
         )
     "#;
-    db.execute_sql(create_customers)?;
+    db.execute_query_str(create_customers)?;
     println!("✓ Created customers table");
     
     // Create products table with various data types
@@ -57,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     "#;
-    db.execute_sql(create_products)?;
+    db.execute_query_str(create_products)?;
     println!("✓ Created products table");
     
     // Create orders table with foreign key reference
@@ -73,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             FOREIGN KEY (customer_id) REFERENCES customers(id)
         )
     "#;
-    db.execute_sql(create_orders)?;
+    db.execute_query_str(create_orders)?;
     println!("✓ Created orders table");
     
     // Create order_items table (many-to-many relationship)
@@ -89,17 +86,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             FOREIGN KEY (product_id) REFERENCES products(id)
         )
     "#;
-    db.execute_sql(create_order_items)?;
+    db.execute_query_str(create_order_items)?;
     println!("✓ Created order_items table");
     
     // Create indexes for better performance
     println!("\n2. Creating Indexes");
     println!("{}", "=".repeat(50));
     
-    db.execute_sql("CREATE INDEX idx_customers_email ON customers(email)")?;
-    db.execute_sql("CREATE INDEX idx_products_category ON products(category)")?;
-    db.execute_sql("CREATE INDEX idx_orders_customer ON orders(customer_id)")?;
-    db.execute_sql("CREATE INDEX idx_orders_status ON orders(status)")?;
+    db.execute_query_str("CREATE INDEX idx_customers_email ON customers(email)")?;
+    db.execute_query_str("CREATE INDEX idx_products_category ON products(category)")?;
+    db.execute_query_str("CREATE INDEX idx_orders_customer ON orders(customer_id)")?;
+    db.execute_query_str("CREATE INDEX idx_orders_status ON orders(status)")?;
     println!("✓ Created indexes for optimized queries");
     
     // Insert sample data
@@ -115,7 +112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
     
     for sql in customers {
-        db.execute_sql(sql)?;
+        db.execute_query_str(sql)?;
     }
     println!("✓ Inserted 4 customers");
     
@@ -138,7 +135,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
     
     for sql in products {
-        db.execute_sql(sql)?;
+        db.execute_query_str(sql)?;
     }
     println!("✓ Inserted 5 products");
     
@@ -155,7 +152,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
     
     for sql in orders {
-        db.execute_sql(sql)?;
+        db.execute_query_str(sql)?;
     }
     println!("✓ Inserted 3 orders");
     
@@ -169,7 +166,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
     
     for sql in order_items {
-        db.execute_sql(sql)?;
+        db.execute_query_str(sql)?;
     }
     println!("✓ Inserted 5 order items");
     
@@ -179,32 +176,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Simple SELECT
     println!("\n-- Simple SELECT with WHERE clause:");
-    let result = db.execute_sql("SELECT name, email FROM customers WHERE is_active = true")?;
-    print_results(&result);
+    let result = db.execute_query_str("SELECT name, email FROM customers WHERE is_active = true")?;
+    print_results(&oxidb::QueryResult::from_execution_result(result));
     
     // SELECT with ORDER BY and LIMIT
     println!("\n-- SELECT with ORDER BY and LIMIT:");
-    let result = db.execute_sql("SELECT name, price FROM products ORDER BY price DESC LIMIT 3")?;
-    print_results(&result);
+    let result = db.execute_query_str("SELECT name, price FROM products ORDER BY price DESC LIMIT 3")?;
+    print_results(&oxidb::QueryResult::from_execution_result(result));
     
     // SELECT with aggregation
     println!("\n-- Aggregation functions:");
-    let result = db.execute_sql("SELECT category, COUNT(*) as count, AVG(price) as avg_price, MAX(price) as max_price FROM products GROUP BY category")?;
-    print_results(&result);
+    let result = db.execute_query_str("SELECT category, COUNT(*) as count, AVG(price) as avg_price, MAX(price) as max_price FROM products GROUP BY category")?;
+    print_results(&oxidb::QueryResult::from_execution_result(result));
     
     // JOIN queries
     println!("\n-- INNER JOIN (customer orders):");
-    let result = db.execute_sql(r#"
+    let result = db.execute_query_str(r#"
         SELECT c.name, o.id as order_id, o.status, o.total_amount
         FROM customers c
         INNER JOIN orders o ON c.id = o.customer_id
         ORDER BY o.total_amount DESC
     "#)?;
-    print_results(&result);
+    print_results(&oxidb::QueryResult::from_execution_result(result));
     
     // Complex JOIN with multiple tables
     println!("\n-- Multi-table JOIN (order details):");
-    let result = db.execute_sql(r#"
+    let result = db.execute_query_str(r#"
         SELECT 
             c.name as customer,
             p.name as product,
@@ -217,31 +214,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         INNER JOIN products p ON oi.product_id = p.id
         WHERE o.status = 'completed'
     "#)?;
-    print_results(&result);
+    print_results(&oxidb::QueryResult::from_execution_result(result));
     
     // Subquery example
     println!("\n-- Subquery (customers with orders):");
-    let result = db.execute_sql(r#"
+    let result = db.execute_query_str(r#"
         SELECT name, email
         FROM customers
         WHERE id IN (SELECT DISTINCT customer_id FROM orders)
     "#)?;
-    print_results(&result);
+    print_results(&oxidb::QueryResult::from_execution_result(result));
     
     // UPDATE examples
     println!("\n5. UPDATE Operations");
     println!("{}", "=".repeat(50));
     
     // Update single record
-    db.execute_sql("UPDATE products SET stock = stock - 1 WHERE id = 1")?;
+    db.execute_query_str("UPDATE products SET stock = stock - 1 WHERE id = 1")?;
     println!("✓ Updated laptop stock (decreased by 1)");
     
     // Update with calculation
-    db.execute_sql("UPDATE products SET price = price * 1.1 WHERE category = 'Electronics'")?;
+    db.execute_query_str("UPDATE products SET price = price * 1.1 WHERE category = 'Electronics'")?;
     println!("✓ Increased electronics prices by 10%");
     
     // Update multiple fields
-    db.execute_sql(r#"
+    db.execute_query_str(r#"
         UPDATE orders 
         SET status = 'shipped', 
             notes = 'Shipped via express delivery'
@@ -250,7 +247,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("✓ Updated order status and notes");
     
     // Conditional update
-    db.execute_sql(r#"
+    db.execute_query_str(r#"
         UPDATE customers 
         SET is_active = false 
         WHERE id NOT IN (SELECT DISTINCT customer_id FROM orders)
@@ -262,17 +259,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", "=".repeat(50));
     
     // Start transaction
-    db.execute_sql("BEGIN TRANSACTION")?;
+    db.execute_query_str("BEGIN TRANSACTION")?;
     println!("✓ Started transaction");
     
     // Create a new order within transaction
-    db.execute_sql("INSERT INTO orders (id, customer_id, status) VALUES (4, 3, 'pending')")?;
-    db.execute_sql("INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES (4, 5, 2, 499.99)")?;
-    db.execute_sql("UPDATE orders SET total_amount = 999.98 WHERE id = 4")?;
-    db.execute_sql("UPDATE products SET stock = stock - 2 WHERE id = 5")?;
+    db.execute_query_str("INSERT INTO orders (id, customer_id, status) VALUES (4, 3, 'pending')")?;
+    db.execute_query_str("INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES (4, 5, 2, 499.99)")?;
+    db.execute_query_str("UPDATE orders SET total_amount = 999.98 WHERE id = 4")?;
+    db.execute_query_str("UPDATE products SET stock = stock - 2 WHERE id = 5")?;
     
     // Commit transaction
-    db.execute_sql("COMMIT")?;
+    db.execute_query_str("COMMIT")?;
     println!("✓ Committed transaction (new order created)");
     
     // Advanced queries
@@ -281,7 +278,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // CASE statement
     println!("\n-- CASE statement (price categories):");
-    let result = db.execute_sql(r#"
+    let result = db.execute_query_str(r#"
         SELECT 
             name,
             price,
@@ -293,11 +290,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FROM products
         ORDER BY price
     "#)?;
-    print_results(&result);
+    print_results(&oxidb::QueryResult::from_execution_result(result));
     
     // HAVING clause
     println!("\n-- GROUP BY with HAVING:");
-    let result = db.execute_sql(r#"
+    let result = db.execute_query_str(r#"
         SELECT 
             category,
             COUNT(*) as product_count,
@@ -306,11 +303,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         GROUP BY category
         HAVING COUNT(*) > 1
     "#)?;
-    print_results(&result);
+    print_results(&oxidb::QueryResult::from_execution_result(result));
     
     // String functions
     println!("\n-- String functions:");
-    let result = db.execute_sql(r#"
+    let result = db.execute_query_str(r#"
         SELECT 
             UPPER(name) as upper_name,
             LENGTH(email) as email_length,
@@ -318,11 +315,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         FROM customers
         WHERE phone IS NOT NULL
     "#)?;
-    print_results(&result);
+    print_results(&oxidb::QueryResult::from_execution_result(result));
     
     // Date/time operations (simulated)
     println!("\n-- Date operations:");
-    let result = db.execute_sql(r#"
+    let result = db.execute_query_str(r#"
         SELECT 
             id,
             order_date,
@@ -331,14 +328,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         WHERE order_date >= '2024-01-01'
         ORDER BY order_date DESC
     "#)?;
-    print_results(&result);
+    print_results(&oxidb::QueryResult::from_execution_result(result));
     
     // Clean up
     println!("\n8. Cleanup Operations");
     println!("{}", "=".repeat(50));
     
     // Delete with JOIN (delete order items for pending orders)
-    db.execute_sql(r#"
+    db.execute_query_str(r#"
         DELETE FROM order_items
         WHERE order_id IN (
             SELECT id FROM orders WHERE status = 'pending'
@@ -347,10 +344,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("✓ Deleted items from pending orders");
     
     // Drop tables in correct order (respecting foreign keys)
-    db.execute_sql("DROP TABLE order_items")?;
-    db.execute_sql("DROP TABLE orders")?;
-    db.execute_sql("DROP TABLE products")?;
-    db.execute_sql("DROP TABLE customers")?;
+    db.execute_query_str("DROP TABLE order_items")?;
+    db.execute_query_str("DROP TABLE orders")?;
+    db.execute_query_str("DROP TABLE products")?;
+    db.execute_query_str("DROP TABLE customers")?;
     println!("✓ Dropped all tables");
     
     println!("\n✅ SQL Compatibility Demo completed successfully!");
@@ -362,35 +359,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 // Helper function to print query results
 fn print_results(result: &oxidb::QueryResult) {
-    if result.rows.is_empty() {
-        println!("(No results)");
-        return;
+    match result {
+        oxidb::QueryResult::Data(data) => {
+            if data.rows().count() == 0 {
+                println!("(No results)");
+                return;
+            }
+            
+            // Print column headers
+            let headers = data.columns();
+            println!("{}", headers.join(" | "));
+            println!("{}", "-".repeat(headers.join(" | ").len()));
+            
+            // Print rows
+            for row in data.rows() {
+                let values: Vec<String> = row.iter()
+                    .map(|val| format_value(val))
+                    .collect();
+                println!("{}", values.join(" | "));
+            }
+            println!("({} rows)", data.rows().count());
+        },
+        oxidb::QueryResult::RowsAffected(count) => {
+            println!("({} rows affected)", count);
+        },
+        oxidb::QueryResult::Success => {
+            println!("Query executed successfully");
+        }
     }
-    
-    // Print column headers
-    let headers: Vec<String> = result.schema.iter()
-        .map(|(name, _)| name.clone())
-        .collect();
-    println!("{}", headers.join(" | "));
-    println!("{}", "-".repeat(headers.join(" | ").len()));
-    
-    // Print rows
-    for row in &result.rows {
-        let values: Vec<String> = row.iter()
-            .map(|val| format_value(val))
-            .collect();
-        println!("{}", values.join(" | "));
-    }
-    println!("({} rows)", result.rows.len());
 }
 
-fn format_value(val: &DataType) -> String {
+fn format_value(val: &oxidb::Value) -> String {
     match val {
-        DataType::Integer(i) => i.to_string(),
-        DataType::Float(f) => format!("{:.2}", f.0),
-        DataType::String(s) => s.clone(),
-        DataType::Boolean(b) => b.to_string(),
-        DataType::Null => "NULL".to_string(),
+        oxidb::Value::Integer(i) => i.to_string(),
+        oxidb::Value::Float(f) => format!("{:.2}", f),
+        oxidb::Value::Text(s) => s.clone(),
+        oxidb::Value::Boolean(b) => b.to_string(),
+        oxidb::Value::Null => "NULL".to_string(),
         _ => format!("{:?}", val),
     }
 }
