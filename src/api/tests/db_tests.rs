@@ -654,14 +654,14 @@ fn test_execute_query_str_update_ok() {
                 DataType::String(s) => Ok(s.clone()),
                 DataType::Integer(i) => Ok(i.to_string()),
                 DataType::Boolean(b) => Ok(b.to_string()),
-                DataType::Float(f) => Ok(f.to_string()),
+                DataType::Float(f) => Ok(f.0.to_string()),
                 DataType::Null => Ok("NULL".to_string()),
                 DataType::RawBytes(b) => Ok(String::from_utf8_lossy(b).into_owned()),
                 DataType::Vector(vec) => {
                     // Convert vector to a readable string representation for tests
                     Ok(format!(
                         "[{}]",
-                        vec.data.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(", ")
+                        vec.0.data.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(", ")
                     ))
                 }
                 // The following Boolean, Float, and Null are unreachable and have been removed.

@@ -50,54 +50,136 @@ impl Optimizer {
 
         match statement {
             Statement::Select(select_stmt) => {
-                // Create the base table scan
-                let table_scan = QueryPlanNode::TableScan {
+                // First create the base table scan
+                let mut base_plan = QueryPlanNode::TableScan {
                     table_name: select_stmt.from_clause.name.clone(),
                     alias: select_stmt.from_clause.alias.clone(),
                 };
 
-                // Handle column selection - create a projection if needed
+                // Apply WHERE clause to the base table scan if present
+                if let Some(condition) = &select_stmt.condition {
+                    base_plan = QueryPlanNode::Filter {
+                        input: Box::new(base_plan),
+                        predicate: self.convert_simple_condition_to_expression(condition)?,
+                    };
+                }
+
+                // Now handle projection/aggregation
                 let plan_with_projection = match &select_stmt.columns[..] {
                     [SelectColumn::Asterisk] => {
                         // For SELECT *, we need to determine all columns from the table schema
                         // For now, return the table scan directly and let the execution handle it
-                        table_scan
+                        base_plan
                     }
                     columns => {
-                        // For specific columns, create a projection
-                        let column_names: Vec<String> = columns
-                            .iter()
-                            .filter_map(|col| match col {
-                                SelectColumn::ColumnName(name) => Some(name.clone()),
-                                SelectColumn::Asterisk => None, // Mixed * and columns not supported yet
-                            })
-                            .collect();
-
-                        if column_names.is_empty() {
-                            // All asterisks - treat as SELECT *
-                            table_scan
+                        // Check if we have aggregates in the SELECT clause
+                        let has_aggregates = columns.iter().any(|col| {
+                            matches!(col, SelectColumn::AggregateFunction { .. })
+                        });
+                        
+                        if has_aggregates {
+                            // Build aggregate plan
+                            let mut aggregate_specs = Vec::new();
+                            let mut non_aggregate_columns = Vec::new();
+                            
+                            for col in columns {
+                                match col {
+                                    SelectColumn::AggregateFunction { function, column, alias } => {
+                                        let column_name = match column.as_ref() {
+                                            SelectColumn::ColumnName(name) => Some(name.clone()),
+                                            SelectColumn::Asterisk => None, // For COUNT(*)
+                                            _ => {
+                                                return Err(OxidbError::SqlParsing(
+                                                    "Nested aggregate functions not supported".to_string()
+                                                ));
+                                            }
+                                        };
+                                        aggregate_specs.push(AggregateSpec {
+                                            function: function.clone(),
+                                            column: column_name,
+                                            alias: alias.clone(),
+                                        });
+                                    }
+                                    SelectColumn::ColumnName(name) => {
+                                        non_aggregate_columns.push(name.clone());
+                                    }
+                                    SelectColumn::Asterisk => {
+                                        return Err(OxidbError::SqlParsing(
+                                            "Cannot use * with aggregate functions".to_string()
+                                        ));
+                                    }
+                                }
+                            }
+                            
+                            // Check if non-aggregate columns match GROUP BY columns
+                            if !non_aggregate_columns.is_empty() {
+                                if let Some(group_by) = &select_stmt.group_by {
+                                    // Verify all non-aggregate columns are in GROUP BY
+                                    for col in &non_aggregate_columns {
+                                        if !group_by.contains(col) {
+                                            return Err(OxidbError::SqlParsing(
+                                                format!("Column '{}' must appear in the GROUP BY clause or be used in an aggregate function", col)
+                                            ));
+                                        }
+                                    }
+                                } else {
+                                    return Err(OxidbError::SqlParsing(
+                                        "Cannot mix aggregate and non-aggregate columns without GROUP BY".to_string()
+                                    ));
+                                }
+                            }
+                            
+                            QueryPlanNode::Aggregate {
+                                input: Box::new(base_plan),
+                                aggregates: aggregate_specs,
+                                group_by: select_stmt.group_by.clone().unwrap_or_default(),
+                            }
                         } else {
-                            QueryPlanNode::Project {
-                                input: Box::new(table_scan),
-                                columns: column_names,
+                            // Regular projection
+                            let column_names: Vec<String> = columns
+                                .iter()
+                                .filter_map(|col| match col {
+                                    SelectColumn::ColumnName(name) => Some(name.clone()),
+                                    SelectColumn::Asterisk => None, // Mixed * and columns not supported yet
+                                    SelectColumn::AggregateFunction { .. } => unreachable!(),
+                                })
+                                .collect();
+
+                            if column_names.is_empty() {
+                                // All asterisks - treat as SELECT *
+                                base_plan
+                            } else {
+                                QueryPlanNode::Project {
+                                    input: Box::new(base_plan),
+                                    columns: column_names,
+                                }
                             }
                         }
                     }
                 };
 
-                // Add filter if there's a WHERE clause
-                let plan_with_filter = if let Some(condition) = &select_stmt.condition {
-                    // Basic WHERE clause implementation
-                    // For now, we'll create a Filter node with a simple expression converter
-                    QueryPlanNode::Filter {
-                        input: Box::new(plan_with_projection),
-                        predicate: self.convert_simple_condition_to_expression(condition)?,
+                // Add HAVING clause if present (only valid with aggregates)
+                let plan_with_having = if let Some(having) = &select_stmt.having {
+                    // HAVING is only valid with GROUP BY/aggregates
+                    match &plan_with_projection {
+                        QueryPlanNode::Aggregate { .. } => {
+                            // Apply HAVING as a filter after aggregation
+                            QueryPlanNode::Filter {
+                                input: Box::new(plan_with_projection),
+                                predicate: self.convert_simple_condition_to_expression(having)?,
+                            }
+                        }
+                        _ => {
+                            return Err(OxidbError::SqlParsing(
+                                "HAVING clause requires GROUP BY or aggregate functions".to_string()
+                            ));
+                        }
                     }
                 } else {
                     plan_with_projection
                 };
 
-                Ok(plan_with_filter)
+                Ok(plan_with_having)
             }
             Statement::Delete(delete_stmt) => {
                 // Create a basic DELETE plan
@@ -150,7 +232,7 @@ impl Optimizer {
                                 if let Ok(i) = n.parse::<i64>() {
                                     crate::core::types::DataType::Integer(i)
                                 } else if let Ok(f) = n.parse::<f64>() {
-                                    crate::core::types::DataType::Float(f)
+                                    crate::core::types::DataType::Float(crate::core::types::OrderedFloat(f))
                                 } else {
                                     // Fallback to string if parsing fails
                                     crate::core::types::DataType::String(n.clone())
@@ -293,6 +375,15 @@ impl Optimizer {
                 let optimized_input = self.apply_index_selection(*input, index_manager)?;
                 Ok(QueryPlanNode::DeleteNode { input: Box::new(optimized_input), table_name })
             }
+            
+            QueryPlanNode::Aggregate { input, aggregates, group_by } => {
+                let optimized_input = self.apply_index_selection(*input, index_manager)?;
+                Ok(QueryPlanNode::Aggregate { 
+                    input: Box::new(optimized_input), 
+                    aggregates, 
+                    group_by 
+                })
+            }
 
             // Base cases - no further optimization needed
             QueryPlanNode::TableScan { .. } | QueryPlanNode::IndexScan { .. } => Ok(plan),
@@ -432,6 +523,18 @@ pub enum QueryPlanNode {
         input: Box<QueryPlanNode>,
         table_name: String,
     },
+    Aggregate {
+        input: Box<QueryPlanNode>,
+        aggregates: Vec<AggregateSpec>,
+        group_by: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct AggregateSpec {
+    pub function: crate::core::query::sql::ast::AggregateFunction,
+    pub column: Option<String>, // None for COUNT(*)
+    pub alias: Option<String>,
 }
 
 #[allow(dead_code)]

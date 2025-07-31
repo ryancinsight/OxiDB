@@ -254,7 +254,7 @@ fn parse_legacy_command_string(query_str: &str) -> Result<Command, OxidbError> {
                 } else if let Ok(num) = value_str.parse::<i64>() {
                     DataType::Integer(num)
                 } else if let Ok(num_f) = value_str.parse::<f64>() {
-                    DataType::Float(num_f)
+                    DataType::Float(crate::core::types::OrderedFloat(num_f))
                 } else {
                     DataType::String(value_str.clone())
                 };
@@ -457,7 +457,7 @@ mod tests {
         match result {
             Ok(Command::Insert { key, value }) => {
                 assert_eq!(key, "mykey".as_bytes().to_vec());
-                assert_eq!(value, DataType::Float(123.45));
+                assert_eq!(value, DataType::Float(crate::core::types::OrderedFloat(123.45)));
             }
             _ => panic!("Expected INSERT command with Float"),
         }

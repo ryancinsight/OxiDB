@@ -3,7 +3,7 @@ use crate::core::common::OxidbError;
 use crate::core::execution::{ExecutionOperator, Tuple};
 use crate::core::query::commands::Key;
 use crate::core::storage::engine::traits::KeyValueStore;
-use crate::core::types::DataType; // Import JsonSafeMap
+use crate::core::types::{DataType, schema::Schema}; // Import JsonSafeMap and Schema
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock}; // Added RwLock
 
@@ -13,24 +13,25 @@ pub struct TableScanOperator<S: KeyValueStore<Key, Vec<u8>>> {
     /// The name of the table to scan. Currently unused in execute but kept for context.
     #[allow(dead_code)]
     table_name: String,
-    /// The snapshot ID for MVCC visibility. Currently unused in execute but kept for context.
+    /// The table schema to extract columns in the correct order
+    schema: Schema,
+    /// Transaction snapshot ID
     #[allow(dead_code)]
     snapshot_id: u64,
-    /// The set of committed transaction IDs for MVCC visibility. Currently unused in execute but kept for context.
+    /// Set of committed transaction IDs for visibility check
     #[allow(dead_code)]
     committed_ids: Arc<HashSet<u64>>,
-    /// Flag to ensure the operator is executed only once.
-    executed: bool,
 }
 
 impl<S: KeyValueStore<Key, Vec<u8>>> TableScanOperator<S> {
     pub const fn new(
         store: Arc<RwLock<S>>, // Changed to Arc<RwLock<S>>
         table_name: String,
+        schema: Schema,
         snapshot_id: u64,
         committed_ids: Arc<HashSet<u64>>,
     ) -> Self {
-        Self { store, table_name, snapshot_id, committed_ids, executed: false }
+        Self { store, table_name, schema, snapshot_id, committed_ids }
     }
 }
 
@@ -38,15 +39,6 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for TableScanOp
     fn execute(
         &mut self,
     ) -> Result<Box<dyn Iterator<Item = Result<Tuple, OxidbError>> + Send + Sync>, OxidbError> {
-        // Changed
-        if self.executed {
-            return Err(OxidbError::Internal(
-                // Changed
-                "TableScanOperator cannot be executed more than once".to_string(),
-            ));
-        }
-        self.executed = true;
-
         // Now self.store is Arc<RwLock<S>>, so we need to lock it for reading.
         let store_guard = self.store.read().map_err(|e| {
             OxidbError::LockTimeout(format!("Failed to acquire read lock on store: {e}"))
@@ -58,6 +50,7 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for TableScanOp
                                            // For now, this synchronous version should be okay.
 
         let table_name = self.table_name.clone();
+        let schema = self.schema.clone();
         let iterator = all_kvs.into_iter().filter_map(move |(key_bytes, value_bytes)| {
             // Filter out schema keys (and potentially other internal metadata)
             if key_bytes.starts_with(b"_schema_") {
@@ -72,17 +65,26 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for TableScanOp
 
             match deserialize_data_type(&value_bytes) {
                 Ok(row_data_type) => {
-                    // Convert the raw key_bytes to a DataType.
-                    // This assumes the actual row key (which might be a PK value or a generated UUID)
-                    // is stored as a string or can be meaningfully represented as one here.
-                    // For the purpose of UPDATE, the first element of this tuple is crucial
-                    // as it's used to fetch the row again.
-                    let key_data_type = DataType::RawBytes(key_bytes.clone()); // Use RawBytes for keys
-
-                    // The tuple now contains the KV store's key as the first element,
-                    // and the deserialized row data (expected to be a DataType::Map) as the second.
-                    let tuple = vec![key_data_type, row_data_type];
-                    Some(Ok(tuple))
+                    // Extract the Map from the row data
+                    if let DataType::Map(map_data) = row_data_type {
+                        // Create a tuple with column values in schema order
+                        let mut tuple = Vec::with_capacity(schema.columns.len());
+                        
+                        for col_def in &schema.columns {
+                            let col_name_bytes = col_def.name.as_bytes();
+                            let value = map_data.0.get(col_name_bytes)
+                                .cloned()
+                                .unwrap_or(DataType::Null);
+                            tuple.push(value);
+                        }
+                        
+                        Some(Ok(tuple))
+                    } else {
+                        Some(Err(OxidbError::Internal(format!(
+                            "Expected DataType::Map for row data, got {:?}",
+                            row_data_type
+                        ))))
+                    }
                 }
                 Err(e) => Some(Err(OxidbError::Deserialization(format!(
                     "Failed to deserialize row data for key {:?}: {}",

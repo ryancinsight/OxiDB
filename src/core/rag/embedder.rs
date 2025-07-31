@@ -8,8 +8,14 @@ use std::collections::HashMap;
 /// Trait for models that can generate embeddings for documents.
 #[async_trait]
 pub trait EmbeddingModel: Send + Sync {
+    /// Get the dimension of embeddings produced by this model
+    fn embedding_dimension(&self) -> usize;
+
     /// Generates an embedding for a single document.
     async fn embed_document(&self, document: &Document) -> Result<Embedding, OxidbError>;
+
+    /// Generates an embedding for a text string.
+    async fn embed(&self, text: &str) -> Result<Embedding, OxidbError>;
 
     /// Generates embeddings for a batch of documents.
     /// Default implementation calls `embed_document` for each document.
@@ -118,6 +124,16 @@ impl EmbeddingModel for TfIdfEmbedder {
         }
         
         Ok(Embedding::from(embedding))
+    }
+
+    async fn embed(&self, text: &str) -> Result<Embedding, OxidbError> {
+        // Create a temporary document to embed the text
+        let doc = Document::new("temp".to_string(), text.to_string());
+        self.embed_document(&doc).await
+    }
+
+    fn embedding_dimension(&self) -> usize {
+        self.dimension
     }
 }
 
@@ -297,6 +313,24 @@ impl EmbeddingModel for SemanticEmbedder {
         
         Ok(Embedding::from(normalized_features))
     }
+
+    async fn embed(&self, text: &str) -> Result<Embedding, OxidbError> {
+        let features = self.extract_all_features(text);
+        
+        // Normalize the feature vector
+        let magnitude: f32 = features.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let normalized_features = if magnitude > 0.0 {
+            features.iter().map(|x| x / magnitude).collect()
+        } else {
+            features
+        };
+        
+        Ok(Embedding::from(normalized_features))
+    }
+
+    fn embedding_dimension(&self) -> usize {
+        self.dimension
+    }
 }
 
 /// A simple mock embedding model for testing purposes.
@@ -319,6 +353,15 @@ impl EmbeddingModel for MockEmbeddingModel {
         Ok(Embedding::from(vec))
     }
 
+    async fn embed(&self, text: &str) -> Result<Embedding, OxidbError> {
+        let value_to_fill = self.fixed_embedding_value.unwrap_or_else(|| {
+            // Create a pseudo-random value based on text length for some variation
+            (text.len() % 100) as f32 / 100.0
+        });
+        let vec = vec![value_to_fill; self.dimension];
+        Ok(Embedding::from(vec))
+    }
+
     async fn embed_documents(&self, documents: &[Document]) -> Result<Vec<Embedding>, OxidbError> {
         let mut embeddings = Vec::new();
         for doc in documents {
@@ -326,6 +369,10 @@ impl EmbeddingModel for MockEmbeddingModel {
             embeddings.push(embedding);
         }
         Ok(embeddings)
+    }
+
+    fn embedding_dimension(&self) -> usize {
+        self.dimension
     }
 }
 

@@ -1,7 +1,7 @@
 // Imports needed for the tests
 use crate::core::query::commands::Command;
 use crate::core::query::sql::ast::{
-    self, AstColumnConstraint, AstDataType, AstLiteralValue, ConditionTree, OrderDirection,
+    self, AggregateFunction, AstColumnConstraint, AstDataType, AstLiteralValue, ConditionTree, OrderDirection,
     SelectColumn, Statement,
 };
 use crate::core::query::sql::errors::SqlParseError;
@@ -2310,4 +2310,30 @@ fn test_autoincrement_insert_functionality() {
 
     // Verify auto-increment state
     assert_eq!(executor.get_next_auto_increment_value("test_table", "id"), 3);
+}
+
+#[test]
+fn test_parse_count_star() {
+    let sql = "SELECT COUNT(*) FROM users";
+    let mut tokenizer = crate::core::query::sql::tokenizer::Tokenizer::new(sql);
+    let tokens = tokenizer.tokenize().unwrap();
+    let mut parser = SqlParser::new(tokens);
+    let result = parser.parse();
+    assert!(result.is_ok());
+    
+    let statement = result.unwrap();
+    match statement {
+        Statement::Select(select) => {
+            assert_eq!(select.columns.len(), 1);
+            match &select.columns[0] {
+                SelectColumn::AggregateFunction { function, column, alias } => {
+                    assert!(matches!(function, AggregateFunction::Count));
+                    assert!(matches!(column.as_ref(), SelectColumn::Asterisk));
+                    assert!(alias.is_none());
+                }
+                _ => panic!("Expected AggregateFunction, got {:?}", select.columns[0]),
+            }
+        }
+        _ => panic!("Expected SELECT statement"),
+    }
 }

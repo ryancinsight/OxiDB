@@ -99,20 +99,20 @@ fn test_filter_operator_greater_than_or_equal() -> Result<(), OxidbError> {
 #[test]
 fn test_filter_operator_less_than_or_equal() -> Result<(), OxidbError> {
     let input_tuples = vec![
-        vec![DataType::Float(10.5)],
-        vec![DataType::Float(20.0)],
-        vec![DataType::Float(15.5)],
-        vec![DataType::Float(5.5)],
+        vec![DataType::Float(crate::core::types::OrderedFloat(10.5))],
+        vec![DataType::Float(crate::core::types::OrderedFloat(20.0))],
+        vec![DataType::Float(crate::core::types::OrderedFloat(15.5))],
+        vec![DataType::Float(crate::core::types::OrderedFloat(5.5))],
     ];
     let mock_input = MockInputOperator::new(input_tuples);
-    let predicate = compare_op(column(0), "<=", literal(DataType::Float(15.5)));
+    let predicate = compare_op(column(0), "<=", literal(DataType::Float(crate::core::types::OrderedFloat(15.5))));
     let mut filter_op = FilterOperator::new(Box::new(mock_input), predicate);
     let results: Vec<Tuple> = filter_op.execute()?.collect::<Result<_, _>>()?;
 
     assert_eq!(results.len(), 3);
-    assert!(results.contains(&vec![DataType::Float(10.5)]));
-    assert!(results.contains(&vec![DataType::Float(15.5)]));
-    assert!(results.contains(&vec![DataType::Float(5.5)]));
+    assert!(results.contains(&vec![DataType::Float(crate::core::types::OrderedFloat(10.5))]));
+    assert!(results.contains(&vec![DataType::Float(crate::core::types::OrderedFloat(15.5))]));
+    assert!(results.contains(&vec![DataType::Float(crate::core::types::OrderedFloat(5.5))]));
     Ok(())
 }
 
@@ -142,25 +142,25 @@ fn test_filter_operator_and() -> Result<(), OxidbError> {
 #[test]
 fn test_filter_operator_or() -> Result<(), OxidbError> {
     let input_tuples = vec![
-        vec![DataType::Integer(50), DataType::Float(5.0)], // Pass (col0)
-        vec![DataType::Integer(10), DataType::Float(15.0)], // Pass (col1)
-        vec![DataType::Integer(5), DataType::Float(2.0)],  // Fail
-        vec![DataType::Integer(60), DataType::Float(12.0)], // Pass (both)
+        vec![DataType::Integer(50), DataType::Float(crate::core::types::OrderedFloat(5.0))], // Pass (col0)
+        vec![DataType::Integer(10), DataType::Float(crate::core::types::OrderedFloat(15.0))], // Pass (col1)
+        vec![DataType::Integer(5), DataType::Float(crate::core::types::OrderedFloat(2.0))],  // Fail
+        vec![DataType::Integer(60), DataType::Float(crate::core::types::OrderedFloat(12.0))], // Pass (both)
     ];
     let mock_input = MockInputOperator::new(input_tuples);
 
     // Predicate: tuple[0] > 40 OR tuple[1] > 10.0
     let cond1 = compare_op(column(0), ">", literal(DataType::Integer(40)));
-    let cond2 = compare_op(column(1), ">", literal(DataType::Float(10.0)));
+    let cond2 = compare_op(column(1), ">", literal(DataType::Float(crate::core::types::OrderedFloat(10.0))));
     let predicate = binary_op(Box::new(cond1), "OR", Box::new(cond2));
 
     let mut filter_op = FilterOperator::new(Box::new(mock_input), predicate);
     let results: Vec<Tuple> = filter_op.execute()?.collect::<Result<_, _>>()?;
 
     assert_eq!(results.len(), 3);
-    assert!(results.contains(&vec![DataType::Integer(50), DataType::Float(5.0)]));
-    assert!(results.contains(&vec![DataType::Integer(10), DataType::Float(15.0)]));
-    assert!(results.contains(&vec![DataType::Integer(60), DataType::Float(12.0)]));
+    assert!(results.contains(&vec![DataType::Integer(50), DataType::Float(crate::core::types::OrderedFloat(5.0))]));
+    assert!(results.contains(&vec![DataType::Integer(10), DataType::Float(crate::core::types::OrderedFloat(15.0))]));
+    assert!(results.contains(&vec![DataType::Integer(60), DataType::Float(crate::core::types::OrderedFloat(12.0))]));
     Ok(())
 }
 

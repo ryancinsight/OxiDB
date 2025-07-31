@@ -220,13 +220,13 @@ impl CowUtils {
         match dt {
             DataType::String(s) => Cow::Borrowed(s),
             DataType::Integer(i) => Cow::Owned(i.to_string()),
-            DataType::Float(f) => Cow::Owned(f.to_string()),
+            DataType::Float(f) => Cow::Owned(f.0.to_string()),
             DataType::Boolean(b) => Cow::Borrowed(if *b { "true" } else { "false" }),
             DataType::Null => Cow::Borrowed("NULL"),
             DataType::RawBytes(bytes) => Cow::Owned(String::from_utf8_lossy(bytes).into_owned()),
             DataType::Vector(vec) => Cow::Owned(format!(
                 "[{}]",
-                vec.data
+                vec.0.data
                     .iter()
                     .map(std::string::ToString::to_string)
                     .collect::<Vec<_>>()
@@ -243,13 +243,13 @@ impl CowUtils {
         match (left, right) {
             (DataType::String(a), DataType::String(b)) => a == b,
             (DataType::Integer(a), DataType::Integer(b)) => a == b,
-            (DataType::Float(a), DataType::Float(b)) => (a - b).abs() < f64::EPSILON,
+            (DataType::Float(a), DataType::Float(b)) => (a.0 - b.0).abs() < f64::EPSILON,
             (DataType::Boolean(a), DataType::Boolean(b)) => a == b,
             (DataType::Null, DataType::Null) => true,
             (DataType::RawBytes(a), DataType::RawBytes(b)) => a == b,
             (DataType::Vector(a), DataType::Vector(b)) => {
-                a.data.len() == b.data.len()
-                    && a.data.iter().zip(b.data.iter()).all(|(x, y)| (x - y).abs() < f32::EPSILON)
+                a.0.data.len() == b.0.data.len()
+                    && a.0.data.iter().zip(b.0.data.iter()).all(|(x, y)| (x - y).abs() < f32::EPSILON)
             }
             _ => false,
         }
@@ -261,7 +261,7 @@ impl CowUtils {
         match dt {
             DataType::String(s) => Some(Cow::Borrowed(s)),
             DataType::Integer(i) => Some(Cow::Owned(i.to_string())),
-            DataType::Float(f) => Some(Cow::Owned(f.to_string())),
+            DataType::Float(f) => Some(Cow::Owned(f.0.to_string())),
             DataType::Boolean(b) => Some(Cow::Borrowed(if *b { "true" } else { "false" })),
             _ => None,
         }
@@ -272,7 +272,7 @@ impl CowUtils {
     pub fn extract_number(dt: &DataType) -> Option<f64> {
         match dt {
             DataType::Integer(i) => Some(*i as f64),
-            DataType::Float(f) => Some(*f),
+            DataType::Float(f) => Some(f.0),
             DataType::String(s) => s.parse().ok(),
             _ => None,
         }

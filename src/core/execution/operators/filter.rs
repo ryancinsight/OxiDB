@@ -1,20 +1,28 @@
 use crate::core::common::OxidbError;
 use crate::core::execution::{ExecutionOperator, Tuple};
 use crate::core::optimizer::Expression;
-use crate::core::types::DataType;
+use crate::core::types::{DataType, schema::Schema};
 use std::borrow::Cow;
+use std::sync::Arc;
 
 pub struct FilterOperator {
     /// The input operator that provides tuples.
     input: Box<dyn ExecutionOperator + Send + Sync>,
     /// The expression used to filter tuples.
     predicate: Expression,
+    /// The schema of the input tuples, used to resolve column names to indices
+    schema: Option<Arc<Schema>>,
 }
 
 impl FilterOperator {
     #[must_use]
     pub fn new(input: Box<dyn ExecutionOperator + Send + Sync>, predicate: Expression) -> Self {
-        Self { input, predicate }
+        Self { input, predicate, schema: None }
+    }
+    
+    #[must_use]
+    pub fn with_schema(input: Box<dyn ExecutionOperator + Send + Sync>, predicate: Expression, schema: Arc<Schema>) -> Self {
+        Self { input, predicate, schema: Some(schema) }
     }
 
     // Static version of evaluate_predicate for use in the closure
@@ -25,6 +33,7 @@ impl FilterOperator {
     /// # Arguments
     /// * `tuple` - The tuple to evaluate the predicate against.
     /// * `predicate` - The expression representing the predicate.
+    /// * `schema` - Optional schema to resolve column names to indices.
     ///
     /// # Returns
     /// * `Ok(true)` if the predicate evaluates to true for the tuple.
@@ -33,11 +42,12 @@ impl FilterOperator {
     fn static_evaluate_predicate(
         tuple: &Tuple,
         predicate: &Expression,
+        schema: Option<&Arc<Schema>>,
     ) -> Result<bool, OxidbError> {
         match predicate {
             Expression::CompareOp { left, op, right } => {
-                let left_val_cow = Self::evaluate_expression_to_datatype(tuple, left)?;
-                let right_val_cow = Self::evaluate_expression_to_datatype(tuple, right)?;
+                let left_val_cow = Self::evaluate_expression_to_datatype(tuple, left, schema)?;
+                let right_val_cow = Self::evaluate_expression_to_datatype(tuple, right, schema)?;
 
                 // Dereference Cow to get &DataType for comparison
                 let left_val = &*left_val_cow;
@@ -50,24 +60,36 @@ impl FilterOperator {
                         (DataType::Integer(a), DataType::Integer(b)) => Ok(a > b),
                         (DataType::Float(a), DataType::Float(b)) => Ok(a > b),
                         (DataType::String(a), DataType::String(b)) => Ok(a > b),
+                        // Handle mixed numeric types
+                        (DataType::Float(a), DataType::Integer(b)) => Ok(a.0 > *b as f64),
+                        (DataType::Integer(a), DataType::Float(b)) => Ok(*a as f64 > b.0),
                         _ => Err(OxidbError::Type("Type mismatch for '>' operator".into())),
                     },
                     "<" => match (left_val, right_val) {
                         (DataType::Integer(a), DataType::Integer(b)) => Ok(a < b),
                         (DataType::Float(a), DataType::Float(b)) => Ok(a < b),
                         (DataType::String(a), DataType::String(b)) => Ok(a < b),
+                        // Handle mixed numeric types
+                        (DataType::Float(a), DataType::Integer(b)) => Ok(a.0 < *b as f64),
+                        (DataType::Integer(a), DataType::Float(b)) => Ok((*a as f64) < b.0),
                         _ => Err(OxidbError::Type("Type mismatch for '<' operator".into())),
                     },
                     ">=" => match (left_val, right_val) {
                         (DataType::Integer(a), DataType::Integer(b)) => Ok(a >= b),
                         (DataType::Float(a), DataType::Float(b)) => Ok(a >= b),
                         (DataType::String(a), DataType::String(b)) => Ok(a >= b),
+                        // Handle mixed numeric types
+                        (DataType::Float(a), DataType::Integer(b)) => Ok(a.0 >= *b as f64),
+                        (DataType::Integer(a), DataType::Float(b)) => Ok(*a as f64 >= b.0),
                         _ => Err(OxidbError::Type("Type mismatch for '>=' operator".into())),
                     },
                     "<=" => match (left_val, right_val) {
                         (DataType::Integer(a), DataType::Integer(b)) => Ok(a <= b),
                         (DataType::Float(a), DataType::Float(b)) => Ok(a <= b),
                         (DataType::String(a), DataType::String(b)) => Ok(a <= b),
+                        // Handle mixed numeric types
+                        (DataType::Float(a), DataType::Integer(b)) => Ok(a.0 <= *b as f64),
+                        (DataType::Integer(a), DataType::Float(b)) => Ok(*a as f64 <= b.0),
                         _ => Err(OxidbError::Type("Type mismatch for '<=' operator".into())),
                     },
                     _ => Err(OxidbError::NotImplemented {
@@ -79,7 +101,7 @@ impl FilterOperator {
             Expression::Literal(DataType::Boolean(b)) => Ok(*b), // e.g. WHERE true
             Expression::BinaryOp { left, op, right } => {
                 // Evaluate left and right sub-expressions recursively
-                let left_result = Self::static_evaluate_predicate(tuple, left)?;
+                let left_result = Self::static_evaluate_predicate(tuple, left, schema)?;
 
                 // Short-circuit for AND and OR
                 match op.as_str() {
@@ -87,13 +109,13 @@ impl FilterOperator {
                         if !left_result {
                             return Ok(false); // Short-circuit if left is false
                         }
-                        Self::static_evaluate_predicate(tuple, right)
+                        Self::static_evaluate_predicate(tuple, right, schema)
                     }
                     "OR" => {
                         if left_result {
                             return Ok(true); // Short-circuit if left is true
                         }
-                        Self::static_evaluate_predicate(tuple, right)
+                        Self::static_evaluate_predicate(tuple, right, schema)
                     }
                     _ => Err(OxidbError::NotImplemented {
                         feature: format!("Logical operator '{op}' not implemented in BinaryOp."),
@@ -114,11 +136,27 @@ impl FilterOperator {
         // Lifetime 'a tied to tuple
         tuple: &'a Tuple,
         expr: &Expression,
+        schema: Option<&Arc<Schema>>,
     ) -> Result<Cow<'a, DataType>, OxidbError> {
         match expr {
             Expression::Literal(val) => Ok(Cow::Owned(val.clone())), // Literals are cloned
             Expression::Column(col_name) => {
-                // Attempt to parse as usize for direct index access first.
+                // First, try to resolve column name using schema if available
+                if let Some(schema) = schema {
+                    if let Some(column_index) = schema.get_column_index(col_name) {
+                        if column_index >= tuple.len() {
+                            return Err(OxidbError::Internal(format!(
+                                "Column index {} (for column '{}') out of bounds for tuple with len {}.",
+                                column_index,
+                                col_name,
+                                tuple.len()
+                            )));
+                        }
+                        return Ok(Cow::Borrowed(&tuple[column_index]));
+                    }
+                }
+                
+                // If schema is not available or column not found, try parsing as numeric index
                 if let Ok(column_index) = col_name.parse::<usize>() {
                     if column_index >= tuple.len() {
                         return Err(OxidbError::Internal(format!(
@@ -129,7 +167,7 @@ impl FilterOperator {
                     }
                     Ok(Cow::Borrowed(&tuple[column_index]))
                 } else {
-                    // If not a usize, assume it's a named column for a map.
+                    // If not a usize and no schema available, assume it's a named column for a map.
                     // This is specific to how UPDATE works: the SELECT sub-query for UPDATE
                     // should yield full DataType::Map rows if filtering by name is intended.
                     // We assume the map is the first (and likely only) element in the tuple.
@@ -180,19 +218,19 @@ impl ExecutionOperator for FilterOperator {
     fn execute(
         &mut self,
     ) -> Result<Box<dyn Iterator<Item = Result<Tuple, OxidbError>> + Send + Sync>, OxidbError> {
-        // Changed DbError to OxidbError
+        // Changed
         let input_iter = self.input.execute()?;
         let predicate_clone = self.predicate.clone();
+        let schema_clone = self.schema.clone();
 
         let iterator = input_iter.filter_map(move |tuple_result| match tuple_result {
-            Ok(tuple) => match Self::static_evaluate_predicate(&tuple, &predicate_clone) {
+            Ok(tuple) => match Self::static_evaluate_predicate(&tuple, &predicate_clone, schema_clone.as_ref()) {
                 Ok(true) => Some(Ok(tuple)),
                 Ok(false) => None,
                 Err(e) => Some(Err(e)),
             },
             Err(e) => Some(Err(e)),
         });
-
         Ok(Box::new(iterator))
     }
 }

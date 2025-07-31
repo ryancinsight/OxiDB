@@ -5,18 +5,22 @@
 //! modular, extensible design.
 
 use super::core_components::{Document, Embedding};
+use super::embedder::{EmbeddingModel, SemanticEmbedder};
 use super::retriever::Retriever;
+use crate::core::common::types::Value;
 use crate::core::common::OxidbError;
-use crate::core::graph::storage::InMemoryGraphStore;
+use crate::core::graph::{
+    EdgeId, GraphData, InMemoryGraphStore, NodeId, Relationship,
+};
 use crate::core::graph::traversal::TraversalDirection;
-use crate::core::graph::{EdgeId, GraphData, GraphOperations, GraphQuery, NodeId, Relationship};
-use crate::core::types::Value;
+use crate::core::graph::{GraphOperations, GraphQuery};
+use crate::core::vector::similarity::cosine_similarity;
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::str::FromStr;
 
 /// Knowledge graph node representing entities in the domain
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct KnowledgeNode {
     pub id: NodeId,
     pub entity_type: String,
@@ -28,7 +32,7 @@ pub struct KnowledgeNode {
 }
 
 /// Knowledge graph edge representing relationships between entities
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct KnowledgeEdge {
     pub id: EdgeId,
     pub from_entity: NodeId,
@@ -81,6 +85,24 @@ pub trait GraphRAGEngine: Send + Sync {
         context: GraphRAGContext,
     ) -> Result<GraphRAGResult, OxidbError>;
 
+    /// Query the graph with a text query
+    async fn query(
+        &self,
+        query: &str,
+        context: Option<&GraphRAGContext>,
+    ) -> Result<Vec<GraphRAGResult>, OxidbError>;
+
+    /// Traverse from a specific entity
+    async fn traverse_from_entity(
+        &self,
+        entity_id: &str,
+        max_depth: usize,
+        query: Option<&str>,
+    ) -> Result<Vec<GraphRAGResult>, OxidbError>;
+
+    /// Get a specific entity by ID
+    async fn get_entity(&self, entity_id: &str) -> Result<KnowledgeNode, OxidbError>;
+
     /// Add entity to knowledge graph
     async fn add_entity(&mut self, entity: KnowledgeNode) -> Result<NodeId, OxidbError>;
 
@@ -114,23 +136,65 @@ struct EdgeInfo {
     weight: Option<f64>,
 }
 
+/// Configuration for GraphRAG engine
+#[derive(Debug, Clone)]
+pub struct GraphRAGConfig {
+    /// Dimension for default embedding model (if not provided)
+    pub default_embedding_dimension: usize,
+    /// Initial confidence threshold
+    pub confidence_threshold: f64,
+}
+
+impl Default for GraphRAGConfig {
+    fn default() -> Self {
+        Self {
+            default_embedding_dimension: 384,
+            confidence_threshold: 0.5,
+        }
+    }
+}
+
 /// Implementation of `GraphRAG` engine
 pub struct GraphRAGEngineImpl {
     graph_store: InMemoryGraphStore,
     document_retriever: Box<dyn Retriever>,
+    embedding_model: Box<dyn EmbeddingModel>,
     entity_embeddings: HashMap<NodeId, Embedding>,
+    entity_documents: HashMap<NodeId, Vec<String>>,
     relationship_weights: HashMap<String, f64>,
     confidence_threshold: f64,
 }
 
 impl GraphRAGEngineImpl {
-    /// Create a new `GraphRAG` engine
-    #[must_use]
+    /// Create new GraphRAG engine with default configuration
     pub fn new(document_retriever: Box<dyn Retriever>) -> Self {
+        Self::with_config(document_retriever, GraphRAGConfig::default())
+    }
+
+    /// Create new GraphRAG engine with custom configuration
+    pub fn with_config(document_retriever: Box<dyn Retriever>, config: GraphRAGConfig) -> Self {
         Self {
             graph_store: InMemoryGraphStore::new(),
             document_retriever,
+            embedding_model: Box::new(SemanticEmbedder::new(config.default_embedding_dimension)),
             entity_embeddings: HashMap::new(),
+            entity_documents: HashMap::new(),
+            relationship_weights: Self::default_relationship_weights(),
+            confidence_threshold: config.confidence_threshold,
+        }
+    }
+
+    /// Create new GraphRAG engine with custom embedding model
+    pub fn with_embedding_model(
+        document_retriever: Box<dyn Retriever>,
+        embedding_model: Box<dyn EmbeddingModel>,
+    ) -> Self {
+        Self {
+            graph_store: InMemoryGraphStore::new(),
+            document_retriever,
+            embedding_model,
+            entity_embeddings: HashMap::new(),
+            entity_documents: HashMap::new(),
             relationship_weights: Self::default_relationship_weights(),
             confidence_threshold: 0.5,
         }
@@ -544,167 +608,217 @@ impl GraphRAGEngineImpl {
             (self.entity_embeddings.get(&entity1_id), self.entity_embeddings.get(&entity2_id))
         {
             use crate::core::vector::similarity::cosine_similarity;
-            let similarity = cosine_similarity(emb1.as_slice(), emb2.as_slice())?;
-            Ok(f64::from(similarity))
+            match cosine_similarity(&emb1.vector, &emb2.vector) {
+                Ok(similarity) => Ok(similarity as f64),
+                Err(_) => Ok(0.0),
+            }
         } else {
             Ok(0.0)
         }
     }
 
-    /// Find edge information between two nodes
+    /// Find edge between two nodes
     fn find_edge_between_nodes(
         &self,
-        from_node: NodeId,
-        to_node: NodeId,
+        from: NodeId,
+        to: NodeId,
     ) -> Result<Option<EdgeInfo>, OxidbError> {
-        // Get neighbors of from_node to find connections
-        let neighbors = self.graph_store.get_neighbors(from_node, TraversalDirection::Outgoing)?;
-
-        if neighbors.contains(&to_node) {
-            // There is a connection, now we need to find the specific edge
-            // This is a limitation of the current GraphOperations interface - we don't have direct edge lookup by nodes
-            // For now, we'll create a reasonable default based on available information
-
-            // Try to get the node information to extract relationship details
-            if let Ok(Some(from_node_data)) = self.graph_store.get_node(from_node) {
-                // Generate a synthetic edge ID (in a real implementation, we'd store edge mappings)
-                let edge_id = (from_node << 32) | to_node;
-
-                // Extract relationship type from node properties or use a default
-                let relationship_type = from_node_data
-                    .data
-                    .get_property("relationship_type")
-                    .and_then(|v| if let Value::Text(s) = v { Some(s.clone()) } else { None })
-                    .unwrap_or_else(|| "RELATED_TO".to_string());
-
-                let confidence_score = from_node_data
-                    .data
-                    .get_property("confidence")
-                    .and_then(|v| if let Value::Float(f) = v { Some(*f) } else { None })
-                    .unwrap_or(0.7);
-
-                return Ok(Some(EdgeInfo {
-                    edge_id,
-                    relationship_type,
-                    description: Some(format!("Relationship from {from_node} to {to_node}")),
-                    confidence_score,
-                    weight: Some(1.0),
-                }));
-            }
+        // Check outgoing edges from 'from' node
+        let neighbors = self.graph_store.get_neighbors(from, TraversalDirection::Outgoing)?;
+        
+        if neighbors.contains(&to) {
+            // For now, create a simple edge info
+            // In a real implementation, we'd look up the actual edge
+            Ok(Some(EdgeInfo {
+                edge_id: 0, // Placeholder
+                relationship_type: "RELATED".to_string(),
+                description: None,
+                confidence_score: 0.8,
+                weight: Some(1.0),
+            }))
+        } else {
+            Ok(None)
         }
-
-        Ok(None)
     }
 
-    /// Get relationship names for each step in a path
+    /// Get relationship types along a path
     fn get_path_relationships(&self, path: &[NodeId]) -> Result<Vec<String>, OxidbError> {
         let mut relationships = Vec::new();
-
-        for i in 0..(path.len().saturating_sub(1)) {
+        
+        for i in 0..path.len().saturating_sub(1) {
             let from_node = path[i];
             let to_node = path[i + 1];
-
+            
             if let Some(edge_info) = self.find_edge_between_nodes(from_node, to_node)? {
                 relationships.push(edge_info.relationship_type);
-            } else {
-                // Fallback: try to infer relationship type from context
-                relationships.push("CONNECTED".to_string());
             }
         }
-
+        
         Ok(relationships)
     }
 
-    /// Find entities similar to query embedding
+    /// Find entities similar to a given embedding
     fn find_similar_entities(
         &self,
         query_embedding: &Embedding,
         top_k: usize,
-        min_similarity: f64,
+        min_confidence: f64,
     ) -> Result<Vec<(NodeId, f64)>, OxidbError> {
         let mut similarities = Vec::new();
-
-        for (&entity_id, entity_embedding) in &self.entity_embeddings {
-            use crate::core::vector::similarity::cosine_similarity;
-            let similarity =
-                cosine_similarity(query_embedding.as_slice(), entity_embedding.as_slice())?;
-            let similarity_f64 = f64::from(similarity);
-
-            if similarity_f64 >= min_similarity {
-                similarities.push((entity_id, similarity_f64));
+        
+        // Calculate similarity with all entity embeddings
+        for (node_id, entity_embedding) in &self.entity_embeddings {
+            if let Ok(similarity) = cosine_similarity(
+                &query_embedding.vector,
+                &entity_embedding.vector,
+            ) {
+                if similarity as f64 >= min_confidence {
+                    similarities.push((*node_id, similarity as f64));
+                }
             }
         }
-
+        
         // Sort by similarity (descending)
         similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        similarities.truncate(top_k);
-
-        Ok(similarities)
+        
+        // Return top_k results
+        Ok(similarities.into_iter().take(top_k).collect())
     }
 
-    /// Expand entity context using graph traversal
+    /// Expand entity context by traversing the graph
     fn expand_entity_context(
         &self,
         entity_ids: &[NodeId],
         max_hops: usize,
     ) -> Result<Vec<NodeId>, OxidbError> {
-        let mut expanded_entities = HashSet::new();
-        let mut current_level = entity_ids.to_vec();
-
-        expanded_entities.extend(current_level.iter());
-
-        for _hop in 0..max_hops {
-            let mut next_level = Vec::new();
-
-            for &entity_id in &current_level {
-                let neighbors =
-                    self.graph_store.get_neighbors(entity_id, TraversalDirection::Both)?;
-                for neighbor in neighbors {
-                    if !expanded_entities.contains(&neighbor) {
-                        expanded_entities.insert(neighbor);
-                        next_level.push(neighbor);
-                    }
+        let mut expanded = HashSet::new();
+        let mut to_visit: VecDeque<(NodeId, usize)> = VecDeque::new();
+        
+        // Start with the given entities
+        for &entity_id in entity_ids {
+            expanded.insert(entity_id);
+            to_visit.push_back((entity_id, 0));
+        }
+        
+        // Breadth-first traversal
+        while let Some((current_id, depth)) = to_visit.pop_front() {
+            if depth >= max_hops {
+                continue;
+            }
+            
+            // Get neighbors in both directions
+            let outgoing = self.graph_store.get_neighbors(current_id, TraversalDirection::Outgoing)?;
+            let incoming = self.graph_store.get_neighbors(current_id, TraversalDirection::Incoming)?;
+            
+            for &neighbor_id in outgoing.iter().chain(incoming.iter()) {
+                if !expanded.contains(&neighbor_id) {
+                    expanded.insert(neighbor_id);
+                    to_visit.push_back((neighbor_id, depth + 1));
                 }
             }
-
-            if next_level.is_empty() {
-                break; // No more entities to expand
-            }
-
-            current_level = next_level;
         }
-
-        Ok(expanded_entities.into_iter().collect())
+        
+        Ok(expanded.into_iter().collect())
     }
 
-    /// Calculate reasoning score for a path
+    /// Calculate reasoning score based on path length and confidence
     fn calculate_reasoning_score(&self, path: &[NodeId]) -> Result<f64, OxidbError> {
-        if path.len() < 2 {
+        if path.is_empty() {
             return Ok(0.0);
         }
-
-        let mut total_score = 0.0;
-        let mut edge_count = 0;
-
-        for i in 0..(path.len() - 1) {
-            let from_node = path[i];
-            let to_node = path[i + 1];
-
-            // Find edges between consecutive nodes
-            let neighbors = self.graph_store.get_neighbors(from_node, TraversalDirection::Both)?;
-            if neighbors.contains(&to_node) {
-                // For simplicity, use a base score. In practice, you'd consider
-                // relationship type, confidence, and other factors
-                total_score += 1.0;
-                edge_count += 1;
+        
+        // Base score inversely proportional to path length
+        let base_score = 1.0 / (1.0 + path.len() as f64 * 0.1);
+        
+        // Factor in entity confidence scores
+        let mut total_confidence = 0.0;
+        let mut count = 0;
+        
+        for &node_id in path {
+            if let Some(embedding) = self.entity_embeddings.get(&node_id) {
+                // Use embedding magnitude as a proxy for confidence
+                let magnitude: f64 = embedding.vector.iter()
+                    .map(|x| (*x as f64).powi(2))
+                    .sum::<f64>()
+                    .sqrt();
+                total_confidence += magnitude;
+                count += 1;
             }
         }
-
-        if edge_count > 0 {
-            Ok(total_score / f64::from(edge_count))
+        
+        let avg_confidence = if count > 0 {
+            total_confidence / count as f64
         } else {
-            Ok(0.0)
+            0.5
+        };
+        
+        Ok(base_score * avg_confidence)
+    }
+}
+
+/// Builder for GraphRAGEngineImpl
+pub struct GraphRAGEngineBuilder {
+    document_retriever: Option<Box<dyn Retriever>>,
+    embedding_model: Option<Box<dyn EmbeddingModel>>,
+    embedding_dimension: Option<usize>,
+    confidence_threshold: f64,
+}
+
+impl Default for GraphRAGEngineBuilder {
+    fn default() -> Self {
+        Self {
+            document_retriever: None,
+            embedding_model: None,
+            embedding_dimension: None,
+            confidence_threshold: 0.5,
         }
+    }
+}
+
+impl GraphRAGEngineBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_document_retriever(mut self, retriever: Box<dyn Retriever>) -> Self {
+        self.document_retriever = Some(retriever);
+        self
+    }
+
+    pub fn with_embedding_model(mut self, model: Box<dyn EmbeddingModel>) -> Self {
+        self.embedding_model = Some(model);
+        self
+    }
+
+    pub fn with_embedding_dimension(mut self, dimension: usize) -> Self {
+        self.embedding_dimension = Some(dimension);
+        self
+    }
+
+    pub fn with_confidence_threshold(mut self, threshold: f64) -> Self {
+        self.confidence_threshold = threshold;
+        self
+    }
+
+    pub fn build(self) -> Result<GraphRAGEngineImpl, OxidbError> {
+        let document_retriever = self.document_retriever
+            .ok_or_else(|| OxidbError::Configuration("Document retriever not set".to_string()))?;
+
+        let embedding_model = match (self.embedding_model, self.embedding_dimension) {
+            (Some(model), _) => model,
+            (None, Some(dim)) => Box::new(SemanticEmbedder::new(dim)),
+            (None, None) => Box::new(SemanticEmbedder::new(384)), // Default fallback
+        };
+
+        Ok(GraphRAGEngineImpl {
+            graph_store: InMemoryGraphStore::new(),
+            document_retriever,
+            embedding_model,
+            entity_embeddings: HashMap::new(),
+            entity_documents: HashMap::new(),
+            relationship_weights: GraphRAGEngineImpl::default_relationship_weights(),
+            confidence_threshold: self.confidence_threshold,
+        })
     }
 }
 
@@ -893,6 +1007,302 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
             entity_relationships,
             confidence_score,
         })
+    }
+
+    async fn query(
+        &self,
+        query: &str,
+        context: Option<&GraphRAGContext>,
+    ) -> Result<Vec<GraphRAGResult>, OxidbError> {
+        let query_embedding = self.embedding_model.embed(query).await
+            .map_err(|e| OxidbError::Internal(format!("Failed to embed query: {}", e)))?;
+        let context = context.unwrap_or(&GraphRAGContext {
+            query_embedding: query_embedding,
+            max_hops: 2,
+            min_confidence: 0.5,
+            include_relationships: vec![],
+            exclude_relationships: vec![],
+            entity_types: vec![],
+        });
+
+        let mut results = Vec::new();
+        let similar_entities = self.find_similar_entities(&context.query_embedding, 10, context.min_confidence)?;
+        let entity_ids: Vec<NodeId> = similar_entities.iter().map(|(id, _)| *id).collect();
+
+        let expanded_entities = self.expand_entity_context(&entity_ids, context.max_hops)?;
+        let documents = self
+            .document_retriever
+            .retrieve(
+                &context.query_embedding,
+                10,
+                crate::core::rag::retriever::SimilarityMetric::Cosine,
+            )
+            .await?;
+
+        let mut relevant_entities = Vec::new();
+        let mut entity_relationships = Vec::new();
+
+        for &entity_id in &expanded_entities {
+            if let Ok(Some(node)) = self.graph_store.get_node(entity_id) {
+                let knowledge_node = KnowledgeNode {
+                    id: entity_id,
+                    entity_type: node.data.label.clone(),
+                    name: node
+                        .data
+                        .get_property("name")
+                        .and_then(|v| if let Value::Text(s) = v { Some(s.clone()) } else { None })
+                        .unwrap_or_else(|| format!("Entity_{entity_id}")),
+                    description: None,
+                    embedding: self.entity_embeddings.get(&entity_id).cloned(),
+                    properties: node.data.properties.clone(),
+                    confidence_score: node
+                        .data
+                        .get_property("confidence")
+                        .and_then(|v| if let Value::Float(f) = v { Some(*f) } else { None })
+                        .unwrap_or(0.5),
+                };
+                relevant_entities.push(knowledge_node);
+            }
+        }
+
+        let expanded_entities_set: HashSet<NodeId> = expanded_entities.iter().copied().collect();
+        for &entity_id in &expanded_entities {
+            if let Ok(neighbors) =
+                self.graph_store.get_neighbors(entity_id, TraversalDirection::Outgoing)
+            {
+                for neighbor_id in neighbors {
+                    if expanded_entities_set.contains(&neighbor_id) {
+                        if let Some(edge_info) =
+                            self.find_edge_between_nodes(entity_id, neighbor_id)?
+                        {
+                            let knowledge_edge = KnowledgeEdge {
+                                id: edge_info.edge_id,
+                                from_entity: entity_id,
+                                to_entity: neighbor_id,
+                                relationship_type: edge_info.relationship_type,
+                                description: edge_info.description,
+                                confidence_score: edge_info.confidence_score,
+                                weight: edge_info.weight,
+                            };
+                            entity_relationships.push(knowledge_edge);
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut reasoning_paths = Vec::new();
+        if entity_ids.len() >= 2 {
+            for i in 0..entity_ids.len().min(3) {
+                for j in (i + 1)..entity_ids.len().min(3) {
+                    if let Ok(Some(path)) = self.graph_store.find_shortest_path(entity_ids[i], entity_ids[j]) {
+                        let reasoning_score = self.calculate_reasoning_score(&path)?;
+                        let path_relationships = self.get_path_relationships(&path)?;
+                        let reasoning_path = ReasoningPath {
+                            path_nodes: path.clone(),
+                            path_relationships,
+                            reasoning_score,
+                            explanation: format!(
+                                "Path from entity {} to entity {} with {} hops",
+                                entity_ids[i],
+                                entity_ids[j],
+                                path.len() - 1
+                            ),
+                        };
+                        reasoning_paths.push(reasoning_path);
+                    }
+                }
+            }
+        }
+
+        let confidence_score = if !similar_entities.is_empty() {
+            similar_entities.iter().map(|(_, score)| score).sum::<f64>()
+                / similar_entities.len() as f64
+        } else {
+            0.0
+        };
+
+        results.push(GraphRAGResult {
+            documents,
+            reasoning_paths,
+            relevant_entities,
+            entity_relationships,
+            confidence_score,
+        });
+
+        Ok(results)
+    }
+
+    async fn traverse_from_entity(
+        &self,
+        entity_id: &str,
+        max_depth: usize,
+        query: Option<&str>,
+    ) -> Result<Vec<GraphRAGResult>, OxidbError> {
+        let entity_id = NodeId::from_str(entity_id).map_err(|_| OxidbError::InvalidNodeId)?;
+        let mut results = Vec::new();
+
+        let mut current_level = vec![entity_id];
+        let mut visited = HashSet::new();
+        visited.insert(entity_id);
+
+        for _depth in 0..max_depth {
+            let mut next_level = Vec::new();
+            for &current_node in &current_level {
+                let neighbors = self.graph_store.get_neighbors(current_node, TraversalDirection::Both)?;
+                for &neighbor in &neighbors {
+                    if !visited.contains(&neighbor) {
+                        visited.insert(neighbor);
+                        next_level.push(neighbor);
+                    }
+                }
+            }
+            current_level = next_level;
+        }
+
+        let expanded_entities = self.expand_entity_context(&current_level, max_depth)?;
+        let query_embedding = if let Some(q) = query {
+            self.embedding_model.embed(q).await
+                .map_err(|e| OxidbError::Internal(format!("Failed to embed query: {}", e)))?
+        } else {
+            // Create zero embedding with the correct dimension
+            Embedding::from(vec![0.0; self.embedding_model.embedding_dimension()])
+        };
+        
+        let documents = self
+            .document_retriever
+            .retrieve(
+                &query_embedding,
+                10,
+                crate::core::rag::retriever::SimilarityMetric::Cosine,
+            )
+            .await?;
+
+        let mut relevant_entities = Vec::new();
+        let mut entity_relationships = Vec::new();
+
+        for &entity_id in &expanded_entities {
+            if let Ok(Some(node)) = self.graph_store.get_node(entity_id) {
+                let knowledge_node = KnowledgeNode {
+                    id: entity_id,
+                    entity_type: node.data.label.clone(),
+                    name: node
+                        .data
+                        .get_property("name")
+                        .and_then(|v| if let Value::Text(s) = v { Some(s.clone()) } else { None })
+                        .unwrap_or_else(|| format!("Entity_{entity_id}")),
+                    description: None,
+                    embedding: self.entity_embeddings.get(&entity_id).cloned(),
+                    properties: node.data.properties.clone(),
+                    confidence_score: node
+                        .data
+                        .get_property("confidence")
+                        .and_then(|v| if let Value::Float(f) = v { Some(*f) } else { None })
+                        .unwrap_or(0.5),
+                };
+                relevant_entities.push(knowledge_node);
+            }
+        }
+
+        let expanded_entities_set: HashSet<NodeId> = expanded_entities.iter().copied().collect();
+        for &entity_id in &expanded_entities {
+            if let Ok(neighbors) =
+                self.graph_store.get_neighbors(entity_id, TraversalDirection::Outgoing)
+            {
+                for neighbor_id in neighbors {
+                    if expanded_entities_set.contains(&neighbor_id) {
+                        if let Some(edge_info) =
+                            self.find_edge_between_nodes(entity_id, neighbor_id)?
+                        {
+                            let knowledge_edge = KnowledgeEdge {
+                                id: edge_info.edge_id,
+                                from_entity: entity_id,
+                                to_entity: neighbor_id,
+                                relationship_type: edge_info.relationship_type,
+                                description: edge_info.description,
+                                confidence_score: edge_info.confidence_score,
+                                weight: edge_info.weight,
+                            };
+                            entity_relationships.push(knowledge_edge);
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut reasoning_paths = Vec::new();
+        if expanded_entities.len() >= 2 {
+            for i in 0..expanded_entities.len().min(3) {
+                for j in (i + 1)..expanded_entities.len().min(3) {
+                    if let Ok(Some(path)) = self.graph_store.find_shortest_path(expanded_entities[i], expanded_entities[j]) {
+                        let reasoning_score = self.calculate_reasoning_score(&path)?;
+                        let path_relationships = self.get_path_relationships(&path)?;
+                        let reasoning_path = ReasoningPath {
+                            path_nodes: path.clone(),
+                            path_relationships,
+                            reasoning_score,
+                            explanation: format!(
+                                "Path from entity {} to entity {} with {} hops",
+                                expanded_entities[i],
+                                expanded_entities[j],
+                                path.len() - 1
+                            ),
+                        };
+                        reasoning_paths.push(reasoning_path);
+                    }
+                }
+            }
+        }
+
+        let confidence_score = if !expanded_entities.is_empty() {
+            expanded_entities.iter()
+                .filter_map(|id| self.entity_embeddings.get(id))
+                .map(|emb| {
+                    let magnitude: f64 = emb.vector.iter()
+                        .map(|x| (*x as f64).powi(2))
+                        .sum::<f64>()
+                        .sqrt();
+                    magnitude
+                })
+                .sum::<f64>() / expanded_entities.len() as f64
+        } else {
+            0.0
+        };
+
+        results.push(GraphRAGResult {
+            documents,
+            reasoning_paths,
+            relevant_entities,
+            entity_relationships,
+            confidence_score,
+        });
+
+        Ok(results)
+    }
+
+    async fn get_entity(&self, entity_id: &str) -> Result<KnowledgeNode, OxidbError> {
+        let entity_id = NodeId::from_str(entity_id).map_err(|_| OxidbError::InvalidNodeId)?;
+        if let Ok(Some(node)) = self.graph_store.get_node(entity_id) {
+            Ok(KnowledgeNode {
+                id: entity_id,
+                entity_type: node.data.label.clone(),
+                name: node
+                    .data
+                    .get_property("name")
+                    .and_then(|v| if let Value::Text(s) = v { Some(s.clone()) } else { None })
+                    .unwrap_or_else(|| format!("Entity_{entity_id}")),
+                description: None,
+                embedding: self.entity_embeddings.get(&entity_id).cloned(),
+                properties: node.data.properties.clone(),
+                confidence_score: node
+                    .data
+                    .get_property("confidence")
+                    .and_then(|v| if let Value::Float(f) = v { Some(*f) } else { None })
+                    .unwrap_or(0.5),
+            })
+        } else {
+            Err(OxidbError::EntityNotFound(entity_id.to_string()))
+        }
     }
 
     async fn add_entity(&mut self, entity: KnowledgeNode) -> Result<NodeId, OxidbError> {

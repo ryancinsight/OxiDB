@@ -97,7 +97,7 @@ impl<'a> ParameterContext<'a> {
                 if let Ok(i) = n.parse::<i64>() {
                     Ok(DataType::Integer(i))
                 } else if let Ok(f) = n.parse::<f64>() {
-                    Ok(DataType::Float(f))
+                    Ok(DataType::Float(crate::core::types::OrderedFloat(f)))
                 } else {
                     Ok(DataType::String(n.clone()))
                 }
@@ -114,7 +114,7 @@ impl<'a> ParameterContext<'a> {
         use crate::core::common::types::Value;
         match value {
             Value::Integer(i) => DataType::Integer(*i),
-            Value::Float(f) => DataType::Float(*f),
+            Value::Float(f) => DataType::Float(crate::core::types::OrderedFloat(*f)),
             Value::Text(s) => DataType::String(s.clone()),
             Value::Boolean(b) => DataType::Boolean(*b),
             Value::Blob(b) => DataType::RawBytes(b.clone()),
@@ -123,7 +123,7 @@ impl<'a> ParameterContext<'a> {
                 let dimension = v.len() as u32;
                 if let Some(vector_data) = crate::core::types::VectorData::new(dimension, v.clone())
                 {
-                    DataType::Vector(vector_data)
+                    DataType::Vector(crate::core::types::HashableVectorData(vector_data))
                 } else {
                     // Fallback to raw bytes if vector creation fails
                     DataType::RawBytes(v.iter().flat_map(|f| f.to_le_bytes().to_vec()).collect())
@@ -142,6 +142,7 @@ pub enum ExecutionResult {
     Values(Vec<DataType>),
     Updated { count: usize },                 // Added for update operations
     RankedResults(Vec<(f32, Vec<DataType>)>), // For similarity search results (distance, row_data)
+    Query { columns: Vec<String>, rows: Vec<Vec<DataType>> }, // Added for aggregate support
 }
 
 #[derive(Debug)]
@@ -1347,5 +1348,78 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         _param_context: &ParameterContext,
     ) -> Result<ExecutionResult, OxidbError> {
         Err(OxidbError::NotImplemented { feature: "Parameterized DELETE execution".to_string() })
+    }
+
+    /// Execute an AST statement directly (for aggregate support)
+    pub fn execute_ast_statement(&mut self, statement: crate::core::query::sql::ast::Statement) -> Result<ExecutionResult, OxidbError> {
+        match statement {
+            crate::core::query::sql::ast::Statement::Select(select_stmt) => {
+                // Get current transaction context
+                let snapshot_id: TransactionId;
+                let committed_ids_vec: Vec<TransactionId>;
+                
+                if let Some(active_tx) = self.transaction_manager.get_active_transaction() {
+                    snapshot_id = active_tx.id;
+                    committed_ids_vec = self.transaction_manager.get_committed_tx_ids_snapshot();
+                } else {
+                    snapshot_id = self
+                        .transaction_manager
+                        .current_active_transaction_id()
+                        .unwrap_or(TransactionId(0));
+                    committed_ids_vec = self.transaction_manager.get_committed_tx_ids_snapshot();
+                }
+                
+                let committed_ids_u64_set = Arc::new(HashSet::from_iter(committed_ids_vec.iter().map(|&t| t.0)));
+                
+                // Build and execute the query plan
+                let ast_statement = crate::core::query::sql::ast::Statement::Select(select_stmt.clone());
+                let initial_plan = self.optimizer.build_initial_plan(&ast_statement)?;
+                let optimized_plan = self.optimizer.optimize_with_indexes(initial_plan, &self.index_manager)?;
+                
+                let mut execution_tree_root = self.build_execution_tree(optimized_plan, snapshot_id.0, committed_ids_u64_set)?;
+                let results_iter = execution_tree_root.execute()?;
+                
+                // Collect results
+                let mut rows: Vec<Vec<DataType>> = Vec::new();
+                for tuple_result in results_iter {
+                    let tuple = tuple_result?;
+                    rows.push(tuple);
+                }
+                
+                // Create column names based on the SELECT
+                let columns = select_stmt.columns.iter().map(|col| {
+                    match col {
+                        crate::core::query::sql::ast::SelectColumn::ColumnName(name) => name.clone(),
+                        crate::core::query::sql::ast::SelectColumn::Asterisk => "*".to_string(),
+                        crate::core::query::sql::ast::SelectColumn::AggregateFunction { function, column, alias } => {
+                            if let Some(alias_name) = alias {
+                                alias_name.clone()
+                            } else {
+                                // Generate a default name for the aggregate
+                                let func_name = match function {
+                                    crate::core::query::sql::ast::AggregateFunction::Count => "COUNT",
+                                    crate::core::query::sql::ast::AggregateFunction::Sum => "SUM",
+                                    crate::core::query::sql::ast::AggregateFunction::Avg => "AVG",
+                                    crate::core::query::sql::ast::AggregateFunction::Min => "MIN",
+                                    crate::core::query::sql::ast::AggregateFunction::Max => "MAX",
+                                };
+                                match column.as_ref() {
+                                    crate::core::query::sql::ast::SelectColumn::Asterisk => format!("{}(*)", func_name),
+                                    crate::core::query::sql::ast::SelectColumn::ColumnName(col_name) => format!("{}({})", func_name, col_name),
+                                    _ => format!("{}(?)", func_name),
+                                }
+                            }
+                        }
+                    }
+                }).collect();
+                
+                Ok(ExecutionResult::Query { columns, rows })
+            }
+            // For non-SELECT statements, convert to Command and use existing logic
+            _ => {
+                let command = crate::core::query::sql::translator::translate_ast_to_command(statement)?;
+                self.execute_command(command)
+            }
+        }
     }
 }

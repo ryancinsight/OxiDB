@@ -9,6 +9,7 @@ pub struct WindowIterator<I, T, F> {
     window_size: usize,
     step: usize,
     buffer: Vec<T>,
+    #[allow(dead_code)]
     position: usize,
     func: F,
     _phantom: PhantomData<T>,
@@ -211,7 +212,10 @@ pub struct ParallelIterator<I, T> {
     _phantom: PhantomData<T>,
 }
 
-impl<I, T> ParallelIterator<I, T> {
+impl<I, T> ParallelIterator<I, T> 
+where
+    T: Sync,
+{
     /// Create a new parallel iterator
     #[inline]
     pub const fn new(iter: I, batch_size: usize) -> Self {
@@ -223,10 +227,10 @@ impl<I, T> ParallelIterator<I, T> {
     }
     
     /// Process items in parallel using the provided function
-    pub fn for_each_parallel<F>(mut self, func: F)
+    pub fn for_each_parallel<F>(self, func: F)
     where
         I: Iterator<Item = T> + Send,
-        T: Send,
+        T: Send + Clone,
         F: Fn(T) + Send + Sync + Clone,
     {
         use std::sync::Arc;
@@ -241,7 +245,7 @@ impl<I, T> ParallelIterator<I, T> {
                 let func = Arc::clone(&func);
                 s.spawn(move || {
                     for item in chunk {
-                        func(*item);
+                        func(item.clone());
                     }
                 });
             }
@@ -250,7 +254,10 @@ impl<I, T> ParallelIterator<I, T> {
 }
 
 /// Zero-cost iterator combinator extensions
-pub trait IteratorExt<T>: Iterator<Item = T> + Sized {
+pub trait IteratorExt<T>: Iterator<Item = T> + Sized 
+where
+    T: Sync,
+{
     /// Create a window iterator
     fn windows<F, R>(self, window_size: usize, step: usize, func: F) -> WindowIterator<Self, T, F>
     where
@@ -302,7 +309,7 @@ pub trait IteratorExt<T>: Iterator<Item = T> + Sized {
     }
     
     /// Zero-allocation exists check
-    fn exists<P>(mut self, mut predicate: P) -> bool
+    fn exists<P>(mut self, predicate: P) -> bool
     where
         P: FnMut(T) -> bool,
     {
@@ -339,12 +346,10 @@ pub trait IteratorExt<T>: Iterator<Item = T> + Sized {
 }
 
 // Implement the extension trait for all iterators
-impl<I, T> IteratorExt<T> for I where I: Iterator<Item = T> {}
+impl<I, T> IteratorExt<T> for I where I: Iterator<Item = T>, T: Sync {}
 
 /// SQL window function implementations
 pub mod window_functions {
-    use super::*;
-    
     /// ROW_NUMBER window function
     pub fn row_number<T>() -> impl Fn(&[T]) -> usize {
         |_| 1 // This would be stateful in real implementation
@@ -477,7 +482,7 @@ mod tests {
         let data = vec![1, 2, 3, 4, 5];
         
         assert_eq!(data.iter().count_while(|&&x| x < 4), 3);
-        assert!(data.iter().exists(|&&x| x == 3));
+        assert!(data.iter().exists(|&x| x == 3));
         
         let (min, max) = data.iter().min_max_by(|&x| *x).unwrap();
         assert_eq!((*min, *max), (1, 5));

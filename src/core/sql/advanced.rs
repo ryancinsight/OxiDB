@@ -1071,6 +1071,7 @@ impl<'a> AdvancedSqlExecutor<'a> {
     }
     
     /// Execute window functions
+    #[allow(dead_code)]
     fn execute_window_function(
         &self,
         func: &WindowFunction,
@@ -1153,6 +1154,7 @@ impl<'a> AdvancedSqlExecutor<'a> {
     }
     
     /// Partition rows by PARTITION BY clause
+    #[allow(dead_code)]
     fn partition_rows(
         &self,
         rows: &[Vec<DataType>],
@@ -1180,6 +1182,7 @@ impl<'a> AdvancedSqlExecutor<'a> {
     }
     
     /// Sort partition by ORDER BY clause
+    #[allow(dead_code)]
     fn sort_partition(
         &self,
         mut partition: Vec<Vec<DataType>>,
@@ -1212,6 +1215,7 @@ impl<'a> AdvancedSqlExecutor<'a> {
     }
     
     /// Get window frame for current row
+    #[allow(dead_code)]
     fn get_window_frame(
         &self,
         partition: &[Vec<DataType>],
@@ -1242,6 +1246,7 @@ impl<'a> AdvancedSqlExecutor<'a> {
     }
     
     /// Evaluate SQL expression
+    #[allow(dead_code)]
     fn evaluate_expression(&self, expr: &SqlExpression, _row: &[DataType]) -> Result<DataType, SqlError> {
         match expr {
             SqlExpression::Literal(value) => Ok(value.clone()),
@@ -1256,6 +1261,7 @@ impl<'a> AdvancedSqlExecutor<'a> {
     }
     
     /// Compare two DataType values
+    #[allow(dead_code)]
     fn compare_values(&self, a: &DataType, b: &DataType) -> std::cmp::Ordering {
         match (a, b) {
             (DataType::Integer(a), DataType::Integer(b)) => a.cmp(b),
@@ -1394,7 +1400,7 @@ mod tests {
         };
         
         match lag {
-            WindowFunction::Lag { expr, offset, default } => {
+            WindowFunction::Lag { expr: _, offset, default } => {
                 assert_eq!(offset, Some(1));
                 assert!(default.is_none());
             }

@@ -118,6 +118,22 @@ impl QueryResult {
             ExecutionResult::Deleted(true) => Self::RowsAffected(1),
             ExecutionResult::Deleted(false) => Self::RowsAffected(0),
             ExecutionResult::Updated { count } => Self::RowsAffected(count as u64),
+            ExecutionResult::Query { columns, rows } => {
+                // Convert rows of DataType to rows of Value
+                let converted_rows: Vec<Row> = rows
+                    .into_iter()
+                    .map(|data_types| {
+                        let values: Vec<crate::core::common::types::Value> =
+                            data_types.into_iter().map(Self::data_type_to_value).collect();
+                        Row::new(values)
+                    })
+                    .collect();
+                
+                Self::Data(QueryResultData {
+                    columns,
+                    rows: converted_rows,
+                })
+            }
             ExecutionResult::RankedResults(ranked_results) => {
                 if ranked_results.is_empty() {
                     // Empty result set
@@ -217,16 +233,16 @@ impl QueryResult {
 
         match data_type {
             DataType::Integer(i) => crate::core::common::types::Value::Integer(i),
-            DataType::Float(f) => crate::core::common::types::Value::Float(f),
+            DataType::Float(f) => crate::core::common::types::Value::Float(f.0),
             DataType::String(s) => crate::core::common::types::Value::Text(s),
             DataType::Boolean(b) => crate::core::common::types::Value::Boolean(b),
             DataType::RawBytes(b) => crate::core::common::types::Value::Blob(b),
-            DataType::Vector(v) => crate::core::common::types::Value::Vector(v.data),
+            DataType::Vector(v) => crate::core::common::types::Value::Vector(v.0.data),
             DataType::Null => crate::core::common::types::Value::Null,
             DataType::Map(map) => crate::core::common::types::Value::Text(
                 serde_json::to_string(&map.0).unwrap_or_else(|_| "{}".to_string()),
             ), // Serialize map to JSON string
-            DataType::JsonBlob(json) => crate::core::common::types::Value::Text(json.to_string()),
+            DataType::JsonBlob(json) => crate::core::common::types::Value::Text(json.0.to_string()),
         }
     }
 
