@@ -14,6 +14,22 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S> {
+    /// Extract the table name from a query plan node
+    fn extract_table_name(&self, plan: &QueryPlanNode) -> Result<String, OxidbError> {
+        match plan {
+            QueryPlanNode::TableScan { table_name, .. } => Ok(table_name.clone()),
+            QueryPlanNode::Filter { input, .. } => self.extract_table_name(input),
+            QueryPlanNode::Project { input, .. } => self.extract_table_name(input),
+            QueryPlanNode::IndexScan { table_name, .. } => Ok(table_name.clone()),
+            QueryPlanNode::NestedLoopJoin { .. } => {
+                Err(OxidbError::SqlParsing("Cannot resolve column names for JOIN queries yet".to_string()))
+            }
+            QueryPlanNode::DeleteNode { .. } => {
+                Err(OxidbError::SqlParsing("Cannot resolve column names for DELETE queries".to_string()))
+            }
+        }
+    }
+    
     pub(crate) fn build_execution_tree(
         &self,
         plan: QueryPlanNode,
@@ -22,9 +38,14 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     ) -> Result<Box<dyn ExecutionOperator + Send + Sync>, OxidbError> {
         match plan {
             QueryPlanNode::TableScan { table_name, alias: _ } => {
+                // Get the table schema
+                let schema = self.get_table_schema(&table_name)?
+                    .ok_or_else(|| OxidbError::TableNotFound(table_name.clone()))?;
+                
                 let operator = TableScanOperator::new(
                     self.store.clone(),
                     table_name,
+                    (*schema).clone(),
                     snapshot_id,
                     committed_ids,
                 );
@@ -47,26 +68,63 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 Ok(Box::new(operator))
             }
             QueryPlanNode::Filter { input, predicate } => {
+                // First build the input operator
                 let input_operator =
-                    self.build_execution_tree(*input, snapshot_id, committed_ids)?;
-                let operator = FilterOperator::new(input_operator, predicate);
+                    self.build_execution_tree(*input.clone(), snapshot_id, committed_ids.clone())?;
+                
+                // Try to extract table name and get schema
+                // If the input is a projection, we need to handle column mapping differently
+                let schema = match &*input {
+                    QueryPlanNode::Project { input: table_input, columns } => {
+                        // For projections, we need to create a mapped schema
+                        let table_name = self.extract_table_name(table_input)?;
+                        let original_schema = self.get_table_schema(&table_name)?
+                            .ok_or_else(|| OxidbError::TableNotFound(table_name.clone()))?;
+                        
+                        // Create a new schema with only the projected columns
+                        let mut new_columns = Vec::new();
+                        for col_name in columns {
+                            if let Some(col_def) = original_schema.columns.iter().find(|c| &c.name == col_name) {
+                                new_columns.push(col_def.clone());
+                            }
+                        }
+                        Arc::new(crate::core::types::schema::Schema {
+                            columns: new_columns,
+                        })
+                    }
+                    _ => {
+                        // For non-projection inputs, use the table schema directly
+                        let table_name = self.extract_table_name(&input)?;
+                        self.get_table_schema(&table_name)?
+                            .ok_or_else(|| OxidbError::TableNotFound(table_name.clone()))?
+                    }
+                };
+                
+                let operator = FilterOperator::with_schema(input_operator, predicate, schema);
                 Ok(Box::new(operator))
             }
             QueryPlanNode::Project { input, columns } => {
                 let input_operator =
-                    self.build_execution_tree(*input, snapshot_id, committed_ids)?;
+                    self.build_execution_tree(*input.clone(), snapshot_id, committed_ids.clone())?;
+                
                 let mut column_indices = Vec::new();
                 if columns.len() == 1 && columns[0] == "*" {
                     column_indices = Vec::new(); // ProjectOperator interprets empty as all columns
                 } else {
-                    for col_str in columns {
-                        match col_str.parse::<usize>() {
-                            Ok(idx) => column_indices.push(idx),
-                            Err(_) => {
-                                return Err(OxidbError::SqlParsing(format!(
-                                    "Project column '{col_str}' is not a valid numeric index and not '*'."
-                                )));
-                            }
+                    // Try to get the table name from the input plan to resolve column names
+                    let table_name = self.extract_table_name(&input)?;
+                    let schema = self.get_table_schema(&table_name)?
+                        .ok_or_else(|| OxidbError::TableNotFound(table_name.clone()))?;
+                    
+                    // Resolve column names to indices
+                    for col in columns {
+                        if let Some(idx) = schema.get_column_index(&col) {
+                            column_indices.push(idx);
+                        } else {
+                            return Err(OxidbError::SqlParsing(format!(
+                                "Column '{}' not found in table '{}'",
+                                col, table_name
+                            )));
                         }
                     }
                 }

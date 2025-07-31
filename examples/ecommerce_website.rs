@@ -8,7 +8,7 @@
 //! - Shopping cart functionality
 //! - Product recommendations using vector similarity
 
-use oxidb::{OxiDB, OxiDBError};
+use oxidb::{Connection, OxidbError, QueryResult};
 use oxidb::core::types::{DataType, OrderedFloat, HashableVectorData, VectorData};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -89,15 +89,15 @@ struct CartItem {
 }
 
 struct EcommerceDB {
-    db: OxiDB,
+    db: Connection,
 }
 
 impl EcommerceDB {
-    fn new(db_path: &str) -> Result<Self, OxiDBError> {
-        let db = OxiDB::open(db_path)?;
+    fn new(db_path: &str) -> Result<Self, OxidbError> {
+        let mut db = Connection::open(db_path)?;
         
         // Create tables for our e-commerce data
-        db.execute_sql("CREATE TABLE IF NOT EXISTS products (
+        db.execute("CREATE TABLE IF NOT EXISTS products (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             description TEXT,
@@ -110,7 +110,7 @@ impl EcommerceDB {
             updated_at TEXT
         )")?;
         
-        db.execute_sql("CREATE TABLE IF NOT EXISTS users (
+        db.execute("CREATE TABLE IF NOT EXISTS users (
             id TEXT PRIMARY KEY,
             email TEXT UNIQUE NOT NULL,
             name TEXT NOT NULL,
@@ -119,7 +119,7 @@ impl EcommerceDB {
             created_at TEXT
         )")?;
         
-        db.execute_sql("CREATE TABLE IF NOT EXISTS orders (
+        db.execute("CREATE TABLE IF NOT EXISTS orders (
             id TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
             items TEXT NOT NULL,
@@ -129,22 +129,22 @@ impl EcommerceDB {
             updated_at TEXT
         )")?;
         
-        db.execute_sql("CREATE TABLE IF NOT EXISTS shopping_carts (
+        db.execute("CREATE TABLE IF NOT EXISTS shopping_carts (
             user_id TEXT PRIMARY KEY,
             items TEXT NOT NULL,
             updated_at TEXT
         )")?;
         
         // Create indexes for better performance
-        db.execute_sql("CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)")?;
-        db.execute_sql("CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id)")?;
-        db.execute_sql("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)")?;
+        db.execute("CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)")?;
+        db.execute("CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id)")?;
+        db.execute("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)")?;
         
         Ok(EcommerceDB { db })
     }
     
     // Product management
-    fn add_product(&self, product: &Product) -> Result<(), OxiDBError> {
+    fn add_product(&mut self, product: &Product) -> Result<(), OxidbError> {
         let tags_json = serde_json::to_string(&product.tags).unwrap();
         let embedding_vector = if let Some(emb) = &product.embedding {
             format!("[{}]", emb.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","))
@@ -167,34 +167,39 @@ impl EcommerceDB {
             product.updated_at.to_rfc3339()
         );
         
-        self.db.execute_sql(&sql)?;
+        self.db.execute(&sql)?;
         Ok(())
     }
     
-    fn get_product(&self, product_id: &str) -> Result<Option<Product>, OxiDBError> {
+    fn get_product(&mut self, product_id: &str) -> Result<Option<Product>, OxidbError> {
         let sql = format!("SELECT * FROM products WHERE id = '{}'", product_id);
-        let result = self.db.execute_sql(&sql)?;
+        let result = self.db.execute(&sql)?;
         
-        if let Some(row) = result.rows.first() {
-            Ok(Some(self.row_to_product(row)?))
-        } else {
-            Ok(None)
+        match result {
+            QueryResult::Data(data) => {
+                if let Some(row) = data.rows().next() {
+                    Ok(Some(self.row_to_product_from_row(row)?))
+                } else {
+                    Ok(None)
+                }
+            }
+            _ => Ok(None),
         }
     }
     
-    fn search_products_by_category(&self, category: &str) -> Result<Vec<Product>, OxiDBError> {
+    fn search_products_by_category(&mut self, category: &str) -> Result<Vec<Product>, OxidbError> {
         let sql = format!("SELECT * FROM products WHERE category = '{}'", category);
-        let result = self.db.execute_sql(&sql)?;
+        let result = self.db.execute(&sql)?;
         
         result.rows.iter()
             .map(|row| self.row_to_product(row))
             .collect()
     }
     
-    fn find_similar_products(&self, product_id: &str, limit: usize) -> Result<Vec<Product>, OxiDBError> {
+    fn find_similar_products(&mut self, product_id: &str, limit: usize) -> Result<Vec<Product>, OxidbError> {
         // First get the product's embedding
         let product = self.get_product(product_id)?
-            .ok_or_else(|| OxiDBError::KeyNotFound)?;
+            .ok_or_else(|| OxidbError::KeyNotFound)?;
         
         if let Some(embedding) = product.embedding {
             // Use vector similarity search to find similar products
@@ -209,7 +214,7 @@ impl EcommerceDB {
                 product_id, embedding_str, limit
             );
             
-            let result = self.db.execute_sql(&sql)?;
+            let result = self.db.execute(&sql)?;
             result.rows.iter()
                 .map(|row| self.row_to_product(row))
                 .collect()
@@ -225,7 +230,7 @@ impl EcommerceDB {
     }
     
     // User management
-    fn create_user(&self, user: &User) -> Result<(), OxiDBError> {
+    fn create_user(&mut self, user: &User) -> Result<(), OxidbError> {
         let address_json = serde_json::to_string(&user.shipping_address).unwrap();
         
         let sql = format!(
@@ -239,13 +244,13 @@ impl EcommerceDB {
             user.created_at.to_rfc3339()
         );
         
-        self.db.execute_sql(&sql)?;
+        self.db.execute(&sql)?;
         Ok(())
     }
     
-    fn get_user_by_email(&self, email: &str) -> Result<Option<User>, OxiDBError> {
+    fn get_user_by_email(&mut self, email: &str) -> Result<Option<User>, OxidbError> {
         let sql = format!("SELECT * FROM users WHERE email = '{}'", email);
-        let result = self.db.execute_sql(&sql)?;
+        let result = self.db.execute(&sql)?;
         
         if let Some(row) = result.rows.first() {
             Ok(Some(self.row_to_user(row)?))
@@ -255,7 +260,7 @@ impl EcommerceDB {
     }
     
     // Order management
-    fn create_order(&self, order: &Order) -> Result<(), OxiDBError> {
+    fn create_order(&mut self, order: &Order) -> Result<(), OxidbError> {
         let items_json = serde_json::to_string(&order.items).unwrap();
         let status_str = serde_json::to_string(&order.status).unwrap();
         
@@ -271,7 +276,7 @@ impl EcommerceDB {
             order.updated_at.to_rfc3339()
         );
         
-        self.db.execute_sql(&sql)?;
+        self.db.execute(&sql)?;
         
         // Update product stock
         for item in &order.items {
@@ -281,9 +286,9 @@ impl EcommerceDB {
         Ok(())
     }
     
-    fn get_user_orders(&self, user_id: &str) -> Result<Vec<Order>, OxiDBError> {
+    fn get_user_orders(&mut self, user_id: &str) -> Result<Vec<Order>, OxidbError> {
         let sql = format!("SELECT * FROM orders WHERE user_id = '{}'", user_id);
-        let result = self.db.execute_sql(&sql)?;
+        let result = self.db.execute(&sql)?;
         
         result.rows.iter()
             .map(|row| self.row_to_order(row))
@@ -291,7 +296,7 @@ impl EcommerceDB {
     }
     
     // Shopping cart
-    fn update_cart(&self, cart: &ShoppingCart) -> Result<(), OxiDBError> {
+    fn update_cart(&mut self, cart: &ShoppingCart) -> Result<(), OxidbError> {
         let items_json = serde_json::to_string(&cart.items).unwrap();
         
         let sql = format!(
@@ -302,13 +307,13 @@ impl EcommerceDB {
             cart.updated_at.to_rfc3339()
         );
         
-        self.db.execute_sql(&sql)?;
+        self.db.execute(&sql)?;
         Ok(())
     }
     
-    fn get_cart(&self, user_id: &str) -> Result<Option<ShoppingCart>, OxiDBError> {
+    fn get_cart(&mut self, user_id: &str) -> Result<Option<ShoppingCart>, OxidbError> {
         let sql = format!("SELECT * FROM shopping_carts WHERE user_id = '{}'", user_id);
-        let result = self.db.execute_sql(&sql)?;
+        let result = self.db.execute(&sql)?;
         
         if let Some(row) = result.rows.first() {
             Ok(Some(self.row_to_cart(row)?))
@@ -318,16 +323,16 @@ impl EcommerceDB {
     }
     
     // Helper methods
-    fn update_product_stock(&self, product_id: &str, quantity_change: i64) -> Result<(), OxiDBError> {
+    fn update_product_stock(&mut self, product_id: &str, quantity_change: i64) -> Result<(), OxidbError> {
         let sql = format!(
             "UPDATE products SET stock = stock + {} WHERE id = '{}'",
             quantity_change, product_id
         );
-        self.db.execute_sql(&sql)?;
+        self.db.execute(&sql)?;
         Ok(())
     }
     
-    fn row_to_product(&self, row: &[DataType]) -> Result<Product, OxiDBError> {
+    fn row_to_product(&mut self, row: &[DataType]) -> Result<Product, OxidbError> {
         // Parse row data into Product struct
         // This is a simplified version - in production you'd want more robust parsing
         Ok(Product {
@@ -348,7 +353,7 @@ impl EcommerceDB {
         })
     }
     
-    fn row_to_user(&self, row: &[DataType]) -> Result<User, OxiDBError> {
+    fn row_to_user(&mut self, row: &[DataType]) -> Result<User, OxidbError> {
         Ok(User {
             id: self.get_string(&row[0])?,
             email: self.get_string(&row[1])?,
@@ -361,7 +366,7 @@ impl EcommerceDB {
         })
     }
     
-    fn row_to_order(&self, row: &[DataType]) -> Result<Order, OxiDBError> {
+    fn row_to_order(&mut self, row: &[DataType]) -> Result<Order, OxidbError> {
         Ok(Order {
             id: self.get_string(&row[0])?,
             user_id: self.get_string(&row[1])?,
@@ -377,7 +382,7 @@ impl EcommerceDB {
         })
     }
     
-    fn row_to_cart(&self, row: &[DataType]) -> Result<ShoppingCart, OxiDBError> {
+    fn row_to_cart(&mut self, row: &[DataType]) -> Result<ShoppingCart, OxidbError> {
         Ok(ShoppingCart {
             user_id: self.get_string(&row[0])?,
             items: serde_json::from_str(&self.get_string(&row[1])?).unwrap(),
@@ -387,34 +392,34 @@ impl EcommerceDB {
         })
     }
     
-    fn get_string(&self, data: &DataType) -> Result<String, OxiDBError> {
+    fn get_string(&mut self, data: &DataType) -> Result<String, OxidbError> {
         match data {
             DataType::String(s) => Ok(s.clone()),
             DataType::Null => Ok(String::new()),
-            _ => Err(OxiDBError::TypeMismatch),
+            _ => Err(OxidbError::TypeMismatch),
         }
     }
     
-    fn get_float(&self, data: &DataType) -> Result<f64, OxiDBError> {
+    fn get_float(&mut self, data: &DataType) -> Result<f64, OxidbError> {
         match data {
             DataType::Float(f) => Ok(f.0),
             DataType::Integer(i) => Ok(*i as f64),
-            _ => Err(OxiDBError::TypeMismatch),
+            _ => Err(OxidbError::TypeMismatch),
         }
     }
     
-    fn get_integer(&self, data: &DataType) -> Result<i64, OxiDBError> {
+    fn get_integer(&mut self, data: &DataType) -> Result<i64, OxidbError> {
         match data {
             DataType::Integer(i) => Ok(*i),
-            _ => Err(OxiDBError::TypeMismatch),
+            _ => Err(OxidbError::TypeMismatch),
         }
     }
     
-    fn get_vector(&self, data: &DataType) -> Result<Option<Vec<f32>>, OxiDBError> {
+    fn get_vector(&mut self, data: &DataType) -> Result<Option<Vec<f32>>, OxidbError> {
         match data {
             DataType::Vector(v) => Ok(Some(v.0.data.clone())),
             DataType::Null => Ok(None),
-            _ => Err(OxiDBError::TypeMismatch),
+            _ => Err(OxidbError::TypeMismatch),
         }
     }
 }

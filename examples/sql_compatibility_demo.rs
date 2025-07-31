@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = db.execute_sql("DROP TABLE IF EXISTS customers");
     
     println!("1. Creating Tables (PostgreSQL/MySQL compatible syntax)");
-    println!("=" . repeat(50).as_str());
+    println!("{}", "=".repeat(50));
     
     // Create customers table (similar to both PostgreSQL and MySQL)
     let create_customers = r#"
@@ -94,7 +94,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Create indexes for better performance
     println!("\n2. Creating Indexes");
-    println!("=" . repeat(50).as_str());
+    println!("{}", "=".repeat(50));
     
     db.execute_sql("CREATE INDEX idx_customers_email ON customers(email)")?;
     db.execute_sql("CREATE INDEX idx_products_category ON products(category)")?;
@@ -104,7 +104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Insert sample data
     println!("\n3. Inserting Data (Various SQL patterns)");
-    println!("=" . repeat(50).as_str());
+    println!("{}", "=".repeat(50));
     
     // Insert customers
     let customers = vec![
@@ -175,7 +175,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Demonstrate various SELECT queries
     println!("\n4. SELECT Queries (PostgreSQL/MySQL compatible)");
-    println!("=" . repeat(50).as_str());
+    println!("{}", "=".repeat(50));
     
     // Simple SELECT
     println!("\n-- Simple SELECT with WHERE clause:");
@@ -230,7 +230,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // UPDATE examples
     println!("\n5. UPDATE Operations");
-    println!("=" . repeat(50).as_str());
+    println!("{}", "=".repeat(50));
     
     // Update single record
     db.execute_sql("UPDATE products SET stock = stock - 1 WHERE id = 1")?;
@@ -259,7 +259,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Transaction example
     println!("\n6. Transaction Example");
-    println!("=" . repeat(50).as_str());
+    println!("{}", "=".repeat(50));
     
     // Start transaction
     db.execute_sql("BEGIN TRANSACTION")?;
@@ -277,7 +277,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Advanced queries
     println!("\n7. Advanced SQL Features");
-    println!("=" . repeat(50).as_str());
+    println!("{}", "=".repeat(50));
     
     // CASE statement
     println!("\n-- CASE statement (price categories):");
@@ -335,7 +335,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Clean up
     println!("\n8. Cleanup Operations");
-    println!("=" . repeat(50).as_str());
+    println!("{}", "=".repeat(50));
     
     // Delete with JOIN (delete order items for pending orders)
     db.execute_sql(r#"

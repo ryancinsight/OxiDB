@@ -65,4 +65,8 @@ path = "examples/knowledge_graph_rag.rs"
 name = "sql_compatibility_demo"
 path = "examples/sql_compatibility_demo.rs"
 
+[[example]]
+name = "simple_oxidb_test"
+path = "examples/simple_oxidb_test.rs"
+
 

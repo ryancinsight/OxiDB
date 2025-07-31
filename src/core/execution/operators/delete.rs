@@ -74,7 +74,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> DeleteOperator<
 
             let primary_key: Key = match pk_data_type {
                 DataType::String(s) => s.as_bytes().to_vec(),
-                DataType::Integer(i) => i.to_be_bytes().to_vec(),
+                DataType::Integer(i) => {
+                    // Construct key in the format: {table_name}_pk_id_{id}
+                    format!("{}_pk_id_{}", self.table_name, i).into_bytes()
+                },
                 DataType::RawBytes(b) => b.clone(), // Handle RawBytes
                 _ => {
                     return Err(OxidbError::Execution(format!(
