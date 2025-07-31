@@ -160,7 +160,6 @@ pub struct GraphRAGEngineImpl {
     document_retriever: Box<dyn Retriever>,
     embedding_model: Box<dyn EmbeddingModel>,
     entity_embeddings: HashMap<NodeId, Embedding>,
-    entity_documents: HashMap<NodeId, Vec<String>>,
     relationship_weights: HashMap<String, f64>,
     confidence_threshold: f64,
 }
@@ -178,7 +177,6 @@ impl GraphRAGEngineImpl {
             document_retriever,
             embedding_model: Box::new(SemanticEmbedder::new(config.default_embedding_dimension)),
             entity_embeddings: HashMap::new(),
-            entity_documents: HashMap::new(),
             relationship_weights: Self::default_relationship_weights(),
             confidence_threshold: config.confidence_threshold,
         }
@@ -194,7 +192,6 @@ impl GraphRAGEngineImpl {
             document_retriever,
             embedding_model,
             entity_embeddings: HashMap::new(),
-            entity_documents: HashMap::new(),
             relationship_weights: Self::default_relationship_weights(),
             confidence_threshold: 0.5,
         }
@@ -815,7 +812,6 @@ impl GraphRAGEngineBuilder {
             document_retriever,
             embedding_model,
             entity_embeddings: HashMap::new(),
-            entity_documents: HashMap::new(),
             relationship_weights: GraphRAGEngineImpl::default_relationship_weights(),
             confidence_threshold: self.confidence_threshold,
         })
@@ -1016,14 +1012,17 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
     ) -> Result<Vec<GraphRAGResult>, OxidbError> {
         let query_embedding = self.embedding_model.embed(query).await
             .map_err(|e| OxidbError::Internal(format!("Failed to embed query: {}", e)))?;
-        let context = context.unwrap_or(&GraphRAGContext {
+        
+        // Create default context if none provided (following SSOT principle)
+        let default_context = GraphRAGContext {
             query_embedding: query_embedding,
             max_hops: 2,
             min_confidence: 0.5,
             include_relationships: vec![],
             exclude_relationships: vec![],
             entity_types: vec![],
-        });
+        };
+        let context = context.unwrap_or(&default_context);
 
         let mut results = Vec::new();
         let similar_entities = self.find_similar_entities(&context.query_embedding, 10, context.min_confidence)?;

@@ -153,7 +153,20 @@ impl Ord for JsonValue {
             (Value::String(a), Value::String(b)) => a.cmp(b),
             (Value::String(_), _) => std::cmp::Ordering::Less,
             (_, Value::String(_)) => std::cmp::Ordering::Greater,
-            (Value::Array(a), Value::Array(b)) => a.cmp(b),
+            (Value::Array(a), Value::Array(b)) => {
+                // Compare arrays element by element using recursive JsonValue comparison
+                let len_cmp = a.len().cmp(&b.len());
+                if len_cmp != std::cmp::Ordering::Equal {
+                    return len_cmp;
+                }
+                for (a_item, b_item) in a.iter().zip(b.iter()) {
+                    let item_cmp = JsonValue(a_item.clone()).cmp(&JsonValue(b_item.clone()));
+                    if item_cmp != std::cmp::Ordering::Equal {
+                        return item_cmp;
+                    }
+                }
+                std::cmp::Ordering::Equal
+            },
             (Value::Array(_), _) => std::cmp::Ordering::Less,
             (_, Value::Array(_)) => std::cmp::Ordering::Greater,
             (Value::Object(a), Value::Object(b)) => {
@@ -161,7 +174,23 @@ impl Ord for JsonValue {
                 let mut b_sorted: Vec<_> = b.iter().collect();
                 a_sorted.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
                 b_sorted.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
-                a_sorted.cmp(&b_sorted)
+                
+                // Compare sorted key-value pairs element by element
+                let len_cmp = a_sorted.len().cmp(&b_sorted.len());
+                if len_cmp != std::cmp::Ordering::Equal {
+                    return len_cmp;
+                }
+                for ((k1, v1), (k2, v2)) in a_sorted.iter().zip(b_sorted.iter()) {
+                    let key_cmp = k1.cmp(k2);
+                    if key_cmp != std::cmp::Ordering::Equal {
+                        return key_cmp;
+                    }
+                    let value_cmp = JsonValue((*v1).clone()).cmp(&JsonValue((*v2).clone()));
+                    if value_cmp != std::cmp::Ordering::Equal {
+                        return value_cmp;
+                    }
+                }
+                std::cmp::Ordering::Equal
             }
         }
     }

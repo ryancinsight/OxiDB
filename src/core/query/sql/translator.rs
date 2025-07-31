@@ -556,8 +556,10 @@ mod tests {
             from_clause: ast::TableReference { name: "users".to_string(), alias: None },
             joins: Vec::new(),
             condition: None,
-            order_by: None, // Added
-            limit: None,    // Added
+            group_by: None,     // Added missing field
+            having: None,       // Added missing field
+            order_by: None,     // Added
+            limit: None,        // Added
         });
         let command = translate_ast_to_command(ast_stmt).unwrap();
         match command {
@@ -590,6 +592,8 @@ mod tests {
                     "101".to_string(),
                 )),
             })),
+            group_by: None,     // Added missing field
+            having: None,       // Added missing field
             order_by: None,
             limit: None,
         });

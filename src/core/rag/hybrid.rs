@@ -446,10 +446,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_hybrid_score_calculation() {
-        let vector_retriever = Arc::new(InMemoryRetriever::new());
-        let graph_retriever = Arc::new(InMemoryRetriever::new());
-        let graph_engine = Arc::new(GraphRAGEngineImpl::new(graph_retriever));
-        let embedding_model = Arc::new(SemanticEmbedder::new());
+        let vector_retriever = Arc::new(InMemoryRetriever::new(Vec::new()));
+        let graph_retriever = InMemoryRetriever::new(Vec::new());
+        let graph_engine = Arc::new(GraphRAGEngineImpl::new(Box::new(graph_retriever)));
+        let embedding_model = Arc::new(SemanticEmbedder::new(128));
         
         let engine = HybridRAGEngine::new(
             vector_retriever,
@@ -464,10 +464,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_builder() {
-        let vector_retriever = Arc::new(InMemoryRetriever::new());
-        let graph_retriever = Arc::new(InMemoryRetriever::new());
-        let graph_engine = Arc::new(GraphRAGEngineImpl::new(graph_retriever));
-        let embedding_model = Arc::new(SemanticEmbedder::new());
+        let vector_retriever = Arc::new(InMemoryRetriever::new(Vec::new()));
+        let graph_retriever = InMemoryRetriever::new(Vec::new());
+        let graph_engine = Arc::new(GraphRAGEngineImpl::new(Box::new(graph_retriever)));
+        let embedding_model = Arc::new(SemanticEmbedder::new(128));
 
         let engine = HybridRAGEngineBuilder::new()
             .with_vector_retriever(vector_retriever)
