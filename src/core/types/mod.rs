@@ -108,6 +108,12 @@ impl Ord for OrderedFloat {
     }
 }
 
+impl std::fmt::Display for OrderedFloat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// Implements `Hash` for `OrderedFloat`.
 /// 
 /// This implementation uses the bit representation of the floating-point value

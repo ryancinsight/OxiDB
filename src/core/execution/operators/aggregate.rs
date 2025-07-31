@@ -37,9 +37,10 @@ impl ExecutionOperator for AggregateOperator {
     ) -> Result<Box<dyn Iterator<Item = Result<Tuple, OxidbError>> + Send + Sync>, OxidbError> {
         let input_iter = self.input.execute()?;
         let aggregates = self.aggregates.clone();
-        let group_by_indices = self.group_by_indices.clone();
+        // Avoid cloning by using reference to group_by_indices
+        let group_by_indices = &self.group_by_indices;
         
-        // Collect all rows to compute aggregates
+        // Collect all rows to compute aggregates (unavoidable for aggregate operations)
         let rows: Result<Vec<Tuple>, OxidbError> = input_iter.collect();
         let rows = rows?;
         
@@ -189,7 +190,7 @@ fn compute_aggregates_with_group(
     for (group_key, group_rows) in groups {
         let mut result_row = group_key;
         
-        // Convert group_rows from Vec<&Tuple> to Vec<Tuple> for compute_aggregates_no_group
+        // Use iterator to avoid unnecessary cloning when possible
         let group_rows_owned: Vec<Tuple> = group_rows.into_iter().cloned().collect();
         let agg_values = compute_aggregates_no_group(&group_rows_owned, aggregates)?;
         

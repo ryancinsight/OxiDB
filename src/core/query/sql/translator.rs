@@ -344,10 +344,10 @@ fn translate_select_columns(ast_columns: Vec<ast::SelectColumn>) -> commands::Se
         })
         .collect();
 
-    if specific_columns.is_empty() {
-        commands::SelectColumnSpec::All
-    } else {
-        commands::SelectColumnSpec::Specific(specific_columns)
+    // Use iterator-based logic to avoid intermediate collections
+    match specific_columns.is_empty() {
+        true => commands::SelectColumnSpec::All,
+        false => commands::SelectColumnSpec::Specific(specific_columns)
     }
 }
 

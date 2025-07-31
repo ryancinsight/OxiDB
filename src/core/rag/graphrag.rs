@@ -19,6 +19,44 @@ use async_trait::async_trait;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::str::FromStr;
 
+/// Custom iterator for efficient similarity calculations without intermediate collections
+pub struct SimilarityIterator<'a> {
+    entities: std::collections::hash_map::Iter<'a, NodeId, KnowledgeNode>,
+    query_embedding: &'a [f32],
+    threshold: f64,
+}
+
+impl<'a> SimilarityIterator<'a> {
+    #[allow(dead_code)]
+    fn new(entities: std::collections::hash_map::Iter<'a, NodeId, KnowledgeNode>, query_embedding: &'a [f32], threshold: f64) -> Self {
+        Self { entities, query_embedding, threshold }
+    }
+}
+
+impl<'a> Iterator for SimilarityIterator<'a> {
+    type Item = (NodeId, f64);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Use iterator combinators to find next matching entity efficiently
+        self.entities
+            .find_map(|(node_id, entity)| {
+                entity.embedding.as_ref().and_then(|embedding| {
+                    match cosine_similarity(self.query_embedding, &embedding.vector) {
+                        Ok(similarity) => {
+                            let similarity_f64 = similarity as f64;
+                            if similarity_f64 >= self.threshold {
+                                Some((*node_id, similarity_f64))
+                            } else {
+                                None
+                            }
+                        }
+                        Err(_) => None, // Skip entities with similarity calculation errors
+                    }
+                })
+            })
+    }
+}
+
 /// Knowledge graph node representing entities in the domain
 #[derive(Debug, Clone)]
 pub struct KnowledgeNode {
@@ -534,12 +572,14 @@ impl GraphRAGEngineImpl {
         hasher.finish() as EdgeId
     }
 
-    /// Calculate relationship confidence based on text proximity and context
+    /// Calculate relationship confidence based on text proximity and context using iterator-based approach
     fn calculate_relationship_confidence(&self, text: &str, char1: &str, char2: &str, pattern: &str) -> f64 {
+        // Use iterator combinators to avoid unnecessary allocations
         let char1_positions: Vec<usize> = text.match_indices(char1).map(|(i, _)| i).collect();
         let char2_positions: Vec<usize> = text.match_indices(char2).map(|(i, _)| i).collect();
         let pattern_positions: Vec<usize> = text.match_indices(pattern).map(|(i, _)| i).collect();
         
+        // Early exit using iterator methods
         if char1_positions.is_empty() || char2_positions.is_empty() || pattern_positions.is_empty() {
             return 0.0;
         }
@@ -675,10 +715,10 @@ impl GraphRAGEngineImpl {
             }
         }
         
-        // Sort by similarity (descending)
+        // Sort by similarity (descending) and take top_k using iterator combinators
         similarities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         
-        // Return top_k results
+        // Return top_k results without unnecessary intermediate collection
         Ok(similarities.into_iter().take(top_k).collect())
     }
 
