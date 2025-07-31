@@ -183,6 +183,10 @@ impl<E: EmbeddingModel + Send + Sync> HybridRAGEngine<E> {
 
         // Process graph results
         for graph_result in graph_results {
+            // Skip processing if there are no documents in the graph result
+            if graph_result.documents.is_empty() {
+                continue;
+            }
             // Use the first document from the graph result
             if let Some(first_doc) = graph_result.documents.first() {
                 let doc_id = &first_doc.id;
