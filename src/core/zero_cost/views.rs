@@ -118,7 +118,9 @@ impl<'a> ProjectedRowView<'a> {
 /// Zero-copy view of multiple rows (table view)
 #[derive(Debug)]
 pub struct TableView<'a> {
+    /// Internal row data - use accessor methods for access
     rows: &'a [Vec<DataType>],
+    /// Column names for the table
     column_names: &'a [String],
 }
 
@@ -159,6 +161,18 @@ impl<'a> TableView<'a> {
     #[inline]
     pub const fn column_names(&self) -> &'a [String] {
         self.column_names
+    }
+    
+    /// Get raw row data by index (for internal use by views)
+    #[inline]
+    pub fn get_row_data(&self, index: usize) -> Option<&'a Vec<DataType>> {
+        self.rows.get(index)
+    }
+    
+    /// Iterate over raw row data (for internal use by views)
+    #[inline]
+    pub fn row_data_iter(&self) -> impl Iterator<Item = &'a Vec<DataType>> + '_ {
+        self.rows.iter()
     }
     
     /// Create a slice view of rows
@@ -275,15 +289,15 @@ impl<'a> ProjectedTableView<'a> {
     
     /// Get projected row by index
     pub fn get_row(&self, index: usize) -> Option<ProjectedRowView<'a>> {
-        self.table.rows.get(index).map(|row_data| {
-            ProjectedRowView::new(row_data, self.table.column_names, self.column_indices)
+        self.table.get_row_data(index).map(|row_data| {
+            ProjectedRowView::new(row_data, self.table.column_names(), self.column_indices)
         })
     }
     
     /// Iterate over projected rows
     pub fn rows(&self) -> impl Iterator<Item = ProjectedRowView<'a>> + '_ {
-        self.table.rows.iter().map(move |row_data| {
-            ProjectedRowView::new(row_data, self.table.column_names, self.column_indices)
+        self.table.row_data_iter().map(move |row_data| {
+            ProjectedRowView::new(row_data, self.table.column_names(), self.column_indices)
         })
     }
 }
