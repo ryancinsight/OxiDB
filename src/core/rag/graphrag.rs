@@ -13,9 +13,8 @@ use crate::core::graph::{
     EdgeId, GraphData, InMemoryGraphStore, NodeId, Relationship,
 };
 use crate::core::graph::traversal::TraversalDirection;
-use crate::core::graph::GraphOperations;
+use crate::core::graph::{GraphOperations, GraphQuery};
 use crate::core::vector::similarity::cosine_similarity;
-use crate::core::types::VectorData;
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::str::FromStr;
@@ -609,7 +608,7 @@ impl GraphRAGEngineImpl {
             (self.entity_embeddings.get(&entity1_id), self.entity_embeddings.get(&entity2_id))
         {
             use crate::core::vector::similarity::cosine_similarity;
-            match cosine_similarity(&emb1.data, &emb2.data) {
+            match cosine_similarity(&emb1.vector, &emb2.vector) {
                 Ok(similarity) => Ok(similarity as f64),
                 Err(_) => Ok(0.0),
             }
@@ -738,7 +737,11 @@ impl GraphRAGEngineImpl {
         for &node_id in path {
             if let Some(embedding) = self.entity_embeddings.get(&node_id) {
                 // Use embedding magnitude as a proxy for confidence
-                total_confidence += embedding.magnitude();
+                let magnitude: f64 = embedding.vector.iter()
+                    .map(|x| (*x as f64).powi(2))
+                    .sum::<f64>()
+                    .sqrt();
+                total_confidence += magnitude;
                 count += 1;
             }
         }
@@ -1252,8 +1255,16 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
         }
 
         let confidence_score = if !expanded_entities.is_empty() {
-            expanded_entities.iter().map(|id| self.entity_embeddings.get(id).cloned().unwrap_or_default().norm()).sum::<f64>()
-                / expanded_entities.len() as f64
+            expanded_entities.iter()
+                .filter_map(|id| self.entity_embeddings.get(id))
+                .map(|emb| {
+                    let magnitude: f64 = emb.vector.iter()
+                        .map(|x| (*x as f64).powi(2))
+                        .sum::<f64>()
+                        .sqrt();
+                    magnitude
+                })
+                .sum::<f64>() / expanded_entities.len() as f64
         } else {
             0.0
         };

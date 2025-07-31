@@ -301,16 +301,16 @@ impl<E: EmbeddingModel + Send + Sync> HybridRAGEngine<E> {
 
     /// Calculate graph-based score
     fn calculate_graph_score(&self, result: &GraphRAGResult) -> f32 {
-        let path_penalty = if let Some(ref path) = result.path {
+        let path_penalty = if let Some(ref path) = result.reasoning_paths.first() {
             // Shorter paths get higher scores
-            1.0 / (1.0 + path.len() as f32 * 0.1)
+            1.0 / (1.0 + path.path_nodes.len() as f32 * 0.1)
         } else {
             0.5
         };
 
-        let entity_boost = 1.0 + (result.related_entities.len() as f32 * 0.05).min(0.5);
+        let entity_boost = 1.0 + (result.relevant_entities.len() as f32 * 0.05).min(0.5);
 
-        result.relevance_score * path_penalty * entity_boost
+        result.confidence_score as f32 * path_penalty * entity_boost
     }
 
     /// Calculate combined hybrid score
