@@ -27,6 +27,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             QueryPlanNode::DeleteNode { .. } => {
                 Err(OxidbError::SqlParsing("Cannot resolve column names for DELETE queries".to_string()))
             }
+            QueryPlanNode::Aggregate { input, .. } => {
+                self.extract_table_name(input)
+            }
         }
     }
     
@@ -168,6 +171,41 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     schema_arc,               // 8. schema: Arc<Schema>
                 );
                 Ok(Box::new(delete_operator))
+            }
+            
+            QueryPlanNode::Aggregate { input, aggregates, group_by } => {
+                // Extract table name for schema lookup
+                let table_name = self.extract_table_name(&input)?;
+                let schema = self.get_table_schema(&table_name)?
+                    .ok_or_else(|| OxidbError::TableNotFound(table_name.clone()))?;
+                
+                let input_operator = self.build_execution_tree(*input, snapshot_id, committed_ids)?;
+                
+                // Convert optimizer AggregateSpec to execution AggregateSpec
+                let exec_aggregates = aggregates.into_iter().map(|agg| {
+                    let column_index = agg.column.as_ref().and_then(|col_name| {
+                        schema.get_column_index(col_name)
+                    });
+                    
+                    crate::core::execution::operators::aggregate::AggregateSpec {
+                        function: agg.function,
+                        column_index,
+                        alias: agg.alias,
+                    }
+                }).collect();
+                
+                // Convert group_by column names to indices
+                let group_by_indices: Vec<usize> = group_by.iter()
+                    .filter_map(|col_name| schema.get_column_index(col_name))
+                    .collect();
+                
+                let aggregate_operator = crate::core::execution::operators::aggregate::AggregateOperator::new(
+                    input_operator,
+                    exec_aggregates,
+                    group_by_indices,
+                );
+                
+                Ok(Box::new(aggregate_operator))
             }
         }
     }

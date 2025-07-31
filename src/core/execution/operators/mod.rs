@@ -18,16 +18,23 @@
 // All individual operators have been moved to their own files.
 // This file will now just declare the modules and re-export.
 
-pub mod delete;
-pub mod filter;
-pub mod index_scan;
-pub mod nested_loop_join;
-pub mod project;
-pub mod table_scan; // Added delete module
+pub mod table_scan;
+pub use table_scan::TableScanOperator;
 
-pub use delete::*;
-pub use filter::*;
-pub use index_scan::*;
-pub use nested_loop_join::*;
-pub use project::*;
-pub use table_scan::*; // Added delete export
+pub mod filter;
+pub use filter::FilterOperator;
+
+pub mod project;
+pub use project::ProjectOperator;
+
+pub mod index_scan;
+pub use index_scan::IndexScanOperator;
+
+pub mod nested_loop_join;
+pub use nested_loop_join::NestedLoopJoinOperator;
+
+pub mod delete;
+pub use delete::DeleteOperator;
+
+pub mod aggregate;
+pub use aggregate::{AggregateOperator, AggregateSpec};

@@ -7,7 +7,9 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
     // Changed
     match ast_statement {
         ast::Statement::Select(select_ast) => {
-            let columns_spec = translate_select_columns(select_ast.columns);
+            // Extract columns
+            let columns = select_ast.columns.clone();
+            let columns_spec = translate_select_columns(columns);
             let condition_cmd = match select_ast.condition {
                 Some(cond_tree_ast) => {
                     Some(translate_condition_tree_to_sql_condition_tree(&cond_tree_ast)?)
@@ -335,6 +337,10 @@ fn translate_select_columns(ast_columns: Vec<ast::SelectColumn>) -> commands::Se
         .filter_map(|col| match col {
             ast::SelectColumn::ColumnName(name) => Some(name),
             ast::SelectColumn::Asterisk => None,
+            ast::SelectColumn::AggregateFunction { .. } => {
+                // TODO: Implement aggregate function translation
+                None
+            }
         })
         .collect();
 

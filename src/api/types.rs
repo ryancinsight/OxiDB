@@ -118,6 +118,22 @@ impl QueryResult {
             ExecutionResult::Deleted(true) => Self::RowsAffected(1),
             ExecutionResult::Deleted(false) => Self::RowsAffected(0),
             ExecutionResult::Updated { count } => Self::RowsAffected(count as u64),
+            ExecutionResult::Query { columns, rows } => {
+                // Convert rows of DataType to rows of Value
+                let converted_rows: Vec<Row> = rows
+                    .into_iter()
+                    .map(|data_types| {
+                        let values: Vec<crate::core::common::types::Value> =
+                            data_types.into_iter().map(Self::data_type_to_value).collect();
+                        Row::new(values)
+                    })
+                    .collect();
+                
+                Self::Data(QueryResultData {
+                    columns,
+                    rows: converted_rows,
+                })
+            }
             ExecutionResult::RankedResults(ranked_results) => {
                 if ranked_results.is_empty() {
                     // Empty result set

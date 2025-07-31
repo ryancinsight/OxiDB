@@ -5,6 +5,7 @@ use crate::core::config::Config;
 use crate::core::performance::PerformanceContext;
 use crate::core::query::executor::QueryExecutor;
 use crate::core::query::parser::{parse_query_string, parse_sql_to_ast};
+use crate::core::query::sql::ast::Statement;
 use crate::core::storage::engine::SimpleFileKvStore;
 use crate::core::wal::log_manager::LogManager;
 use crate::core::wal::writer::WalWriter;
@@ -98,6 +99,35 @@ impl Connection {
     /// - Performance metrics recording fails (non-fatal, logged but doesn't fail the operation)
     pub fn execute(&mut self, sql: &str) -> Result<QueryResult, OxidbError> {
         let start_time = Instant::now();
+        
+        // First try to parse as AST to check for aggregate functions
+        if let Ok(ast_statement) = parse_sql_to_ast(sql) {
+            // Check if this is a SELECT with aggregate functions
+            if let Statement::Select(ref select_stmt) = ast_statement {
+                let has_aggregates = select_stmt.columns.iter().any(|col| {
+                    matches!(col, crate::core::query::sql::ast::SelectColumn::AggregateFunction { .. })
+                });
+                
+                if has_aggregates {
+                    // Use AST-based execution for aggregate queries
+                    let result = self.executor.execute_ast_statement(ast_statement)?;
+                    let query_result = QueryResult::from_execution_result(result);
+                    
+                    // Record performance metrics
+                    let duration = start_time.elapsed();
+                    let rows_affected = match &query_result {
+                        QueryResult::RowsAffected(count) => *count,
+                        QueryResult::Data(data) => data.row_count() as u64,
+                        QueryResult::Success => 0,
+                    };
+                    let _ = self.performance.record_query(sql, duration, rows_affected);
+                    
+                    return Ok(query_result);
+                }
+            }
+        }
+        
+        // Fall back to command-based execution for non-aggregate queries
         let command = parse_query_string(sql)?;
         let result = self.executor.execute_command(command)?;
         let query_result = QueryResult::from_execution_result(result);

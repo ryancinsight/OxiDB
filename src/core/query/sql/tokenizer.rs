@@ -21,6 +21,8 @@ pub enum Token {
     Drop,          // Added Drop Token
     Order,         // Added Order Token
     By,            // Added By Token
+    Group,         // Added Group Token
+    Having,        // Added Having Token
     Asc,           // Added Asc Token
     Desc,          // Added Desc Token
     Limit,         // Added Limit Token
@@ -78,6 +80,8 @@ impl fmt::Debug for Token {
             Self::Drop => write!(f, "Drop"),     // Added for Drop Token
             Self::Order => write!(f, "Order"),   // Added for Order Token
             Self::By => write!(f, "By"),         // Added for By Token
+            Self::Group => write!(f, "Group"),   // Added for Group Token
+            Self::Having => write!(f, "Having"), // Added for Having Token
             Self::Asc => write!(f, "Asc"),       // Added for Asc Token
             Self::Desc => write!(f, "Desc"),     // Added for Desc Token
             Self::Limit => write!(f, "Limit"),   // Added for Limit Token
@@ -170,6 +174,8 @@ impl<'a> Tokenizer<'a> {
             "DROP" => Token::Drop,     // Added for Drop Token
             "ORDER" => Token::Order,   // Added for Order Token
             "BY" => Token::By,         // Added for By Token
+            "GROUP" => Token::Group,   // Added for Group Token
+            "HAVING" => Token::Having, // Added for Having Token
             "ASC" => Token::Asc,       // Added for Asc Token
             "DESC" => Token::Desc,     // Added for Desc Token
             "LIMIT" => Token::Limit,   // Added for Limit Token

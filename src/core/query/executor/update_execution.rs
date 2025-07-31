@@ -3,7 +3,6 @@ use crate::core::common::serialization::{deserialize_data_type, serialize_data_t
 use crate::core::common::types::TransactionId; // Added TransactionId import
 use crate::core::common::OxidbError; // Changed
 use crate::core::query::commands::{Key, SqlAssignment}; // Removed SqlCondition
-use crate::core::query::sql::ast::{SelectColumn, Statement as AstStatement}; // Removed Condition as AstCondition
 use crate::core::storage::engine::traits::KeyValueStore;
 use crate::core::transaction::{Transaction, TransactionState, UndoOperation}; // Adjusted path
 use crate::core::types::DataType;
@@ -50,10 +49,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         let plan_committed_ids_u64_set =
             Arc::new(HashSet::from_iter(plan_committed_ids_vec.iter().map(|&t| t.0)));
 
-        // Select all columns so we can get the primary key value
-        let ast_select_items = vec![SelectColumn::Asterisk];
-
-        // Convert Option<commands::SqlConditionTree> to Option<ast::ConditionTree>
+        // Convert SqlConditionTree to AST ConditionTree
         let ast_condition_tree_opt: Option<crate::core::query::sql::ast::ConditionTree> =
             match condition_opt.as_ref() {
                 Some(sql_cond_tree) => {
@@ -65,20 +61,21 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 None => None,
             };
 
-        let ast_statement_for_select =
-            AstStatement::Select(crate::core::query::sql::ast::SelectStatement {
-                columns: ast_select_items,
-                from_clause: crate::core::query::sql::ast::TableReference {
-                    name: source_table_name.clone(),
-                    alias: None,
-                },
-                joins: Vec::new(),
-                condition: ast_condition_tree_opt, // Changed
-                order_by: None,                    // Added
-                limit: None,                       // Added
-            });
+        let select_ast = crate::core::query::sql::ast::Statement::Select(crate::core::query::sql::ast::SelectStatement {
+            columns: vec![crate::core::query::sql::ast::SelectColumn::Asterisk],
+            from_clause: crate::core::query::sql::ast::TableReference {
+                name: source_table_name.clone(),
+                alias: None,
+            },
+            joins: Vec::new(),
+            condition: ast_condition_tree_opt,
+            group_by: None,
+            having: None,
+            order_by: None,
+            limit: None,
+        });
 
-        let initial_select_plan = self.optimizer.build_initial_plan(&ast_statement_for_select)?;
+        let initial_select_plan = self.optimizer.build_initial_plan(&select_ast)?;
         let optimized_select_plan =
             self.optimizer.optimize_with_indexes(initial_select_plan, &self.index_manager)?;
 

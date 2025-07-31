@@ -1,5 +1,8 @@
 use super::core::SqlParser;
-use crate::core::query::sql::ast::{self, Assignment, AstLiteralValue, Condition, SelectColumn};
+use crate::core::query::sql::ast::{
+    AggregateFunction, Assignment, AstLiteralValue, AstExpressionValue, Condition, ConditionTree, 
+    SelectColumn,
+};
 use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::tokenizer::Token; // For matching specific tokens
 
@@ -50,9 +53,22 @@ impl SqlParser {
                 self.consume(Token::Asterisk)?;
                 columns.push(SelectColumn::Asterisk);
             } else {
-                let qualified_col_name =
-                    self.parse_qualified_identifier("Expected column name or '*'")?;
-                columns.push(SelectColumn::ColumnName(qualified_col_name));
+                // Check for aggregate functions
+                let column = if let Some(Token::Identifier(name)) = self.peek() {
+                    let upper_name = name.to_uppercase();
+                    if matches!(upper_name.as_str(), "COUNT" | "SUM" | "AVG" | "MIN" | "MAX") {
+                        self.parse_aggregate_function()?
+                    } else {
+                        let qualified_col_name =
+                            self.parse_qualified_identifier("Expected column name or '*'")?;
+                        SelectColumn::ColumnName(qualified_col_name)
+                    }
+                } else {
+                    let qualified_col_name =
+                        self.parse_qualified_identifier("Expected column name or '*'")?;
+                    SelectColumn::ColumnName(qualified_col_name)
+                };
+                columns.push(column);
             }
 
             if !self.match_token(Token::Comma) {
@@ -140,18 +156,18 @@ impl SqlParser {
     pub(super) fn parse_expression_value(
         &mut self,
         context: &str,
-    ) -> Result<ast::AstExpressionValue, SqlParseError> {
+    ) -> Result<AstExpressionValue, SqlParseError> {
         if self.match_token(Token::Parameter) {
             self.consume(Token::Parameter)?;
             let param_index = self.parameter_count;
             self.parameter_count += 1;
-            Ok(ast::AstExpressionValue::Parameter(param_index))
+            Ok(AstExpressionValue::Parameter(param_index))
         } else if let Some(literal_val) = self.try_parse_literal_value()? {
-            Ok(ast::AstExpressionValue::Literal(literal_val))
+            Ok(AstExpressionValue::Literal(literal_val))
         } else {
             // Try parsing as identifier (column reference)
             let col_ident = self.parse_qualified_identifier(context)?;
-            Ok(ast::AstExpressionValue::ColumnIdentifier(col_ident))
+            Ok(AstExpressionValue::ColumnIdentifier(col_ident))
         }
     }
 
@@ -182,11 +198,11 @@ impl SqlParser {
     }
 
     // Parses a base condition, e.g., column = value or (condition_tree)
-    fn parse_condition_factor(&mut self) -> Result<ast::ConditionTree, SqlParseError> {
+    fn parse_condition_factor(&mut self) -> Result<ConditionTree, SqlParseError> {
         if self.peek_is_identifier_str("NOT") {
             self.consume_any().ok_or(SqlParseError::UnexpectedEOF)?; // Consume NOT
             let condition = self.parse_condition_factor()?; // Recurse for the condition to negate
-            return Ok(ast::ConditionTree::Not(Box::new(condition)));
+            return Ok(ConditionTree::Not(Box::new(condition)));
         }
 
         if self.match_token(Token::LParen) {
@@ -208,10 +224,10 @@ impl SqlParser {
                 self.expect_specific_identifier("NULL", "Expected NULL after IS [NOT]")?;
                 let final_operator =
                     if is_not { "IS NOT NULL".to_string() } else { "IS NULL".to_string() };
-                return Ok(ast::ConditionTree::Comparison(Condition {
+                return Ok(ConditionTree::Comparison(Condition {
                     column,
                     operator: final_operator,
-                    value: ast::AstExpressionValue::Literal(ast::AstLiteralValue::Null),
+                    value: AstExpressionValue::Literal(AstLiteralValue::Null),
                 }));
             }
 
@@ -228,39 +244,39 @@ impl SqlParser {
                 // This will need to be enhanced to track parameter positions properly
                 let param_index = self.parameter_count;
                 self.parameter_count += 1;
-                ast::AstExpressionValue::Parameter(param_index)
+                AstExpressionValue::Parameter(param_index)
             } else if let Some(literal_val) = self.try_parse_literal_value()? {
-                ast::AstExpressionValue::Literal(literal_val)
+                AstExpressionValue::Literal(literal_val)
             } else {
                 // Not a literal, try parsing as a qualified identifier
                 let col_ident = self.parse_qualified_identifier(
                     "Expected literal, parameter (?), or column identifier for RHS of condition",
                 )?;
-                ast::AstExpressionValue::ColumnIdentifier(col_ident)
+                AstExpressionValue::ColumnIdentifier(col_ident)
             };
 
-            Ok(ast::ConditionTree::Comparison(Condition { column, operator, value: rhs_value }))
+            Ok(ConditionTree::Comparison(Condition { column, operator, value: rhs_value }))
         }
     }
 
     // Parses AND conditions (higher precedence than OR)
-    fn parse_condition_term(&mut self) -> Result<ast::ConditionTree, SqlParseError> {
+    fn parse_condition_term(&mut self) -> Result<ConditionTree, SqlParseError> {
         let mut left = self.parse_condition_factor()?;
         while self.peek_is_identifier_str("AND") {
             self.consume_any().ok_or(SqlParseError::UnexpectedEOF)?; // Consume AND
             let right = self.parse_condition_factor()?;
-            left = ast::ConditionTree::And(Box::new(left), Box::new(right));
+            left = ConditionTree::And(Box::new(left), Box::new(right));
         }
         Ok(left)
     }
 
     // Parses OR conditions (lower precedence than AND)
-    pub(super) fn parse_condition_expr(&mut self) -> Result<ast::ConditionTree, SqlParseError> {
+    pub(super) fn parse_condition_expr(&mut self) -> Result<ConditionTree, SqlParseError> {
         let mut left = self.parse_condition_term()?;
         while self.peek_is_identifier_str("OR") {
             self.consume_any().ok_or(SqlParseError::UnexpectedEOF)?; // Consume OR
             let right = self.parse_condition_term()?;
-            left = ast::ConditionTree::Or(Box::new(left), Box::new(right));
+            left = ConditionTree::Or(Box::new(left), Box::new(right));
         }
         Ok(left)
     }
@@ -327,5 +343,58 @@ impl SqlParser {
                 None => Err(SqlParseError::UnexpectedEOF),
             }
         }
+    }
+
+    /// Parse an aggregate function like COUNT(*), SUM(column), etc.
+    fn parse_aggregate_function(&mut self) -> Result<SelectColumn, SqlParseError> {
+        let func_name = match self.peek() {
+            Some(Token::Identifier(name)) => name.to_uppercase(),
+            _ => return Err(SqlParseError::UnexpectedToken {
+                expected: "aggregate function name".to_string(),
+                found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
+                position: self.current_token_pos(),
+            }),
+        };
+        
+        self.consume_any().ok_or(SqlParseError::UnexpectedEOF)?; // Consume function name
+        self.consume(Token::LParen)?;
+        
+        let function = match func_name.as_str() {
+            "COUNT" => AggregateFunction::Count,
+            "SUM" => AggregateFunction::Sum,
+            "AVG" => AggregateFunction::Avg,
+            "MIN" => AggregateFunction::Min,
+            "MAX" => AggregateFunction::Max,
+            _ => return Err(SqlParseError::UnexpectedToken {
+                expected: "aggregate function".to_string(),
+                found: func_name,
+                position: self.current_token_pos(),
+            }),
+        };
+        
+        // Parse the column or * for COUNT(*)
+        let column = if self.match_token(Token::Asterisk) {
+            self.consume(Token::Asterisk)?;
+            Box::new(SelectColumn::Asterisk)
+        } else {
+            let col_name = self.parse_qualified_identifier("Expected column name")?;
+            Box::new(SelectColumn::ColumnName(col_name))
+        };
+        
+        self.consume(Token::RParen)?;
+        
+        // Check for optional alias (AS alias_name)
+        let alias = if self.peek_is_identifier_str("AS") {
+            self.consume_any().ok_or(SqlParseError::UnexpectedEOF)?; // Consume AS
+            Some(self.expect_identifier("Expected alias name after AS")?)
+        } else {
+            None
+        };
+        
+        Ok(SelectColumn::AggregateFunction {
+            function,
+            column,
+            alias,
+        })
     }
 }

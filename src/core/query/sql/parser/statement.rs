@@ -449,6 +449,34 @@ impl SqlParser {
             None
         };
 
+        // Parse GROUP BY
+        let group_by = if self.match_token(Token::Group) {
+            self.consume(Token::Group)?;
+            self.consume(Token::By)?;
+            let mut group_columns = Vec::new();
+            loop {
+                let column = self.expect_identifier("Expected column name in GROUP BY")?;
+                group_columns.push(column);
+                
+                if self.match_token(Token::Comma) {
+                    self.consume(Token::Comma)?;
+                } else {
+                    break;
+                }
+            }
+            Some(group_columns)
+        } else {
+            None
+        };
+
+        // Parse HAVING
+        let having = if self.match_token(Token::Having) {
+            self.consume(Token::Having)?;
+            Some(self.parse_condition_expr()?)
+        } else {
+            None
+        };
+
         // Parse ORDER BY
         let order_by = if self.match_token(Token::Order) {
             self.consume(Token::Order)?;
@@ -505,6 +533,8 @@ impl SqlParser {
             from_clause, // Use the new from_clause
             joins,       // Add the parsed joins
             condition,
+            group_by,
+            having,
             order_by,
             limit: limit_val,
         }))

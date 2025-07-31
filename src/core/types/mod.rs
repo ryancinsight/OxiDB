@@ -48,18 +48,41 @@ impl std::hash::Hash for JsonSafeMap {
         // Hash the length of the map
         self.0.len().hash(state);
         // Sort keys for consistent hashing
-        let mut entries: Vec<_> = self.0.iter().collect();
-        entries.sort_by_key(|(k, _)| k.as_slice());
-        for (k, v) in entries {
-            k.hash(state);
-            v.hash(state);
+        let mut sorted_keys: Vec<_> = self.0.keys().collect();
+        sorted_keys.sort();
+        for key in sorted_keys {
+            key.hash(state);
+            self.0[key].hash(state);
+        }
+    }
+}
+
+impl PartialOrd for JsonSafeMap {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for JsonSafeMap {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Compare by length first
+        match self.0.len().cmp(&other.0.len()) {
+            std::cmp::Ordering::Equal => {
+                // If same length, compare sorted key-value pairs
+                let mut self_pairs: Vec<_> = self.0.iter().collect();
+                let mut other_pairs: Vec<_> = other.0.iter().collect();
+                self_pairs.sort_by_key(|(k, _)| *k);
+                other_pairs.sort_by_key(|(k, _)| *k);
+                self_pairs.cmp(&other_pairs)
+            }
+            other => other,
         }
     }
 }
 
 // Legacy DataType for compatibility with existing code
 // This will be gradually migrated to use CommonDataType and Value
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum DataType {
     Integer(i64),
     String(String),
@@ -79,6 +102,12 @@ pub struct OrderedFloat(pub f64);
 
 impl Eq for OrderedFloat {}
 
+impl Ord for OrderedFloat {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Equal)
+    }
+}
+
 impl std::hash::Hash for OrderedFloat {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.to_bits().hash(state);
@@ -96,6 +125,19 @@ impl std::hash::Hash for JsonValue {
     }
 }
 
+impl PartialOrd for JsonValue {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for JsonValue {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Compare by string representation
+        self.0.to_string().cmp(&other.0.to_string())
+    }
+}
+
 /// Wrapper for VectorData that implements Hash and Eq
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HashableVectorData(pub VectorData);
@@ -105,9 +147,33 @@ impl Eq for HashableVectorData {}
 impl std::hash::Hash for HashableVectorData {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.dimension.hash(state);
-        // Hash each float as bits to ensure consistency
-        for &f in &self.0.data {
-            f.to_bits().hash(state);
+        for &val in &self.0.data {
+            val.to_bits().hash(state);
+        }
+    }
+}
+
+impl PartialOrd for HashableVectorData {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for HashableVectorData {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match self.0.dimension.cmp(&other.0.dimension) {
+            std::cmp::Ordering::Equal => {
+                // Compare data vectors element by element
+                for (a, b) in self.0.data.iter().zip(other.0.data.iter()) {
+                    match a.partial_cmp(b) {
+                        Some(std::cmp::Ordering::Equal) => continue,
+                        Some(ord) => return ord,
+                        None => return std::cmp::Ordering::Equal, // Handle NaN
+                    }
+                }
+                self.0.data.len().cmp(&other.0.data.len())
+            }
+            ord => ord,
         }
     }
 }

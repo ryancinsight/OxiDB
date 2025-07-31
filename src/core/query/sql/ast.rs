@@ -42,6 +42,20 @@ pub struct Assignment {
 pub enum SelectColumn {
     ColumnName(String),
     Asterisk, // For SELECT *
+    AggregateFunction {
+        function: AggregateFunction,
+        column: Box<SelectColumn>,
+        alias: Option<String>,
+    },
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum AggregateFunction {
+    Count,
+    Sum,
+    Avg,
+    Min,
+    Max,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -50,6 +64,8 @@ pub struct SelectStatement {
     pub from_clause: TableReference,
     pub joins: Vec<JoinClause>,
     pub condition: Option<ConditionTree>,
+    pub group_by: Option<Vec<String>>,       // GROUP BY columns
+    pub having: Option<ConditionTree>,       // HAVING condition
     pub order_by: Option<Vec<OrderByExpr>>,
     pub limit: Option<AstLiteralValue>,
 }
