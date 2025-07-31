@@ -82,15 +82,19 @@ fn compute_aggregates_no_group(
             }
             AggregateFunction::Sum => {
                 if let Some(col_idx) = agg.column_index {
-                    let sum = rows.iter()
+                    let (int_sum, float_sum) = rows.iter()
                         .filter_map(|row| row.get(col_idx))
-                        .try_fold(0.0f64, |acc, val| match val {
-                            DataType::Integer(i) => Ok(acc + *i as f64),
-                            DataType::Float(f) => Ok(acc + f.0),
-                            DataType::Null => Ok(acc),
+                        .try_fold((0i64, 0.0f64), |(int_acc, float_acc), val| match val {
+                            DataType::Integer(i) => Ok((int_acc + *i, float_acc)),
+                            DataType::Float(f) => Ok((int_acc, float_acc + f.0)),
+                            DataType::Null => Ok((int_acc, float_acc)),
                             _ => Err(OxidbError::Type("SUM requires numeric values".to_string())),
                         })?;
-                    DataType::Float(crate::core::types::OrderedFloat(sum))
+                    if float_sum == 0.0 {
+                        DataType::Integer(int_sum)
+                    } else {
+                        DataType::Float(crate::core::types::OrderedFloat(float_sum + int_sum as f64))
+                    }
                 } else {
                     return Err(OxidbError::Execution("SUM requires a column".to_string()));
                 }
