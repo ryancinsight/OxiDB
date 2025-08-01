@@ -1,10 +1,12 @@
 mod auth;
 mod db;
 mod handlers;
+// mod handlers_v2; // Commented out due to compilation issues
 mod models;
 mod test;
 mod minimal;
 mod working;
+mod api;
 
 use anyhow::Result;
 use axum::Router;
@@ -26,8 +28,8 @@ async fn main() -> Result<()> {
 
     // Build our application with routes
     let app = Router::new()
-        // API routes - using working routes for now
-        .nest("/api", working::create_app())
+        // API routes - using the api module that compiles
+        .nest("/api", api::create_routes())
         // Static file serving for uploaded files (protected)
         .nest_service("/files", ServeDir::new("uploads"))
         // Serve static assets (HTML, CSS, JS)
