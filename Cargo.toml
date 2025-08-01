@@ -58,6 +58,7 @@ members = [
     "examples/user_auth_files",
     "examples/graphrag_demo",
     "examples/performance_demo",
+    "examples/file_server",
 ]
 resolver = "2"
 
