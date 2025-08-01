@@ -4,7 +4,7 @@ use axum::{
     extract::{Multipart, Path, Query},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{delete, get, post},
+    routing::{get, post},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
@@ -30,24 +30,82 @@ fn value_as_integer(value: &Value) -> Option<i64> {
     }
 }
 
-pub fn api_routes() -> Router {
+// Test handlers
+async fn test_handler() -> &'static str {
+    "OK"
+}
+
+async fn test_json() -> Json<serde_json::Value> {
+    Json(serde_json::json!({"status": "ok"}))
+}
+
+async fn test_result() -> Result<Json<serde_json::Value>, StatusCode> {
+    Ok(Json(serde_json::json!({"status": "ok"})))
+}
+
+async fn test_app_error() -> Result<Json<serde_json::Value>, AppError> {
+    Ok(Json(serde_json::json!({"status": "ok"})))
+}
+
+async fn test_with_json(Json(payload): Json<serde_json::Value>) -> Result<Json<serde_json::Value>, AppError> {
+    Ok(Json(payload))
+}
+
+// Test handler without auth - completely self-contained
+async fn test_simple_json() -> Result<Json<serde_json::Value>, AppError> {
+    Ok(Json(serde_json::json!({"test": "ok"})))
+}
+
+// Test with our types but StatusCode error
+async fn test_register_status(Json(req): Json<RegisterRequest>) -> Result<Json<User>, StatusCode> {
+    match auth::register_user(req).await {
+        Ok(user) => Ok(Json(user)),
+        Err(_) => Err(StatusCode::BAD_REQUEST),
+    }
+}
+
+// Test with inline types
+#[derive(serde::Serialize, serde::Deserialize)]
+struct TestUser {
+    id: String,
+    username: String,
+}
+
+async fn test_inline() -> Result<Json<TestUser>, AppError> {
+    Ok(Json(TestUser {
+        id: "123".to_string(),
+        username: "test".to_string(),
+    }))
+}
+
+pub fn api_routes() -> Router<()> {
     Router::new()
-        // Auth routes
-        .route("/auth/register", post(register))
-        .route("/auth/login", post(login))
-        .route("/auth/logout", post(logout))
-        // File routes (protected)
-        .route("/files", get(list_files).post(upload_file))
-        .route("/files/:id", get(get_file).delete(delete_file))
-        .route("/files/:id/share", post(share_file))
-        .route("/files/:id/unshare", post(unshare_file))
-        .route("/files/:id/download", get(download_file))
-        // User routes
-        .route("/users/me", get(get_current_user))
+        // Test routes
+        .route("/test", get(test_handler))
+        .route("/test/json", get(test_json))
+        .route("/test/result", get(test_result))
+        .route("/test/app_error", get(test_app_error))
+        .route("/test/json", post(test_with_json))
+        .route("/test/simple", get(test_simple_json))
+        // .route("/test/register_status", post(test_register_status))
+        .route("/test/inline", get(test_inline))
+        // Auth routes - commented out for now
+        // .route("/auth/register", post(register))
+        // .route("/auth/login", post(login))
+        // .route("/auth/logout", post(logout))
+        // File routes (protected) - commented out for now
+        // .route("/files", get(list_files).post(upload_file))
+        // .route("/files/:id", get(get_file))
+        // .route("/files/:id", axum::routing::delete(delete_file))
+        // .route("/files/:id/share", post(share_file))
+        // .route("/files/:id/unshare", post(unshare_file))
+        // .route("/files/:id/download", get(download_file))
+        // User routes - commented out for now
+        // .route("/users/me", get(get_current_user))
 }
 
 // Auth handlers
-async fn register(Json(req): Json<RegisterRequest>) -> Result<Json<User>, AppError> {
+async fn register(Json(req): Json<crate::models::RegisterRequest>) -> Result<Json<crate::models::User>, AppError> {
     let user = auth::register_user(req).await?;
     Ok(Json(user))
 }
@@ -64,7 +122,6 @@ async fn logout(auth_user: AuthUser) -> Result<StatusCode, AppError> {
     // Remove all sessions for this user
     let query = format!("DELETE FROM sessions WHERE user_id = '{}'", auth_user.user_id);
     conn.execute(&query)?;
-    
     Ok(StatusCode::OK)
 }
 
@@ -104,7 +161,7 @@ async fn upload_file(
     mut multipart: Multipart,
     auth_user: AuthUser,
 ) -> Result<Json<File>, AppError> {
-    while let Some(field) = multipart.next_field().await? {
+        while let Some(field) = multipart.next_field().await? {
         let name = field.name().unwrap_or("").to_string();
         if name != "file" {
             continue;
@@ -122,7 +179,8 @@ async fn upload_file(
         
         // Generate unique filename
         let file_id = Uuid::new_v4().to_string();
-        let extension = PathBuf::from(&filename)
+        let path = PathBuf::from(&filename);
+        let extension = path
             .extension()
             .and_then(|ext| ext.to_str())
             .unwrap_or("");
@@ -460,10 +518,12 @@ async fn unshare_file(
     Ok(StatusCode::OK)
 }
 
+type FileDownloadResponse = ([(& 'static str, String); 2], Vec<u8>);
+
 async fn download_file(
     Path(file_id): Path<String>,
     auth_user: AuthUser,
-) -> Result<impl IntoResponse, AppError> {
+) -> Result<FileDownloadResponse, AppError> {
     let db = db::get_db();
     let mut conn = db.lock().await;
     
@@ -483,18 +543,19 @@ async fn download_file(
     
     if let QueryResult::Data(data) = result {
         if let Some(row) = data.rows.first() {
-            let file_path = row.get(0).and_then(value_as_text).ok_or(anyhow!("Invalid file path"))?;
-            let original_name = row.get(1).and_then(value_as_text).ok_or(anyhow!("Invalid file name"))?;
-            let mime_type = row.get(2).and_then(value_as_text).unwrap_or("application/octet-stream");
+            let file_path = row.get(0).and_then(value_as_text).ok_or(anyhow!("Invalid file path"))?.to_string();
+            let original_name = row.get(1).and_then(value_as_text).ok_or(anyhow!("Invalid file name"))?.to_string();
+            let mime_type = row.get(2).and_then(value_as_text).unwrap_or("application/octet-stream").to_string();
             
             // Read file
-            let file_data = tokio::fs::read(file_path).await?;
+            let file_data = tokio::fs::read(&file_path).await?;
             
             // Return file with appropriate headers
+            let content_disposition = format!("attachment; filename=\"{}\"", original_name);
             Ok((
                 [
                     ("Content-Type", mime_type),
-                    ("Content-Disposition", &format!("attachment; filename=\"{}\"", original_name)),
+                    ("Content-Disposition", content_disposition),
                 ],
                 file_data,
             ))
@@ -508,7 +569,7 @@ async fn download_file(
 
 // Error handling
 #[derive(Debug)]
-enum AppError {
+pub enum AppError {
     BadRequest(String),
     NotFound(String),
     Forbidden(String),
@@ -536,6 +597,12 @@ impl From<std::io::Error> for AppError {
 impl From<axum::extract::multipart::MultipartError> for AppError {
     fn from(err: axum::extract::multipart::MultipartError) -> Self {
         AppError::BadRequest(err.to_string())
+    }
+}
+
+impl From<chrono::ParseError> for AppError {
+    fn from(err: chrono::ParseError) -> Self {
+        AppError::BadRequest(format!("Invalid date format: {}", err))
     }
 }
 

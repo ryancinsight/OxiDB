@@ -153,9 +153,12 @@ pub fn verify_jwt_token(token: &str) -> Result<Claims> {
 }
 
 // Axum extractor for authenticated user
+#[derive(Debug, Clone)]
 pub struct AuthUser {
     pub user_id: String,
 }
+
+
 
 #[axum::async_trait]
 impl<S> FromRequestParts<S> for AuthUser
