@@ -10,20 +10,20 @@ crate-type = ["lib", "cdylib"]
 
 [dependencies]
 # crc32fast = "1.4.0" # Replaced with pure Rust implementation
-paste = "1.0"
+# paste = "1.0" # Replaced with manual test implementations
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-thiserror = "1.0"
+# thiserror = "1.0" # Replaced with manual error implementations
 # bincode = "1.3" # Replaced with pure Rust implementation
 toml = "0.8.10"
 # byteorder = "1.4" # Replaced with pure Rust implementation
 anyhow = "1.0"
 serde_with = { version = "2.3.0", features = ["macros", "json", "base64"] }
-hex = "0.4"
+# hex = "0.4" # Replaced with pure Rust implementation
 clap = { version = "4.0", features = ["derive"] }
 sha2 = "0.10"
 async-trait = "0.1"
-log = "0.4"
+# log = "0.4" # Replaced with commented out debug statements
 rand = "0.8"
 regex = "1.10"
 chrono = { version = "0.4", features = ["serde"] }

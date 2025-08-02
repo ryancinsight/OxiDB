@@ -180,7 +180,7 @@ fn hash_password(password: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(password.as_bytes());
     let result = hasher.finalize();
-    hex::encode(result)
+    oxidb::core::common::hex::encode(result)
 }
 
 // --- User Management Functions ---
@@ -256,7 +256,7 @@ fn add_file(db: &mut Oxidb, user_id: u64, file_name: &str, content: &str) -> Res
     ensure_tables_exist(db)?;
     let escaped_file_name = file_name.replace("'", "''");
     let content_bytes = content.as_bytes();
-    let hex_content = hex::encode(content_bytes); // Content is stored as hex string for X'' literal
+            let hex_content = oxidb::core::common::hex::encode(content_bytes); // Content is stored as hex string for X'' literal
 
     // Using X'' for blob literal, assuming Oxidb SQL parser handles this for BLOB columns
     let query = format!(

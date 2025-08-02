@@ -1,106 +1,107 @@
-use thiserror::Error;
+use std::fmt;
 
-#[derive(Error, Debug)]
+#[derive(Debug)]
 pub enum OxidbError {
-    #[error("IO Error: {0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("Serialization Error: {0}")]
+    Io(std::io::Error),
     Serialization(String),
-
-    #[error("Deserialization Error: {0}")]
-    Deserialization(String), // Kept separate from Serialization for now
-
-    #[error("JSON Serialization/Deserialization Error: {0}")]
-    Json(#[from] serde_json::Error),
-
-    #[error("Parsing Error: {0}")]
-    Parsing(String), // Generic parsing error
-
-    #[error("SQL Parsing Error: {0}")]
-    SqlParsing(String), // Specific for SQL, was InvalidQuery
-
-    #[error("Execution Error: {0}")]
+    Deserialization(String),
+    Json(serde_json::Error),
+    Parsing(String),
+    SqlParsing(String),
     Execution(String),
-
-    #[error("Storage Error: {0}")]
-    Storage(String), // Unified storage error variant
-
-    #[error("Transaction Error: {0}")]
-    Transaction(String), // Was TransactionError
-
-    #[error("Not Found: {0}")]
-    NotFound(String), // Was NotFoundError
-
-    #[error("Invalid Node ID")]
+    Storage(String),
+    Transaction(String),
+    NotFound(String),
     InvalidNodeId,
-
-    #[error("Entity Not Found: {0}")]
     EntityNotFound(String),
-
-    #[error("Resource already exists: {name}")]
     AlreadyExists { name: String },
-
-    #[error("Feature not implemented: {feature}")]
-    NotImplemented { feature: String }, // Was NotImplemented(String) and similar to UnsupportedOperation
-
-    #[error("Invalid input: {message}")]
+    NotImplemented { feature: String },
     InvalidInput { message: String },
-
-    #[error("Index Error: {0}")]
-    Index(String), // Was IndexError
-
-    #[error("Lock Error: {0}")]
-    Lock(String), // Was LockError
-
-    #[error("Lock Timeout: {0}")]
+    Index(String),
+    Lock(String),
     LockTimeout(String),
-
-    #[error("No active transaction")]
-    NoActiveTransaction,
-
-    #[error("Lock conflict: {message}")]
-    LockConflict { message: String },
-
-    #[error("Lock acquisition timeout for key {key:?} on transaction {current_tx}")]
-    LockAcquisitionTimeout { key: Vec<u8>, current_tx: u64 },
-
-    #[error("Configuration error: {0}")]
-    Configuration(String), // Unified configuration error variant
-
-    #[error("Type Error: {0}")]
-    Type(String), // Was TypeError
-
-    #[error("Internal Error: {0}")]
-    Internal(String), // Was InternalError and Internal(String)
-
-    #[error("Buffer Pool Error: {0}")]
+    Internal(String),
     BufferPool(String),
-
-    #[error("Constraint Violation: {0}")]
     ConstraintViolation(String),
-
-    #[error("Vector dimension mismatch: dim1 = {dim1}, dim2 = {dim2}")]
     VectorDimensionMismatch { dim1: usize, dim2: usize },
-
-    #[error("Vector magnitude is zero, cannot compute cosine similarity")]
     VectorMagnitudeZero,
-
-    // Additional error variants for compatibility
-    #[error("Other: {0}")]
     Other(String),
-
-    #[error("Transaction error: {0}")]
     TransactionError(String), // Deprecated: Use Transaction instead
-
-    #[error("Transaction not found: {0}")]
     TransactionNotFound(String),
-
-    #[error("Deadlock detected: {0}")]
     DeadlockDetected(String),
-
-    #[error("Table not found: {0}")]
     TableNotFound(String),
+    NoActiveTransaction,
+    LockConflict { message: String },
+    LockAcquisitionTimeout { key: Vec<u8>, current_tx: u64 },
+    Configuration(String),
+    Type(String),
+}
+
+impl fmt::Display for OxidbError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(e) => write!(f, "IO Error: {}", e),
+            Self::Serialization(s) => write!(f, "Serialization Error: {}", s),
+            Self::Deserialization(s) => write!(f, "Deserialization Error: {}", s),
+            Self::Json(e) => write!(f, "JSON Serialization/Deserialization Error: {}", e),
+            Self::Parsing(s) => write!(f, "Parsing Error: {}", s),
+            Self::SqlParsing(s) => write!(f, "SQL Parsing Error: {}", s),
+            Self::Execution(s) => write!(f, "Execution Error: {}", s),
+            Self::Storage(s) => write!(f, "Storage Error: {}", s),
+            Self::Transaction(s) => write!(f, "Transaction Error: {}", s),
+            Self::NotFound(s) => write!(f, "Not Found: {}", s),
+            Self::InvalidNodeId => write!(f, "Invalid Node ID"),
+            Self::EntityNotFound(s) => write!(f, "Entity Not Found: {}", s),
+            Self::AlreadyExists { name } => write!(f, "Resource already exists: {}", name),
+            Self::NotImplemented { feature } => write!(f, "Feature not implemented: {}", feature),
+            Self::InvalidInput { message } => write!(f, "Invalid input: {}", message),
+            Self::Index(s) => write!(f, "Index Error: {}", s),
+            Self::Lock(s) => write!(f, "Lock Error: {}", s),
+            Self::LockTimeout(s) => write!(f, "Lock Timeout: {}", s),
+            Self::Internal(s) => write!(f, "Internal Error: {}", s),
+            Self::BufferPool(s) => write!(f, "Buffer Pool Error: {}", s),
+            Self::ConstraintViolation(s) => write!(f, "Constraint Violation: {}", s),
+            Self::VectorDimensionMismatch { dim1, dim2 } => {
+                write!(f, "Vector dimension mismatch: dim1 = {}, dim2 = {}", dim1, dim2)
+            }
+            Self::VectorMagnitudeZero => write!(f, "Vector magnitude is zero, cannot compute cosine similarity"),
+            Self::Other(s) => write!(f, "Other: {}", s),
+            Self::TransactionError(s) => write!(f, "Transaction error: {}", s),
+            Self::TransactionNotFound(s) => write!(f, "Transaction not found: {}", s),
+            Self::DeadlockDetected(s) => write!(f, "Deadlock detected: {}", s),
+            Self::TableNotFound(s) => write!(f, "Table not found: {}", s),
+            Self::NoActiveTransaction => write!(f, "No active transaction"),
+            Self::LockConflict { message } => write!(f, "Lock conflict: {}", message),
+            Self::LockAcquisitionTimeout { key, current_tx } => {
+                write!(f, "Lock acquisition timeout for key {:?} on transaction {}", key, current_tx)
+            }
+            Self::Configuration(s) => write!(f, "Configuration error: {}", s),
+            Self::Type(s) => write!(f, "Type Error: {}", s),
+        }
+    }
+}
+
+impl std::error::Error for OxidbError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io(e) => Some(e),
+            Self::Json(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+// Manual From implementations
+impl From<std::io::Error> for OxidbError {
+    fn from(err: std::io::Error) -> Self {
+        Self::Io(err)
+    }
+}
+
+impl From<serde_json::Error> for OxidbError {
+    fn from(err: serde_json::Error) -> Self {
+        Self::Json(err)
+    }
 }
 
 impl From<crate::core::indexing::btree::OxidbError> for OxidbError {
@@ -141,8 +142,3 @@ impl OxidbError {
         Self::Io(Error::new(ErrorKind::Other, message))
     }
 }
-
-// Note: Removed manual PartialEq. If needed, it should be added carefully,
-// considering that std::io::Error and other wrapped errors might not implement PartialEq.
-// For many error types, direct comparison isn't as common as matching on the variant.
-// thiserror does not automatically derive PartialEq or Eq.

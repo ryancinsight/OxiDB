@@ -2,13 +2,24 @@
 
 // Content from binder.rs
 use crate::core::query::sql::ast::Statement as AstStatement;
-use thiserror::Error;
+use std::fmt;
 
-#[derive(Error, Debug)]
+#[derive(Debug)]
 pub enum BindError {
-    #[error("Binding not yet implemented for statement: {statement_type}")]
     NotImplemented { statement_type: String },
 }
+
+impl fmt::Display for BindError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotImplemented { statement_type } => {
+                write!(f, "Binding not yet implemented for statement: {}", statement_type)
+            }
+        }
+    }
+}
+
+impl std::error::Error for BindError {}
 
 #[derive(Debug)]
 pub struct BoundStatement {
