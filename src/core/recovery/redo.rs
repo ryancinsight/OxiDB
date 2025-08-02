@@ -16,7 +16,6 @@ use crate::core::recovery::types::{RecoveryError, RecoveryState};
 use crate::core::storage::engine::page::{Page, PageType};
 use crate::core::wal::log_record::LogRecord;
 use crate::core::wal::reader::WalReader;
-use log;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -65,11 +64,11 @@ impl RedoPhase {
         let redo_lsn = if let Some(lsn) = self.redo_lsn {
             lsn
         } else {
-            log::// info!("No redo LSN found, skipping redo phase");
+            // log::info!("No redo LSN found, skipping redo phase");
             return Ok(());
         };
 
-        log::// info!("Starting redo phase from LSN {}", redo_lsn);
+        // log::info!("Starting redo phase from LSN {}", redo_lsn);
 
         // Create WAL reader from path
         let reader = WalReader::with_defaults(wal_path.as_ref());
@@ -87,7 +86,7 @@ impl RedoPhase {
             }
         }
 
-        log::// info!("Redo phase completed successfully");
+        // log::info!("Redo phase completed successfully");
         Ok(())
     }
 
@@ -151,7 +150,7 @@ impl RedoPhase {
             })?;
 
             page_guard.set_lsn(lsn);
-            log::// debug!("Redid update on page {} with LSN {}", page_id.0, lsn);
+                            // log::debug!("Redid update on page {} with LSN {}", page_id.0, lsn);
         }
 
         Ok(())
@@ -182,7 +181,7 @@ impl RedoPhase {
             })?;
 
             page_guard.set_lsn(lsn);
-            log::// debug!("Redid insert on page {} with LSN {}", page_id.0, lsn);
+                            // log::debug!("Redid insert on page {} with LSN {}", page_id.0, lsn);
         }
 
         Ok(())
@@ -212,7 +211,7 @@ impl RedoPhase {
             })?;
 
             page_guard.set_lsn(lsn);
-            log::// debug!("Redid delete on page {} with LSN {}", page_id.0, lsn);
+                            // log::debug!("Redid delete on page {} with LSN {}", page_id.0, lsn);
         }
 
         Ok(())

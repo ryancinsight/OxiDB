@@ -536,7 +536,6 @@ pub struct AggregateSpec {
     pub alias: Option<String>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SimplePredicate {
     pub column: String,
@@ -544,7 +543,6 @@ pub struct SimplePredicate {
     pub value: DataType,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Literal(DataType),

@@ -19,6 +19,16 @@ fn lock_error<T>(_: PoisonError<MutexGuard<T>>) -> OxidbError {
     OxidbError::LockTimeout("Failed to acquire store lock".to_string())
 }
 
+/// Helper function for transaction lock errors
+fn tx_lock_error<T>(_: PoisonError<MutexGuard<T>>) -> OxidbError {
+    OxidbError::LockTimeout("Failed to acquire active_transactions lock".to_string())
+}
+
+/// Helper function for next_tx_id lock errors
+fn next_id_lock_error<T>(_: PoisonError<MutexGuard<T>>) -> OxidbError {
+    OxidbError::LockTimeout("Failed to acquire next_tx_id lock".to_string())
+}
+
 /// Vector operation types for transaction logging
 #[derive(Debug, Clone)]
 pub enum VectorOperation {
