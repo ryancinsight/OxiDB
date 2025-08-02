@@ -472,7 +472,7 @@ fn test_memory_pressure_scenarios() -> Result<(), OxidbError> {
     for i in 1..=10 {
         let data_size = i * 10000; // 10KB, 20KB, ..., 100KB
         let large_data = vec![b'X'; data_size];
-        let hex_data = hex::encode(&large_data);
+                    let hex_data = oxidb::core::common::hex::encode(&large_data);
         
         match conn.execute(&format!("INSERT INTO memory_pressure_test (data) VALUES (x'{}')", hex_data)) {
             Ok(_) => println!("✓ Inserted {}KB data block", data_size / 1000),

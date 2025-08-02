@@ -1,15 +1,22 @@
 // src/api/errors.rs
 //! Defines the error types specific to the API layer.
 
-use thiserror::Error;
+use std::fmt;
 
-#[derive(Error, Debug)]
+#[derive(Debug)]
 pub enum Error {
-    #[error("Invalid request: {0}")]
     InvalidRequest(String),
     // Example:
-    // #[error("Resource not found: {0}")]
     // NotFound(String),
-    // #[error("Internal server error: {0}")]
-    // InternalError(#[from] Box<dyn std::error::Error + Send + Sync>),
+    // InternalError(Box<dyn std::error::Error + Send + Sync>),
 }
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidRequest(s) => write!(f, "Invalid request: {}", s),
+        }
+    }
+}
+
+impl std::error::Error for Error {}

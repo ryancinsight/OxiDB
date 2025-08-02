@@ -803,49 +803,82 @@ mod tests {
         );
     }
 
-    macro_rules! define_executor_tests {
-        ($($test_name:ident),* $(,)? ; executor: $executor_creator:ident, store_type: $store_type:ty) => {
-            $(
-                paste::paste! {
-                    #[test]
-                    fn [<$test_name _ $store_type:lower>]() {
-                        [<run_ $test_name>](&mut $executor_creator());
-                    }
-                }
-            )*
-        }
-    }
-
     mod file_store_tests {
         use super::*;
-        define_executor_tests!(
-            test_get_non_existent,
-            test_insert_and_get_integer,
-            test_insert_and_get_string,
-            test_insert_delete_get,
-            test_begin_transaction_command,
-            test_insert_with_active_transaction,
-            test_insert_rollback_transaction,
-            ;
-            executor: create_file_executor,
-            store_type: SimpleFileKvStore
-        );
+        
+        #[test]
+        fn test_get_non_existent_simplefilekvstore() {
+            run_test_get_non_existent(&mut create_file_executor());
+        }
+        
+        #[test]
+        fn test_insert_and_get_integer_simplefilekvstore() {
+            run_test_insert_and_get_integer(&mut create_file_executor());
+        }
+        
+        #[test]
+        fn test_insert_and_get_string_simplefilekvstore() {
+            run_test_insert_and_get_string(&mut create_file_executor());
+        }
+        
+        #[test]
+        fn test_insert_delete_get_simplefilekvstore() {
+            run_test_insert_delete_get(&mut create_file_executor());
+        }
+        
+        #[test]
+        fn test_begin_transaction_command_simplefilekvstore() {
+            run_test_begin_transaction_command(&mut create_file_executor());
+        }
+        
+        #[test]
+        fn test_insert_with_active_transaction_simplefilekvstore() {
+            run_test_insert_with_active_transaction(&mut create_file_executor());
+        }
+        
+        #[test]
+        fn test_insert_rollback_transaction_simplefilekvstore() {
+            run_test_insert_rollback_transaction(&mut create_file_executor());
+        }
     }
 
     mod in_memory_store_tests {
         use super::*;
-        define_executor_tests!(
-            test_get_non_existent,
-            test_insert_and_get_integer,
-            test_insert_and_get_string,
-            test_insert_delete_get,
-            test_begin_transaction_command,
-            test_insert_with_active_transaction,
-            test_insert_rollback_transaction,
-            ;
-            executor: create_in_memory_executor,
-            store_type: InMemoryKvStore
-        );
+        
+        #[test]
+        fn test_get_non_existent_inmemorykvstore() {
+            run_test_get_non_existent(&mut create_in_memory_executor());
+        }
+        
+        #[test]
+        fn test_insert_and_get_integer_inmemorykvstore() {
+            run_test_insert_and_get_integer(&mut create_in_memory_executor());
+        }
+        
+        #[test]
+        fn test_insert_and_get_string_inmemorykvstore() {
+            run_test_insert_and_get_string(&mut create_in_memory_executor());
+        }
+        
+        #[test]
+        fn test_insert_delete_get_inmemorykvstore() {
+            run_test_insert_delete_get(&mut create_in_memory_executor());
+        }
+        
+        #[test]
+        fn test_begin_transaction_command_inmemorykvstore() {
+            run_test_begin_transaction_command(&mut create_in_memory_executor());
+        }
+        
+        #[test]
+        fn test_insert_with_active_transaction_inmemorykvstore() {
+            run_test_insert_with_active_transaction(&mut create_in_memory_executor());
+        }
+        
+        #[test]
+        fn test_insert_rollback_transaction_inmemorykvstore() {
+            run_test_insert_rollback_transaction(&mut create_in_memory_executor());
+        }
     }
 
     #[test]

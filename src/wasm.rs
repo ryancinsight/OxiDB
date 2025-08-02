@@ -71,7 +71,7 @@ impl WasmDatabase {
                                         .unwrap_or(serde_json::Value::Null)
                                 },
                                 crate::core::common::types::Value::Text(s) => serde_json::Value::String(s.clone()),
-                                crate::core::common::types::Value::Blob(b) => serde_json::Value::String(hex::encode(b)),
+                                crate::core::common::types::Value::Blob(b) => serde_json::Value::String(crate::core::common::hex::encode(b)),
                                 crate::core::common::types::Value::Vector(v) => {
                                     // Convert vector to array of numbers
                                     let vec_values: Vec<serde_json::Value> = v.iter()

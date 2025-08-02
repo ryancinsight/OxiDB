@@ -1,30 +1,46 @@
 // src/core/transaction/errors.rs
 //! Defines error types for the transaction management system.
 
-use thiserror::Error;
+use std::fmt;
 
-#[derive(Error, Debug)]
+#[derive(Debug)]
 pub enum TransactionError {
-    #[error("Serialization error: {0}")]
     SerializationError(String),
-
-    #[error("I/O error: {0}")]
-    IoError(#[from] std::io::Error),
-
-    #[error("Transaction conflict: {0}")]
+    IoError(std::io::Error),
     Conflict(String),
-
-    #[error("Transaction deadlock detected: {0}")]
     Deadlock(String),
-
-    #[error("Invalid transaction state: {0}")]
     InvalidTransactionState(String),
-
-    #[error("MVCC error: {0}")]
     MvccError(String), // For Multi-Version Concurrency Control specific errors
-
-    #[error("General transaction error: {0}")]
     General(String),
+}
+
+impl fmt::Display for TransactionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::SerializationError(s) => write!(f, "Serialization error: {}", s),
+            Self::IoError(e) => write!(f, "I/O error: {}", e),
+            Self::Conflict(s) => write!(f, "Transaction conflict: {}", s),
+            Self::Deadlock(s) => write!(f, "Transaction deadlock detected: {}", s),
+            Self::InvalidTransactionState(s) => write!(f, "Invalid transaction state: {}", s),
+            Self::MvccError(s) => write!(f, "MVCC error: {}", s),
+            Self::General(s) => write!(f, "General transaction error: {}", s),
+        }
+    }
+}
+
+impl std::error::Error for TransactionError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::IoError(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl From<std::io::Error> for TransactionError {
+    fn from(err: std::io::Error) -> Self {
+        Self::IoError(err)
+    }
 }
 
 // If we need to convert from a general OxidbError or other specific errors

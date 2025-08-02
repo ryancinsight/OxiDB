@@ -9,7 +9,7 @@
 // The WAL file format consists of length-prefixed bincode-serialized LogRecord entries:
 // [4-byte length (big-endian)][serialized LogRecord][4-byte length][serialized LogRecord]...
 
-use bincode;
+use crate::core::common::bincode_compat as bincode;
 use std::fs::File;
 use std::io::{BufReader, Error as IoError, ErrorKind as IoErrorKind, Read};
 use std::path::{Path, PathBuf};

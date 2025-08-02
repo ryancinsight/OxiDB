@@ -18,7 +18,7 @@ use crate::core::storage::engine::page::{Page, PageType};
 use crate::core::wal::log_record::LogRecord;
 use crate::core::wal::reader::WalReader;
 use crate::core::wal::writer::{WalWriter, WalWriterConfig};
-use log::{debug, info};
+// Removed log dependency - debug/info statements commented out for minimal dependencies
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -90,7 +90,7 @@ impl UndoPhase {
         self.state = RecoveryState::Undo;
         self.statistics.state = RecoveryState::Undo;
 
-        info!("Starting undo phase");
+        // // info!("Starting undo phase");
 
         // Initialize WAL writer for CLRs
         self.initialize_wal_writer(&wal_path)?;
@@ -103,13 +103,13 @@ impl UndoPhase {
             .collect();
 
         if active_transactions.is_empty() {
-            info!("No active transactions found, skipping undo phase");
+            // info!("No active transactions found, skipping undo phase");
             self.state = RecoveryState::Completed;
             self.statistics.state = RecoveryState::Completed;
             return Ok(());
         }
 
-        info!("Found {} active transactions to undo", active_transactions.len());
+        // info!("Found {} active transactions to undo", active_transactions.len());
 
         // Create WAL reader for traversing log backwards
         let reader = WalReader::with_defaults(wal_path.as_ref());
@@ -130,7 +130,7 @@ impl UndoPhase {
         self.state = RecoveryState::Completed;
         self.statistics.state = RecoveryState::Completed;
 
-        info!("Undo phase completed successfully. Undone {} transactions, processed {} records, generated {} CLRs",
+        // info!("Undo phase completed successfully. Undone {} transactions, processed {} records, generated {} CLRs",
               self.statistics.transactions_undone,
               self.statistics.records_processed,
               self.statistics.clrs_generated);
@@ -144,7 +144,7 @@ impl UndoPhase {
         reader: &WalReader,
         tx_info: &TransactionInfo,
     ) -> Result<(), RecoveryError> {
-        debug!("Undoing transaction {} starting from LSN {}", tx_info.tx_id.0, tx_info.last_lsn);
+        // debug!("Undoing transaction {} starting from LSN {}", tx_info.tx_id.0, tx_info.last_lsn);
 
         let mut current_lsn = Some(tx_info.last_lsn);
 
@@ -166,13 +166,13 @@ impl UndoPhase {
                 if self.record_belongs_to_transaction(record, tx_info.tx_id) {
                     if let LogRecord::CompensationLogRecord { next_undo_lsn, .. } = record {
                         // Skip CLRs during undo - they don't need to be undone
-                        debug!("Skipping CLR at LSN {}: {:?}", lsn, record);
+                        // debug!("Skipping CLR at LSN {}: {:?}", lsn, record);
                         current_lsn = *next_undo_lsn;
-                        debug!("Updated current_lsn to {:?}", current_lsn);
+                        // debug!("Updated current_lsn to {:?}", current_lsn);
                         continue;
                     }
                     // Process the undo operation
-                    debug!("Processing undo for record at LSN {}: {:?}", lsn, record);
+                    // debug!("Processing undo for record at LSN {}: {:?}", lsn, record);
                     let undo_next_lsn = self.extract_prev_lsn(record);
                     let prev_lsn = self.undo_log_record(record, undo_next_lsn)?;
                     current_lsn = prev_lsn;
@@ -187,9 +187,9 @@ impl UndoPhase {
                         _ => {} // Don't count BeginTransaction and other non-undoable records
                     }
 
-                    debug!("Undo operation completed for LSN {}", lsn);
-                    debug!("New current_lsn: {:?}", current_lsn);
-                    debug!("CLRs generated so far: {}", self.statistics.clrs_generated);
+                    // debug!("Undo operation completed for LSN {}", lsn);
+                    // debug!("New current_lsn: {:?}", current_lsn);
+                    // debug!("CLRs generated so far: {}", self.statistics.clrs_generated);
                 } else {
                     // This record doesn't belong to our transaction, get prev_lsn
                     current_lsn = self.extract_prev_lsn(record);
@@ -203,7 +203,7 @@ impl UndoPhase {
         // Write an abort record for the transaction
         self.write_abort_record(tx_info.tx_id)?;
 
-        debug!("Completed undoing transaction {}", tx_info.tx_id.0);
+        // debug!("Completed undoing transaction {}", tx_info.tx_id.0);
         Ok(())
     }
 
@@ -213,7 +213,7 @@ impl UndoPhase {
         record: &LogRecord,
         undo_next_lsn: Option<Lsn>,
     ) -> Result<Option<Lsn>, RecoveryError> {
-        debug!("undo_log_record called for: {:?}", record);
+        // debug!("undo_log_record called for: {:?}", record);
         match record {
             LogRecord::InsertRecord { lsn, tx_id, page_id, slot_id, prev_lsn, .. } => {
                 // Undo insert by deleting the record
@@ -277,7 +277,7 @@ impl UndoPhase {
         slot_id: crate::core::common::types::ids::SlotId,
         undo_next_lsn: Option<Lsn>,
     ) -> Result<(), RecoveryError> {
-        debug!("Undoing insert: LSN {}, page {}, slot {}", original_lsn, page_id.0, slot_id.0);
+        // debug!("Undoing insert: LSN {}, page {}, slot {}", original_lsn, page_id.0, slot_id.0);
 
         // Load the page (in a real implementation, this would interact with the buffer pool)
         let page = self.load_page(page_id)?;
@@ -287,7 +287,7 @@ impl UndoPhase {
             let _page_guard = page.lock().unwrap();
             // In a real implementation, this would call page.delete_record(slot_id)
             // For now, we'll simulate the operation
-            debug!("Simulating deletion of record at slot {} on page {}", slot_id.0, page_id.0);
+            // debug!("Simulating deletion of record at slot {} on page {}", slot_id.0, page_id.0);
         }
 
         // Generate a CLR for the undo operation
@@ -306,7 +306,7 @@ impl UndoPhase {
         record_data: Vec<u8>,
         undo_next_lsn: Option<Lsn>,
     ) -> Result<(), RecoveryError> {
-        debug!("Undoing delete: LSN {}, page {}, slot {}", original_lsn, page_id.0, slot_id.0);
+        // debug!("Undoing delete: LSN {}, page {}, slot {}", original_lsn, page_id.0, slot_id.0);
 
         // Load the page
         let page = self.load_page(page_id)?;
@@ -315,7 +315,7 @@ impl UndoPhase {
         {
             let _page_guard = page.lock().unwrap();
             // In a real implementation, this would call page.insert_record(slot_id, &record_data)
-            debug!("Simulating reinsertion of record at slot {} on page {}", slot_id.0, page_id.0);
+            // debug!("Simulating reinsertion of record at slot {} on page {}", slot_id.0, page_id.0);
         }
 
         // Generate a CLR for the undo operation
@@ -341,7 +341,7 @@ impl UndoPhase {
         old_record_data: Vec<u8>,
         undo_next_lsn: Option<Lsn>,
     ) -> Result<(), RecoveryError> {
-        debug!("Undoing update: LSN {}, page {}, slot {}", original_lsn, page_id.0, slot_id.0);
+        // debug!("Undoing update: LSN {}, page {}, slot {}", original_lsn, page_id.0, slot_id.0);
 
         // Load the page
         let page = self.load_page(page_id)?;
@@ -350,7 +350,7 @@ impl UndoPhase {
         {
             let _page_guard = page.lock().unwrap();
             // In a real implementation, this would call page.update_record(slot_id, &old_record_data)
-            debug!("Simulating restoration of record at slot {} on page {}", slot_id.0, page_id.0);
+            // debug!("Simulating restoration of record at slot {} on page {}", slot_id.0, page_id.0);
         }
 
         // Generate a CLR for the undo operation
@@ -392,7 +392,7 @@ impl UndoPhase {
                 .map_err(|e| RecoveryError::UndoError(format!("Failed to write CLR: {e}")))?;
 
             self.statistics.clrs_generated += 1;
-            debug!("Generated CLR for insert undo on page {}, slot {}", page_id.0, slot_id.0);
+            // debug!("Generated CLR for insert undo on page {}, slot {}", page_id.0, slot_id.0);
         }
         Ok(())
     }
@@ -424,7 +424,7 @@ impl UndoPhase {
                 .map_err(|e| RecoveryError::UndoError(format!("Failed to write CLR: {e}")))?;
 
             self.statistics.clrs_generated += 1;
-            debug!("Generated CLR for delete undo on page {}, slot {}", page_id.0, slot_id.0);
+            // debug!("Generated CLR for delete undo on page {}, slot {}", page_id.0, slot_id.0);
         }
         Ok(())
     }
@@ -456,7 +456,7 @@ impl UndoPhase {
                 .map_err(|e| RecoveryError::UndoError(format!("Failed to write CLR: {e}")))?;
 
             self.statistics.clrs_generated += 1;
-            debug!("Generated CLR for update undo on page {}, slot {}", page_id.0, slot_id.0);
+            // debug!("Generated CLR for update undo on page {}, slot {}", page_id.0, slot_id.0);
         }
         Ok(())
     }
@@ -474,7 +474,7 @@ impl UndoPhase {
                 RecoveryError::UndoError(format!("Failed to write abort record: {e}"))
             })?;
 
-            debug!("Generated abort record for transaction {}", tx_id.0);
+            // debug!("Generated abort record for transaction {}", tx_id.0);
         }
         Ok(())
     }

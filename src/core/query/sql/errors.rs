@@ -1,36 +1,72 @@
-use thiserror::Error;
+use std::fmt;
 
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SqlTokenizerError {
-    #[error("Unterminated string literal starting at position {0}")]
     UnterminatedString(usize),
-    #[error("Invalid character '{0}' at position {1}")]
     InvalidCharacter(char, usize),
-    #[error("Could not parse number at position {0}")]
     InvalidNumber(usize),
-    #[error("Unexpected end of input at position {0}")]
-    UnexpectedEOF(usize), // Added variant
+    UnexpectedEOF(usize),
 }
 
-#[derive(Debug, Error, PartialEq, Eq)]
+impl fmt::Display for SqlTokenizerError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnterminatedString(pos) => write!(f, "Unterminated string literal starting at position {}", pos),
+            Self::InvalidCharacter(ch, pos) => write!(f, "Invalid character '{}' at position {}", ch, pos),
+            Self::InvalidNumber(pos) => write!(f, "Could not parse number at position {}", pos),
+            Self::UnexpectedEOF(pos) => write!(f, "Unexpected end of input at position {}", pos),
+        }
+    }
+}
+
+impl std::error::Error for SqlTokenizerError {}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum SqlParseError {
-    #[error("Unexpected token: expected {expected}, found {found} at position {position}")]
     UnexpectedToken { expected: String, found: String, position: usize },
-    #[error("Unexpected end of input")]
     UnexpectedEOF,
-    #[error("Invalid expression at position {0}: {1}")]
     InvalidExpression(usize, String),
-    #[error("Tokenizer error: {0}")]
-    TokenizerError(#[from] SqlTokenizerError),
-    #[error("Unknown statement type at position {0}")]
+    TokenizerError(SqlTokenizerError),
     UnknownStatementType(usize),
-    #[error("Unknown data type '{0}' at position {1}")]
     UnknownDataType(String, usize),
-    #[error("Invalid parameter for data type '{type_name}' at position {position}: parameter '{parameter}', reason: {reason}")]
     InvalidDataTypeParameter {
         type_name: String,
         parameter: String,
         position: usize,
         reason: String,
     },
+}
+
+impl fmt::Display for SqlParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UnexpectedToken { expected, found, position } => {
+                write!(f, "Unexpected token: expected {}, found {} at position {}", expected, found, position)
+            }
+            Self::UnexpectedEOF => write!(f, "Unexpected end of input"),
+            Self::InvalidExpression(pos, msg) => write!(f, "Invalid expression at position {}: {}", pos, msg),
+            Self::TokenizerError(e) => write!(f, "Tokenizer error: {}", e),
+            Self::UnknownStatementType(pos) => write!(f, "Unknown statement type at position {}", pos),
+            Self::UnknownDataType(name, pos) => write!(f, "Unknown data type '{}' at position {}", name, pos),
+            Self::InvalidDataTypeParameter { type_name, parameter, position, reason } => {
+                write!(f, "Invalid parameter for data type '{}' at position {}: parameter '{}', reason: {}", 
+                    type_name, position, parameter, reason)
+            }
+        }
+    }
+}
+
+impl std::error::Error for SqlParseError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::TokenizerError(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl From<SqlTokenizerError> for SqlParseError {
+    fn from(err: SqlTokenizerError) -> Self {
+        Self::TokenizerError(err)
+    }
 }
