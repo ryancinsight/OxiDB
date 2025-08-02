@@ -35,7 +35,7 @@ pub enum OxidbError {
     LockAcquisitionTimeout { key: Vec<u8>, current_tx: u64 },
     Configuration(String),
     Type(String),
-    TypeMismatch,
+    TypeMismatch { expected: String, found: String },
 }
 
 impl fmt::Display for OxidbError {
