@@ -5,7 +5,6 @@
 //! by implementing only what we need for page serialization.
 
 use core::convert::TryInto;
-use core::mem;
 use std::io;
 
 /// Trait for reading bytes in little-endian order
@@ -38,15 +37,8 @@ pub trait ReadBytesExt: io::Read {
         Ok(T::read_u64(&buf))
     }
     
-    /// Read a usize value in little-endian order
-    fn read_usize<T: ByteOrder>(&mut self) -> io::Result<usize> {
-        let val = if mem::size_of::<usize>() == 4 {
-            self.read_u32::<T>()? as usize
-        } else {
-            self.read_u64::<T>()? as usize
-        };
-        Ok(val)
-    }
+    // Note: read_usize removed to avoid platform-dependent serialization
+    // Always use fixed-size integers (u32/u64) for portable on-disk formats
 }
 
 /// Trait for writing bytes in little-endian order
@@ -77,14 +69,8 @@ pub trait WriteBytesExt: io::Write {
         self.write_all(&buf)
     }
     
-    /// Write a usize value in little-endian order
-    fn write_usize<T: ByteOrder>(&mut self, n: usize) -> io::Result<()> {
-        if mem::size_of::<usize>() == 4 {
-            self.write_u32::<T>(n as u32)
-        } else {
-            self.write_u64::<T>(n as u64)
-        }
-    }
+    // Note: write_usize removed to avoid platform-dependent serialization
+    // Always use fixed-size integers (u32/u64) for portable on-disk formats
 }
 
 /// Implement ReadBytesExt for all types that implement Read

@@ -151,6 +151,86 @@ impl<T: Deserialize> Deserialize for Option<T> {
     }
 }
 
+// Generic Vec implementation
+impl<T: Serialize> Serialize for Vec<T> {
+    fn serialize<W: Write>(&self, writer: &mut W) -> Result<(), OxidbError> {
+        // Use u64 for length to ensure portability
+        (self.len() as u64).serialize(writer)?;
+        for item in self {
+            item.serialize(writer)?;
+        }
+        Ok(())
+    }
+}
+
+impl<T: Deserialize> Deserialize for Vec<T> {
+    fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
+        let len = u64::deserialize(reader)?;
+        if len > usize::MAX as u64 {
+            return Err(OxidbError::Deserialization("Vec length too large".into()));
+        }
+        let mut vec = Vec::with_capacity(len as usize);
+        for _ in 0..len {
+            vec.push(T::deserialize(reader)?);
+        }
+        Ok(vec)
+    }
+}
+
+// Implementations for ID types
+use crate::core::common::types::ids::{PageId, TransactionId, SlotId};
+
+impl Serialize for PageId {
+    fn serialize<W: Write>(&self, writer: &mut W) -> Result<(), OxidbError> {
+        self.0.serialize(writer)
+    }
+}
+
+impl Deserialize for PageId {
+    fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
+        Ok(PageId(u64::deserialize(reader)?))
+    }
+}
+
+impl Serialize for TransactionId {
+    fn serialize<W: Write>(&self, writer: &mut W) -> Result<(), OxidbError> {
+        self.0.serialize(writer)
+    }
+}
+
+impl Deserialize for TransactionId {
+    fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
+        Ok(TransactionId(u64::deserialize(reader)?))
+    }
+}
+
+impl Serialize for SlotId {
+    fn serialize<W: Write>(&self, writer: &mut W) -> Result<(), OxidbError> {
+        self.0.serialize(writer)
+    }
+}
+
+impl Deserialize for SlotId {
+    fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
+        Ok(SlotId(u16::deserialize(reader)?))
+    }
+}
+
+// Implementation for u16
+impl Serialize for u16 {
+    fn serialize<W: Write>(&self, writer: &mut W) -> Result<(), OxidbError> {
+        writer.write_all_oxidb(&self.to_le_bytes())
+    }
+}
+
+impl Deserialize for u16 {
+    fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
+        let mut bytes = [0u8; 2];
+        reader.read_exact_oxidb(&mut bytes)?;
+        Ok(u16::from_le_bytes(bytes))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
