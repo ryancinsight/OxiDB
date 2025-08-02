@@ -493,7 +493,6 @@ impl Default for Optimizer {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum QueryPlanNode {
     TableScan {

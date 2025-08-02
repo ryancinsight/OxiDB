@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}};
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// Performance and Edge Case Tests for OxiDB
+/// Performance and Edge Case Tests for Oxidb
 /// Tests system behavior under stress conditions and edge cases
 /// Follows SOLID principles with clear separation of concerns
 /// Implements CUPID principles for composable, predictable tests

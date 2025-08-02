@@ -1,7 +1,7 @@
 use oxidb::{Connection, OxidbError, QueryResult};
 
 fn main() -> Result<(), OxidbError> {
-    println!("=== OxiDB Comprehensive Functionality Test ===\n");
+    println!("=== Oxidb Comprehensive Functionality Test ===\n");
 
     // Test 1: Basic Connection and Table Creation
     test_basic_connection()?;

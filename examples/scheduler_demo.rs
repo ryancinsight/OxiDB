@@ -3,7 +3,7 @@ use std::thread;
 use std::time::Duration;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== OxiDB Scheduler Demo - Fully Implemented Statistics ===\n");
+    println!("=== Oxidb Scheduler Demo - Fully Implemented Statistics ===\n");
 
     // Create a new scheduler instance
     let scheduler = Scheduler::new();

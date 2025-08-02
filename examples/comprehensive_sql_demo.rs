@@ -1,7 +1,7 @@
 use oxidb::{Connection, OxidbError, QueryResult};
 
 fn main() -> Result<(), OxidbError> {
-    println!("=== OxiDB Comprehensive SQL Demo ===\n");
+    println!("=== Oxidb Comprehensive SQL Demo ===\n");
 
     let mut conn = Connection::open_in_memory()?;
     let process_id = std::process::id();

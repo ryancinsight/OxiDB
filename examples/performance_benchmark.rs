@@ -2,7 +2,7 @@ use oxidb::{Connection, OxidbError, QueryResult};
 use std::time::{Duration, Instant};
 
 fn main() -> Result<(), OxidbError> {
-    println!("=== OxiDB Performance Benchmark ===\n");
+    println!("=== Oxidb Performance Benchmark ===\n");
 
     // Benchmark 1: Bulk Insert Performance
     benchmark_bulk_insert()?;

@@ -94,7 +94,7 @@ impl IntoResponse for AppError {
     }
 }
 
-// Helper functions for OxiDB Value extraction
+// Helper functions for Oxidb Value extraction
 fn value_as_text(value: &Value) -> Option<&str> {
     match value {
         Value::Text(s) => Some(s.as_str()),

@@ -3,7 +3,7 @@ use std::thread;
 use std::time::Duration;
 
 fn main() -> Result<(), OxidbError> {
-    println!("=== OxiDB Concurrent Operations Demo ===\n");
+    println!("=== Oxidb Concurrent Operations Demo ===\n");
 
     // Test 1: Sequential Operations (baseline)
     println!("--- Test 1: Sequential Operations Baseline ---");

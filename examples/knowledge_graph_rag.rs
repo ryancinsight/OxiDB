@@ -1,10 +1,10 @@
 //! Knowledge Graph RAG Example
 //! 
-//! This example demonstrates using OxiDB for GraphRAG (Graph-based Retrieval-Augmented Generation).
+//! This example demonstrates using Oxidb for GraphRAG (Graph-based Retrieval-Augmented Generation).
 //! It shows how to build a knowledge graph with entities and relationships, then perform
 //! graph-based queries to retrieve connected information.
 
-use oxidb::{OxiDB, OxiDBError};
+use oxidb::{Oxidb, OxidbError};
 use oxidb::core::types::{DataType, OrderedFloat, HashableVectorData, VectorData};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -71,13 +71,13 @@ struct GraphPath {
 }
 
 struct KnowledgeGraphDB {
-    db: OxiDB,
+    db: Oxidb,
     embedding_dimension: usize,
 }
 
 impl KnowledgeGraphDB {
-    fn new(db_path: &str, embedding_dimension: usize) -> Result<Self, OxiDBError> {
-        let db = OxiDB::open(db_path)?;
+    fn new(db_path: &str, embedding_dimension: usize) -> Result<Self, OxidbError> {
+        let db = Oxidb::open(db_path)?;
         
         // Create tables for entities and relationships
         db.execute_sql("CREATE TABLE IF NOT EXISTS entities (
@@ -112,7 +112,7 @@ impl KnowledgeGraphDB {
     }
     
     // Entity management
-    fn add_entity(&self, entity: &Entity) -> Result<(), OxiDBError> {
+    fn add_entity(&self, entity: &Entity) -> Result<(), OxidbError> {
         let properties_json = serde_json::to_string(&entity.properties).unwrap();
         let entity_type_str = serde_json::to_string(&entity.entity_type).unwrap();
         let embedding_str = format!("[{}]", entity.embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
@@ -133,7 +133,7 @@ impl KnowledgeGraphDB {
         Ok(())
     }
     
-    fn get_entity(&self, entity_id: &str) -> Result<Option<Entity>, OxiDBError> {
+    fn get_entity(&self, entity_id: &str) -> Result<Option<Entity>, OxidbError> {
         let sql = format!("SELECT * FROM entities WHERE id = '{}'", entity_id);
         let result = self.db.execute_sql(&sql)?;
         
@@ -145,7 +145,7 @@ impl KnowledgeGraphDB {
     }
     
     // Relationship management
-    fn add_relationship(&self, relationship: &Relationship) -> Result<(), OxiDBError> {
+    fn add_relationship(&self, relationship: &Relationship) -> Result<(), OxidbError> {
         let properties_json = serde_json::to_string(&relationship.properties).unwrap();
         let rel_type_str = serde_json::to_string(&relationship.relationship_type).unwrap();
         
@@ -165,7 +165,7 @@ impl KnowledgeGraphDB {
         Ok(())
     }
     
-    fn get_relationships(&self, entity_id: &str, direction: &str) -> Result<Vec<Relationship>, OxiDBError> {
+    fn get_relationships(&self, entity_id: &str, direction: &str) -> Result<Vec<Relationship>, OxidbError> {
         let sql = match direction {
             "outgoing" => format!("SELECT * FROM relationships WHERE source_id = '{}'", entity_id),
             "incoming" => format!("SELECT * FROM relationships WHERE target_id = '{}'", entity_id),
@@ -179,7 +179,7 @@ impl KnowledgeGraphDB {
     }
     
     // Graph traversal
-    fn traverse_graph(&self, query: &GraphQuery) -> Result<Vec<GraphPath>, OxiDBError> {
+    fn traverse_graph(&self, query: &GraphQuery) -> Result<Vec<GraphPath>, OxidbError> {
         let mut paths = Vec::new();
         let mut visited = HashSet::new();
         let mut queue = VecDeque::new();
@@ -248,7 +248,7 @@ impl KnowledgeGraphDB {
     }
     
     // Find similar entities using vector embeddings
-    fn find_similar_entities(&self, entity_id: &str, limit: usize) -> Result<Vec<Entity>, OxiDBError> {
+    fn find_similar_entities(&self, entity_id: &str, limit: usize) -> Result<Vec<Entity>, OxidbError> {
         if let Some(entity) = self.get_entity(entity_id)? {
             let embedding_str = format!("[{}]", entity.embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
             
@@ -271,7 +271,7 @@ impl KnowledgeGraphDB {
     }
     
     // Find shortest path between two entities
-    fn find_shortest_path(&self, start_id: &str, end_id: &str) -> Result<Option<GraphPath>, OxiDBError> {
+    fn find_shortest_path(&self, start_id: &str, end_id: &str) -> Result<Option<GraphPath>, OxidbError> {
         let mut visited = HashSet::new();
         let mut queue = VecDeque::new();
         
@@ -314,7 +314,7 @@ impl KnowledgeGraphDB {
     }
     
     // Helper methods
-    fn row_to_entity(&self, row: &[DataType]) -> Result<Entity, OxiDBError> {
+    fn row_to_entity(&self, row: &[DataType]) -> Result<Entity, OxidbError> {
         Ok(Entity {
             id: self.get_string(&row[0])?,
             entity_type: serde_json::from_str(&self.get_string(&row[1])?).unwrap(),
@@ -328,7 +328,7 @@ impl KnowledgeGraphDB {
         })
     }
     
-    fn row_to_relationship(&self, row: &[DataType]) -> Result<Relationship, OxiDBError> {
+    fn row_to_relationship(&self, row: &[DataType]) -> Result<Relationship, OxidbError> {
         Ok(Relationship {
             id: self.get_string(&row[0])?,
             source_id: self.get_string(&row[1])?,
@@ -342,27 +342,27 @@ impl KnowledgeGraphDB {
         })
     }
     
-    fn get_string(&self, data: &DataType) -> Result<String, OxiDBError> {
+    fn get_string(&self, data: &DataType) -> Result<String, OxidbError> {
         match data {
             DataType::String(s) => Ok(s.clone()),
             DataType::Null => Ok(String::new()),
-            _ => Err(OxiDBError::TypeMismatch),
+            _ => Err(OxidbError::TypeMismatch),
         }
     }
     
-    fn get_float(&self, data: &DataType) -> Result<f32, OxiDBError> {
+    fn get_float(&self, data: &DataType) -> Result<f32, OxidbError> {
         match data {
             DataType::Float(f) => Ok(f.0 as f32),
             DataType::Integer(i) => Ok(*i as f32),
-            _ => Err(OxiDBError::TypeMismatch),
+            _ => Err(OxidbError::TypeMismatch),
         }
     }
     
-    fn get_vector(&self, data: &DataType) -> Result<Option<Vec<f32>>, OxiDBError> {
+    fn get_vector(&self, data: &DataType) -> Result<Option<Vec<f32>>, OxidbError> {
         match data {
             DataType::Vector(v) => Ok(Some(v.0.data.clone())),
             DataType::Null => Ok(None),
-            _ => Err(OxiDBError::TypeMismatch),
+            _ => Err(OxidbError::TypeMismatch),
         }
     }
 }

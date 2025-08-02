@@ -3,12 +3,12 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
 
-/// Comprehensive edge case tests for OxiDB
+/// Comprehensive edge case tests for Oxidb
 /// Follows SOLID principles with single responsibility per test function
 /// Implements DRY principle with helper functions
 /// Uses KISS principle with clear, simple test logic
 fn main() -> Result<(), OxidbError> {
-    println!("=== OxiDB Comprehensive Edge Case Tests ===\n");
+    println!("=== Oxidb Comprehensive Edge Case Tests ===\n");
 
     // Test suite organized by categories (SRP - Single Responsibility Principle)
     run_data_type_edge_cases()?;

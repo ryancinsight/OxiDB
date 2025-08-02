@@ -1,7 +1,7 @@
 use oxidb::{Connection, OxidbError};
 use std::time::Instant;
 
-/// Simple Working Test Suite for OxiDB
+/// Simple Working Test Suite for Oxidb
 /// 
 /// Demonstrates design principles with current API:
 /// - SOLID: Single Responsibility, Open/Closed, Liskov, Interface Segregation, Dependency Inversion
@@ -13,7 +13,7 @@ use std::time::Instant;
 /// - SSOT (Single Source of Truth)
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== OxiDB Simple Working Test Suite ===\n");
+    println!("=== Oxidb Simple Working Test Suite ===\n");
 
     let test_results = run_all_tests()?;
     display_summary(&test_results);
@@ -315,7 +315,7 @@ fn display_summary(results: &[TestResult]) {
     println!("✅ SSOT: Single Source of Truth - centralized configuration");
     
     if failed == 0 {
-        println!("\n🎉 All tests passed! OxiDB demonstrates excellent adherence to design principles!");
+        println!("\n🎉 All tests passed! Oxidb demonstrates excellent adherence to design principles!");
     } else {
         println!("\n⚠️  Some tests failed, but design principles are properly implemented in the test structure.");
     }

@@ -35,6 +35,7 @@ pub enum OxidbError {
     LockAcquisitionTimeout { key: Vec<u8>, current_tx: u64 },
     Configuration(String),
     Type(String),
+    TypeMismatch,
 }
 
 impl fmt::Display for OxidbError {
@@ -77,6 +78,7 @@ impl fmt::Display for OxidbError {
             }
             Self::Configuration(s) => write!(f, "Configuration error: {}", s),
             Self::Type(s) => write!(f, "Type Error: {}", s),
+            Self::TypeMismatch => write!(f, "Type mismatch"),
         }
     }
 }

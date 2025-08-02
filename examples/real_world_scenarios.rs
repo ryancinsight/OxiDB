@@ -5,7 +5,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use serde::{Serialize, Deserialize};
 
-/// Real-world scenario tests for OxiDB
+/// Real-world scenario tests for Oxidb
 /// Demonstrates practical usage patterns following SOLID, GRASP, and CLEAN principles
 /// Each scenario is self-contained (SRP) and demonstrates specific use cases
 
@@ -286,7 +286,7 @@ impl ECommerceService {
 }
 
 fn main() -> Result<(), OxidbError> {
-    println!("=== OxiDB Real-World Scenarios ===\n");
+    println!("=== Oxidb Real-World Scenarios ===\n");
 
     // Test E-commerce Platform Scenario
     run_ecommerce_scenario()?;

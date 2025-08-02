@@ -1,13 +1,13 @@
-//! Performance Monitoring Demonstration for OxiDB
+//! Performance Monitoring Demonstration for Oxidb
 //!
 //! This example demonstrates the comprehensive performance monitoring capabilities
-//! of OxiDB, showing how to track query performance, analyze bottlenecks, and
+//! of Oxidb, showing how to track query performance, analyze bottlenecks, and
 //! get optimization recommendations.
 
 use oxidb::{Connection, Value};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🚀 OxiDB Performance Monitoring Demonstration");
+    println!("🚀 Oxidb Performance Monitoring Demonstration");
     println!("============================================");
 
     // Create an in-memory database connection
@@ -159,7 +159,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  • Average Performance: {:?}", final_report.query_analysis.average_execution_time);
 
     println!("\n✅ Performance monitoring demonstration completed!");
-    println!("   This shows how OxiDB provides comprehensive performance insights");
+    println!("   This shows how Oxidb provides comprehensive performance insights");
     println!("   for production database monitoring and optimization.");
 
     Ok(())

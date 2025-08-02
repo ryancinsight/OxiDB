@@ -2,7 +2,7 @@ use oxidb::{Connection, OxidbError, QueryResult};
 use std::time::Instant;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🧪 === OxiDB Comprehensive Example Test Runner === 🧪\n");
+    println!("🧪 === Oxidb Comprehensive Example Test Runner === 🧪\n");
     
     let mut passed_tests = 0;
     let mut total_tests = 0;
@@ -85,7 +85,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("📈 Success Rate: {:.1}%", (passed_tests as f64 / total_tests as f64) * 100.0);
     
     if passed_tests == total_tests {
-        println!("🎉 **ALL TESTS PASSED!** OxiDB is working perfectly! 🎉");
+        println!("🎉 **ALL TESTS PASSED!** Oxidb is working perfectly! 🎉");
     } else {
         println!("⚠️  Some tests failed. Check the output above for details.");
     }

@@ -1,7 +1,7 @@
 use oxidb::{Connection, OxidbError};
 use std::time::Instant;
 
-/// Comprehensive Validation Suite for OxiDB
+/// Comprehensive Validation Suite for Oxidb
 /// 
 /// Final demonstration of all implemented design principles and comprehensive testing:
 /// 
@@ -41,7 +41,7 @@ use std::time::Instant;
 /// - SSOT (Single Source of Truth): Consistent test data and expectations
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🚀 === OxiDB Comprehensive Validation Suite ===");
+    println!("🚀 === Oxidb Comprehensive Validation Suite ===");
     println!("📋 Testing all design principles and edge cases\n");
     
     let start_time = Instant::now();

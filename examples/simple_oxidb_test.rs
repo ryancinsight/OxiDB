@@ -1,11 +1,11 @@
-//! Simple OxiDB Test Example
+//! Simple Oxidb Test Example
 //! 
-//! This example tests basic OxiDB functionality to ensure the database is working correctly.
+//! This example tests basic Oxidb functionality to ensure the database is working correctly.
 
 use oxidb::{Connection, QueryResult};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== Simple OxiDB Test ===\n");
+    println!("=== Simple Oxidb Test ===\n");
     
     // Create an in-memory database
     let mut conn = Connection::open_in_memory()?;

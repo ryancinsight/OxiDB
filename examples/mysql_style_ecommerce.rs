@@ -1,6 +1,6 @@
 //! MySQL-Style E-commerce Database Example
 //! 
-//! This example demonstrates OxiDB usage patterns that are familiar to MySQL developers.
+//! This example demonstrates Oxidb usage patterns that are familiar to MySQL developers.
 //! It includes:
 //! - Database schema design with proper relationships
 //! - CRUD operations with complex queries

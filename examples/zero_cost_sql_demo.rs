@@ -23,7 +23,7 @@ use oxidb::core::sql::advanced::{
 use std::time::Instant;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== OxiDB Zero-Cost Abstractions and Advanced SQL Demo ===\n");
+    println!("=== Oxidb Zero-Cost Abstractions and Advanced SQL Demo ===\n");
     
     // Demonstrate zero-cost abstractions
     demonstrate_zero_copy_views()?;

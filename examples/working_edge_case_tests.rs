@@ -1,14 +1,14 @@
 use oxidb::{Connection, OxidbError};
 use std::time::Instant;
 
-/// Working Edge Case Tests for OxiDB
+/// Working Edge Case Tests for Oxidb
 /// Demonstrates proper error handling and SOLID design principles
 /// Each test function has a single responsibility (SRP)
 /// Tests are independent and focused (KISS principle)
 /// DRY principle applied through helper functions
 
 fn main() -> Result<(), OxidbError> {
-    println!("=== OxiDB Working Edge Case Tests ===\n");
+    println!("=== Oxidb Working Edge Case Tests ===\n");
 
     // Test suite organized by categories (Single Responsibility Principle)
     test_boundary_conditions()?;

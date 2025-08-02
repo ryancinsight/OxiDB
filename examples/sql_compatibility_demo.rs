@@ -1,6 +1,6 @@
 //! SQL Compatibility Demo
 //! 
-//! This example demonstrates OxiDB's SQL compatibility with PostgreSQL and MySQL-like syntax.
+//! This example demonstrates Oxidb's SQL compatibility with PostgreSQL and MySQL-like syntax.
 //! It shows various SQL features including:
 //! - DDL (Data Definition Language): CREATE, ALTER, DROP
 //! - DML (Data Manipulation Language): INSERT, UPDATE, DELETE, SELECT
@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             stock INTEGER DEFAULT 0 CHECK (stock >= 0),
             category TEXT,
             tags TEXT,  -- JSON array stored as text
-            features VECTOR[128],  -- OxiDB-specific vector type
+            features VECTOR[128],  -- Oxidb-specific vector type
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
@@ -351,7 +351,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("✓ Dropped all tables");
     
     println!("\n✅ SQL Compatibility Demo completed successfully!");
-    println!("\nThis demo shows OxiDB's compatibility with common SQL patterns");
+    println!("\nThis demo shows Oxidb's compatibility with common SQL patterns");
     println!("found in PostgreSQL and MySQL, making migration easier.");
     
     Ok(())
