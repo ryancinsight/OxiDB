@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OxiDB File Server</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>OxiDB File Server</h1>
+            <div id="user-info" class="hidden">
+                <span id="username"></span>
+                <button onclick="logout()">Logout</button>
+            </div>
+        </header>
+
+        <!-- Login/Register Form -->
+        <div id="auth-container" class="auth-container">
+            <div class="auth-tabs">
+                <button class="tab-btn active" onclick="showTab('login')">Login</button>
+                <button class="tab-btn" onclick="showTab('register')">Register</button>
+            </div>
+            
+            <form id="login-form" class="auth-form">
+                <h2>Login</h2>
+                <input type="text" name="username" placeholder="Username" required>
+                <input type="password" name="password" placeholder="Password" required>
+                <button type="submit">Login</button>
+                <div class="error-message" id="login-error"></div>
+            </form>
+            
+            <form id="register-form" class="auth-form hidden">
+                <h2>Register</h2>
+                <input type="text" name="username" placeholder="Username" required>
+                <input type="email" name="email" placeholder="Email" required>
+                <input type="password" name="password" placeholder="Password" required>
+                <button type="submit">Register</button>
+                <div class="error-message" id="register-error"></div>
+            </form>
+        </div>
+
+        <!-- File Manager -->
+        <div id="file-manager" class="file-manager hidden">
+            <div class="upload-section">
+                <h2>Upload File</h2>
+                <form id="upload-form">
+                    <input type="file" id="file-input" required>
+                    <button type="submit">Upload</button>
+                    <div class="progress-bar hidden" id="upload-progress">
+                        <div class="progress-fill"></div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="files-section">
+                <div class="files-header">
+                    <h2>My Files</h2>
+                    <label>
+                        <input type="checkbox" id="show-shared" onchange="loadFiles()">
+                        Show shared files
+                    </label>
+                </div>
+                
+                <div id="files-list" class="files-list">
+                    <!-- Files will be loaded here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Share Modal -->
+        <div id="share-modal" class="modal hidden">
+            <div class="modal-content">
+                <span class="close" onclick="closeShareModal()">&times;</span>
+                <h2>Share File</h2>
+                <form id="share-form">
+                    <input type="hidden" id="share-file-id">
+                    <input type="text" id="share-username" placeholder="Username to share with" required>
+                    <select id="share-permissions">
+                        <option value="read">Read Only</option>
+                        <option value="write">Read & Write</option>
+                    </select>
+                    <button type="submit">Share</button>
+                </form>
+                <div id="share-error" class="error-message"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>

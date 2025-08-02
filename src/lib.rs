@@ -159,6 +159,9 @@ pub mod api;
 pub mod core;
 pub mod event_engine;
 
+#[cfg(target_arch = "wasm32")]
+pub mod wasm;
+
 // Re-export key types for easier use by library consumers.
 // Connection is the main entry point for database operations (new ergonomic API).
 pub use api::Connection;
