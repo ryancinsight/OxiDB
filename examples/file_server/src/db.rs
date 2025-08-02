@@ -1,12 +1,13 @@
 use anyhow::Result;
 use oxidb::api::Connection;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use tokio::sync::Mutex;
 
 pub type DbConnection = Arc<Mutex<Connection>>;
 
 // Global database connection
-static mut DB: Option<DbConnection> = None;
+static DB: OnceLock<DbConnection> = OnceLock::new();
 
 pub async fn init_database(path: &str) -> Result<()> {
     let mut conn = Connection::open(path)?;
