@@ -199,20 +199,23 @@ async fn upload_file(
         let mut conn = db.lock().await;
         
         let now = Utc::now();
-        let query = format!(
-            "INSERT INTO files (id, user_id, filename, original_name, mime_type, size, path, uploaded_at, is_public) 
-             VALUES ('{}', '{}', '{}', '{}', {}, {}, '{}', '{}', 0)",
-            file_id,
-            auth_user.user_id,
-            stored_filename,
-            filename,
-            content_type.as_ref().map(|ct| format!("'{}'", ct)).unwrap_or("NULL".to_string()),
-            size,
-            file_path,
-            now.to_rfc3339()
-        );
-        
-        conn.execute(&query)?;
+        let query = "INSERT INTO files (id, user_id, filename, original_name, mime_type, size, path, uploaded_at, is_public) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)";
+        let mime_type_value = match &content_type {
+            Some(ct) => Value::String(ct.clone()),
+            None => Value::Null,
+        };
+        let params = vec![
+            Value::String(file_id.clone()),
+            Value::String(auth_user.user_id.clone()),
+            Value::String(stored_filename.clone()),
+            Value::String(filename.clone()),
+            mime_type_value,
+            Value::Int(size as i64),
+            Value::String(file_path.clone()),
+            Value::String(now.to_rfc3339()),
+        ];
+        conn.execute(query, &params)?;
         
         let file = File {
             id: file_id,
