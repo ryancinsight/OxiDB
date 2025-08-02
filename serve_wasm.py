@@ -16,9 +16,10 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         return mimetype
 
 PORT = 8000
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
-with socketserver.TCPServer(("", PORT), MyHTTPRequestHandler) as httpd:
+Handler = lambda *args, **kwargs: MyHTTPRequestHandler(*args, directory=STATIC_DIR, **kwargs)
+with socketserver.TCPServer(("", PORT), Handler) as httpd:
     print(f"Server running at http://localhost:{PORT}/")
     print(f"Open http://localhost:{PORT}/wasm_test.html to test OxiDB WASM")
     httpd.serve_forever()
