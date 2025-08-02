@@ -34,13 +34,18 @@ pub async fn register_user(req: RegisterRequest) -> Result<User> {
     let user_id = Uuid::new_v4().to_string();
     let now = Utc::now();
     
-    let query = format!(
-        "INSERT INTO users (id, username, email, password_hash, created_at, updated_at) 
-         VALUES ('{}', '{}', '{}', '{}', '{}', '{}')",
-        user_id, req.username, req.email, password_hash, now.to_rfc3339(), now.to_rfc3339()
-    );
-    
-    match conn.execute(&query) {
+    let query = "INSERT INTO users (id, username, email, password_hash, created_at, updated_at) \
+                 VALUES (?, ?, ?, ?, ?, ?)";
+    let params = vec![
+        Value::Text(user_id.clone()),
+        Value::Text(req.username.clone()),
+        Value::Text(req.email.clone()),
+        Value::Text(password_hash.clone()),
+        Value::Text(now.to_rfc3339()),
+        Value::Text(now.to_rfc3339()),
+    ];
+
+    match conn.execute_with_params(query, &params) {
         Ok(_) => {
             let user = User {
                 id: user_id,
