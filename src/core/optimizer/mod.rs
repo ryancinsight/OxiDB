@@ -141,7 +141,7 @@ impl Optimizer {
                                 .filter_map(|col| match col {
                                     SelectColumn::ColumnName(name) => Some(name.clone()),
                                     SelectColumn::Asterisk => None, // Mixed * and columns not supported yet
-                                    SelectColumn::AggregateFunction { .. } => unreachable!(),
+                                    SelectColumn::AggregateFunction { .. } => None, // Aggregates handled separately
                                 })
                                 .collect();
 

@@ -9,10 +9,15 @@
 use crate::core::common::OxidbError;
 use crate::core::vector::storage::{VectorEntry, VectorStore};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 /// Transaction ID type
 pub type TransactionId = u64;
+
+/// Helper function to convert lock errors to OxidbError
+fn lock_error<T>(_: PoisonError<MutexGuard<T>>) -> OxidbError {
+    OxidbError::LockTimeout("Failed to acquire store lock".to_string())
+}
 
 /// Vector operation types for transaction logging
 #[derive(Debug, Clone)]
@@ -162,7 +167,7 @@ impl VectorTransactionManager {
         let mut store = self
             .store
             .lock()
-            .map_err(|_| OxidbError::LockTimeout("Failed to acquire store lock".to_string()))?;
+            .map_err(lock_error)?;
 
         let existing_entry = store.retrieve(&id)?;
         if let Some(existing) = existing_entry {
@@ -197,7 +202,7 @@ impl VectorTransactionManager {
         let mut store = self
             .store
             .lock()
-            .map_err(|_| OxidbError::LockTimeout("Failed to acquire store lock".to_string()))?;
+            .map_err(lock_error)?;
 
         // Get existing entry for undo log
         let existing_entry = store.retrieve(id)?;
@@ -256,7 +261,7 @@ impl VectorTransactionManager {
         let mut store = self
             .store
             .lock()
-            .map_err(|_| OxidbError::LockTimeout("Failed to acquire store lock".to_string()))?;
+            .map_err(lock_error)?;
 
         // Apply undo operations in reverse order
         for undo_op in transaction.undo_log.iter().rev() {
@@ -288,7 +293,7 @@ impl VectorTransactionManager {
         let store = self
             .store
             .lock()
-            .map_err(|_| OxidbError::LockTimeout("Failed to acquire store lock".to_string()))?;
+            .map_err(lock_error)?;
 
         store.retrieve(id)
     }
