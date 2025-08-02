@@ -11,6 +11,17 @@ static mut DB: Option<DbConnection> = None;
 pub async fn init_database(path: &str) -> Result<()> {
     let mut conn = Connection::open(path)?;
     
+    // Check if tables already exist by trying to query them
+    let tables_exist = conn.execute("SELECT * FROM users LIMIT 1").is_ok();
+    
+    if tables_exist {
+        // Tables already exist, just store the connection
+        unsafe {
+            DB = Some(Arc::new(Mutex::new(conn)));
+        }
+        return Ok(());
+    }
+    
     // Create users table
     conn.execute(
         "CREATE TABLE users (
