@@ -1,6 +1,8 @@
 use crate::core::common::types::ids::{PageId, SlotId};
 use crate::core::common::types::{Lsn, TransactionId};
-use serde::{Deserialize, Serialize};
+use crate::core::common::bincode_compat::{Serialize, Deserialize};
+use crate::core::common::OxidbError;
+use std::io::{Read, Write};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Copy)]
 pub enum PageType {
@@ -97,7 +99,7 @@ pub enum LogRecord {
 mod tests {
     use super::*;
     use crate::core::common::types::ids::{PageId, SlotId};
-    use bincode;
+    use crate::core::common::bincode_compat as bincode;
 
     // Note: Existing tests will fail due to the added 'lsn' field.
     // These tests need to be updated to include the 'lsn' field in their assertions.

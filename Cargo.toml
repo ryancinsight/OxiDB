@@ -9,14 +9,14 @@ edition = "2021"
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
-crc32fast = "1.4.0"
+# crc32fast = "1.4.0" # Replaced with pure Rust implementation
 paste = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
-bincode = "1.3" # For binary serialization of index
+# bincode = "1.3" # Replaced with pure Rust implementation
 toml = "0.8.10"
-byteorder = "1.4"
+# byteorder = "1.4" # Replaced with pure Rust implementation
 anyhow = "1.0"
 serde_with = { version = "2.3.0", features = ["macros", "json", "base64"] }
 hex = "0.4"

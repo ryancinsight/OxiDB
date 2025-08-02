@@ -1,4 +1,4 @@
-use bincode;
+use crate::core::common::bincode_compat as bincode;
 use std::fs::OpenOptions;
 use std::io::{Error as IoError, ErrorKind as IoErrorKind, Write};
 use std::path::PathBuf;

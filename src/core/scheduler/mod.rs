@@ -205,7 +205,7 @@ impl Scheduler {
                     
                     // Track last completion time
                     if let Some(completed_at) = task.completed_at {
-                        if last_completed.is_none() || completed_at > last_completed.unwrap() {
+                        if last_completed.map_or(true, |last| completed_at > last) {
                             last_completed = Some(completed_at);
                         }
                     }

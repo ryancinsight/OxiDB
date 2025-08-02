@@ -1,7 +1,6 @@
 use crate::core::common::traits::{DataDeserializer, DataSerializer};
 use crate::core::common::types::Lsn; // Added Lsn
-use crate::core::common::OxidbError;
-use crc32fast::Hasher;
+use crate::core::common::{crc32, OxidbError};
 use std::fs::OpenOptions;
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf}; // Corrected path for traits
@@ -65,7 +64,7 @@ impl DataSerializer<Self> for WalEntry {
             }
         }
 
-        let mut hasher = Hasher::new();
+        let mut hasher = crc32::Hasher::new();
         hasher.update(&buffer);
         let checksum = hasher.finalize();
 
@@ -351,7 +350,7 @@ impl DataDeserializer<Self> for WalEntry {
         reader.read_exact(&mut checksum_bytes).map_err(|e| map_eof_error(e, "checksum"))?;
         let expected_checksum = u32::from_le_bytes(checksum_bytes);
 
-        let mut hasher = Hasher::new();
+        let mut hasher = crc32::Hasher::new();
         hasher.update(&data_to_checksum);
         let calculated_checksum = hasher.finalize();
 

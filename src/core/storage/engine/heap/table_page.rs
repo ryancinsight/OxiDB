@@ -1,7 +1,7 @@
+use crate::core::common::byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use crate::core::common::types::ids::SlotId;
 use crate::core::common::OxidbError;
 use crate::core::storage::engine::page::{PAGE_HEADER_SIZE, PAGE_SIZE};
-use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::io::Cursor;
 
 // Constants for TablePage layout within Page.data buffer
