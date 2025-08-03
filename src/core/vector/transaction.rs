@@ -20,11 +20,13 @@ fn lock_error<T>(_: PoisonError<MutexGuard<T>>) -> OxidbError {
 }
 
 /// Helper function for transaction lock errors
+#[allow(dead_code)]
 fn tx_lock_error<T>(_: PoisonError<MutexGuard<T>>) -> OxidbError {
     OxidbError::LockTimeout("Failed to acquire active_transactions lock".to_string())
 }
 
 /// Helper function for next_tx_id lock errors
+#[allow(dead_code)]
 fn next_id_lock_error<T>(_: PoisonError<MutexGuard<T>>) -> OxidbError {
     OxidbError::LockTimeout("Failed to acquire next_tx_id lock".to_string())
 }

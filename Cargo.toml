@@ -93,3 +93,7 @@ path = "examples/hybrid_rag_demo.rs"
 [[example]]
 name = "graphrag_config_demo"
 path = "examples/graphrag_config_demo.rs"
+
+[[example]]
+name = "performance_optimization_demo"
+path = "examples/performance_optimization_demo.rs"

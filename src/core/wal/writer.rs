@@ -1,4 +1,4 @@
-use crate::core::common::bincode_compat as bincode;
+
 use std::fs::OpenOptions;
 use std::io::{Error as IoError, ErrorKind as IoErrorKind, Write};
 use std::path::PathBuf;
@@ -135,7 +135,7 @@ impl WalWriter {
 
         // Write all buffered records with length prefixes
         for record in &self.buffer {
-            let serialized_record = bincode::serialize(record).map_err(|e| {
+            let serialized_record = crate::core::common::bincode_compat::serialize_to_vec(record).map_err(|e| {
                 IoError::new(
                     IoErrorKind::InvalidData,
                     format!("Log record serialization failed: {e}"),
@@ -448,7 +448,7 @@ mod tests {
             let mut record_bytes = vec![0u8; len as usize];
             reader.read_exact(&mut record_bytes)?;
 
-            let record: LogRecord = bincode::deserialize(&record_bytes).map_err(|e| {
+                            let record: LogRecord = crate::core::common::bincode_compat::deserialize(&mut record_bytes.as_slice()).map_err(|e| {
                 IoError::new(
                     IoErrorKind::InvalidData,
                     format!("Log record deserialization failed: {}", e),

@@ -9,7 +9,7 @@
 // The WAL file format consists of length-prefixed bincode-serialized LogRecord entries:
 // [4-byte length (big-endian)][serialized LogRecord][4-byte length][serialized LogRecord]...
 
-use crate::core::common::bincode_compat as bincode;
+
 use std::fs::File;
 use std::io::{BufReader, Error as IoError, ErrorKind as IoErrorKind, Read};
 use std::path::{Path, PathBuf};
@@ -36,25 +36,37 @@ impl Default for WalReaderConfig {
 }
 
 /// Errors that can occur during WAL reading operations
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 pub enum WalReaderError {
-    #[error("IO error: {0}")]
-    Io(#[from] IoError),
-
-    #[error("Deserialization error: {0}")]
+    Io(IoError),
     Deserialization(String),
-
-    #[error("Invalid record length: {length}")]
     InvalidRecordLength { length: u32 },
-
-    #[error("LSN ordering violation: expected >= {expected}, found {actual}")]
     LsnOrderingViolation { expected: Lsn, actual: Lsn },
-
-    #[error("Unexpected end of file while reading record")]
     UnexpectedEof,
-
-    #[error("WAL file not found: {path}")]
     FileNotFound { path: String },
+}
+
+impl std::fmt::Display for WalReaderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io(e) => write!(f, "IO error: {e}"),
+            Self::Deserialization(e) => write!(f, "Deserialization error: {e}"),
+            Self::InvalidRecordLength { length } => write!(f, "Invalid record length: {length}"),
+            Self::LsnOrderingViolation { expected, actual } => {
+                write!(f, "LSN ordering violation: expected >= {expected}, found {actual}")
+            }
+            Self::UnexpectedEof => write!(f, "Unexpected end of file while reading record"),
+            Self::FileNotFound { path } => write!(f, "WAL file not found: {path}"),
+        }
+    }
+}
+
+impl std::error::Error for WalReaderError {}
+
+impl From<IoError> for WalReaderError {
+    fn from(e: IoError) -> Self {
+        Self::Io(e)
+    }
 }
 
 /// Iterator over WAL records from a WAL file
@@ -134,7 +146,7 @@ impl WalRecordIterator {
         })?;
 
         // Deserialize the log record
-        let log_record: LogRecord = bincode::deserialize(&record_data)
+                    let log_record: LogRecord = crate::core::common::bincode_compat::deserialize(&mut record_data.as_slice())
             .map_err(|e| WalReaderError::Deserialization(e.to_string()))?;
 
         // Validate LSN ordering if enabled

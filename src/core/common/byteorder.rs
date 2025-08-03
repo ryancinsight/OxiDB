@@ -10,6 +10,10 @@ use std::io;
 /// Trait for reading bytes in little-endian order
 pub trait ReadBytesExt: io::Read {
     /// Read a u8 value
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if the underlying read operation fails
     fn read_u8(&mut self) -> io::Result<u8> {
         let mut buf = [0u8; 1];
         self.read_exact(&mut buf)?;
@@ -17,6 +21,10 @@ pub trait ReadBytesExt: io::Read {
     }
     
     /// Read a u16 value in little-endian order
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if the underlying read operation fails
     fn read_u16<T: ByteOrder>(&mut self) -> io::Result<u16> {
         let mut buf = [0u8; 2];
         self.read_exact(&mut buf)?;
@@ -24,6 +32,10 @@ pub trait ReadBytesExt: io::Read {
     }
     
     /// Read a u32 value in little-endian order
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if the underlying read operation fails
     fn read_u32<T: ByteOrder>(&mut self) -> io::Result<u32> {
         let mut buf = [0u8; 4];
         self.read_exact(&mut buf)?;
@@ -31,6 +43,10 @@ pub trait ReadBytesExt: io::Read {
     }
     
     /// Read a u64 value in little-endian order
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if the underlying read operation fails
     fn read_u64<T: ByteOrder>(&mut self) -> io::Result<u64> {
         let mut buf = [0u8; 8];
         self.read_exact(&mut buf)?;
