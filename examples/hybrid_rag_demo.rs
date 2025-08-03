@@ -5,7 +5,7 @@ use oxidb::{Connection, OxidbError, QueryResult};
 use oxidb::core::rag::{
     Document, Embedding,
     HybridRAGConfig, HybridRAGEngineBuilder,
-    GraphRAGEngineImpl, KnowledgeNode, KnowledgeEdge,
+    GraphRAGEngineBuilder, KnowledgeNode, KnowledgeEdge,
     SemanticEmbedder,
 };
 use oxidb::core::rag::retriever::InMemoryRetriever;
@@ -64,7 +64,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create knowledge graph
     let graph_retriever = Arc::new(InMemoryRetriever::new(embedded_docs));
-    let mut graph_engine = Arc::new(GraphRAGEngineImpl::new(Box::new(graph_retriever.clone())));
+    let graph_engine = Arc::new(
+        GraphRAGEngineBuilder::new()
+            .with_retriever(Box::new(graph_retriever.clone()))
+            .build()
+    );
 
     // Add entities to knowledge graph
     let entities = vec![
@@ -162,7 +166,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for query in queries {
         println!("Query: {}", query);
-        println!("-".repeat(50));
+        println!("{}", "-".repeat(50));
 
         let results = hybrid_engine.query(query, None).await?;
 
@@ -198,7 +202,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let entity_ids = vec!["entity_jane".to_string()];
     
     println!("Query: {} (starting from Jane Smith)", entity_query);
-    println!("-".repeat(50));
+    println!("{}", "-".repeat(50));
     
     let entity_results = hybrid_engine.query_with_entities(
         entity_query,

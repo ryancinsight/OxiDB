@@ -2,6 +2,7 @@
 
 use super::metrics::PerformanceMetrics;
 use std::time::Duration;
+use std::fmt;
 
 /// Performance analyzer for generating insights and reports
 #[derive(Debug)]
@@ -300,4 +301,72 @@ mod tests {
         assert!(report.query_analysis.slow_queries_detected);
         assert!(report.bottlenecks.severity >= BottleneckSeverity::High);
     }
+}
+
+impl fmt::Display for PerformanceReport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "=== Performance Report ===")?;
+        writeln!(f)?;
+        
+        // Query Analysis
+        writeln!(f, "Query Performance:")?;
+        writeln!(f, "  Total Queries: {}", self.query_analysis.total_queries)?;
+        writeln!(f, "  Average Execution Time: {:?}", self.query_analysis.average_execution_time)?;
+        writeln!(f, "  Slowest Query: {:?}", self.query_analysis.slowest_query_time)?;
+        writeln!(f, "  Fastest Query: {:?}", self.query_analysis.fastest_query_time)?;
+        writeln!(f, "  Throughput: {:.2} queries/second", self.query_analysis.queries_per_second)?;
+        if self.query_analysis.slow_queries_detected {
+            writeln!(f, "  ⚠️  Slow queries detected!")?;
+        }
+        writeln!(f)?;
+        
+        // Transaction Analysis
+        writeln!(f, "Transaction Performance:")?;
+        writeln!(f, "  Total Transactions: {}", self.transaction_analysis.total_transactions)?;
+        writeln!(f, "  Average Duration: {:?}", self.transaction_analysis.average_duration)?;
+        writeln!(f, "  Commit Rate: {:.1}%", self.transaction_analysis.commit_rate * 100.0)?;
+        writeln!(f, "  Abort Rate: {:.1}%", self.transaction_analysis.abort_rate * 100.0)?;
+        writeln!(f)?;
+        
+        // Storage Analysis
+        writeln!(f, "Storage I/O:")?;
+        writeln!(f, "  Bytes Read: {}", format_bytes(self.storage_analysis.total_bytes_read))?;
+        writeln!(f, "  Bytes Written: {}", format_bytes(self.storage_analysis.total_bytes_written))?;
+        writeln!(f, "  Total I/O Operations: {}", self.storage_analysis.total_io_operations)?;
+        writeln!(f, "  Average I/O Duration: {:?}", self.storage_analysis.average_io_duration)?;
+        writeln!(f, "  Read/Write Ratio: {:.2}:1", self.storage_analysis.read_write_ratio)?;
+        writeln!(f)?;
+        
+        // Bottlenecks
+        writeln!(f, "Bottleneck Analysis:")?;
+        writeln!(f, "  Severity: {:?}", self.bottlenecks.severity)?;
+        for bottleneck in &self.bottlenecks.bottlenecks {
+            writeln!(f, "  - {}", bottleneck)?;
+        }
+        writeln!(f)?;
+        
+        // Recommendations
+        if !self.recommendations.is_empty() {
+            writeln!(f, "Recommendations:")?;
+            for recommendation in &self.recommendations {
+                writeln!(f, "  • {}", recommendation)?;
+            }
+        }
+        
+        Ok(())
+    }
+}
+
+/// Format bytes into human-readable string
+fn format_bytes(bytes: u64) -> String {
+    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+    let mut size = bytes as f64;
+    let mut unit_index = 0;
+    
+    while size >= 1024.0 && unit_index < UNITS.len() - 1 {
+        size /= 1024.0;
+        unit_index += 1;
+    }
+    
+    format!("{:.2} {}", size, UNITS[unit_index])
 }

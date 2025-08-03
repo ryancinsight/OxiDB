@@ -26,7 +26,7 @@ pub enum OxidbError {
     VectorDimensionMismatch { dim1: usize, dim2: usize },
     VectorMagnitudeZero,
     Other(String),
-    TransactionError(String), // Deprecated: Use Transaction instead
+    // TransactionError(String), // Removed: Use Transaction instead
     TransactionNotFound(String),
     DeadlockDetected(String),
     TableNotFound(String),
@@ -67,7 +67,7 @@ impl fmt::Display for OxidbError {
             }
             Self::VectorMagnitudeZero => write!(f, "Vector magnitude is zero, cannot compute cosine similarity"),
             Self::Other(s) => write!(f, "Other: {}", s),
-            Self::TransactionError(s) => write!(f, "Transaction error: {}", s),
+            // Self::TransactionError(s) => write!(f, "Transaction error: {}", s), // Removed deprecated variant
             Self::TransactionNotFound(s) => write!(f, "Transaction not found: {}", s),
             Self::DeadlockDetected(s) => write!(f, "Deadlock detected: {}", s),
             Self::TableNotFound(s) => write!(f, "Table not found: {}", s),

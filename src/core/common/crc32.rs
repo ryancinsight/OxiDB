@@ -93,7 +93,7 @@ pub fn verify(data: &[u8], expected: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
+    // use alloc::vec; // Not needed in std environment
     
     #[test]
     fn test_empty_input() {

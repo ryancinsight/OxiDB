@@ -2,7 +2,7 @@ use crate::api::types::QueryResult;
 use crate::core::common::types::Value;
 use crate::core::common::OxidbError;
 use crate::core::config::Config;
-use crate::core::performance::PerformanceContext;
+use crate::core::performance::{PerformanceContext, PerformanceAnalyzer};
 use crate::core::query::executor::QueryExecutor;
 use crate::core::query::parser::{parse_query_string, parse_sql_to_ast};
 use crate::core::query::sql::ast::Statement;
@@ -11,7 +11,7 @@ use crate::core::wal::log_manager::LogManager;
 use crate::core::wal::writer::WalWriter;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use std::path::PathBuf;
 
 /// A database connection that provides an ergonomic API for database operations.
@@ -87,6 +87,17 @@ impl Connection {
         let performance = PerformanceContext::new();
 
         Ok(Self { executor, performance })
+    }
+
+    /// Enables performance monitoring for this connection.
+    /// 
+    /// This method configures the connection to track detailed performance metrics
+    /// for all subsequent operations.
+    pub fn enable_performance_monitoring(&mut self) {
+        // Update monitoring configuration
+        self.performance.config.enable_profiling = true;
+        self.performance.config.enable_monitoring = true;
+        self.performance.config.slow_query_threshold = Duration::from_millis(100);
     }
 
     /// Executes a SQL query and returns the result.
@@ -195,6 +206,52 @@ impl Connection {
     /// - Insufficient disk space for persistence operations
     pub fn persist(&mut self) -> Result<(), OxidbError> {
         self.executor.persist()
+    }
+
+    /// Generates a comprehensive performance report for this connection.
+    ///
+    /// This method provides detailed insights into query performance, including:
+    /// - Query execution statistics (count, average time, slowest/fastest queries)
+    /// - Transaction performance metrics
+    /// - Storage I/O analysis
+    /// - Performance bottleneck identification
+    /// - Optimization recommendations
+    ///
+    /// # Returns
+    /// * `Result<String, OxidbError>` - Detailed performance analysis as a formatted string
+    ///
+    /// # Errors
+    /// Returns `OxidbError` if report generation fails due to internal errors
+    ///
+    /// # Example
+    /// ```rust
+    /// use oxidb::Connection;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let mut conn = Connection::open_in_memory()?;
+    ///     
+    ///     // Execute some queries
+    ///     conn.execute("CREATE TABLE users (id INTEGER, name TEXT)")?;
+    ///     conn.execute("INSERT INTO users VALUES (1, 'Alice')")?;
+    ///     conn.execute("SELECT * FROM users")?;
+    ///     
+    ///     // Get performance report
+    ///     let report = conn.get_performance_report()?;
+    ///     println!("{}", report);
+    ///     
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn get_performance_report(&self) -> Result<String, OxidbError> {
+        let analyzer = PerformanceAnalyzer::new();
+        
+        // Get a read lock on the metrics
+        let metrics = self.performance.metrics
+            .read()
+            .map_err(|_| OxidbError::Lock("Failed to acquire metrics lock".to_string()))?;
+        
+        let report = analyzer.analyze(&*metrics);
+        Ok(report.to_string())
     }
 
     /// Executes a parameterized SQL query with the given parameters.
@@ -333,53 +390,9 @@ impl Connection {
         }
     }
 
-    /// Generates a comprehensive performance report for this connection.
-    ///
-    /// This method provides detailed insights into query performance, including:
-    /// - Query execution statistics (count, average time, slowest/fastest queries)
-    /// - Transaction performance metrics
-    /// - Storage I/O analysis
-    /// - Performance bottleneck identification
-    /// - Optimization recommendations
-    ///
-    /// # Returns
-    /// * `Result<PerformanceReport, OxidbError>` - Detailed performance analysis
-    ///
-    /// # Example
-    /// ```rust
-    /// use oxidb::Connection;
-    ///
-    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     let mut conn = Connection::open_in_memory()?;
-    ///     
-    ///     // Execute some queries
-    ///     conn.execute("CREATE TABLE users (id INTEGER, name TEXT)")?;
-    ///     conn.execute("INSERT INTO users VALUES (1, 'Alice')")?;
-    ///     conn.execute("SELECT * FROM users")?;
-    ///     
-    ///     // Get performance report
-    ///     let report = conn.get_performance_report()?;
-    ///     println!("Total queries executed: {}", report.query_analysis.total_queries);
-    ///     println!("Average execution time: {:?}", report.query_analysis.average_execution_time);
-    ///     
-    ///     for recommendation in &report.recommendations {
-    ///         println!("Recommendation: {}", recommendation);
-    ///     }
-    ///     
-    ///     Ok(())
-    /// }
-    /// ```
-    ///
-    /// # Errors
-    /// Returns `OxidbError` if:
-    /// - Performance data collection fails
-    /// - Memory allocation fails during report generation
-    /// - Internal performance metrics are corrupted
-    pub fn get_performance_report(
-        &self,
-    ) -> Result<crate::core::performance::PerformanceReport, OxidbError> {
-        self.performance.generate_report()
-    }
+
+
+
 }
 
 #[cfg(test)]
