@@ -3,12 +3,12 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
 
-/// Comprehensive edge case tests for OxiDB
+/// Comprehensive edge case tests for Oxidb
 /// Follows SOLID principles with single responsibility per test function
 /// Implements DRY principle with helper functions
 /// Uses KISS principle with clear, simple test logic
 fn main() -> Result<(), OxidbError> {
-    println!("=== OxiDB Comprehensive Edge Case Tests ===\n");
+    println!("=== Oxidb Comprehensive Edge Case Tests ===\n");
 
     // Test suite organized by categories (SRP - Single Responsibility Principle)
     run_data_type_edge_cases()?;
@@ -472,7 +472,7 @@ fn test_memory_pressure_scenarios() -> Result<(), OxidbError> {
     for i in 1..=10 {
         let data_size = i * 10000; // 10KB, 20KB, ..., 100KB
         let large_data = vec![b'X'; data_size];
-        let hex_data = hex::encode(&large_data);
+                    let hex_data = oxidb::core::common::hex::encode(&large_data);
         
         match conn.execute(&format!("INSERT INTO memory_pressure_test (data) VALUES (x'{}')", hex_data)) {
             Ok(_) => println!("✓ Inserted {}KB data block", data_size / 1000),

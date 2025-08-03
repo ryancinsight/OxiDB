@@ -707,7 +707,7 @@ async fn test_real_world_scenario() -> Result<(), Box<dyn std::error::Error>> {
     let mut documents = vec![
         Document {
             id: "readme".to_string(),
-            content: "OxiDB is a high-performance database system with support for SQL queries, vector search, and graph operations. It provides ACID transactions and supports both relational and document data models.".to_string(),
+            content: "Oxidb is a high-performance database system with support for SQL queries, vector search, and graph operations. It provides ACID transactions and supports both relational and document data models.".to_string(),
             metadata: {
                 let mut meta = HashMap::new();
                 meta.insert("type".to_string(), "documentation".to_string());
@@ -718,7 +718,7 @@ async fn test_real_world_scenario() -> Result<(), Box<dyn std::error::Error>> {
         },
         Document {
             id: "sql_guide".to_string(),
-            content: "SQL queries in OxiDB support standard operations like SELECT, INSERT, UPDATE, DELETE. Advanced features include window functions, CTEs, and JSON operations for document queries.".to_string(),
+            content: "SQL queries in Oxidb support standard operations like SELECT, INSERT, UPDATE, DELETE. Advanced features include window functions, CTEs, and JSON operations for document queries.".to_string(),
             metadata: {
                 let mut meta = HashMap::new();
                 meta.insert("type".to_string(), "documentation".to_string());
@@ -803,7 +803,7 @@ async fn test_real_world_scenario() -> Result<(), Box<dyn std::error::Error>> {
     
     // Test realistic queries
     let test_queries = vec![
-        "How do I perform SQL queries in OxiDB?",
+        "How do I perform SQL queries in Oxidb?",
         "What are the vector search capabilities?",
         "How does the hybrid RAG system work?",
         "What database features are supported?",

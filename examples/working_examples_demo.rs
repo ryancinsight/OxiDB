@@ -2,7 +2,7 @@ use oxidb::{Connection, OxidbError, QueryResult};
 use std::time::Instant;
 
 fn main() -> Result<(), OxidbError> {
-    println!("=== OxiDB Working Examples Demo ===\n");
+    println!("=== Oxidb Working Examples Demo ===\n");
 
     // Test 1: Basic CRUD Operations
     println!("--- Test 1: Basic CRUD Operations ---");

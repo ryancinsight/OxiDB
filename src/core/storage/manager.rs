@@ -13,7 +13,7 @@
 //! - YAGNI: Only implement what's needed
 //! - ACID: Atomicity, Consistency, Isolation, Durability
 
-use crate::core::common::OxidbError;
+use crate::core::common::{OxidbError, lock_utils};
 use crate::core::types::{DataType, TransactionId};
 use std::collections::HashMap;
 use async_trait::async_trait;
@@ -400,7 +400,7 @@ mod tests {
     #[async_trait]
     impl StorageEngine for MockStorageEngine {
         async fn get(&self, key: &[u8], _tx_context: &TransactionContext) -> Result<Option<DataType>, OxidbError> {
-            let data = self.data.lock().map_err(|_| OxidbError::LockTimeout("Lock poisoned".to_string()))?;
+            let data = self.data.lock().map_err(lock_utils::lock_poisoned)?;
             Ok(data.get(key).cloned())
         }
 

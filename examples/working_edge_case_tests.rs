@@ -1,14 +1,14 @@
 use oxidb::{Connection, OxidbError};
 use std::time::Instant;
 
-/// Working Edge Case Tests for OxiDB
+/// Working Edge Case Tests for Oxidb
 /// Demonstrates proper error handling and SOLID design principles
 /// Each test function has a single responsibility (SRP)
 /// Tests are independent and focused (KISS principle)
 /// DRY principle applied through helper functions
 
 fn main() -> Result<(), OxidbError> {
-    println!("=== OxiDB Working Edge Case Tests ===\n");
+    println!("=== Oxidb Working Edge Case Tests ===\n");
 
     // Test suite organized by categories (Single Responsibility Principle)
     test_boundary_conditions()?;
@@ -155,13 +155,13 @@ fn test_numeric_boundaries(conn: &mut Connection) -> Result<(), OxidbError> {
     conn.execute("CREATE TABLE numeric_test (id INTEGER, value INTEGER)")?;
     
     // Test large integers
-    match conn.execute("INSERT INTO numeric_test (id, value) VALUES (1, 2147483647)") {
+            match conn.execute("INSERT INTO numeric_test (id, value) VALUES (1, 2_147_483_647)") {
         Ok(_) => println!("    ✓ Large integer handled correctly"),
         Err(e) => println!("    ⚠ Large integer error: {}", e),
     }
     
     // Test negative numbers
-    match conn.execute("INSERT INTO numeric_test (id, value) VALUES (2, -2147483648)") {
+            match conn.execute("INSERT INTO numeric_test (id, value) VALUES (2, -2_147_483_648)") {
         Ok(_) => println!("    ✓ Negative integer handled correctly"),
         Err(e) => println!("    ⚠ Negative integer error: {}", e),
     }

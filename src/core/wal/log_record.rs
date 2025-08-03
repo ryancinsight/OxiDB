@@ -1,8 +1,10 @@
 use crate::core::common::types::ids::{PageId, SlotId};
 use crate::core::common::types::{Lsn, TransactionId};
-use serde::{Deserialize, Serialize};
+use crate::core::common::bincode_compat::{Serialize, Deserialize};
+use crate::core::common::OxidbError;
+use std::io::{Read, Write};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum PageType {
     TablePage,
     BTreeInternal,
@@ -10,19 +12,19 @@ pub enum PageType {
     // Potentially others like IndexHeaderPage, etc.
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveTransactionInfo {
     pub tx_id: TransactionId,
     pub last_lsn: Lsn,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DirtyPageInfo {
     pub page_id: PageId,
     pub recovery_lsn: Lsn,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LogRecord {
     BeginTransaction {
         lsn: Lsn,
@@ -97,7 +99,7 @@ pub enum LogRecord {
 mod tests {
     use super::*;
     use crate::core::common::types::ids::{PageId, SlotId};
-    use bincode;
+    use crate::core::common::bincode_compat as bincode;
 
     // Note: Existing tests will fail due to the added 'lsn' field.
     // These tests need to be updated to include the 'lsn' field in their assertions.
@@ -248,5 +250,203 @@ mod tests {
         let serialized = bincode::serialize(&original_record).unwrap();
         let deserialized: LogRecord = bincode::deserialize(&serialized).unwrap();
         assert_eq!(original_record, deserialized);
+    }
+}
+
+// Manual implementations of Serialize and Deserialize for our types
+
+impl Serialize for PageType {
+    fn serialize<W: Write>(&self, writer: &mut W) -> Result<(), OxidbError> {
+        match self {
+            PageType::TablePage => 0u8.serialize(writer),
+            PageType::BTreeInternal => 1u8.serialize(writer),
+            PageType::BTreeLeaf => 2u8.serialize(writer),
+        }
+    }
+}
+
+impl Deserialize for PageType {
+    fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
+        match u8::deserialize(reader)? {
+            0 => Ok(PageType::TablePage),
+            1 => Ok(PageType::BTreeInternal),
+            2 => Ok(PageType::BTreeLeaf),
+            n => Err(OxidbError::Serialization(format!("Invalid PageType variant: {}", n))),
+        }
+    }
+}
+
+impl Serialize for ActiveTransactionInfo {
+    fn serialize<W: Write>(&self, writer: &mut W) -> Result<(), OxidbError> {
+        self.tx_id.serialize(writer)?;
+        self.last_lsn.serialize(writer)?;
+        Ok(())
+    }
+}
+
+impl Deserialize for ActiveTransactionInfo {
+    fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
+        Ok(ActiveTransactionInfo {
+            tx_id: TransactionId::deserialize(reader)?,
+            last_lsn: Lsn::deserialize(reader)?,
+        })
+    }
+}
+
+impl Serialize for DirtyPageInfo {
+    fn serialize<W: Write>(&self, writer: &mut W) -> Result<(), OxidbError> {
+        self.page_id.serialize(writer)?;
+        self.recovery_lsn.serialize(writer)?;
+        Ok(())
+    }
+}
+
+impl Deserialize for DirtyPageInfo {
+    fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
+        Ok(DirtyPageInfo {
+            page_id: PageId::deserialize(reader)?,
+            recovery_lsn: Lsn::deserialize(reader)?,
+        })
+    }
+}
+
+impl Serialize for LogRecord {
+    fn serialize<W: Write>(&self, writer: &mut W) -> Result<(), OxidbError> {
+        match self {
+            LogRecord::BeginTransaction { lsn, tx_id, prev_lsn } => {
+                0u8.serialize(writer)?;
+                lsn.serialize(writer)?;
+                tx_id.serialize(writer)?;
+                prev_lsn.serialize(writer)?;
+            }
+            LogRecord::CommitTransaction { lsn, tx_id, prev_lsn } => {
+                1u8.serialize(writer)?;
+                lsn.serialize(writer)?;
+                tx_id.serialize(writer)?;
+                prev_lsn.serialize(writer)?;
+            }
+            LogRecord::AbortTransaction { lsn, tx_id, prev_lsn } => {
+                2u8.serialize(writer)?;
+                lsn.serialize(writer)?;
+                tx_id.serialize(writer)?;
+                prev_lsn.serialize(writer)?;
+            }
+            LogRecord::Update { lsn, tx_id, prev_lsn, page_id, slot_id, old_data, new_data } => {
+                3u8.serialize(writer)?;
+                lsn.serialize(writer)?;
+                tx_id.serialize(writer)?;
+                prev_lsn.serialize(writer)?;
+                page_id.serialize(writer)?;
+                slot_id.serialize(writer)?;
+                old_data.serialize(writer)?;
+                new_data.serialize(writer)?;
+            }
+            LogRecord::Insert { lsn, tx_id, prev_lsn, page_id, slot_id, data } => {
+                4u8.serialize(writer)?;
+                lsn.serialize(writer)?;
+                tx_id.serialize(writer)?;
+                prev_lsn.serialize(writer)?;
+                page_id.serialize(writer)?;
+                slot_id.serialize(writer)?;
+                data.serialize(writer)?;
+            }
+            LogRecord::Delete { lsn, tx_id, prev_lsn, page_id, slot_id, old_data } => {
+                5u8.serialize(writer)?;
+                lsn.serialize(writer)?;
+                tx_id.serialize(writer)?;
+                prev_lsn.serialize(writer)?;
+                page_id.serialize(writer)?;
+                slot_id.serialize(writer)?;
+                old_data.serialize(writer)?;
+            }
+            LogRecord::NewPage { lsn, tx_id, prev_lsn, page_id, page_type } => {
+                6u8.serialize(writer)?;
+                lsn.serialize(writer)?;
+                tx_id.serialize(writer)?;
+                prev_lsn.serialize(writer)?;
+                page_id.serialize(writer)?;
+                page_type.serialize(writer)?;
+            }
+            LogRecord::Checkpoint { lsn, active_transactions, dirty_pages } => {
+                7u8.serialize(writer)?;
+                lsn.serialize(writer)?;
+                active_transactions.serialize(writer)?;
+                dirty_pages.serialize(writer)?;
+            }
+            LogRecord::CompensationLogRecord { lsn, tx_id, undo_next_lsn, compensated_lsn } => {
+                8u8.serialize(writer)?;
+                lsn.serialize(writer)?;
+                tx_id.serialize(writer)?;
+                undo_next_lsn.serialize(writer)?;
+                compensated_lsn.serialize(writer)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Deserialize for LogRecord {
+    fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
+        match u8::deserialize(reader)? {
+            0 => Ok(LogRecord::BeginTransaction {
+                lsn: Lsn::deserialize(reader)?,
+                tx_id: TransactionId::deserialize(reader)?,
+                prev_lsn: Lsn::deserialize(reader)?,
+            }),
+            1 => Ok(LogRecord::CommitTransaction {
+                lsn: Lsn::deserialize(reader)?,
+                tx_id: TransactionId::deserialize(reader)?,
+                prev_lsn: Lsn::deserialize(reader)?,
+            }),
+            2 => Ok(LogRecord::AbortTransaction {
+                lsn: Lsn::deserialize(reader)?,
+                tx_id: TransactionId::deserialize(reader)?,
+                prev_lsn: Lsn::deserialize(reader)?,
+            }),
+            3 => Ok(LogRecord::Update {
+                lsn: Lsn::deserialize(reader)?,
+                tx_id: TransactionId::deserialize(reader)?,
+                prev_lsn: Lsn::deserialize(reader)?,
+                page_id: PageId::deserialize(reader)?,
+                slot_id: SlotId::deserialize(reader)?,
+                old_data: Vec::<u8>::deserialize(reader)?,
+                new_data: Vec::<u8>::deserialize(reader)?,
+            }),
+            4 => Ok(LogRecord::Insert {
+                lsn: Lsn::deserialize(reader)?,
+                tx_id: TransactionId::deserialize(reader)?,
+                prev_lsn: Lsn::deserialize(reader)?,
+                page_id: PageId::deserialize(reader)?,
+                slot_id: SlotId::deserialize(reader)?,
+                data: Vec::<u8>::deserialize(reader)?,
+            }),
+            5 => Ok(LogRecord::Delete {
+                lsn: Lsn::deserialize(reader)?,
+                tx_id: TransactionId::deserialize(reader)?,
+                prev_lsn: Lsn::deserialize(reader)?,
+                page_id: PageId::deserialize(reader)?,
+                slot_id: SlotId::deserialize(reader)?,
+                old_data: Vec::<u8>::deserialize(reader)?,
+            }),
+            6 => Ok(LogRecord::NewPage {
+                lsn: Lsn::deserialize(reader)?,
+                tx_id: TransactionId::deserialize(reader)?,
+                prev_lsn: Lsn::deserialize(reader)?,
+                page_id: PageId::deserialize(reader)?,
+                page_type: PageType::deserialize(reader)?,
+            }),
+            7 => Ok(LogRecord::Checkpoint {
+                lsn: Lsn::deserialize(reader)?,
+                active_transactions: Vec::<ActiveTransactionInfo>::deserialize(reader)?,
+                dirty_pages: Vec::<DirtyPageInfo>::deserialize(reader)?,
+            }),
+            8 => Ok(LogRecord::CompensationLogRecord {
+                lsn: Lsn::deserialize(reader)?,
+                tx_id: TransactionId::deserialize(reader)?,
+                undo_next_lsn: Lsn::deserialize(reader)?,
+                compensated_lsn: Lsn::deserialize(reader)?,
+            }),
+            n => Err(OxidbError::Serialization(format!("Invalid LogRecord variant: {}", n))),
+        }
     }
 }

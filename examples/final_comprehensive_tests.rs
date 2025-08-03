@@ -2,7 +2,7 @@ use oxidb::{Connection, OxidbError};
 use std::time::Instant;
 use std::fs;
 
-/// Final Comprehensive Test Suite for OxiDB
+/// Final Comprehensive Test Suite for Oxidb
 /// 
 /// Demonstrates all design principles while working with current API:
 /// - SOLID: Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion
@@ -14,7 +14,7 @@ use std::fs;
 /// - SSOT (Single Source of Truth) validation
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== OxiDB Final Comprehensive Test Suite ===\n");
+    println!("=== Oxidb Final Comprehensive Test Suite ===\n");
 
     // Clean up any existing test databases (proper cleanup)
     cleanup_test_databases()?;

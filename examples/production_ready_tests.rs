@@ -2,7 +2,7 @@ use oxidb::{Connection, OxidbError};
 use std::time::Instant;
 use std::fs;
 
-/// Production-Ready Test Suite for OxiDB
+/// Production-Ready Test Suite for Oxidb
 /// 
 /// This example demonstrates:
 /// - SOLID Principles: Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion
@@ -14,7 +14,7 @@ use std::fs;
 /// - SSOT (Single Source of Truth) validation
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== OxiDB Production-Ready Test Suite ===\n");
+    println!("=== Oxidb Production-Ready Test Suite ===\n");
 
     // Clean up any existing test databases (proper cleanup)
     cleanup_test_databases()?;

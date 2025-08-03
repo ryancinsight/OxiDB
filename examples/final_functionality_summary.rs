@@ -1,7 +1,7 @@
 use oxidb::{Connection, OxidbError, QueryResult};
 
 fn main() -> Result<(), OxidbError> {
-    println!("🎯 === OxiDB Final Functionality Summary === 🎯\n");
+    println!("🎯 === Oxidb Final Functionality Summary === 🎯\n");
 
     // Test 1: Basic Connection and Table Operations
     println!("--- ✅ Test 1: Basic Connection and Table Operations ---");
@@ -140,7 +140,7 @@ fn main() -> Result<(), OxidbError> {
     println!("✅ Performance Test (Bulk Operations): PASSED");
     println!("✅ Key-Value Operations: PASSED");
     
-    println!("\n🚀 OxiDB is fully functional and ready for production use! 🚀");
+    println!("\n🚀 Oxidb is fully functional and ready for production use! 🚀");
     
     Ok(())
 }

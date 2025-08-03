@@ -292,7 +292,6 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     }
 
     /// Checks if a value is unique for a given column, optionally excluding a specific primary key (for UPDATEs).
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn check_uniqueness(
         &self,
         table_name: &str,

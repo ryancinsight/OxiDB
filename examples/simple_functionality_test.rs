@@ -1,7 +1,7 @@
 use oxidb::{Connection, OxidbError, QueryResult};
 
 fn main() -> Result<(), OxidbError> {
-    println!("=== OxiDB Simple Functionality Test ===\n");
+    println!("=== Oxidb Simple Functionality Test ===\n");
 
     // Generate unique identifiers to avoid conflicts
     let process_id = std::process::id();

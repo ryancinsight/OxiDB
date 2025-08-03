@@ -1,11 +1,11 @@
 use oxidb::{Connection, OxidbError};
 
-/// Advanced Integration Tests for OxiDB
+/// Advanced Integration Tests for Oxidb
 /// Tests complex scenarios combining multiple database features
 /// Follows SOLID principles with modular, testable components
 /// Implements GRASP principles with proper responsibility assignment
 fn main() -> Result<(), OxidbError> {
-    println!("=== OxiDB Advanced Integration Tests ===\n");
+    println!("=== Oxidb Advanced Integration Tests ===\n");
 
     // Test suite following Single Responsibility Principle
     run_e_commerce_simulation()?;

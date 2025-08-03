@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== OxiDB Hybrid RAG Demo ===\n");
+    println!("=== Oxidb Hybrid RAG Demo ===\n");
 
     // Initialize database
     let mut conn = Connection::open_in_memory()?;

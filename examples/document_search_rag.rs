@@ -1,10 +1,10 @@
 //! Document Search RAG (Retrieval-Augmented Generation) Example
 //! 
-//! This example demonstrates using OxiDB for semantic document search with vector embeddings.
+//! This example demonstrates using Oxidb for semantic document search with vector embeddings.
 //! It simulates a knowledge base system where documents are stored with embeddings
 //! and can be searched using natural language queries.
 
-use oxidb::{OxiDB, OxiDBError};
+use oxidb::{Oxidb, OxidbError};
 use oxidb::core::types::{DataType, OrderedFloat, HashableVectorData, VectorData};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -39,13 +39,13 @@ struct SearchResult {
 }
 
 struct DocumentSearchDB {
-    db: OxiDB,
+    db: Oxidb,
     embedding_dimension: usize,
 }
 
 impl DocumentSearchDB {
-    fn new(db_path: &str, embedding_dimension: usize) -> Result<Self, OxiDBError> {
-        let db = OxiDB::open(db_path)?;
+    fn new(db_path: &str, embedding_dimension: usize) -> Result<Self, OxidbError> {
+        let db = Oxidb::open(db_path)?;
         
         // Create table for documents with vector embeddings
         let create_table_sql = format!(
@@ -76,7 +76,7 @@ impl DocumentSearchDB {
     }
     
     // Document management
-    fn add_document(&self, doc: &Document) -> Result<(), OxiDBError> {
+    fn add_document(&self, doc: &Document) -> Result<(), OxidbError> {
         let metadata_json = serde_json::to_string(&doc.metadata).unwrap();
         let embedding_str = format!("[{}]", doc.embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
         
@@ -98,7 +98,7 @@ impl DocumentSearchDB {
         Ok(())
     }
     
-    fn update_document_embedding(&self, doc_id: &str, embedding: &[f32]) -> Result<(), OxiDBError> {
+    fn update_document_embedding(&self, doc_id: &str, embedding: &[f32]) -> Result<(), OxidbError> {
         let embedding_str = format!("[{}]", embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
         
         let sql = format!(
@@ -113,7 +113,7 @@ impl DocumentSearchDB {
     }
     
     // Semantic search using vector similarity
-    fn semantic_search(&self, query: &SearchQuery) -> Result<Vec<SearchResult>, OxiDBError> {
+    fn semantic_search(&self, query: &SearchQuery) -> Result<Vec<SearchResult>, OxidbError> {
         let embedding_str = format!("[{}]", query.embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
         
         let mut sql = format!(
@@ -154,7 +154,7 @@ impl DocumentSearchDB {
     }
     
     // Hybrid search combining keyword and semantic search
-    fn hybrid_search(&self, query: &SearchQuery, keyword_weight: f32) -> Result<Vec<SearchResult>, OxiDBError> {
+    fn hybrid_search(&self, query: &SearchQuery, keyword_weight: f32) -> Result<Vec<SearchResult>, OxidbError> {
         // Semantic search results
         let semantic_results = self.semantic_search(query)?;
         
@@ -243,7 +243,7 @@ impl DocumentSearchDB {
     }
     
     // Get documents by category
-    fn get_documents_by_category(&self, category: &str) -> Result<Vec<Document>, OxiDBError> {
+    fn get_documents_by_category(&self, category: &str) -> Result<Vec<Document>, OxidbError> {
         let sql = format!("SELECT * FROM documents WHERE category = '{}'", category);
         let result = self.db.execute_sql(&sql)?;
         
@@ -296,7 +296,7 @@ impl DocumentSearchDB {
         snippet
     }
     
-    fn row_to_document(&self, row: &[DataType]) -> Result<Document, OxiDBError> {
+    fn row_to_document(&self, row: &[DataType]) -> Result<Document, OxidbError> {
         Ok(Document {
             id: self.get_string(&row[0])?,
             title: self.get_string(&row[1])?,
@@ -314,27 +314,27 @@ impl DocumentSearchDB {
         })
     }
     
-    fn get_string(&self, data: &DataType) -> Result<String, OxiDBError> {
+    fn get_string(&self, data: &DataType) -> Result<String, OxidbError> {
         match data {
             DataType::String(s) => Ok(s.clone()),
             DataType::Null => Ok(String::new()),
-            _ => Err(OxiDBError::TypeMismatch),
+            _ => Err(OxidbError::TypeMismatch),
         }
     }
     
-    fn get_float(&self, data: &DataType) -> Result<f32, OxiDBError> {
+    fn get_float(&self, data: &DataType) -> Result<f32, OxidbError> {
         match data {
             DataType::Float(f) => Ok(f.0 as f32),
             DataType::Integer(i) => Ok(*i as f32),
-            _ => Err(OxiDBError::TypeMismatch),
+            _ => Err(OxidbError::TypeMismatch),
         }
     }
     
-    fn get_vector(&self, data: &DataType) -> Result<Option<Vec<f32>>, OxiDBError> {
+    fn get_vector(&self, data: &DataType) -> Result<Option<Vec<f32>>, OxidbError> {
         match data {
             DataType::Vector(v) => Ok(Some(v.0.data.clone())),
             DataType::Null => Ok(None),
-            _ => Err(OxiDBError::TypeMismatch),
+            _ => Err(OxidbError::TypeMismatch),
         }
     }
 }

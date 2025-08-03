@@ -128,8 +128,8 @@ mod tests {
 
         // Test the critical edge case: 2^53 + 1
         // This integer cannot be precisely represented as f64
-        let large_int = Value::Integer((1i64 << 53) + 1); // 9007199254740993
-        let exact_float = Value::Float((1i64 << 53) as f64); // 9007199254740992.0
+        let large_int = Value::Integer((1i64 << 53) + 1); // 9_007_199_254_740_993
+        let exact_float = Value::Float((1i64 << 53) as f64); // 9_007_199_254_740_992.0
         
         // The integer should be greater than the float, not equal
         assert_eq!(large_int.partial_cmp(&exact_float), Some(Ordering::Greater));

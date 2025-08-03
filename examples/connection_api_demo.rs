@@ -1,7 +1,7 @@
 use oxidb::{Connection, OxidbError, QueryResult};
 
 fn main() -> Result<(), OxidbError> {
-    println!("=== OxiDB Connection API Demo ===\n");
+    println!("=== Oxidb Connection API Demo ===\n");
 
     // Create an in-memory database connection
     let mut conn = Connection::open_in_memory()?;

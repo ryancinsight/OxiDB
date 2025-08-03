@@ -141,7 +141,7 @@ impl Optimizer {
                                 .filter_map(|col| match col {
                                     SelectColumn::ColumnName(name) => Some(name.clone()),
                                     SelectColumn::Asterisk => None, // Mixed * and columns not supported yet
-                                    SelectColumn::AggregateFunction { .. } => unreachable!(),
+                                    SelectColumn::AggregateFunction { .. } => None, // Aggregates handled separately
                                 })
                                 .collect();
 
@@ -493,7 +493,6 @@ impl Default for Optimizer {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum QueryPlanNode {
     TableScan {
@@ -537,7 +536,6 @@ pub struct AggregateSpec {
     pub alias: Option<String>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SimplePredicate {
     pub column: String,
@@ -545,7 +543,6 @@ pub struct SimplePredicate {
     pub value: DataType,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Literal(DataType),

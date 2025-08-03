@@ -74,7 +74,7 @@ pub async fn init_database(path: &str) -> Result<()> {
     )?;
     
     // Create indexes for better performance
-    // Note: OxiDB may not support CREATE INDEX statements
+    // Note: Oxidb may not support CREATE INDEX statements
     // conn.execute("CREATE INDEX idx_files_user_id ON files(user_id)")?;
     // conn.execute("CREATE INDEX idx_file_shares_file_id ON file_shares(file_id)")?;
     // conn.execute("CREATE INDEX idx_file_shares_shared_with ON file_shares(shared_with_user_id)")?;

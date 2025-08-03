@@ -1,6 +1,6 @@
 //! PostgreSQL-Style Analytics & Data Warehousing Demo
 //! 
-//! This example demonstrates OxiDB usage patterns familiar to PostgreSQL developers,
+//! This example demonstrates Oxidb usage patterns familiar to PostgreSQL developers,
 //! including advanced analytics, window functions, CTEs, and data warehousing patterns.
 //! Features:
 //! - Advanced analytical queries with window functions

@@ -1,7 +1,7 @@
 use oxidb::Connection;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== OxiDB Error Handling and Edge Cases Demo ===\n");
+    println!("=== Oxidb Error Handling and Edge Cases Demo ===\n");
 
     test_connection_errors()?;
     test_sql_syntax_errors()?;

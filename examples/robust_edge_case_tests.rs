@@ -1,7 +1,7 @@
 use oxidb::{Connection, OxidbError};
 use std::time::Instant;
 
-/// Robust Edge Case Test Suite for OxiDB
+/// Robust Edge Case Test Suite for Oxidb
 /// 
 /// This test suite demonstrates all key design principles:
 /// - SOLID: Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion
@@ -13,7 +13,7 @@ use std::time::Instant;
 /// - SSOT (Single Source of Truth) validation
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== OxiDB Robust Edge Case Test Suite ===\n");
+    println!("=== Oxidb Robust Edge Case Test Suite ===\n");
 
     // Test suite following Single Responsibility Principle
     let results = vec![

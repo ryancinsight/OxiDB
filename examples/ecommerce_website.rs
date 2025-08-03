@@ -1,6 +1,6 @@
 //! E-commerce Website Database Example
 //! 
-//! This example demonstrates using OxiDB as a backend database for an e-commerce website.
+//! This example demonstrates using Oxidb as a backend database for an e-commerce website.
 //! It includes:
 //! - Product catalog with vector embeddings for similarity search
 //! - User management with authentication
@@ -205,7 +205,7 @@ impl EcommerceDB {
             // Use vector similarity search to find similar products
             let embedding_str = format!("[{}]", embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
             
-            // This would use OxiDB's vector similarity capabilities
+            // This would use Oxidb's vector similarity capabilities
             let sql = format!(
                 "SELECT * FROM products 
                  WHERE id != '{}' AND embedding IS NOT NULL

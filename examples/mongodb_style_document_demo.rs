@@ -1,6 +1,6 @@
 //! MongoDB-Style Document Database Demo
 //! 
-//! This example demonstrates OxiDB usage patterns familiar to MongoDB developers,
+//! This example demonstrates Oxidb usage patterns familiar to MongoDB developers,
 //! including document storage, JSON queries, and NoSQL-style operations.
 //! Features:
 //! - Document-oriented data modeling
