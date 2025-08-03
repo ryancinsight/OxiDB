@@ -237,11 +237,11 @@ where
         use std::thread;
         
         let items: Vec<T> = self.iter.collect();
-        let chunks: Vec<_> = items.chunks(self.batch_size).collect();
+        let chunk_size = self.batch_size;
         let func = Arc::new(func);
         
         thread::scope(|s| {
-            for chunk in chunks {
+            for chunk in items.chunks(chunk_size) {
                 let func = Arc::clone(&func);
                 s.spawn(move || {
                     for item in chunk {

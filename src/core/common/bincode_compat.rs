@@ -135,7 +135,10 @@ impl Deserialize for Vec<u8> {
 
 impl Serialize for String {
     fn serialize<W: Write>(&self, writer: &mut W) -> Result<(), OxidbError> {
-        self.as_bytes().to_vec().serialize(writer)
+        // Serialize length first
+        (self.len() as u64).serialize(writer)?;
+        // Then write bytes directly
+        writer.write_all(self.as_bytes()).map_err(OxidbError::Io)
     }
 }
 
