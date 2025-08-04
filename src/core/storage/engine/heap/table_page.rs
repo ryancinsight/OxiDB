@@ -2,6 +2,7 @@ use crate::core::common::byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use crate::core::common::types::ids::SlotId;
 use crate::core::common::OxidbError;
 use crate::core::storage::engine::page::{PAGE_HEADER_SIZE, PAGE_SIZE};
+use crate::core::zero_cost::ZeroCopyView;
 use std::io::Cursor;
 
 // Constants for TablePage layout within Page.data buffer
@@ -209,7 +210,7 @@ impl TablePage {
         Ok(())
     }
 
-    /// Inserts a record into the table page
+    /// Inserts a record into the table page.
     ///
     /// Allocates space for the record data and creates a slot entry pointing to it.
     /// Returns the `SlotId` that can be used to retrieve the record later.
@@ -219,6 +220,7 @@ impl TablePage {
     /// - Record data is empty or zero length
     /// - Not enough free space on the page
     /// - Page data is too small to hold metadata
+    #[must_use]
     pub fn insert_record(page_data: &mut [u8], data: &[u8]) -> Result<SlotId, OxidbError> {
         if data.is_empty() {
             return Err(OxidbError::InvalidInput {
@@ -233,52 +235,36 @@ impl TablePage {
             });
         }
         if data.len() > u16::MAX as usize {
-            // data_len already u16, this check is more about original data.len()
             return Err(OxidbError::InvalidInput {
                 message: "Record data too large for u16 length".to_string(),
             });
         }
 
         let num_records = Self::get_num_records(page_data)?;
-        // current_data_append_ptr is the end of the last written record's data,
-        // or SLOTS_ARRAY_DATA_OFFSET if no records yet.
         let current_data_append_ptr = Self::get_free_space_pointer(page_data)?;
 
-        // Find an empty slot or determine if a new one is needed
-        let mut target_slot_id_obj = None;
-        for i in 0..num_records {
-            let slot_id = SlotId(i);
-            if let Some(slot_info) = Self::get_slot_info(page_data, slot_id)? {
-                if slot_info.length == 0 {
-                    // Found an empty (deleted) slot
-                    target_slot_id_obj = Some(slot_id);
-                    break;
+        // Find an empty (deleted) slot with iterator combinator
+        let target_slot_id_obj = (0..num_records)
+            .find_map(|i| {
+                let slot_id = SlotId(i);
+                match Self::get_slot_info(page_data, slot_id) {
+                    Ok(Some(slot_info)) if slot_info.length == 0 => Some(slot_id),
+                    _ => None,
                 }
-            }
-        }
+            });
 
-        let final_slot_id;
-        let is_new_slot;
-        if let Some(slot_id) = target_slot_id_obj {
-            final_slot_id = slot_id;
-            is_new_slot = false;
+        let (final_slot_id, is_new_slot) = if let Some(slot_id) = target_slot_id_obj {
+            (slot_id, false)
         } else {
-            final_slot_id = SlotId(num_records); // Index for the new slot
-            is_new_slot = true;
-        }
+            (SlotId(num_records), true)
+        };
 
-        // Determine the end of the slot array IF this operation completes.
-        // If it's a new slot, the array effectively grows.
         let end_of_slot_array_if_op_completes = if is_new_slot {
             SLOTS_ARRAY_DATA_OFFSET + ((num_records + 1) as usize * Slot::SERIALIZED_SIZE)
         } else {
             SLOTS_ARRAY_DATA_OFFSET + (num_records as usize * Slot::SERIALIZED_SIZE)
-            // Current end
         };
 
-        // Data must be written after the slot array.
-        // Also, data is appended to where previous data ended (current_data_append_ptr).
-        // So, the actual write offset for data is the max of these two.
         let record_data_write_offset =
             (end_of_slot_array_if_op_completes as u16).max(current_data_append_ptr);
 
@@ -287,43 +273,56 @@ impl TablePage {
                 OxidbError::Storage("Record data offset calculation overflow".to_string())
             })?;
 
-        // Final space check: does the end of data exceed page capacity?
         if record_data_write_end as usize > page_data.len() {
             return Err(OxidbError::Storage(
                 "Page full: no space for record data (after considering slot array)".to_string(),
             ));
         }
 
-        // The overlap check `end_of_slot_array_after_this_op > record_data_write_offset`
-        // is now implicitly handled because `record_data_write_offset` is guaranteed to be
-        // at or after `end_of_slot_array_if_op_completes` (if it's a new slot)
-        // or after the current slot array end (if reusing an old slot, where current_data_append_ptr might be even further).
-
-        // All checks passed, proceed with writes:
-        // 1. Write record data
+        // Write record data
         page_data[record_data_write_offset as usize..record_data_write_end as usize]
             .copy_from_slice(data);
 
-        // 2. Write/Update slot information for `final_slot_id`
+        // Write/Update slot information for `final_slot_id`
         let slot_info = Slot { offset: record_data_write_offset, length: data_len };
         Self::set_slot_info(page_data, final_slot_id, slot_info)?;
 
-        // 3. Update free space pointer to be after the newly written data.
+        // Update free space pointer
         Self::set_free_space_pointer(page_data, record_data_write_end)?;
 
-        // 4. Update number of records if it's a brand new slot
+        // Update number of records if it's a brand new slot
         if is_new_slot {
             Self::set_num_records(page_data, num_records + 1)?;
         }
-        // If reusing a slot, num_records (high water mark of slots) doesn't change. Slot.length > 0 marks it occupied.
-
         Ok(final_slot_id)
     }
 
+    /// Retrieves a record's data by `slot_id`, copying the result into a new Vec<u8>.
+    ///
+    /// For zero-copy access, use [`Self::get_record_view`].
+    ///
+    /// # Errors
+    /// Returns `OxidbError` if the slot is occupied but its offset/length are out of bounds.
+    #[must_use]
     pub fn get_record(page_data: &[u8], slot_id: SlotId) -> Result<Option<Vec<u8>>, OxidbError> {
+        Ok(Self::get_record_view(page_data, slot_id)?
+            .map(|view| view.get().to_vec()))
+    }
+
+    /// Returns a zero-copy view of the record data at `slot_id`, borrowing from `page_data` if present.
+    ///
+    /// This avoids any heap allocation; the returned [`ZeroCopyView`] is a transparent wrapper around the slice.
+    ///
+    /// # Errors
+    /// Returns `OxidbError` if the slot is occupied but its offset/length are out of bounds,
+    /// or if slot metadata is invalid.
+    #[must_use]
+    pub fn get_record_view<'a>(
+        page_data: &'a [u8],
+        slot_id: SlotId,
+    ) -> Result<Option<ZeroCopyView<'a, [u8]>>, OxidbError> {
         match Self::get_slot_info(page_data, slot_id)? {
             Some(slot) if slot.length > 0 => {
-                // Slot exists and is occupied
                 let data_end = slot.offset as usize + slot.length as usize;
                 if data_end > page_data.len() {
                     return Err(OxidbError::Internal(format!(
@@ -331,7 +330,8 @@ impl TablePage {
                         slot_id.0, slot.offset, slot.length, page_data.len()
                     )));
                 }
-                Ok(Some(page_data[slot.offset as usize..data_end].to_vec()))
+                let slice = &page_data[slot.offset as usize..data_end];
+                Ok(Some(ZeroCopyView::new(slice)))
             }
             Some(_) => Ok(None), // Slot exists but is empty (length == 0)
             None => Ok(None),    // SlotId is out of bounds of current num_records
