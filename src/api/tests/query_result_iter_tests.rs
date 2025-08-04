@@ -29,7 +29,7 @@ mod tests {
         let iter_vals = row.values_iter().cloned().collect::<Vec<_>>();
         assert_eq!(iter_vals, vals);
 
-        let into_iter_vals = row.into_iter().cloned().collect::<Vec<_>>();
+        let into_iter_vals = (&row).into_iter().cloned().collect::<Vec<_>>();
         assert_eq!(into_iter_vals, vals);
     }
 }
