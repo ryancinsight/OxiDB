@@ -146,7 +146,7 @@ impl WalRecordIterator {
         })?;
 
         // Deserialize the log record
-                    let log_record: LogRecord = crate::core::common::bincode_compat::deserialize(&mut record_data.as_slice())
+        let log_record: LogRecord = crate::core::common::bincode_compat::deserialize(&mut record_data.as_slice())
             .map_err(|e| WalReaderError::Deserialization(e.to_string()))?;
 
         // Validate LSN ordering if enabled
