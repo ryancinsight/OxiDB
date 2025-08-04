@@ -44,13 +44,18 @@ mod tests {
         let _guard = mutex.lock().unwrap();
         
         // The error messages should be as expected
+        // Create a guard by locking the mutex
+        let guard = mutex.lock().unwrap();
+        
         assert_eq!(
-            lock_poisoned::<i32>(PoisonError::new(MutexGuard::new(&mutex))).to_string(),
+            lock_poisoned::<i32>(PoisonError::new(guard)).to_string(),
             "Lock Timeout: Lock poisoned"
         );
         
+        // Lock again for the second test
+        let guard2 = mutex.lock().unwrap();
         assert_eq!(
-            store_lock_poisoned::<i32>(PoisonError::new(MutexGuard::new(&mutex))).to_string(),
+            store_lock_poisoned::<i32>(PoisonError::new(guard2)).to_string(),
             "Lock Timeout: Failed to lock store"
         );
     }

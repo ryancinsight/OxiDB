@@ -21,7 +21,7 @@ anyhow = "1.0"
 serde_with = { version = "2.3.0", features = ["macros", "json", "base64"] }
 # hex = "0.4" # Replaced with pure Rust implementation
 clap = { version = "4.0", features = ["derive"] }
-sha2 = "0.10"
+# sha2 = "0.10" # Removed - replaced with simple hash function to minimize dependencies
 async-trait = "0.1"
 # log = "0.4" # Replaced with commented out debug statements
 rand = "0.8"
@@ -93,3 +93,7 @@ path = "examples/hybrid_rag_demo.rs"
 [[example]]
 name = "graphrag_config_demo"
 path = "examples/graphrag_config_demo.rs"
+
+[[example]]
+name = "performance_optimization_demo"
+path = "examples/performance_optimization_demo.rs"

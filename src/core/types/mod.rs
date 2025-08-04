@@ -518,7 +518,7 @@ impl<'a> Iterator for JsonPathIterator<'a> {
                 }
                 Value::Object(obj) => {
                     // Add object values with key paths
-                    for (key, value) in obj.iter().collect::<Vec<_>>().into_iter().rev() {
+                    for (key, value) in obj.iter().rev() {
                         let new_path = if path.is_empty() {
                             key.clone()
                         } else {

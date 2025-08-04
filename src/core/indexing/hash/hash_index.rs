@@ -1,4 +1,3 @@
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter};
@@ -11,7 +10,7 @@ use crate::core::query::commands::{Key as PrimaryKey, Value}; // Value is Vec<u8
 /// Default file extension for hash index files.
 const DEFAULT_INDEX_FILE_EXTENSION: &str = "idx";
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug)]
 pub struct HashIndex {
     /// The name of the index, used for identification and file naming.
     name: String,
@@ -106,8 +105,8 @@ impl Index for HashIndex {
             .truncate(true) // Overwrite existing file
             .open(&self.file_path)
             .map_err(OxidbError::Io)?; // Changed
-        let writer = BufWriter::new(file);
-        bincode::serialize_into(writer, &self.store).map_err(|e| {
+        let mut writer = BufWriter::new(file);
+        crate::core::common::bincode_compat::serialize(&self.store, &mut writer).map_err(|e| {
             OxidbError::Serialization(format!("Failed to serialize index data: {e}"))
             // Changed
         })
@@ -130,9 +129,9 @@ impl Index for HashIndex {
         }
         // Clear the existing in-memory store before loading from disk
         self.store = HashMap::new();
-        let reader = BufReader::new(file);
+        let mut reader = BufReader::new(file);
         // Try to deserialize. If it fails, self.store remains empty (as cleared above).
-        match bincode::deserialize_from(reader) {
+        match crate::core::common::bincode_compat::deserialize(&mut reader) {
             Ok(loaded_store) => {
                 self.store = loaded_store;
                 Ok(())

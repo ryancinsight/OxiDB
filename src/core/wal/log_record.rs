@@ -109,8 +109,8 @@ mod tests {
     #[test]
     fn test_serialize_deserialize_begin_transaction() {
         let original_record = LogRecord::BeginTransaction { lsn: 0, tx_id: TransactionId(123) }; // Use TransactionId()
-        let serialized = bincode::serialize(&original_record).unwrap();
-        let deserialized: LogRecord = bincode::deserialize(&serialized).unwrap();
+        let serialized = bincode::serialize_to_vec(&original_record).unwrap();
+        let deserialized: LogRecord = bincode::deserialize(&mut serialized.as_slice()).unwrap();
         assert_eq!(original_record, deserialized);
     }
 
@@ -118,8 +118,8 @@ mod tests {
     fn test_serialize_deserialize_commit_transaction() {
         let original_record =
             LogRecord::CommitTransaction { lsn: 1, tx_id: TransactionId(123), prev_lsn: 0 }; // Use TransactionId()
-        let serialized = bincode::serialize(&original_record).unwrap();
-        let deserialized: LogRecord = bincode::deserialize(&serialized).unwrap();
+        let serialized = bincode::serialize_to_vec(&original_record).unwrap();
+        let deserialized: LogRecord = bincode::deserialize(&mut serialized.as_slice()).unwrap();
         assert_eq!(original_record, deserialized);
     }
 
@@ -127,8 +127,8 @@ mod tests {
     fn test_serialize_deserialize_abort_transaction() {
         let original_record =
             LogRecord::AbortTransaction { lsn: 2, tx_id: TransactionId(123), prev_lsn: 1 }; // Use TransactionId()
-        let serialized = bincode::serialize(&original_record).unwrap();
-        let deserialized: LogRecord = bincode::deserialize(&serialized).unwrap();
+        let serialized = bincode::serialize_to_vec(&original_record).unwrap();
+        let deserialized: LogRecord = bincode::deserialize(&mut serialized.as_slice()).unwrap();
         assert_eq!(original_record, deserialized);
     }
 
@@ -142,8 +142,8 @@ mod tests {
             record_data: vec![10, 20, 30],
             prev_lsn: 2,
         };
-        let serialized = bincode::serialize(&original_record).unwrap();
-        let deserialized: LogRecord = bincode::deserialize(&serialized).unwrap();
+        let serialized = bincode::serialize_to_vec(&original_record).unwrap();
+        let deserialized: LogRecord = bincode::deserialize(&mut serialized.as_slice()).unwrap();
         assert_eq!(original_record, deserialized);
     }
 
@@ -157,8 +157,8 @@ mod tests {
             old_record_data: vec![40, 50, 60],
             prev_lsn: 3,
         };
-        let serialized = bincode::serialize(&original_record).unwrap();
-        let deserialized: LogRecord = bincode::deserialize(&serialized).unwrap();
+        let serialized = bincode::serialize_to_vec(&original_record).unwrap();
+        let deserialized: LogRecord = bincode::deserialize(&mut serialized.as_slice()).unwrap();
         assert_eq!(original_record, deserialized);
     }
 
@@ -173,8 +173,8 @@ mod tests {
             new_record_data: vec![90, 100],
             prev_lsn: 4,
         };
-        let serialized = bincode::serialize(&original_record).unwrap();
-        let deserialized: LogRecord = bincode::deserialize(&serialized).unwrap();
+        let serialized = bincode::serialize_to_vec(&original_record).unwrap();
+        let deserialized: LogRecord = bincode::deserialize(&mut serialized.as_slice()).unwrap();
         assert_eq!(original_record, deserialized);
     }
 
@@ -187,8 +187,8 @@ mod tests {
             page_type: PageType::TablePage,
             prev_lsn: 5,
         };
-        let serialized = bincode::serialize(&original_record).unwrap();
-        let deserialized: LogRecord = bincode::deserialize(&serialized).unwrap();
+        let serialized = bincode::serialize_to_vec(&original_record).unwrap();
+        let deserialized: LogRecord = bincode::deserialize(&mut serialized.as_slice()).unwrap();
         assert_eq!(original_record, deserialized);
     }
 
@@ -204,8 +204,8 @@ mod tests {
             prev_lsn: 6,
             next_undo_lsn: Some(99), // This LSN also refers to another record's LSN.
         };
-        let serialized = bincode::serialize(&original_record).unwrap();
-        let deserialized: LogRecord = bincode::deserialize(&serialized).unwrap();
+        let serialized = bincode::serialize_to_vec(&original_record).unwrap();
+        let deserialized: LogRecord = bincode::deserialize(&mut serialized.as_slice()).unwrap();
         assert_eq!(original_record, deserialized);
     }
 
@@ -221,16 +221,16 @@ mod tests {
             prev_lsn: 7,
             next_undo_lsn: None,
         };
-        let serialized = bincode::serialize(&original_record).unwrap();
-        let deserialized: LogRecord = bincode::deserialize(&serialized).unwrap();
+        let serialized = bincode::serialize_to_vec(&original_record).unwrap();
+        let deserialized: LogRecord = bincode::deserialize(&mut serialized.as_slice()).unwrap();
         assert_eq!(original_record, deserialized);
     }
 
     #[test]
     fn test_serialize_deserialize_checkpoint_begin() {
         let original_record = LogRecord::CheckpointBegin { lsn: 9 };
-        let serialized = bincode::serialize(&original_record).unwrap();
-        let deserialized: LogRecord = bincode::deserialize(&serialized).unwrap();
+        let serialized = bincode::serialize_to_vec(&original_record).unwrap();
+        let deserialized: LogRecord = bincode::deserialize(&mut serialized.as_slice()).unwrap();
         assert_eq!(original_record, deserialized);
     }
 
@@ -247,8 +247,8 @@ mod tests {
                 DirtyPageInfo { page_id: PageId(101), recovery_lsn: 6 },
             ],
         };
-        let serialized = bincode::serialize(&original_record).unwrap();
-        let deserialized: LogRecord = bincode::deserialize(&serialized).unwrap();
+        let serialized = bincode::serialize_to_vec(&original_record).unwrap();
+        let deserialized: LogRecord = bincode::deserialize(&mut serialized.as_slice()).unwrap();
         assert_eq!(original_record, deserialized);
     }
 }
@@ -313,11 +313,10 @@ impl Deserialize for DirtyPageInfo {
 impl Serialize for LogRecord {
     fn serialize<W: Write>(&self, writer: &mut W) -> Result<(), OxidbError> {
         match self {
-            LogRecord::BeginTransaction { lsn, tx_id, prev_lsn } => {
+            LogRecord::BeginTransaction { lsn, tx_id } => {
                 0u8.serialize(writer)?;
                 lsn.serialize(writer)?;
                 tx_id.serialize(writer)?;
-                prev_lsn.serialize(writer)?;
             }
             LogRecord::CommitTransaction { lsn, tx_id, prev_lsn } => {
                 1u8.serialize(writer)?;
@@ -331,54 +330,62 @@ impl Serialize for LogRecord {
                 tx_id.serialize(writer)?;
                 prev_lsn.serialize(writer)?;
             }
-            LogRecord::Update { lsn, tx_id, prev_lsn, page_id, slot_id, old_data, new_data } => {
+            LogRecord::InsertRecord { lsn, tx_id, page_id, slot_id, record_data, prev_lsn } => {
                 3u8.serialize(writer)?;
                 lsn.serialize(writer)?;
                 tx_id.serialize(writer)?;
-                prev_lsn.serialize(writer)?;
                 page_id.serialize(writer)?;
                 slot_id.serialize(writer)?;
-                old_data.serialize(writer)?;
-                new_data.serialize(writer)?;
+                record_data.serialize(writer)?;
+                prev_lsn.serialize(writer)?;
             }
-            LogRecord::Insert { lsn, tx_id, prev_lsn, page_id, slot_id, data } => {
+            LogRecord::DeleteRecord { lsn, tx_id, page_id, slot_id, old_record_data, prev_lsn } => {
                 4u8.serialize(writer)?;
                 lsn.serialize(writer)?;
                 tx_id.serialize(writer)?;
-                prev_lsn.serialize(writer)?;
                 page_id.serialize(writer)?;
                 slot_id.serialize(writer)?;
-                data.serialize(writer)?;
+                old_record_data.serialize(writer)?;
+                prev_lsn.serialize(writer)?;
             }
-            LogRecord::Delete { lsn, tx_id, prev_lsn, page_id, slot_id, old_data } => {
+            LogRecord::UpdateRecord { lsn, tx_id, page_id, slot_id, old_record_data, new_record_data, prev_lsn } => {
                 5u8.serialize(writer)?;
                 lsn.serialize(writer)?;
                 tx_id.serialize(writer)?;
-                prev_lsn.serialize(writer)?;
                 page_id.serialize(writer)?;
                 slot_id.serialize(writer)?;
-                old_data.serialize(writer)?;
+                old_record_data.serialize(writer)?;
+                new_record_data.serialize(writer)?;
+                prev_lsn.serialize(writer)?;
             }
-            LogRecord::NewPage { lsn, tx_id, prev_lsn, page_id, page_type } => {
+            LogRecord::NewPage { lsn, tx_id, page_id, page_type, prev_lsn } => {
                 6u8.serialize(writer)?;
                 lsn.serialize(writer)?;
                 tx_id.serialize(writer)?;
-                prev_lsn.serialize(writer)?;
                 page_id.serialize(writer)?;
                 page_type.serialize(writer)?;
+                prev_lsn.serialize(writer)?;
             }
-            LogRecord::Checkpoint { lsn, active_transactions, dirty_pages } => {
+            LogRecord::CompensationLogRecord { lsn, tx_id, page_id, slot_id, undone_lsn, data_for_redo_of_undo, prev_lsn, next_undo_lsn } => {
                 7u8.serialize(writer)?;
+                lsn.serialize(writer)?;
+                tx_id.serialize(writer)?;
+                page_id.serialize(writer)?;
+                slot_id.serialize(writer)?;
+                undone_lsn.serialize(writer)?;
+                data_for_redo_of_undo.serialize(writer)?;
+                prev_lsn.serialize(writer)?;
+                next_undo_lsn.serialize(writer)?;
+            }
+            LogRecord::CheckpointBegin { lsn } => {
+                8u8.serialize(writer)?;
+                lsn.serialize(writer)?;
+            }
+            LogRecord::CheckpointEnd { lsn, active_transactions, dirty_pages } => {
+                9u8.serialize(writer)?;
                 lsn.serialize(writer)?;
                 active_transactions.serialize(writer)?;
                 dirty_pages.serialize(writer)?;
-            }
-            LogRecord::CompensationLogRecord { lsn, tx_id, undo_next_lsn, compensated_lsn } => {
-                8u8.serialize(writer)?;
-                lsn.serialize(writer)?;
-                tx_id.serialize(writer)?;
-                undo_next_lsn.serialize(writer)?;
-                compensated_lsn.serialize(writer)?;
             }
         }
         Ok(())
@@ -391,7 +398,6 @@ impl Deserialize for LogRecord {
             0 => Ok(LogRecord::BeginTransaction {
                 lsn: Lsn::deserialize(reader)?,
                 tx_id: TransactionId::deserialize(reader)?,
-                prev_lsn: Lsn::deserialize(reader)?,
             }),
             1 => Ok(LogRecord::CommitTransaction {
                 lsn: Lsn::deserialize(reader)?,
@@ -403,48 +409,55 @@ impl Deserialize for LogRecord {
                 tx_id: TransactionId::deserialize(reader)?,
                 prev_lsn: Lsn::deserialize(reader)?,
             }),
-            3 => Ok(LogRecord::Update {
+            3 => Ok(LogRecord::InsertRecord {
                 lsn: Lsn::deserialize(reader)?,
                 tx_id: TransactionId::deserialize(reader)?,
-                prev_lsn: Lsn::deserialize(reader)?,
                 page_id: PageId::deserialize(reader)?,
                 slot_id: SlotId::deserialize(reader)?,
-                old_data: Vec::<u8>::deserialize(reader)?,
-                new_data: Vec::<u8>::deserialize(reader)?,
+                record_data: Vec::<u8>::deserialize(reader)?,
+                prev_lsn: Lsn::deserialize(reader)?,
             }),
-            4 => Ok(LogRecord::Insert {
+            4 => Ok(LogRecord::DeleteRecord {
                 lsn: Lsn::deserialize(reader)?,
                 tx_id: TransactionId::deserialize(reader)?,
-                prev_lsn: Lsn::deserialize(reader)?,
                 page_id: PageId::deserialize(reader)?,
                 slot_id: SlotId::deserialize(reader)?,
-                data: Vec::<u8>::deserialize(reader)?,
+                old_record_data: Vec::<u8>::deserialize(reader)?,
+                prev_lsn: Lsn::deserialize(reader)?,
             }),
-            5 => Ok(LogRecord::Delete {
+            5 => Ok(LogRecord::UpdateRecord {
                 lsn: Lsn::deserialize(reader)?,
                 tx_id: TransactionId::deserialize(reader)?,
-                prev_lsn: Lsn::deserialize(reader)?,
                 page_id: PageId::deserialize(reader)?,
                 slot_id: SlotId::deserialize(reader)?,
-                old_data: Vec::<u8>::deserialize(reader)?,
+                old_record_data: Vec::<u8>::deserialize(reader)?,
+                new_record_data: Vec::<u8>::deserialize(reader)?,
+                prev_lsn: Lsn::deserialize(reader)?,
             }),
             6 => Ok(LogRecord::NewPage {
                 lsn: Lsn::deserialize(reader)?,
                 tx_id: TransactionId::deserialize(reader)?,
-                prev_lsn: Lsn::deserialize(reader)?,
                 page_id: PageId::deserialize(reader)?,
                 page_type: PageType::deserialize(reader)?,
+                prev_lsn: Lsn::deserialize(reader)?,
             }),
-            7 => Ok(LogRecord::Checkpoint {
+            7 => Ok(LogRecord::CompensationLogRecord {
+                lsn: Lsn::deserialize(reader)?,
+                tx_id: TransactionId::deserialize(reader)?,
+                page_id: PageId::deserialize(reader)?,
+                slot_id: Option::<SlotId>::deserialize(reader)?,
+                undone_lsn: Lsn::deserialize(reader)?,
+                data_for_redo_of_undo: Vec::<u8>::deserialize(reader)?,
+                prev_lsn: Lsn::deserialize(reader)?,
+                next_undo_lsn: Option::<Lsn>::deserialize(reader)?,
+            }),
+            8 => Ok(LogRecord::CheckpointBegin {
+                lsn: Lsn::deserialize(reader)?,
+            }),
+            9 => Ok(LogRecord::CheckpointEnd {
                 lsn: Lsn::deserialize(reader)?,
                 active_transactions: Vec::<ActiveTransactionInfo>::deserialize(reader)?,
                 dirty_pages: Vec::<DirtyPageInfo>::deserialize(reader)?,
-            }),
-            8 => Ok(LogRecord::CompensationLogRecord {
-                lsn: Lsn::deserialize(reader)?,
-                tx_id: TransactionId::deserialize(reader)?,
-                undo_next_lsn: Lsn::deserialize(reader)?,
-                compensated_lsn: Lsn::deserialize(reader)?,
             }),
             n => Err(OxidbError::Serialization(format!("Invalid LogRecord variant: {}", n))),
         }

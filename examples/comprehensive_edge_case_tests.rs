@@ -349,7 +349,7 @@ fn test_concurrent_write_operations() -> Result<(), OxidbError> {
     let results = Arc::new(Mutex::new(Vec::new()));
     let handles: Vec<_> = (0..3).map(|i| {
         let results_clone = Arc::clone(&results);
-        thread::spawn(move || {
+        thread::spawn(move || -> Result<(), OxidbError> {
             let mut conn = Connection::open_in_memory()?;
             conn.execute("CREATE TABLE IF NOT EXISTS concurrent_writes (id INTEGER PRIMARY KEY, thread_id INTEGER, value INTEGER)")?;
             
@@ -366,6 +366,7 @@ fn test_concurrent_write_operations() -> Result<(), OxidbError> {
                     }
                 }
             }
+            Ok(())
         })
     }).collect();
     

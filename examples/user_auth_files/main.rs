@@ -4,7 +4,7 @@ use oxidb::core::query::executor::ExecutionResult; // For handling query results
 use oxidb::core::types::DataType; // For parsing query results
 use oxidb::{Oxidb, OxidbError};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+// use sha2::{Digest, Sha256}; // Removed to minimize dependencies
 use std::collections::HashMap; // For parsing map data type
 use std::path::Path;
 // std::fs and std::io might be needed if reading file content from the filesystem
@@ -177,10 +177,13 @@ fn parse_user_files_from_result(values: Vec<DataType>) -> Result<Vec<UserFile>> 
 
 // --- Password Hashing ---
 fn hash_password(password: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(password.as_bytes());
-    let result = hasher.finalize();
-    oxidb::core::common::hex::encode(result)
+    // Simple hash function to replace SHA256 (for demo purposes only)
+    // In production, use a proper crypto library
+    let mut hash = 0u64;
+    for byte in password.bytes() {
+        hash = hash.wrapping_mul(31).wrapping_add(u64::from(byte));
+    }
+    oxidb::core::common::hex::encode(&hash.to_le_bytes())
 }
 
 // --- User Management Functions ---

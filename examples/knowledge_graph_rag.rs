@@ -4,7 +4,7 @@
 //! It shows how to build a knowledge graph with entities and relationships, then perform
 //! graph-based queries to retrieve connected information.
 
-use oxidb::{Oxidb, OxidbError};
+use oxidb::{Connection, OxidbError, QueryResult};
 use oxidb::core::types::{DataType, OrderedFloat, HashableVectorData, VectorData};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -71,16 +71,16 @@ struct GraphPath {
 }
 
 struct KnowledgeGraphDB {
-    db: Oxidb,
+    conn: Connection,
     embedding_dimension: usize,
 }
 
 impl KnowledgeGraphDB {
     fn new(db_path: &str, embedding_dimension: usize) -> Result<Self, OxidbError> {
-        let db = Oxidb::open(db_path)?;
+        let mut conn = Connection::open(db_path)?;
         
         // Create tables for entities and relationships
-        db.execute_sql("CREATE TABLE IF NOT EXISTS entities (
+        conn.execute("CREATE TABLE IF NOT EXISTS entities (
             id TEXT PRIMARY KEY,
             entity_type TEXT NOT NULL,
             name TEXT NOT NULL,
@@ -90,7 +90,7 @@ impl KnowledgeGraphDB {
             created_at TEXT
         )")?;
         
-        db.execute_sql("CREATE TABLE IF NOT EXISTS relationships (
+        conn.execute("CREATE TABLE IF NOT EXISTS relationships (
             id TEXT PRIMARY KEY,
             source_id TEXT NOT NULL,
             target_id TEXT NOT NULL,
@@ -103,16 +103,16 @@ impl KnowledgeGraphDB {
         )")?;
         
         // Create indexes for better performance
-        db.execute_sql("CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type)")?;
-        db.execute_sql("CREATE INDEX IF NOT EXISTS idx_relationships_source ON relationships(source_id)")?;
-        db.execute_sql("CREATE INDEX IF NOT EXISTS idx_relationships_target ON relationships(target_id)")?;
-        db.execute_sql("CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(relationship_type)")?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type)")?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_relationships_source ON relationships(source_id)")?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_relationships_target ON relationships(target_id)")?;
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(relationship_type)")?;
         
-        Ok(KnowledgeGraphDB { db, embedding_dimension })
+        Ok(KnowledgeGraphDB { conn, embedding_dimension })
     }
     
     // Entity management
-    fn add_entity(&self, entity: &Entity) -> Result<(), OxidbError> {
+    fn add_entity(&mut self, entity: &Entity) -> Result<(), OxidbError> {
         let properties_json = serde_json::to_string(&entity.properties).unwrap();
         let entity_type_str = serde_json::to_string(&entity.entity_type).unwrap();
         let embedding_str = format!("[{}]", entity.embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
@@ -129,23 +129,28 @@ impl KnowledgeGraphDB {
             entity.created_at.to_rfc3339()
         );
         
-        self.db.execute_sql(&sql)?;
+        self.conn.execute(&sql)?;
         Ok(())
     }
     
-    fn get_entity(&self, entity_id: &str) -> Result<Option<Entity>, OxidbError> {
+    fn get_entity(&mut self, entity_id: &str) -> Result<Option<Entity>, OxidbError> {
         let sql = format!("SELECT * FROM entities WHERE id = '{}'", entity_id);
-        let result = self.db.execute_sql(&sql)?;
+        let result = self.conn.execute(&sql)?;
         
-        if let Some(row) = result.rows.first() {
-            Ok(Some(self.row_to_entity(row)?))
-        } else {
-            Ok(None)
+        match result {
+            QueryResult::Data(data) => {
+                if let Some(row) = data.rows.first() {
+                    Ok(Some(self.row_to_entity(row)?))
+                } else {
+                    Ok(None)
+                }
+            }
+            _ => Ok(None)
         }
     }
     
     // Relationship management
-    fn add_relationship(&self, relationship: &Relationship) -> Result<(), OxidbError> {
+    fn add_relationship(&mut self, relationship: &Relationship) -> Result<(), OxidbError> {
         let properties_json = serde_json::to_string(&relationship.properties).unwrap();
         let rel_type_str = serde_json::to_string(&relationship.relationship_type).unwrap();
         
@@ -161,25 +166,30 @@ impl KnowledgeGraphDB {
             relationship.created_at.to_rfc3339()
         );
         
-        self.db.execute_sql(&sql)?;
+        self.conn.execute(&sql)?;
         Ok(())
     }
     
-    fn get_relationships(&self, entity_id: &str, direction: &str) -> Result<Vec<Relationship>, OxidbError> {
+    fn get_relationships(&mut self, entity_id: &str, direction: &str) -> Result<Vec<Relationship>, OxidbError> {
         let sql = match direction {
             "outgoing" => format!("SELECT * FROM relationships WHERE source_id = '{}'", entity_id),
             "incoming" => format!("SELECT * FROM relationships WHERE target_id = '{}'", entity_id),
             _ => format!("SELECT * FROM relationships WHERE source_id = '{}' OR target_id = '{}'", entity_id, entity_id),
         };
         
-        let result = self.db.execute_sql(&sql)?;
-        result.rows.iter()
-            .map(|row| self.row_to_relationship(row))
-            .collect()
+        let result = self.conn.execute(&sql)?;
+        match result {
+            QueryResult::Data(data) => {
+                data.rows.iter()
+                    .map(|row| self.row_to_relationship(row))
+                    .collect()
+            }
+            _ => Ok(Vec::new())
+        }
     }
     
     // Graph traversal
-    fn traverse_graph(&self, query: &GraphQuery) -> Result<Vec<GraphPath>, OxidbError> {
+    fn traverse_graph(&mut self, query: &GraphQuery) -> Result<Vec<GraphPath>, OxidbError> {
         let mut paths = Vec::new();
         let mut visited = HashSet::new();
         let mut queue = VecDeque::new();
@@ -248,7 +258,7 @@ impl KnowledgeGraphDB {
     }
     
     // Find similar entities using vector embeddings
-    fn find_similar_entities(&self, entity_id: &str, limit: usize) -> Result<Vec<Entity>, OxidbError> {
+    fn find_similar_entities(&mut self, entity_id: &str, limit: usize) -> Result<Vec<Entity>, OxidbError> {
         if let Some(entity) = self.get_entity(entity_id)? {
             let embedding_str = format!("[{}]", entity.embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
             
@@ -261,17 +271,22 @@ impl KnowledgeGraphDB {
                 embedding_str, entity_id, limit
             );
             
-            let result = self.db.execute_sql(&sql)?;
-            result.rows.iter()
-                .map(|row| self.row_to_entity(row))
-                .collect()
+            let result = self.conn.execute(&sql)?;
+            match result {
+                QueryResult::Data(data) => {
+                    data.rows.iter()
+                        .map(|row| self.row_to_entity(row))
+                        .collect()
+                }
+                _ => Ok(Vec::new())
+            }
         } else {
             Ok(vec![])
         }
     }
     
     // Find shortest path between two entities
-    fn find_shortest_path(&self, start_id: &str, end_id: &str) -> Result<Option<GraphPath>, OxidbError> {
+    fn find_shortest_path(&mut self, start_id: &str, end_id: &str) -> Result<Option<GraphPath>, OxidbError> {
         let mut visited = HashSet::new();
         let mut queue = VecDeque::new();
         
@@ -314,7 +329,35 @@ impl KnowledgeGraphDB {
     }
     
     // Helper methods
-    fn row_to_entity(&self, row: &[DataType]) -> Result<Entity, OxidbError> {
+    fn convert_value_to_datatype(value: &oxidb::Value) -> DataType {
+        match value {
+            oxidb::Value::Integer(i) => DataType::Integer(*i),
+            oxidb::Value::Float(f) => DataType::Float(OrderedFloat(*f)),
+            oxidb::Value::Text(s) => DataType::String(s.clone()),
+            oxidb::Value::Boolean(b) => DataType::Boolean(*b),
+            oxidb::Value::Blob(b) => DataType::RawBytes(b.clone()),
+            oxidb::Value::Vector(v) => {
+                let dimension = v.len() as u32;
+                if let Some(vector_data) = VectorData::new(dimension, v.clone()) {
+                    DataType::Vector(HashableVectorData(vector_data))
+                } else {
+                    DataType::RawBytes(v.iter().flat_map(|f| f.to_le_bytes().to_vec()).collect())
+                }
+            }
+            oxidb::Value::Null => DataType::Null,
+        }
+    }
+
+    fn row_to_datatype_vec(&self, row: &oxidb::Row) -> Vec<DataType> {
+        row.iter().map(Self::convert_value_to_datatype).collect()
+    }
+
+    fn row_to_entity(&self, row: &oxidb::Row) -> Result<Entity, OxidbError> {
+        let data = self.row_to_datatype_vec(row);
+        self.datatype_vec_to_entity(&data)
+    }
+    
+    fn datatype_vec_to_entity(&self, row: &[DataType]) -> Result<Entity, OxidbError> {
         Ok(Entity {
             id: self.get_string(&row[0])?,
             entity_type: serde_json::from_str(&self.get_string(&row[1])?).unwrap(),
@@ -328,7 +371,12 @@ impl KnowledgeGraphDB {
         })
     }
     
-    fn row_to_relationship(&self, row: &[DataType]) -> Result<Relationship, OxidbError> {
+    fn row_to_relationship(&self, row: &oxidb::Row) -> Result<Relationship, OxidbError> {
+        let data = self.row_to_datatype_vec(row);
+        self.datatype_vec_to_relationship(&data)
+    }
+    
+    fn datatype_vec_to_relationship(&self, row: &[DataType]) -> Result<Relationship, OxidbError> {
         Ok(Relationship {
             id: self.get_string(&row[0])?,
             source_id: self.get_string(&row[1])?,
@@ -346,7 +394,10 @@ impl KnowledgeGraphDB {
         match data {
             DataType::String(s) => Ok(s.clone()),
             DataType::Null => Ok(String::new()),
-            _ => Err(OxidbError::TypeMismatch),
+            _ => Err(OxidbError::TypeMismatch {
+                expected: "String".to_string(),
+                found: format!("{:?}", data)
+            }),
         }
     }
     
@@ -354,7 +405,10 @@ impl KnowledgeGraphDB {
         match data {
             DataType::Float(f) => Ok(f.0 as f32),
             DataType::Integer(i) => Ok(*i as f32),
-            _ => Err(OxidbError::TypeMismatch),
+            _ => Err(OxidbError::TypeMismatch {
+                expected: "Float or Integer".to_string(),
+                found: format!("{:?}", data)
+            }),
         }
     }
     
@@ -362,7 +416,10 @@ impl KnowledgeGraphDB {
         match data {
             DataType::Vector(v) => Ok(Some(v.0.data.clone())),
             DataType::Null => Ok(None),
-            _ => Err(OxidbError::TypeMismatch),
+            _ => Err(OxidbError::TypeMismatch {
+                expected: "Vector or Null".to_string(),
+                found: format!("{:?}", data)
+            }),
         }
     }
 }
@@ -393,7 +450,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Knowledge Graph RAG Example ===\n");
     
     let embedding_dim = 128;
-    let db = KnowledgeGraphDB::new("knowledge_graph.db", embedding_dim)?;
+    let mut db = KnowledgeGraphDB::new("knowledge_graph.db", embedding_dim)?;
     
     // Create entities
     let entities = vec![
@@ -582,7 +639,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let rel = &path.relationships[j - 1];
                 println!("  --[{:?}]--> ", rel.relationship_type);
             }
-            println!("  {}: {}", entity.entity_type as i32, entity.name);
+            println!("  {:?}: {}", entity.entity_type, entity.name);
         }
     }
     

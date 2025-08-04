@@ -332,7 +332,7 @@ mod tests {
             }
             let mut record_bytes = vec![0u8; len as usize];
             reader.read_exact(&mut record_bytes)?;
-            let record: LogRecord = bincode::deserialize(&record_bytes).map_err(|e| {
+                            let record: LogRecord = crate::core::common::bincode_compat::deserialize(&mut record_bytes.as_slice()).map_err(|e| {
                 IoError::new(IoErrorKind::InvalidData, format!("Deserialization failed: {}", e))
             })?;
             records.push(record);

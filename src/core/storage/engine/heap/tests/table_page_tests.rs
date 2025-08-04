@@ -302,7 +302,7 @@ fn test_insert_and_get_row_with_vector() {
     };
 
     // 2. Serialize this Row into Vec<u8> using bincode
-    let serialized_row = bincode::serialize(&original_row).expect("Failed to serialize row");
+    let serialized_row = crate::core::common::bincode_compat::serialize_to_vec(&original_row).expect("Failed to serialize row");
 
     // 3. Use TablePage::insert_record to store this Vec<u8>
     let slot_id =
@@ -320,7 +320,7 @@ fn test_insert_and_get_row_with_vector() {
 
     // 5. Deserialize the Vec<u8> back into a Row
     let retrieved_row: Row =
-        bincode::deserialize(&retrieved_serialized_row).expect("Failed to deserialize row");
+        crate::core::common::bincode_compat::deserialize(&mut retrieved_serialized_row.as_slice()).expect("Failed to deserialize row");
 
     // 6. Verify that the retrieved Row and its Value::Vector are identical to the original
     assert_eq!(original_row.values.len(), retrieved_row.values.len());

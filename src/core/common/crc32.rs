@@ -4,12 +4,6 @@
 //! the external crc32fast dependency, following the YAGNI principle
 //! by implementing only what we need for WAL checksums.
 
-#![no_std]
-extern crate alloc;
-
-use alloc::vec::Vec;
-use core::convert::TryInto;
-
 /// CRC32 polynomial used for checksum calculation (IEEE 802.3)
 const CRC32_POLYNOMIAL: u32 = 0xEDB8_8320;
 
@@ -99,7 +93,7 @@ pub fn verify(data: &[u8], expected: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::vec;
+    // use alloc::vec; // Not needed in std environment
     
     #[test]
     fn test_empty_input() {

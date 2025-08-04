@@ -1,40 +1,47 @@
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 pub enum HnswError {
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("Serialization error: {0}")]
+    Io(std::io::Error),
     Serialization(String),
-
-    #[error("Node not found: {0}")]
     NodeNotFound(usize),
-
-    #[error("Invalid vector: {0}")]
     InvalidVector(String),
-
-    #[error("Vector dimension mismatch: expected {expected}, got {actual}")]
     DimensionMismatch { expected: usize, actual: usize },
-
-    #[error("Graph error: {0}")]
     GraphError(String),
-
-    #[error("HNSW error: {0}")]
     Generic(String),
-
-    #[error("Layer index out of bounds: {index}")]
     LayerIndexOutOfBounds { index: usize },
-
-    #[error("Maximum connections exceeded: {current}/{max}")]
     MaxConnectionsExceeded { current: usize, max: usize },
-
-    #[error("Empty graph")]
     EmptyGraph,
-
-    #[error("Invalid entry point: {node_id}")]
     InvalidEntryPoint { node_id: usize },
 }
 
-// thiserror automatically generates From<std::io::Error> implementation
+impl std::fmt::Display for HnswError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io(e) => write!(f, "I/O error: {e}"),
+            Self::Serialization(e) => write!(f, "Serialization error: {e}"),
+            Self::NodeNotFound(id) => write!(f, "Node not found: {id}"),
+            Self::InvalidVector(msg) => write!(f, "Invalid vector: {msg}"),
+            Self::DimensionMismatch { expected, actual } => {
+                write!(f, "Vector dimension mismatch: expected {expected}, got {actual}")
+            }
+            Self::GraphError(msg) => write!(f, "Graph error: {msg}"),
+            Self::Generic(msg) => write!(f, "HNSW error: {msg}"),
+            Self::LayerIndexOutOfBounds { index } => write!(f, "Layer index out of bounds: {index}"),
+            Self::MaxConnectionsExceeded { current, max } => {
+                write!(f, "Maximum connections exceeded: {current}/{max}")
+            }
+            Self::EmptyGraph => write!(f, "Empty graph"),
+            Self::InvalidEntryPoint { node_id } => write!(f, "Invalid entry point: {node_id}"),
+        }
+    }
+}
+
+impl std::error::Error for HnswError {}
+
+impl From<std::io::Error> for HnswError {
+    fn from(e: std::io::Error) -> Self {
+        Self::Io(e)
+    }
+}
 
 // Result type alias for convenience
 pub type HnswResult<T> = Result<T, HnswError>;
