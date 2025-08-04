@@ -4,13 +4,7 @@
 
 use crate::core::common::types::ids::SlotId;
 use crate::core::common::OxidbError;
-use crate::core::storage::engine::heap::table_page::{
-    Slot,
-    TablePage,
-    SLOTS_ARRAY_DATA_OFFSET, // Make consts from TablePage pub(super) or pub if needed by tests directly
-                             // For now, assuming they might be needed for complex assertions or setup.
-                             // If tests only use public TablePage API, these are not needed.
-};
+use crate::core::storage::engine::heap::table_page::TablePage;
 
 // Helper function to create test page data, adjusted for new location
 fn create_test_page_data() -> Vec<u8> {
