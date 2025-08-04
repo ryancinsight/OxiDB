@@ -193,7 +193,13 @@ impl Serialize for Vec<ActiveTransactionInfo> {
 
 impl Deserialize for Vec<ActiveTransactionInfo> {
     fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
-        let len = u64::deserialize(reader)? as usize;
+        let len = u64::deserialize(reader)?;
+        if len > usize::MAX as u64 {
+            return Err(OxidbError::Deserialization(
+                "Vector length exceeds maximum size".to_string()
+            ));
+        }
+        let len = len as usize;
         let mut vec = Vec::with_capacity(len);
         for _ in 0..len {
             vec.push(ActiveTransactionInfo::deserialize(reader)?);
@@ -215,7 +221,13 @@ impl Serialize for Vec<DirtyPageInfo> {
 
 impl Deserialize for Vec<DirtyPageInfo> {
     fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
-        let len = u64::deserialize(reader)? as usize;
+        let len = u64::deserialize(reader)?;
+        if len > usize::MAX as u64 {
+            return Err(OxidbError::Deserialization(
+                "Vector length exceeds maximum size".to_string()
+            ));
+        }
+        let len = len as usize;
         let mut vec = Vec::with_capacity(len);
         for _ in 0..len {
             vec.push(DirtyPageInfo::deserialize(reader)?);
@@ -259,7 +271,20 @@ impl Serialize for Vec<f32> {
 
 impl Deserialize for Vec<f32> {
     fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
-        let len = u64::deserialize(reader)? as usize;
+        let len = u64::deserialize(reader)?;
+        if len > usize::MAX as u64 {
+            return Err(OxidbError::Deserialization(
+                "Vector length exceeds maximum size".to_string()
+            ));
+        }
+        // Additional safety check: prevent excessive allocations (1GB limit for f32 vec)
+        const MAX_ELEMENTS: u64 = 256 * 1024 * 1024; // 256M elements = 1GB for f32
+        if len > MAX_ELEMENTS {
+            return Err(OxidbError::Deserialization(
+                format!("Vector length {} exceeds maximum allowed elements {}", len, MAX_ELEMENTS)
+            ));
+        }
+        let len = len as usize;
         let mut vec = Vec::with_capacity(len);
         for _ in 0..len {
             vec.push(f32::deserialize(reader)?);
@@ -302,7 +327,13 @@ impl Serialize for Vec<Value> {
 
 impl Deserialize for Vec<Value> {
     fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
-        let len = u64::deserialize(reader)? as usize;
+        let len = u64::deserialize(reader)?;
+        if len > usize::MAX as u64 {
+            return Err(OxidbError::Deserialization(
+                "Vector length exceeds maximum size".to_string()
+            ));
+        }
+        let len = len as usize;
         let mut vec = Vec::with_capacity(len);
         for _ in 0..len {
             vec.push(Value::deserialize(reader)?);
