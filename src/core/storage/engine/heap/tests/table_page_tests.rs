@@ -348,3 +348,35 @@ fn test_insert_and_get_row_with_vector() {
         }
     }
 }
+
+#[test]
+fn test_get_record_view_matches_get_record() {
+    use super::*;
+    // If the TablePage in this test mod is not the one with borrow/view API, update import as needed
+    // (Assume TablePage implements: insert_record, get_record, get_record_view)
+    let mut table_page = TablePage::new_for_test();
+    let records = vec![
+        vec![1u8, 2, 3],
+        vec![4u8, 5, 6],
+        vec![7u8, 8, 9],
+    ];
+    let mut handles = Vec::new();
+
+    for record in &records {
+        let handle = table_page.insert_record(record.clone()).expect("Insert should succeed");
+        handles.push(handle);
+    }
+
+    for (i, handle) in handles.iter().enumerate() {
+        let view = table_page.get_record_view(*handle).expect("View should exist");
+        let owned = table_page.get_record(*handle).expect("Owned should exist");
+        // The view and the owned value should match
+        assert_eq!(view, &owned);
+        // Additionally, view should match the original data
+        assert_eq!(view, &records[i]);
+        // Compile-time borrow check: view must live until after owned is dropped
+        let _borrowed = view;
+        let _owned_value = owned;
+        // If this compiles, the borrow survives this scope.
+    }
+}
