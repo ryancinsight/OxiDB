@@ -360,43 +360,6 @@ impl QueryResult {
     }
 }
 
-impl QueryResultData {
-    /// Creates new query result data
-    #[must_use]
-    pub const fn new(columns: Vec<String>, rows: Vec<Row>) -> Self {
-        Self { columns, rows }
-    }
-
-    /// Returns the number of columns
-    #[must_use]
-    pub fn column_count(&self) -> usize {
-        self.columns.len()
-    }
-
-    /// Returns the number of rows
-    #[must_use]
-    pub fn row_count(&self) -> usize {
-        self.rows.len()
-    }
-
-    /// Gets a row by its index
-    #[must_use]
-    pub fn get_row(&self, index: usize) -> Option<&Row> {
-        self.rows.get(index)
-    }
-
-    /// Returns an iterator over the rows
-    pub fn rows(&self) -> std::slice::Iter<Row> {
-        self.rows.iter()
-    }
-
-    /// Returns the column names
-    #[must_use]
-    pub fn columns(&self) -> &[String] {
-        &self.columns
-    }
-}
-
 // Example (to be expanded later):
 // pub struct ApiRequest { /* ... */ }
 // pub enum ApiResponse { /* ... */ }
