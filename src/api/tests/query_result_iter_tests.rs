@@ -2,17 +2,21 @@
 mod tests {
     use super::*;
     use crate::api::{QueryResultData, Row};
+    use crate::core::common::types::Value;
 
     #[test]
     fn test_rows_iter_yields_all_rows() {
-        // Construct QueryResultData with 3 rows
-        let row1 = Row::new(vec![1.into(), 2.into()]);
-        let row2 = Row::new(vec![3.into(), 4.into()]);
-        let row3 = Row::new(vec![5.into(), 6.into()]);
-        let data = QueryResultData::new(vec![row1, row2, row3]);
+        // Construct QueryResultData with 3 rows and explicit columns
+        let row1 = Row::new(vec![Value::Integer(1), Value::Integer(2)]);
+        let row2 = Row::new(vec![Value::Integer(3), Value::Integer(4)]);
+        let row3 = Row::new(vec![Value::Integer(5), Value::Integer(6)]);
+        let data = QueryResultData::new(
+            vec!["c1".to_string(), "c2".to_string()],
+            vec![row1.clone(), row2.clone(), row3.clone()],
+        );
 
-        let iter_count = data.rows_iter().collect::<Vec<_>>().len();
-        let into_iter_count = data.clone().into_iter().collect::<Vec<_>>().len();
+        let iter_count = data.rows_iter().count();
+        let into_iter_count = data.clone().into_iter().count();
 
         assert_eq!(iter_count, 3);
         assert_eq!(into_iter_count, 3);
