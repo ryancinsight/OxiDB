@@ -51,49 +51,39 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for TableScanOp
 
         let table_name = self.table_name.clone();
         let schema = self.schema.clone();
-        let iterator = all_kvs.into_iter().filter_map(move |(key_bytes, value_bytes)| {
-            // Filter out schema keys (and potentially other internal metadata)
-            if key_bytes.starts_with(b"_schema_") {
-                return None; // Skip schema entries
-            }
+        let iterator = all_kvs
+    .into_iter()
+    .filter(|(key_bytes, _)| {
+        // Filter out schema keys and non-table entries
+        !key_bytes.starts_with(b"_schema_") &&
+        String::from_utf8_lossy(key_bytes).starts_with(&table_name)
+    })
+    .map(move |(key_bytes, value_bytes)| {
+        match deserialize_data_type(&value_bytes) {
+            Ok(DataType::Map(map_data)) => {
+                // Use map/collect instead of imperative for-loop
+                let tuple: Vec<DataType> = schema.columns.iter()
+                    .map(|col_def| {
+                        let col_name_bytes = col_def.name.as_bytes();
+                        map_data.0.get(col_name_bytes)
+                            .cloned()
+                            .unwrap_or(DataType::Null)
+                    })
+                    .collect();
+                Ok(tuple)
+            },
+            Ok(other) => Err(OxidbError::Internal(format!(
+                "Expected DataType::Map for row data, got {:?}",
+                other
+            ))),
+            Err(e) => Err(OxidbError::Deserialization(format!(
+                "Failed to deserialize row data for key {:?}: {}",
+                String::from_utf8_lossy(&key_bytes),
+                e
+            ))),
+        }
+    });
 
-            // Filter by table name - keys should start with the table name
-            let key_str = String::from_utf8_lossy(&key_bytes);
-            if !key_str.starts_with(&table_name) {
-                return None; // Skip entries from other tables
-            }
-
-            match deserialize_data_type(&value_bytes) {
-                Ok(row_data_type) => {
-                    // Extract the Map from the row data
-                    if let DataType::Map(map_data) = row_data_type {
-                        // Create a tuple with column values in schema order
-                        let mut tuple = Vec::with_capacity(schema.columns.len());
-                        
-                        for col_def in &schema.columns {
-                            let col_name_bytes = col_def.name.as_bytes();
-                            let value = map_data.0.get(col_name_bytes)
-                                .cloned()
-                                .unwrap_or(DataType::Null);
-                            tuple.push(value);
-                        }
-                        
-                        Some(Ok(tuple))
-                    } else {
-                        Some(Err(OxidbError::Internal(format!(
-                            "Expected DataType::Map for row data, got {:?}",
-                            row_data_type
-                        ))))
-                    }
-                }
-                Err(e) => Some(Err(OxidbError::Deserialization(format!(
-                    "Failed to deserialize row data for key {:?}: {}",
-                    String::from_utf8_lossy(&key_bytes),
-                    e
-                )))),
-            }
-        });
-
-        Ok(Box::new(iterator))
+Ok(Box::new(iterator))
     }
 }

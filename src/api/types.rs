@@ -38,6 +38,66 @@ pub struct QueryResultData {
     pub rows: Vec<Row>,
 }
 
+impl QueryResultData {
+    /// Creates new query result data
+    #[must_use]
+    pub const fn new(columns: Vec<String>, rows: Vec<Row>) -> Self {
+        Self { columns, rows }
+    }
+
+    /// Returns the number of columns
+    #[must_use]
+    pub fn column_count(&self) -> usize {
+        self.columns.len()
+    }
+
+    /// Returns the number of rows
+    #[must_use]
+    pub fn row_count(&self) -> usize {
+        self.rows.len()
+    }
+
+    /// Gets a row by its index
+    #[must_use]
+    pub fn get_row(&self, index: usize) -> Option<&Row> {
+        self.rows.get(index)
+    }
+
+    /// Returns an iterator over the rows (deprecated, use [`rows_iter`] or IntoIterator)
+    #[deprecated(
+        since = "0.2.0", 
+        note = "Use `rows_iter()` or IntoIterator for row iteration."
+    )]
+    pub fn rows(&self) -> std::slice::Iter<Row> {
+        self.rows.iter()
+    }
+
+    /// Returns a zero-cost iterator over the rows.
+    ///
+    /// # Errors
+    /// This method does not produce errors.
+    #[must_use]
+    pub fn rows_iter(&self) -> crate::core::zero_cost::RowIterator<'_, Row> {
+        crate::core::zero_cost::RowIterator::new(&self.rows)
+    }
+
+    /// Returns the column names
+    #[must_use]
+    pub fn columns(&self) -> &[String] {
+        &self.columns
+    }
+}
+
+/// Enables iteration over QueryResultData rows via IntoIterator.
+impl<'a> IntoIterator for &'a QueryResultData {
+    type Item = &'a Row;
+    type IntoIter = crate::core::zero_cost::RowIterator<'a, Row>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.rows_iter()
+    }
+}
+
 /// A single row of query results
 #[derive(Debug, Clone, PartialEq)]
 pub struct Row {
@@ -80,9 +140,32 @@ impl Row {
         self.values.is_empty()
     }
 
-    /// Returns an iterator over the values in this row
+    /// Returns an iterator over the values in this row (deprecated, use IntoIterator)
+    #[deprecated(
+        since = "0.2.0",
+        note = "Use IntoIterator for value iteration"
+    )]
     pub fn iter(&self) -> std::slice::Iter<crate::core::common::types::Value> {
         self.values.iter()
+    }
+
+    /// Returns a zero-cost iterator over the values in this row.
+    ///
+    /// # Errors
+    /// This method does not produce errors.
+    #[must_use]
+    pub fn values_iter(&self) -> crate::core::zero_cost::RowIterator<'_, crate::core::common::types::Value> {
+        crate::core::zero_cost::RowIterator::new(&self.values)
+    }
+}
+
+/// Enables iteration over Row values via IntoIterator.
+impl<'a> IntoIterator for &'a Row {
+    type Item = &'a crate::core::common::types::Value;
+    type IntoIter = crate::core::zero_cost::RowIterator<'a, crate::core::common::types::Value>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.values_iter()
     }
 }
 
