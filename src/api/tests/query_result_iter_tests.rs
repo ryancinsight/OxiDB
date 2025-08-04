@@ -1,6 +1,5 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::api::{QueryResultData, Row};
     use crate::core::common::types::Value;
 
@@ -16,7 +15,7 @@ mod tests {
         );
 
         let iter_count = data.rows_iter().count();
-        let into_iter_count = data.clone().into_iter().count();
+        let into_iter_count = (&data).into_iter().count();
 
         assert_eq!(iter_count, 3);
         assert_eq!(into_iter_count, 3);
@@ -30,7 +29,7 @@ mod tests {
         let iter_vals = row.values_iter().cloned().collect::<Vec<_>>();
         assert_eq!(iter_vals, vals);
 
-        let into_iter_vals = Row::new(vals.clone()).into_iter().collect::<Vec<_>>();
+        let into_iter_vals = row.into_iter().cloned().collect::<Vec<_>>();
         assert_eq!(into_iter_vals, vals);
     }
 }
