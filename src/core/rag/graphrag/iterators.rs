@@ -179,7 +179,7 @@ where
 
 /// Iterator adapter for taking top K results
 pub struct TopK<I> {
-    inner: I,
+    inner: Option<I>,
     k: usize,
     collected: Vec<(NodeId, f64)>,
     index: usize,
@@ -191,7 +191,7 @@ where
 {
     fn new(inner: I, k: usize) -> Self {
         Self {
-            inner,
+            inner: Some(inner),
             k,
             collected: Vec::new(),
             index: 0,
@@ -208,11 +208,14 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         // Collect and sort on first call
         if self.collected.is_empty() && self.index == 0 {
-            self.collected = self.inner.collect();
-            self.collected.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-            self.collected.truncate(self.k);
+            if let Some(inner) = self.inner.take() {
+                self.collected = inner.collect();
+                self.collected.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                self.collected.truncate(self.k);
+            }
         }
 
+        // Return next item from collected results
         if self.index < self.collected.len() {
             let result = self.collected[self.index];
             self.index += 1;

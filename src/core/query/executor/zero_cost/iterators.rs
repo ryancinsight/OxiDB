@@ -1,10 +1,7 @@
-//! Zero-cost iterators for efficient query processing
+//! Zero-cost iterator adapters for query processing
 //!
-//! This module provides iterator abstractions that:
-//! - Avoid intermediate allocations
-//! - Use lazy evaluation for efficiency
-//! - Support chaining and composition
-//! - Follow Rust's zero-cost abstraction principles
+//! Provides efficient, allocation-free iteration over query results
+//! using Rust's iterator ecosystem.
 
 use super::Row;
 use crate::core::types::DataType;
@@ -109,6 +106,7 @@ pub struct WindowIterator<I> {
     inner: I,
     window_size: usize,
     buffer: Vec<Vec<DataType>>,
+    #[allow(dead_code)]
     index: usize,
 }
 
@@ -249,6 +247,7 @@ pub trait QueryIteratorExt<'a>: Iterator<Item = Row<'a>> + Sized {
 impl<'a, I> QueryIteratorExt<'a> for I where I: Iterator<Item = Row<'a>> + Sized {}
 
 /// Aggregate iterator for computing aggregates without collecting
+#[allow(dead_code)]
 pub struct AggregateIterator<I, A> {
     inner: I,
     aggregator: A,
@@ -309,7 +308,7 @@ impl<'a> Aggregator<'a> for SumAggregator {
         if let Some(value) = row.get(self.column_index) {
             match value {
                 DataType::Integer(i) => self.sum += *i as f64,
-                DataType::Float(f) => self.sum += f,
+                DataType::Float(ordered_float) => self.sum += ordered_float.0,
                 _ => {} // Ignore non-numeric values
             }
         }

@@ -111,12 +111,11 @@ pub struct Embedding {
     pub model: String,
 }
 
-/// Edge information for internal use
-#[derive(Debug, Clone)]
+/// Edge information for graph traversal
+#[allow(dead_code)]
 pub(super) struct EdgeInfo {
-    pub edge_id: EdgeId,
     pub source: NodeId,
     pub target: NodeId,
-    pub relationship_type: String,
+    pub edge_type: String,
     pub weight: f64,
 }

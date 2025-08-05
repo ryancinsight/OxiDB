@@ -12,9 +12,7 @@ impl QueryValidator for SyntaxValidator {
     fn validate(&self, query: &str) -> Result<(), OxidbError> {
         // TODO: Implement syntax validation
         if query.trim().is_empty() {
-            return Err(OxidbError::InvalidQuery {
-                message: "Empty query".to_string(),
-            });
+            return Err(OxidbError::SqlParsing("Empty query".to_string()));
         }
         Ok(())
     }

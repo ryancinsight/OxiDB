@@ -16,7 +16,6 @@ pub mod validators;
 pub mod transformers;
 
 /// Zero-cost wrapper for query results that avoids unnecessary allocations
-#[derive(Debug)]
 pub struct QueryResult<'a> {
     /// Column names - can be borrowed or owned
     pub columns: Cow<'a, [String]>,

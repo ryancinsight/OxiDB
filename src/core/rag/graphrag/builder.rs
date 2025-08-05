@@ -69,13 +69,13 @@ impl GraphRAGEngineBuilder {
 
     /// Build the GraphRAG engine
     pub fn build(self) -> Result<GraphRAGEngineImpl, OxidbError> {
-        let graph_store = self.graph_store.ok_or_else(|| OxidbError::Configuration {
-            message: "Graph store not configured".to_string(),
-        })?;
+        let graph_store = self.graph_store.ok_or_else(|| OxidbError::Configuration(
+            "Graph store not configured".to_string()
+        ))?;
 
-        let embedder = self.embedder.ok_or_else(|| OxidbError::Configuration {
-            message: "Embedding model not configured".to_string(),
-        })?;
+        let embedder = self.embedder.ok_or_else(|| OxidbError::Configuration(
+            "Embedding model not configured".to_string()
+        ))?;
 
         Ok(GraphRAGEngineImpl::new(graph_store, embedder, self.config))
     }

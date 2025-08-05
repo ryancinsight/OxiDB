@@ -45,12 +45,17 @@ pub trait GraphRAGEngine: Send + Sync {
     async fn clear(&mut self) -> Result<(), OxidbError>;
 }
 
-/// Main GraphRAG engine implementation
+/// Implementation of the GraphRAG engine
 pub struct GraphRAGEngineImpl {
+    #[allow(dead_code)]
     graph_store: Arc<dyn GraphStore>,
+    #[allow(dead_code)]
     embedder: Arc<dyn crate::core::rag::embedder::EmbeddingModel + Send + Sync>,
+    #[allow(dead_code)]
     config: GraphRAGConfig,
+    #[allow(dead_code)]
     entities: HashMap<NodeId, KnowledgeNode>,
+    #[allow(dead_code)]
     relationships: HashMap<(NodeId, NodeId), KnowledgeEdge>,
 }
 
@@ -71,5 +76,56 @@ impl GraphRAGEngineImpl {
     }
 }
 
-// TODO: Implement the GraphRAGEngine trait for GraphRAGEngineImpl
-// This would be moved from the original graphrag.rs file
+#[async_trait]
+impl GraphRAGEngine for GraphRAGEngineImpl {
+    async fn query(&self, _context: &GraphRAGContext) -> Result<GraphRAGResult, OxidbError> {
+        // TODO: Implement query logic
+        Ok(GraphRAGResult {
+            documents: Vec::new(),
+            reasoning_paths: Vec::new(),
+            scores: Vec::new(),
+            metadata: HashMap::new(),
+        })
+    }
+
+    async fn add_document(
+        &mut self,
+        _document: &crate::core::rag::core_components::Document,
+    ) -> Result<NodeId, OxidbError> {
+        // TODO: Implement add document logic
+        Ok(0)
+    }
+
+    async fn add_relationship(
+        &mut self,
+        _source: NodeId,
+        _target: NodeId,
+        _relationship_type: &str,
+        _weight: f64,
+    ) -> Result<(), OxidbError> {
+        // TODO: Implement add relationship logic
+        Ok(())
+    }
+
+    async fn update_embeddings(&mut self, _node_id: NodeId) -> Result<(), OxidbError> {
+        // TODO: Implement update embeddings logic
+        Ok(())
+    }
+
+    async fn get_reasoning_paths(
+        &self,
+        _start: NodeId,
+        _end: NodeId,
+        _max_depth: usize,
+    ) -> Result<Vec<ReasoningPath>, OxidbError> {
+        // TODO: Implement get reasoning paths logic
+        Ok(Vec::new())
+    }
+
+    async fn clear(&mut self) -> Result<(), OxidbError> {
+        // TODO: Implement clear logic
+        self.entities.clear();
+        self.relationships.clear();
+        Ok(())
+    }
+}

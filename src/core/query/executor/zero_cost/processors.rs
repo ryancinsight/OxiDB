@@ -1,21 +1,19 @@
-//! Query processors following Single Responsibility Principle
+//! Query processors for different query types
 //!
-//! Each processor handles a specific type of query operation.
+//! Each processor handles a specific type of query (SELECT, INSERT, etc.)
 
 use super::{QueryProcessor, QueryResult};
 use crate::core::common::OxidbError;
 use crate::core::types::DataType;
 
 /// Processor for SELECT queries
-pub struct SelectProcessor {
-    // Add fields as needed
-}
+pub struct SelectProcessor;
 
 impl QueryProcessor for SelectProcessor {
     fn process<'a>(
         &self,
-        query: &'a str,
-        params: &[DataType],
+        _query: &'a str,
+        _params: &[DataType],
     ) -> Result<QueryResult<'a>, OxidbError> {
         // TODO: Implement SELECT processing
         todo!("Implement SELECT processing")
