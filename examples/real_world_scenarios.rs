@@ -64,14 +64,14 @@ struct DatabaseRepository {
 
 impl DatabaseRepository {
     fn new() -> Result<Self, OxidbError> {
-        let conn = Connection::new(":memory:")?;
+        let conn = Connection::open_in_memory()?;
         Ok(Self {
             connection: Arc::new(Mutex::new(conn)),
         })
     }
 
     fn setup_schema(&self) -> Result<(), OxidbError> {
-        let conn = self.connection.lock().unwrap();
+        let mut conn = self.connection.lock().unwrap();
         
         // Users table
         conn.execute("CREATE TABLE IF NOT EXISTS users (
@@ -114,7 +114,7 @@ impl DatabaseRepository {
 
 impl UserRepository for DatabaseRepository {
     fn create_user(&self, user: &User) -> Result<(), OxidbError> {
-        let conn = self.connection.lock().unwrap();
+        let mut conn = self.connection.lock().unwrap();
         conn.execute(&format!(
             "INSERT INTO users (id, username, email, created_at, is_active) VALUES ({}, '{}', '{}', '{}', {})",
             user.id, user.username, user.email, user.created_at, user.is_active
@@ -124,7 +124,7 @@ impl UserRepository for DatabaseRepository {
 
     fn find_user_by_email(&self, email: &str) -> Result<Option<User>, OxidbError> {
         let conn = self.connection.lock().unwrap();
-        let result = conn.query(&format!("SELECT * FROM users WHERE email = '{}'", email))?;
+        let result = conn.query_all(&format!("SELECT * FROM users WHERE email = '{}'", email))?;
         
         if result.rows.is_empty() {
             Ok(None)
@@ -141,7 +141,7 @@ impl UserRepository for DatabaseRepository {
     }
 
     fn update_user_status(&self, user_id: u64, is_active: bool) -> Result<(), OxidbError> {
-        let conn = self.connection.lock().unwrap();
+        let mut conn = self.connection.lock().unwrap();
         conn.execute(&format!(
             "UPDATE users SET is_active = {} WHERE id = {}",
             is_active, user_id
@@ -152,7 +152,7 @@ impl UserRepository for DatabaseRepository {
 
 impl ProductRepository for DatabaseRepository {
     fn create_product(&self, product: &Product) -> Result<(), OxidbError> {
-        let conn = self.connection.lock().unwrap();
+        let mut conn = self.connection.lock().unwrap();
         conn.execute(&format!(
             "INSERT INTO products (id, name, price, category, stock_quantity, description) VALUES ({}, '{}', {}, '{}', {}, '{}')",
             product.id, product.name, product.price, product.category, product.stock_quantity, product.description
@@ -162,7 +162,7 @@ impl ProductRepository for DatabaseRepository {
 
     fn find_products_by_category(&self, category: &str) -> Result<Vec<Product>, OxidbError> {
         let conn = self.connection.lock().unwrap();
-        let result = conn.query(&format!("SELECT * FROM products WHERE category = '{}'", category))?;
+        let result = conn.query_all(&format!("SELECT * FROM products WHERE category = '{}'", category))?;
         
         let mut products = Vec::new();
         for row in result.rows {
@@ -179,7 +179,7 @@ impl ProductRepository for DatabaseRepository {
     }
 
     fn update_stock(&self, product_id: u64, new_quantity: i32) -> Result<(), OxidbError> {
-        let conn = self.connection.lock().unwrap();
+        let mut conn = self.connection.lock().unwrap();
         conn.execute(&format!(
             "UPDATE products SET stock_quantity = {} WHERE id = {}",
             new_quantity, product_id
@@ -190,7 +190,7 @@ impl ProductRepository for DatabaseRepository {
 
 impl OrderRepository for DatabaseRepository {
     fn create_order(&self, order: &Order) -> Result<(), OxidbError> {
-        let conn = self.connection.lock().unwrap();
+        let mut conn = self.connection.lock().unwrap();
         let product_ids_json = serde_json::to_string(&order.product_ids).unwrap_or_default();
         conn.execute(&format!(
             "INSERT INTO orders (id, user_id, product_ids, total_amount, status, created_at) VALUES ({}, {}, '{}', {}, '{}', '{}')",
@@ -201,7 +201,7 @@ impl OrderRepository for DatabaseRepository {
 
     fn find_orders_by_user(&self, user_id: u64) -> Result<Vec<Order>, OxidbError> {
         let conn = self.connection.lock().unwrap();
-        let result = conn.query(&format!("SELECT * FROM orders WHERE user_id = {}", user_id))?;
+        let result = conn.query_all(&format!("SELECT * FROM orders WHERE user_id = {}", user_id))?;
         
         let mut orders = Vec::new();
         for row in result.rows {
@@ -221,7 +221,7 @@ impl OrderRepository for DatabaseRepository {
     }
 
     fn update_order_status(&self, order_id: u64, status: &str) -> Result<(), OxidbError> {
-        let conn = self.connection.lock().unwrap();
+        let mut conn = self.connection.lock().unwrap();
         conn.execute(&format!(
             "UPDATE orders SET status = '{}' WHERE id = {}",
             status, order_id
@@ -250,10 +250,10 @@ impl ECommerceService {
     fn process_order(&self, user_email: &str, product_ids: Vec<u64>) -> Result<u64, OxidbError> {
         // Validate user exists and is active
         let user = self.user_repo.find_user_by_email(user_email)?
-            .ok_or_else(|| OxidbError::InvalidInput("User not found".to_string()))?;
+            .ok_or_else(|| OxidbError::InvalidInput { message: "User not found".to_string() })?;
         
         if !user.is_active {
-            return Err(OxidbError::InvalidInput("User account is inactive".to_string()));
+            return Err(OxidbError::InvalidInput { message: "User account is inactive".to_string() });
         }
 
         // Calculate total amount and validate stock
@@ -279,7 +279,7 @@ impl ECommerceService {
 
     fn get_user_order_history(&self, user_email: &str) -> Result<Vec<Order>, OxidbError> {
         let user = self.user_repo.find_user_by_email(user_email)?
-            .ok_or_else(|| OxidbError::InvalidInput("User not found".to_string()))?;
+            .ok_or_else(|| OxidbError::InvalidInput { message: "User not found".to_string() })?;
         
         self.order_repo.find_orders_by_user(user.id)
     }
@@ -364,7 +364,7 @@ fn run_ecommerce_scenario() -> Result<(), OxidbError> {
 
     // Test order processing with inactive user (should fail)
     match service.process_order("bob@example.com", vec![1]) {
-        Err(OxidbError::InvalidInput(msg)) if msg.contains("inactive") => {
+        Err(OxidbError::InvalidInput { message }) if message.contains("inactive") => {
             println!("✅ Correctly rejected order for inactive user");
         }
         _ => println!("❌ Should have rejected order for inactive user"),
@@ -491,7 +491,7 @@ fn run_analytics_scenario() -> Result<(), OxidbError> {
             name: format!("Product {}", i),
             price: (i as f64) * 10.0 + 9.99,
             category: categories[(i as usize - 1) % categories.len()].to_string(),
-            stock_quantity: (i * 10) % 100,
+            stock_quantity: ((i * 10) % 100) as i32,
             description: format!("Description for product {}", i),
         };
         repo.create_product(&product)?;

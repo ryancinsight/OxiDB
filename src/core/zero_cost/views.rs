@@ -1,668 +1,354 @@
-// src/core/zero_cost/views.rs
-//! Zero-copy view abstractions for database data structures
+//! Zero-copy views for database data structures
+//! 
+//! This module provides view types that allow accessing data without copying,
+//! enabling efficient data processing with minimal memory overhead.
 
+use std::borrow::Cow;
+use std::ops::{Deref, Index};
+use std::slice;
+use crate::core::common::types::Value;
+use crate::api::types::Row;
 
-use std::ops::{Index, Range};
-use crate::core::types::DataType;
-
-/// Zero-copy view of a database row
+/// Zero-copy view over a row's values
 #[derive(Debug)]
 pub struct RowView<'a> {
-    data: &'a [DataType],
-    column_names: &'a [String],
+    values: &'a [Value],
 }
 
 impl<'a> RowView<'a> {
     /// Create a new row view
     #[inline]
-    pub const fn new(data: &'a [DataType], column_names: &'a [String]) -> Self {
-        Self { data, column_names }
+    pub const fn new(values: &'a [Value]) -> Self {
+        Self { values }
     }
     
-    /// Get column count
+    /// Get a value by column index
     #[inline]
-    pub fn column_count(&self) -> usize {
-        self.data.len()
+    pub fn get(&self, index: usize) -> Option<&'a Value> {
+        self.values.get(index)
     }
     
-    /// Get column by index
+    /// Get the number of columns
     #[inline]
-    pub fn get_column(&self, index: usize) -> Option<&'a DataType> {
-        self.data.get(index)
+    pub const fn len(&self) -> usize {
+        self.values.len()
     }
     
-    /// Get column by name
-    pub fn get_column_by_name(&self, name: &str) -> Option<&'a DataType> {
-        self.column_names
+    /// Check if the row is empty
+    #[inline]
+    pub const fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+    
+    /// Iterate over values
+    #[inline]
+    pub fn iter(&self) -> slice::Iter<'a, Value> {
+        self.values.iter()
+    }
+    
+    /// Project specific columns
+    #[inline]
+    pub fn project(&self, indices: &[usize]) -> Vec<&'a Value> {
+        indices
             .iter()
-            .position(|col_name| col_name == name)
-            .and_then(|index| self.data.get(index))
-    }
-    
-    /// Get column names
-    #[inline]
-    pub const fn column_names(&self) -> &'a [String] {
-        self.column_names
-    }
-    
-    /// Iterate over columns
-    #[inline]
-    pub fn columns(&self) -> impl Iterator<Item = (&'a String, &'a DataType)> {
-        self.column_names.iter().zip(self.data.iter())
-    }
-    
-    /// Create a projection view with selected columns
-    pub fn project<'b>(&'b self, column_indices: &'b [usize]) -> ProjectedRowView<'b>
-    where
-        'a: 'b,
-    {
-        ProjectedRowView::new(self.data, self.column_names, column_indices)
+            .filter_map(|&idx| self.get(idx))
+            .collect()
     }
 }
 
 impl<'a> Index<usize> for RowView<'a> {
-    type Output = DataType;
+    type Output = Value;
     
     #[inline]
     fn index(&self, index: usize) -> &Self::Output {
-        &self.data[index]
+        &self.values[index]
     }
 }
 
-/// Zero-copy projected view of a row with selected columns
-#[derive(Debug)]
-pub struct ProjectedRowView<'a> {
-    full_row_data: &'a [DataType],
-    all_column_names: &'a [String],
-    projection_indices: &'a [usize],
-}
-
-impl<'a> ProjectedRowView<'a> {
-    /// Create a new projected row view
-    #[inline]
-    pub const fn new(
-        full_row_data: &'a [DataType],
-        all_column_names: &'a [String],
-        projection_indices: &'a [usize],
-    ) -> Self {
-        Self {
-            full_row_data,
-            all_column_names,
-            projection_indices,
-        }
-    }
-    
-    /// Get column count in projection
-    #[inline]
-    pub fn column_count(&self) -> usize {
-        self.projection_indices.len()
-    }
-    
-    /// Get column by projection index
-    #[inline]
-    pub fn get_column(&self, proj_index: usize) -> Option<&'a DataType> {
-        self.projection_indices
-            .get(proj_index)
-            .and_then(|&actual_index| self.full_row_data.get(actual_index))
-    }
-    
-    /// Iterate over projected columns
-    pub fn columns(&self) -> impl Iterator<Item = (&'a String, &'a DataType)> + '_ {
-        self.projection_indices.iter().filter_map(move |&index| {
-            self.all_column_names.get(index)
-                .zip(self.full_row_data.get(index))
-        })
-    }
-}
-
-/// Zero-copy view of multiple rows (table view)
-#[derive(Debug)]
+/// Zero-copy table view for efficient data access
 pub struct TableView<'a> {
-    /// Internal row data - use accessor methods for access
-    rows: &'a [Vec<DataType>],
-    /// Column names for the table
-    column_names: &'a [String],
+    rows: &'a [Row],
+    column_names: Cow<'a, [String]>,
 }
 
 impl<'a> TableView<'a> {
     /// Create a new table view
     #[inline]
-    pub const fn new(rows: &'a [Vec<DataType>], column_names: &'a [String]) -> Self {
+    pub fn new(rows: &'a [Row], column_names: Cow<'a, [String]>) -> Self {
         Self { rows, column_names }
     }
     
-    /// Get row count
+    /// Get the number of rows
     #[inline]
-    pub fn row_count(&self) -> usize {
+    pub const fn row_count(&self) -> usize {
         self.rows.len()
     }
     
-    /// Get column count
+    /// Get the number of columns
     #[inline]
     pub fn column_count(&self) -> usize {
         self.column_names.len()
     }
     
-    /// Get row by index
-    pub fn get_row(&self, index: usize) -> Option<RowView<'a>> {
-        self.rows.get(index).map(|row_data| {
-            RowView::new(row_data, self.column_names)
-        })
-    }
-    
-    /// Iterate over rows
-    pub fn rows(&self) -> impl Iterator<Item = RowView<'a>> + '_ {
-        self.rows.iter().map(move |row_data| {
-            RowView::new(row_data, self.column_names)
-        })
-    }
-    
-    /// Get column names
+    /// Get a row by index
     #[inline]
-    pub const fn column_names(&self) -> &'a [String] {
-        self.column_names
-    }
-    
-    /// Get raw row data by index (for internal use by views)
-    #[inline]
-    pub fn get_row_data(&self, index: usize) -> Option<&'a Vec<DataType>> {
+    pub fn get_row(&self, index: usize) -> Option<&'a Row> {
         self.rows.get(index)
     }
     
-    /// Iterate over raw row data (for internal use by views)
+    /// Get column index by name
     #[inline]
-    pub fn row_data_iter(&self) -> impl Iterator<Item = &'a Vec<DataType>> + '_ {
+    pub fn get_column_index(&self, name: &str) -> Option<usize> {
+        self.column_names
+            .iter()
+            .position(|col| col == name)
+    }
+    
+    /// Create an iterator over rows
+    #[inline]
+    pub fn rows(&self) -> slice::Iter<'a, Row> {
         self.rows.iter()
     }
     
-    /// Create a slice view of rows
-    pub fn slice(&'a self, range: Range<usize>) -> SlicedTableView<'a> {
-        SlicedTableView::new(self, range)
-    }
-    
-    /// Create a filtered view
-    pub fn filter<F>(&'a self, predicate: F) -> FilteredTableView<'a, F>
-    where
-        F: Fn(&RowView<'a>) -> bool,
-    {
-        FilteredTableView::new(self, predicate)
-    }
-    
-    /// Create a projected view with selected columns
-    pub fn project(&'a self, column_indices: &'a [usize]) -> ProjectedTableView<'a> {
-        ProjectedTableView::new(self, column_indices)
+    /// Create a column view
+    pub fn column(&self, column_index: usize) -> ColumnView<'a> {
+        ColumnView::new(self.rows, column_index)
     }
 }
 
-/// Zero-copy sliced view of a table
-#[derive(Debug)]
-pub struct SlicedTableView<'a> {
-    table: &'a TableView<'a>,
-    range: Range<usize>,
+/// Zero-copy column view for vertical data access
+pub struct ColumnView<'a> {
+    rows: &'a [Row],
+    column_index: usize,
 }
 
-impl<'a> SlicedTableView<'a> {
-    /// Create a new sliced table view
-    #[inline]
-    pub const fn new(table: &'a TableView<'a>, range: Range<usize>) -> Self {
-        Self { table, range }
-    }
-    
-    /// Get row count in slice
-    #[inline]
-    pub fn row_count(&self) -> usize {
-        (self.range.end - self.range.start).min(self.table.row_count() - self.range.start)
-    }
-    
-    /// Get row by slice index
-    pub fn get_row(&self, slice_index: usize) -> Option<RowView<'a>> {
-        if slice_index < self.row_count() {
-            self.table.get_row(self.range.start + slice_index)
-        } else {
-            None
-        }
-    }
-    
-    /// Iterate over rows in slice
-    pub fn rows(&self) -> impl Iterator<Item = RowView<'a>> + '_ {
-        let start = self.range.start;
-        let count = self.row_count();
-        (0..count).filter_map(move |i| {
-            self.table.get_row(start + i)
-        })
-    }
-}
-
-/// Zero-copy filtered view of a table
-#[derive(Debug)]
-pub struct FilteredTableView<'a, F> {
-    table: &'a TableView<'a>,
-    predicate: F,
-}
-
-impl<'a, F> FilteredTableView<'a, F>
-where
-    F: Fn(&RowView<'a>) -> bool,
-{
-    /// Create a new filtered table view
-    #[inline]
-    pub const fn new(table: &'a TableView<'a>, predicate: F) -> Self {
-        Self { table, predicate }
-    }
-    
-    /// Iterate over filtered rows
-    pub fn rows(&self) -> impl Iterator<Item = RowView<'a>> + '_ {
-        self.table.rows().filter(&self.predicate)
-    }
-    
-    /// Count filtered rows
-    pub fn count(&self) -> usize {
-        self.rows().count()
-    }
-}
-
-/// Zero-copy projected view of a table with selected columns
-#[derive(Debug)]
-pub struct ProjectedTableView<'a> {
-    table: &'a TableView<'a>,
-    column_indices: &'a [usize],
-}
-
-impl<'a> ProjectedTableView<'a> {
-    /// Create a new projected table view
-    #[inline]
-    pub const fn new(table: &'a TableView<'a>, column_indices: &'a [usize]) -> Self {
-        Self { table, column_indices }
-    }
-    
-    /// Get row count
-    #[inline]
-    pub fn row_count(&self) -> usize {
-        self.table.row_count()
-    }
-    
-    /// Get projected column count
-    #[inline]
-    pub fn column_count(&self) -> usize {
-        self.column_indices.len()
-    }
-    
-    /// Get projected row by index
-    pub fn get_row(&self, index: usize) -> Option<ProjectedRowView<'a>> {
-        self.table.get_row_data(index).map(|row_data| {
-            ProjectedRowView::new(row_data, self.table.column_names(), self.column_indices)
-        })
-    }
-    
-    /// Iterate over projected rows
-    pub fn rows(&self) -> impl Iterator<Item = ProjectedRowView<'a>> + '_ {
-        self.table.row_data_iter().map(move |row_data| {
-            ProjectedRowView::new(row_data, self.table.column_names(), self.column_indices)
-        })
-    }
-}
-
-/// Zero-copy view for string data with optional interning
-#[derive(Debug, Clone)]
-pub enum StringView<'a> {
-    Borrowed(&'a str),
-    Owned(String),
-    Interned(&'static str),
-}
-
-impl<'a> StringView<'a> {
-    /// Create from borrowed string
-    #[inline]
-    pub const fn borrowed(s: &'a str) -> Self {
-        Self::Borrowed(s)
-    }
-    
-    /// Create from owned string
-    #[inline]
-    pub fn owned(s: String) -> Self {
-        Self::Owned(s)
-    }
-    
-    /// Create from interned string
-    #[inline]
-    pub const fn interned(s: &'static str) -> Self {
-        Self::Interned(s)
-    }
-    
-    /// Get string slice
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::Borrowed(s) => s,
-            Self::Owned(s) => s,
-            Self::Interned(s) => s,
-        }
-    }
-    
-    /// Convert to owned string
-    pub fn into_owned(self) -> String {
-        match self {
-            Self::Borrowed(s) => s.to_owned(),
-            Self::Owned(s) => s,
-            Self::Interned(s) => s.to_owned(),
-        }
-    }
-    
-    /// Check if the view owns the data
-    #[inline]
-    pub const fn is_owned(&self) -> bool {
-        matches!(self, Self::Owned(_))
-    }
-}
-
-impl<'a> AsRef<str> for StringView<'a> {
-    #[inline]
-    fn as_ref(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl<'a> std::fmt::Display for StringView<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
-
-/// Zero-copy view for binary data
-#[derive(Debug, Clone)]
-pub enum BytesView<'a> {
-    Borrowed(&'a [u8]),
-    Owned(Vec<u8>),
-}
-
-impl<'a> BytesView<'a> {
-    /// Create from borrowed bytes
-    #[inline]
-    pub const fn borrowed(bytes: &'a [u8]) -> Self {
-        Self::Borrowed(bytes)
-    }
-    
-    /// Create from owned bytes
-    #[inline]
-    pub fn owned(bytes: Vec<u8>) -> Self {
-        Self::Owned(bytes)
-    }
-    
-    /// Get byte slice
-    pub fn as_bytes(&self) -> &[u8] {
-        match self {
-            Self::Borrowed(bytes) => bytes,
-            Self::Owned(bytes) => bytes,
-        }
-    }
-    
-    /// Convert to owned bytes
-    pub fn into_owned(self) -> Vec<u8> {
-        match self {
-            Self::Borrowed(bytes) => bytes.to_vec(),
-            Self::Owned(bytes) => bytes,
-        }
-    }
-    
-    /// Get length
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.as_bytes().len()
-    }
-    
-    /// Check if empty
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.as_bytes().is_empty()
-    }
-}
-
-impl<'a> AsRef<[u8]> for BytesView<'a> {
-    #[inline]
-    fn as_ref(&self) -> &[u8] {
-        self.as_bytes()
-    }
-}
-
-/// Zero-copy column-oriented view for analytical queries
-#[derive(Debug)]
-pub struct ColumnView<'a, T> {
-    data: &'a [T],
-    name: &'a str,
-}
-
-impl<'a, T> ColumnView<'a, T> {
+impl<'a> ColumnView<'a> {
     /// Create a new column view
     #[inline]
-    pub const fn new(data: &'a [T], name: &'a str) -> Self {
-        Self { data, name }
+    pub const fn new(rows: &'a [Row], column_index: usize) -> Self {
+        Self { rows, column_index }
     }
     
-    /// Get column name
+    /// Get value at row index
     #[inline]
-    pub const fn name(&self) -> &'a str {
-        self.name
+    pub fn get(&self, row_index: usize) -> Option<&'a Value> {
+        self.rows
+            .get(row_index)
+            .and_then(|row| row.get(self.column_index))
     }
     
-    /// Get column data
-    #[inline]
-    pub const fn data(&self) -> &'a [T] {
-        self.data
+    /// Create an iterator over column values
+    pub fn iter(&self) -> impl Iterator<Item = Option<&'a Value>> + 'a {
+        self.rows
+            .iter()
+            .map(move |row| row.get(self.column_index))
     }
     
-    /// Get value count
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.data.len()
+    /// Count non-null values
+    pub fn count_non_null(&self) -> usize {
+        self.iter()
+            .filter(|opt| opt.is_some())
+            .count()
     }
     
-    /// Check if empty
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
+    /// Check if all values match a predicate
+    pub fn all<F>(&self, predicate: F) -> bool
+    where
+        F: Fn(&Value) -> bool,
+    {
+        self.iter()
+            .filter_map(|opt| opt)
+            .all(predicate)
     }
     
-    /// Get value by index
-    #[inline]
-    pub fn get(&self, index: usize) -> Option<&'a T> {
-        self.data.get(index)
-    }
-    
-    /// Iterate over values
-    #[inline]
-    pub fn iter(&self) -> std::slice::Iter<'a, T> {
-        self.data.iter()
+    /// Check if any value matches a predicate
+    pub fn any<F>(&self, predicate: F) -> bool
+    where
+        F: Fn(&Value) -> bool,
+    {
+        self.iter()
+            .filter_map(|opt| opt)
+            .any(predicate)
     }
 }
 
-impl<'a, T> Index<usize> for ColumnView<'a, T> {
-    type Output = T;
+/// Zero-copy string view that can be either borrowed or owned
+pub type StringView<'a> = Cow<'a, str>;
+
+/// Zero-copy bytes view that can be either borrowed or owned
+pub type BytesView<'a> = Cow<'a, [u8]>;
+
+/// Value view that provides zero-copy access to Value contents
+pub enum ValueView<'a> {
+    Integer(i64),
+    Float(f64),
+    Text(StringView<'a>),
+    Boolean(bool),
+    Blob(BytesView<'a>),
+    Vector(&'a [f32]),
+    Null,
+}
+
+impl<'a> ValueView<'a> {
+    /// Create a value view from a Value reference
+    pub fn from_value(value: &'a Value) -> Self {
+        match value {
+            Value::Integer(i) => ValueView::Integer(*i),
+            Value::Float(f) => ValueView::Float(*f),
+            Value::Text(s) => ValueView::Text(Cow::Borrowed(s)),
+            Value::Boolean(b) => ValueView::Boolean(*b),
+            Value::Blob(b) => ValueView::Blob(Cow::Borrowed(b)),
+            Value::Vector(v) => ValueView::Vector(v),
+            Value::Null => ValueView::Null,
+        }
+    }
     
+    /// Check if the value is null
     #[inline]
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.data[index]
+    pub const fn is_null(&self) -> bool {
+        matches!(self, ValueView::Null)
+    }
+    
+    /// Try to get as integer
+    #[inline]
+    pub const fn as_integer(&self) -> Option<i64> {
+        match self {
+            ValueView::Integer(i) => Some(*i),
+            _ => None,
+        }
+    }
+    
+    /// Try to get as float
+    #[inline]
+    pub const fn as_float(&self) -> Option<f64> {
+        match self {
+            ValueView::Float(f) => Some(*f),
+            _ => None,
+        }
+    }
+    
+    /// Try to get as string
+    #[inline]
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            ValueView::Text(s) => Some(s),
+            _ => None,
+        }
+    }
+    
+    /// Try to get as boolean
+    #[inline]
+    pub const fn as_bool(&self) -> Option<bool> {
+        match self {
+            ValueView::Boolean(b) => Some(*b),
+            _ => None,
+        }
+    }
+    
+    /// Try to get as bytes
+    #[inline]
+    pub fn as_bytes(&self) -> Option<&[u8]> {
+        match self {
+            ValueView::Blob(b) => Some(b),
+            _ => None,
+        }
+    }
+    
+    /// Try to get as vector
+    #[inline]
+    pub const fn as_vector(&self) -> Option<&[f32]> {
+        match self {
+            ValueView::Vector(v) => Some(v),
+            _ => None,
+        }
     }
 }
 
-/// Zero-copy columnar table view for analytical processing
-#[derive(Debug)]
-pub struct ColumnarView<'a> {
-    columns: Vec<ColumnView<'a, DataType>>,
-    row_count: usize,
+/// Projection view that provides access to specific columns
+pub struct ProjectionView<'a> {
+    row: &'a Row,
+    indices: &'a [usize],
 }
 
-impl<'a> ColumnarView<'a> {
-    /// Create a new columnar view
-    pub fn new(columns: Vec<ColumnView<'a, DataType>>) -> Self {
-        let row_count = columns.first().map_or(0, |col| col.len());
-        Self { columns, row_count }
-    }
-    
-    /// Get column count
+impl<'a> ProjectionView<'a> {
+    /// Create a new projection view
     #[inline]
-    pub fn column_count(&self) -> usize {
-        self.columns.len()
+    pub const fn new(row: &'a Row, indices: &'a [usize]) -> Self {
+        Self { row, indices }
     }
     
-    /// Get row count
+    /// Get projected value by index
     #[inline]
-    pub const fn row_count(&self) -> usize {
-        self.row_count
+    pub fn get(&self, index: usize) -> Option<&'a Value> {
+        self.indices
+            .get(index)
+            .and_then(|&col_idx| self.row.get(col_idx))
     }
     
-    /// Get column by index
+    /// Get the number of projected columns
     #[inline]
-    pub fn get_column(&self, index: usize) -> Option<&ColumnView<'a, DataType>> {
-        self.columns.get(index)
+    pub const fn len(&self) -> usize {
+        self.indices.len()
     }
     
-    /// Get column by name
-    pub fn get_column_by_name(&self, name: &str) -> Option<&ColumnView<'a, DataType>> {
-        self.columns.iter().find(|col| col.name() == name)
-    }
-    
-    /// Iterate over columns
+    /// Check if projection is empty
     #[inline]
-    pub fn columns(&self) -> impl Iterator<Item = &ColumnView<'a, DataType>> {
-        self.columns.iter()
+    pub const fn is_empty(&self) -> bool {
+        self.indices.is_empty()
     }
     
-    /// Get value at row and column
-    pub fn get_value(&self, row: usize, col: usize) -> Option<&'a DataType> {
-        self.columns.get(col)?.get(row)
+    /// Iterate over projected values
+    pub fn iter(&self) -> impl Iterator<Item = Option<&'a Value>> + 'a {
+        self.indices
+            .iter()
+            .map(move |&idx| self.row.get(idx))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::types::DataType;
     
     #[test]
     fn test_row_view() {
-        let data = vec![
-            DataType::Integer(1),
-            DataType::String("Alice".to_string()),
-            DataType::Integer(25),
-        ];
-        let column_names = vec![
-            "id".to_string(),
-            "name".to_string(),
-            "age".to_string(),
+        let values = vec![
+            Value::Integer(42),
+            Value::Text("hello".to_string()),
+            Value::Boolean(true),
         ];
         
-        let row = RowView::new(&data, &column_names);
-        
-        assert_eq!(row.column_count(), 3);
-        assert_eq!(row.get_column_by_name("name"), Some(&DataType::String("Alice".to_string())));
-        
-        let mut iter = row.columns();
-        assert_eq!(iter.next(), Some((&"id".to_string(), &DataType::Integer(1))));
+        let view = RowView::new(&values);
+        assert_eq!(view.len(), 3);
+        assert_eq!(view.get(0), Some(&Value::Integer(42)));
+        assert_eq!(view.get(1), Some(&Value::Text("hello".to_string())));
+        assert_eq!(view.get(2), Some(&Value::Boolean(true)));
+        assert_eq!(view.get(3), None);
     }
     
     #[test]
-    fn test_projected_row_view() {
-        let data = vec![
-            DataType::Integer(1),
-            DataType::String("Alice".to_string()),
-            DataType::Integer(25),
-        ];
-        let column_names = vec![
-            "id".to_string(),
-            "name".to_string(),
-            "age".to_string(),
-        ];
-        let column_indices = vec![0, 2]; // id and age only
+    fn test_value_view() {
+        let text_value = Value::Text("test".to_string());
+        let view = ValueView::from_value(&text_value);
         
-        let row = RowView::new(&data, &column_names);
-        let projected = row.project(&column_indices);
-        
-        assert_eq!(projected.column_count(), 2);
-        assert_eq!(projected.get_column(0), Some(&DataType::Integer(1)));
-        assert_eq!(projected.get_column(1), Some(&DataType::Integer(25)));
-    }
-    
-    #[test]
-    fn test_table_view() {
-        let rows = vec![
-            vec![DataType::Integer(1), DataType::String("Alice".to_string())],
-            vec![DataType::Integer(2), DataType::String("Bob".to_string())],
-        ];
-        let column_names = vec!["id".to_string(), "name".to_string()];
-        
-        let table = TableView::new(&rows, &column_names);
-        
-        assert_eq!(table.row_count(), 2);
-        assert_eq!(table.column_count(), 2);
-        
-        let first_row = table.get_row(0).unwrap();
-        assert_eq!(first_row.get_column_by_name("name"), Some(&DataType::String("Alice".to_string())));
-    }
-    
-    #[test]
-    fn test_sliced_table_view() {
-        let rows = vec![
-            vec![DataType::Integer(1)],
-            vec![DataType::Integer(2)],
-            vec![DataType::Integer(3)],
-            vec![DataType::Integer(4)],
-        ];
-        let column_names = vec!["id".to_string()];
-        
-        let table = TableView::new(&rows, &column_names);
-        let slice = table.slice(1..3);
-        
-        assert_eq!(slice.row_count(), 2);
-        let first_in_slice = slice.get_row(0).unwrap();
-        assert_eq!(first_in_slice.get_column(0), Some(&DataType::Integer(2)));
-    }
-    
-    #[test]
-    fn test_string_view() {
-        let borrowed = StringView::borrowed("hello");
-        let owned = StringView::owned("world".to_string());
-        let interned = StringView::interned("static");
-        
-        assert_eq!(borrowed.as_str(), "hello");
-        assert_eq!(owned.as_str(), "world");
-        assert_eq!(interned.as_str(), "static");
-        
-        assert!(!borrowed.is_owned());
-        assert!(owned.is_owned());
-        assert!(!interned.is_owned());
-    }
-    
-    #[test]
-    fn test_bytes_view() {
-        let data = vec![1, 2, 3, 4];
-        let borrowed = BytesView::borrowed(&data);
-        let owned = BytesView::owned(vec![5, 6, 7, 8]);
-        
-        assert_eq!(borrowed.as_bytes(), &[1, 2, 3, 4]);
-        assert_eq!(owned.as_bytes(), &[5, 6, 7, 8]);
-        assert_eq!(borrowed.len(), 4);
-        assert!(!borrowed.is_empty());
+        assert_eq!(view.as_str(), Some("test"));
+        assert_eq!(view.as_integer(), None);
+        assert!(!view.is_null());
     }
     
     #[test]
     fn test_column_view() {
-        let data = vec![
-            DataType::Integer(1),
-            DataType::Integer(2),
-            DataType::Integer(3),
+        let rows = vec![
+            Row::new(vec![Value::Integer(1), Value::Text("a".to_string())]),
+            Row::new(vec![Value::Integer(2), Value::Text("b".to_string())]),
+            Row::new(vec![Value::Integer(3), Value::Text("c".to_string())]),
         ];
         
-        let column = ColumnView::new(&data, "numbers");
+        let col_view = ColumnView::new(&rows, 0);
+        assert_eq!(col_view.get(0), Some(&Value::Integer(1)));
+        assert_eq!(col_view.get(1), Some(&Value::Integer(2)));
+        assert_eq!(col_view.count_non_null(), 3);
         
-        assert_eq!(column.name(), "numbers");
-        assert_eq!(column.len(), 3);
-        assert_eq!(column.get(1), Some(&DataType::Integer(2)));
-        
-        let sum: i64 = column.iter()
-            .filter_map(|dt| match dt {
-                DataType::Integer(n) => Some(*n),
-                _ => None,
-            })
-            .sum();
-        assert_eq!(sum, 6);
+        assert!(col_view.all(|v| matches!(v, Value::Integer(_))));
+        assert!(col_view.any(|v| matches!(v, Value::Integer(2))));
     }
 }
