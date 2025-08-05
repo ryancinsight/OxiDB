@@ -161,8 +161,15 @@ impl<E: EmbeddingModel + Send + Sync> HybridRAGEngine<E> {
             .await?;
 
         // Combine results
-        self.combine_results(vector_results, graph_results, query_embedding.as_slice()).await
-    }
+        let graph_result = match graph_results.into_iter().next() {
+            Some(result) => result,
+            None => GraphRAGResult {
+                nodes: Vec::new(),
+                edges: Vec::new(),
+                // Add other fields as required by GraphRAGResult's definition
+            },
+        };
+        self.combine_results(vector_results, graph_result, query_embedding.as_slice()).await
 
     /// Combine vector and graph results
     async fn combine_results(
