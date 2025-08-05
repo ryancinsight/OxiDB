@@ -2,7 +2,7 @@
 //! Hybrid RAG implementation that combines vector search and GraphRAG
 
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::core::common::OxidbError;
 use crate::core::common::types::Value;
@@ -397,7 +397,7 @@ mod tests {
     use crate::core::rag::embedder::SemanticEmbedder;
     use crate::core::rag::graphrag::GraphRAGEngineImpl;
     use crate::core::rag::retriever::InMemoryRetriever;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     #[tokio::test]
     async fn test_hybrid_config() {

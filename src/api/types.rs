@@ -21,7 +21,11 @@
 pub struct Oxidb {
     /// The query executor responsible for handling database operations.
     /// Visible within the `api` module (`crate::api`) to allow `implementation.rs` to access it.
-    pub(crate) executor: crate::core::query::executor::QueryExecutor<crate::core::storage::engine::simple_file_kv_store::SimpleFileKvStore>,
+    pub(crate) executor: crate::core::query::executor::QueryExecutor<crate::core::storage::engine::SimpleFileKvStore>,
+    /// Store the database path for the deprecated API
+    pub(crate) db_path: String,
+    /// Store the index path for the deprecated API
+    pub(crate) index_path: String,
 }
 
 /// Represents the result of a query execution.

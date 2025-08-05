@@ -10,7 +10,7 @@ pub use log_manager::LogManager;
 // PageType, ActiveTransactionInfo, DirtyPageInfo are still defined in log_record.
 pub use log_record::{ActiveTransactionInfo, DirtyPageInfo, LogRecord, PageType};
 pub use reader::{WalReader, WalReaderConfig, WalReaderError, WalRecordIterator, WalStatistics};
-pub use writer::WalWriter;
+pub use writer::{WalWriter, WalWriterConfig};
 
 // Potentially other modules related to WAL in the future:
 // pub mod wal_manager;

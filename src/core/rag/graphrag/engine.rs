@@ -7,6 +7,7 @@ use crate::core::common::OxidbError;
 use crate::core::graph::{GraphStore, NodeId};
 use async_trait::async_trait;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::collections::HashMap;
 
 /// Trait for GraphRAG engines following Interface Segregation Principle
@@ -57,6 +58,8 @@ pub struct GraphRAGEngineImpl {
     entities: HashMap<NodeId, KnowledgeNode>,
     #[allow(dead_code)]
     relationships: HashMap<(NodeId, NodeId), KnowledgeEdge>,
+    /// Atomic counter for generating unique node IDs
+    next_node_id: Arc<AtomicU64>,
 }
 
 impl GraphRAGEngineImpl {
@@ -72,7 +75,13 @@ impl GraphRAGEngineImpl {
             config,
             entities: HashMap::new(),
             relationships: HashMap::new(),
+            next_node_id: Arc::new(AtomicU64::new(1)), // Start from 1 to avoid 0 as a special value
         }
+    }
+    
+    /// Generate a unique node ID using atomic counter
+    fn generate_node_id(&self) -> NodeId {
+        self.next_node_id.fetch_add(1, Ordering::SeqCst)
     }
 }
 
@@ -82,42 +91,36 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
         // Retrieve nodes based on query embedding similarity
         let query_embedding = self.embedder.embed(&context.query).await?;
         
-        let mut documents = Vec::new();
-        let mut scores = Vec::new();
-        
-        // Use iterator to find matching nodes efficiently
-        for (_node_id, node) in &self.entities {
-            if let Some(embedding) = &node.embedding {
-                match crate::core::vector::similarity::cosine_similarity(&query_embedding.vector, &embedding.vector) {
-                    Ok(similarity) => {
-                        let similarity_f64 = f64::from(similarity);
-                        if similarity_f64 >= context.similarity_threshold {
-                            documents.push(node.clone());
-                            scores.push(similarity_f64);
-                            
-                            // Limit results
-                            if documents.len() >= context.max_results {
-                                break;
+        // Collect all matching documents with their scores using zero-cost iterator chains
+        let mut matching_docs: Vec<(KnowledgeNode, f64)> = self.entities
+            .values()
+            .filter_map(|node| {
+                node.embedding.as_ref().and_then(|embedding| {
+                    match crate::core::vector::similarity::cosine_similarity(&query_embedding.vector, &embedding.vector) {
+                        Ok(similarity) => {
+                            let similarity_f64 = f64::from(similarity);
+                            if similarity_f64 >= context.similarity_threshold {
+                                Some((node.clone(), similarity_f64))
+                            } else {
+                                None
                             }
                         }
+                        Err(_) => None,
                     }
-                    Err(_) => continue,
-                }
-            }
-        }
+                })
+            })
+            .collect();
         
         // Sort by score descending
-        let mut indexed_results: Vec<(usize, f64)> = scores.iter().enumerate()
-            .map(|(i, &score)| (i, score))
-            .collect();
-        indexed_results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        matching_docs.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         
-        let documents: Vec<KnowledgeNode> = indexed_results.iter()
-            .map(|(i, _)| documents[*i].clone())
-            .collect();
-        let scores: Vec<f64> = indexed_results.iter()
-            .map(|(_, score)| *score)
-            .collect();
+        // Take only the top max_results
+        matching_docs.truncate(context.max_results);
+        
+        // Separate documents and scores
+        let (documents, scores): (Vec<KnowledgeNode>, Vec<f64>) = matching_docs
+            .into_iter()
+            .unzip();
         
         Ok(GraphRAGResult {
             documents,
@@ -134,12 +137,8 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
         // Generate embedding for the document
         let embedding = self.embedder.embed(&document.content).await?;
         
-        // Create a node ID (this would typically come from the graph store)
-        // Using a simple timestamp-based ID for now
-        let node_id = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos() as NodeId;
+        // Generate a unique node ID using atomic counter
+        let node_id = self.generate_node_id();
         
         // Create knowledge node from document
         let knowledge_node = KnowledgeNode {

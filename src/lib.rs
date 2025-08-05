@@ -198,19 +198,18 @@ mod tests {
 
         assert!(db.insert(key1.clone(), value1_str.clone()).is_ok());
 
-        match db.get(key1.clone()) {
+        match db.get(&key1) {
             Ok(Some(v_str)) => assert_eq!(v_str, value1_str),
             Ok(None) => unreachable!("Key not found after insert"),
             Err(e) => unreachable!("Error during get: {e:?}"),
         }
 
-        match db.delete(key1.clone()) {
-            Ok(true) => (),
-            Ok(false) => unreachable!("Key not found for deletion"),
+        match db.delete(&key1) {
+            Ok(()) => (),
             Err(e) => unreachable!("Error during delete: {e:?}"),
         }
 
-        match db.get(key1) {
+        match db.get(&key1) {
             Ok(None) => (),
             Ok(Some(_)) => unreachable!("Key found after delete"),
             Err(e) => unreachable!("Error during get after delete: {e:?}"),
@@ -219,7 +218,7 @@ mod tests {
         let key2 = b"int_key2".to_vec();
         let value2_str = "int_value2".to_string();
         assert!(db.insert(key2.clone(), value2_str.clone()).is_ok());
-        match db.get(key2) {
+        match db.get(&key2) {
             Ok(Some(v_str)) => assert_eq!(v_str, value2_str),
             _ => unreachable!("Second key not processed correctly"),
         }
@@ -254,7 +253,7 @@ mod tests {
             db.insert(key_a.clone(), val_a_initial_str.clone()).unwrap();
             db.insert(key_b.clone(), val_b_str.clone()).unwrap();
             db.insert(key_a.clone(), val_a_updated_str.clone()).unwrap();
-            db.delete(key_b.clone()).unwrap();
+            db.delete(&key_b).unwrap();
 
             assert!(wal_path.exists(), "WAL file should exist before forgetting the DB instance.");
             std::mem::forget(db);
@@ -267,11 +266,11 @@ mod tests {
                 Oxidb::new(&db_path).expect("Failed to create Oxidb (instance 2)");
 
             assert_eq!(
-                db_restarted.get(key_a).unwrap(),
+                db_restarted.get(&key_a).unwrap(),
                 Some(val_a_updated_str.clone()),
                 "Key A should have updated value"
             );
-            assert_eq!(db_restarted.get(key_b).unwrap(), None, "Key B should be deleted");
+            assert_eq!(db_restarted.get(&key_b).unwrap(), None, "Key B should be deleted");
 
             db_restarted.persist().unwrap();
             assert!(
@@ -300,7 +299,7 @@ mod tests {
         {
             let mut db2 = Oxidb::new(db_path).expect("Failed to create Oxidb (instance 2)");
             assert_eq!(
-                db2.get(key_c.clone()).unwrap(),
+                db2.get(&key_c).unwrap(),
                 Some(value_c_str.clone()),
                 "Key C should be present in instance 2"
             );
@@ -310,14 +309,14 @@ mod tests {
         }
 
         {
-            let mut db3 = Oxidb::new(db_path).expect("Failed to create Oxidb (instance 3)");
+            let db3 = Oxidb::new(db_path).expect("Failed to create Oxidb (instance 3)");
             assert_eq!(
-                db3.get(key_c).unwrap(),
+                db3.get(&key_c).unwrap(),
                 Some(value_c_str.clone()),
                 "Key C should be present in instance 3"
             );
             assert_eq!(
-                db3.get(key_d).unwrap(),
+                db3.get(&key_d).unwrap(),
                 Some(value_d_str.clone()),
                 "Key D should be present in instance 3"
             );
@@ -327,7 +326,7 @@ mod tests {
     #[test]
     fn test_oxidb_new_from_config_file_custom_paths() {
         // Config is used here
-        use crate::core::types::DataType;
+
         use tempfile::tempdir;
 
         let dir = tempdir().unwrap();
@@ -355,17 +354,20 @@ mod tests {
         let mut db = Oxidb::new_from_config_file(config_file_path.clone()).unwrap();
 
         let expected_db_path = custom_data_dir.join(custom_db_filename);
-        assert_eq!(db.database_path(), expected_db_path.to_str().unwrap());
+        // Handle paths that might not be valid UTF-8
+        let expected_db_path_str = expected_db_path.to_str()
+            .expect("Test path should be valid UTF-8");
+        assert_eq!(db.database_path(), expected_db_path_str);
+        
         // For index_path, the config now specifies a full path for index_base_path
         let expected_index_path = custom_data_dir.join(custom_index_dir);
-        assert_eq!(db.index_path(), expected_index_path.to_str().unwrap());
+        let expected_index_path_str = expected_index_path.to_str()
+            .expect("Test path should be valid UTF-8");
+        assert_eq!(db.index_path(), expected_index_path_str);
 
         db.execute_query_str("INSERT test 1").unwrap();
         let val = db.execute_query_str("GET test").unwrap();
-        assert_eq!(
-            val,
-            crate::core::query::executor::ExecutionResult::Value(Some(DataType::Integer(1)))
-        );
+        assert_eq!(val, Some("1".to_string()));
 
         fs::remove_file(&config_file_path).ok();
         fs::remove_dir_all(&custom_data_dir).ok();
@@ -393,12 +395,12 @@ mod tests {
             .expect("Failed to create Oxidb with non-existent config");
 
         assert_eq!(
-            current_test_dir.join(db.database_path()),
+            current_test_dir.join(&db.database_path()),
             default_db_path,
             "Database path should match default absolute path"
         );
         assert_eq!(
-            current_test_dir.join(db.index_path()),
+            current_test_dir.join(&db.index_path()),
             default_indexes_path,
             "Index path should match default absolute path"
         );
