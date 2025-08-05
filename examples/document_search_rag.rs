@@ -5,7 +5,6 @@
 //! and can be searched using natural language queries.
 
 use oxidb::{Connection, Value, OxidbError};
-use oxidb::core::types::{DataType, OrderedFloat, HashableVectorData, VectorData};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};
@@ -81,83 +80,90 @@ impl DocumentSearchDB {
         // Generate embedding for the document
         let embedding = generate_embedding(&doc.content, self.embedding_dimension);
         
-        // Convert embedding to vector literal format
-        let embedding_str = format!(
-            "[{}]",
-            embedding.iter()
-                .map(|v| v.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
+        // Store document in database using parameterized query
+        let sql = "INSERT INTO documents (id, title, content, embedding, metadata) 
+                   VALUES (?, ?, ?, ?, ?)";
         
-        // Store document in database
-        let sql = format!(
-            "INSERT INTO documents (id, title, content, embedding, metadata) 
-             VALUES ('{}', '{}', '{}', {}, '{}')",
-            doc.id,
-            doc.title.replace('\'', "''"),
-            doc.content.replace('\'', "''"),
-            embedding_str,
-            serde_json::to_string(&doc.metadata).unwrap_or_default().replace('\'', "''")
-        );
+        self.conn.execute_with_params(
+            sql,
+            &[
+                Value::Text(doc.id),
+                Value::Text(doc.title),
+                Value::Text(doc.content),
+                Value::Vector(embedding),
+                Value::Text(serde_json::to_string(&doc.metadata).unwrap_or_default()),
+            ]
+        )?;
         
-        self.conn.execute(&sql)?;
         Ok(())
     }
     
     fn update_document_embedding(&mut self, doc_id: &str, embedding: &[f32]) -> Result<(), OxidbError> {
-        let embedding_str = format!("[{}]", embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
+        let sql = "UPDATE documents SET embedding = ?, updated_at = ? WHERE id = ?";
         
-        let sql = format!(
-            "UPDATE documents SET embedding = {}, updated_at = '{}' WHERE id = '{}'",
-            embedding_str,
-            Utc::now().to_rfc3339(),
-            doc_id
-        );
+        self.conn.execute_with_params(
+            sql,
+            &[
+                Value::Vector(embedding.to_vec()),
+                Value::Text(Utc::now().to_rfc3339()),
+                Value::Text(doc_id.to_string()),
+            ]
+        )?;
         
-        self.conn.execute(&sql)?;
         Ok(())
     }
     
     // Semantic search using vector similarity
     fn semantic_search(&mut self, query: SearchQuery) -> Result<Vec<SearchResult>, OxidbError> {
-        let embedding_str = format!("[{}]", query.embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
+        // Build SQL with conditional WHERE clause
+        let (sql, params) = if let Some(category) = &query.category_filter {
+            (
+                "SELECT *, vector_distance(embedding, ?) as distance 
+                 FROM documents 
+                 WHERE category = ? 
+                 ORDER BY distance ASC 
+                 LIMIT ?",
+                vec![
+                    Value::Vector(query.embedding.clone()),
+                    Value::Text(category.clone()),
+                    Value::Integer(query.limit as i64),
+                ]
+            )
+        } else {
+            (
+                "SELECT *, vector_distance(embedding, ?) as distance 
+                 FROM documents 
+                 ORDER BY distance ASC 
+                 LIMIT ?",
+                vec![
+                    Value::Vector(query.embedding.clone()),
+                    Value::Integer(query.limit as i64),
+                ]
+            )
+        };
         
-        let mut sql = format!(
-            "SELECT *, vector_distance(embedding, {}) as distance 
-             FROM documents",
-            embedding_str
-        );
-        
-        // Add category filter if specified
-        if let Some(category) = &query.category_filter {
-            sql.push_str(&format!(" WHERE category = '{}'", category));
-        }
-        
-        // Order by similarity (lower distance = higher similarity)
-        sql.push_str(&format!(" ORDER BY distance ASC LIMIT {}", query.limit));
-        
-        let result = self.conn.query_all(&sql)?;
+        let result = self.conn.execute_with_params(sql, &params)?;
         
         let mut search_results = Vec::new();
-        for row in &result {
-            let doc = self.row_to_document(row)?;
-            let distance = match row.get(9).ok_or(OxidbError::NotFound("Distance column not found".to_string()))? {
-                Value::Float(f) => *f as f32,
-                _ => 0.0,
-            };
-            
-            // Convert distance to similarity score (1 / (1 + distance))
-            let score = 1.0 / (1.0 + distance);
-            
-            // Extract relevant snippet
-            let snippet = self.extract_snippet(&doc.content, &query.text, 150);
-            
-            search_results.push(SearchResult {
-                document: doc,
-                score,
-                snippet,
-            });
+        match result {
+            oxidb::QueryResult::Data(data) => {
+                for row in &data.rows {
+                    let doc = self.row_to_document(row)?;
+                    let score = match row.get(10) { // Assuming distance is the 11th column
+                        Some(Value::Float(f)) => 1.0 - (*f as f32).min(1.0), // Convert distance to similarity
+                        _ => 0.0,
+                    };
+                    
+                    let snippet = self.generate_snippet(&doc.content, &query.text);
+                    
+                    search_results.push(SearchResult {
+                        document: doc,
+                        score,
+                        snippet,
+                    });
+                }
+            }
+            _ => {}
         }
         
         Ok(search_results)
@@ -168,75 +174,71 @@ impl DocumentSearchDB {
         // Semantic search results
         let semantic_results = self.semantic_search(query.clone())?;
         
-        // Keyword search
+        // Keyword search with parameterized queries
         let keywords = query.text.split_whitespace()
             .map(|k| k.to_lowercase())
             .collect::<Vec<_>>();
         
-        let mut keyword_conditions = Vec::new();
+        // Build parameterized query for keyword search
+        let mut conditions = Vec::new();
+        let mut params = Vec::new();
+        
         for keyword in &keywords {
-            keyword_conditions.push(format!(
-                "(LOWER(title) LIKE '%{}%' OR LOWER(content) LIKE '%{}%')",
-                keyword, keyword
-            ));
+            conditions.push("(LOWER(title) LIKE ? OR LOWER(content) LIKE ?)");
+            let pattern = format!("%{}%", keyword);
+            params.push(Value::Text(pattern.clone()));
+            params.push(Value::Text(pattern));
         }
         
-        let mut keyword_sql = format!(
-            "SELECT * FROM documents WHERE {}",
-            keyword_conditions.join(" OR ")
-        );
+        let (sql, final_params) = if let Some(category) = &query.category_filter {
+            let sql = format!(
+                "SELECT * FROM documents WHERE ({}) AND category = ?",
+                conditions.join(" OR ")
+            );
+            params.push(Value::Text(category.clone()));
+            (sql, params)
+        } else {
+            let sql = format!(
+                "SELECT * FROM documents WHERE {}",
+                conditions.join(" OR ")
+            );
+            (sql, params)
+        };
         
-        if let Some(category) = &query.category_filter {
-            keyword_sql = format!("{} AND category = '{}'", keyword_sql, category);
-        }
-        
-        let keyword_result = self.conn.query_all(&keyword_sql)?;
+        let keyword_result = self.conn.execute_with_params(&sql, &final_params)?;
         
         // Combine results with weighted scoring
         let mut combined_results: HashMap<String, SearchResult> = HashMap::new();
         
         // Add semantic results
         for result in semantic_results {
-            let score = result.score * (1.0 - keyword_weight);
-            combined_results.insert(result.document.id.clone(), SearchResult {
-                document: result.document,
-                score,
-                snippet: result.snippet,
-            });
+            combined_results.insert(result.document.id.clone(), result);
         }
         
         // Add keyword results
-        for row in &keyword_result {
-            let doc = self.row_to_document(row)?;
-            let doc_id = doc.id.clone();
-            
-            // Calculate keyword score based on match count
-            let mut keyword_score = 0.0;
-            let content_lower = doc.content.to_lowercase();
-            let title_lower = doc.title.to_lowercase();
-            
-            for keyword in &keywords {
-                if title_lower.contains(keyword) {
-                    keyword_score += 2.0; // Title matches are weighted higher
-                }
-                if content_lower.contains(keyword) {
-                    keyword_score += 1.0;
+        match keyword_result {
+            oxidb::QueryResult::Data(data) => {
+                for row in &data.rows {
+                    let doc = self.row_to_document(row)?;
+                    let doc_id = doc.id.clone();
+                    
+                    let snippet = self.generate_snippet(&doc.content, &query.text);
+                    let keyword_score = keyword_weight;
+                    
+                    if let Some(existing) = combined_results.get_mut(&doc_id) {
+                        // Document found in both searches - combine scores
+                        existing.score = existing.score * (1.0 - keyword_weight) + keyword_score;
+                    } else {
+                        // Document only found in keyword search
+                        combined_results.insert(doc_id, SearchResult {
+                            document: doc,
+                            score: keyword_score,
+                            snippet,
+                        });
+                    }
                 }
             }
-            
-            keyword_score *= keyword_weight / keywords.len() as f32;
-            
-            // Update or insert the result
-            if let Some(existing) = combined_results.get_mut(&doc_id) {
-                existing.score += keyword_score;
-            } else {
-                let snippet = self.generate_snippet(&doc.content, &query.text);
-                combined_results.insert(doc_id, SearchResult {
-                    document: doc,
-                    score: keyword_score,
-                    snippet,
-                });
-            }
+            _ => {}
         }
         
         // Sort by combined score
@@ -248,19 +250,23 @@ impl DocumentSearchDB {
     
     // Get documents by category
     fn get_documents_by_category(&mut self, category: &str) -> Result<Vec<Document>, OxidbError> {
-        let sql = format!("SELECT * FROM documents WHERE category = '{}'", category);
-        let result = self.conn.query_all(&sql)?;
+        let sql = "SELECT * FROM documents WHERE category = ?";
+        let result = self.conn.execute_with_params(sql, &[Value::Text(category.to_string())])?;
         
-        result.iter()
-            .map(|row| self.row_to_document(row))
-            .collect()
+        match result {
+            oxidb::QueryResult::Data(data) => {
+                data.rows.iter()
+                    .map(|row| self.row_to_document(row))
+                    .collect()
+            }
+            _ => Ok(Vec::new()),
+        }
     }
     
     // Helper methods
     fn extract_snippet(&self, content: &str, query: &str, max_length: usize) -> String {
         // Find the most relevant part of the content
         let query_words: Vec<&str> = query.split_whitespace().collect();
-        let content_lower = content.to_lowercase();
         
         let mut best_start = 0;
         let mut best_score = 0;
