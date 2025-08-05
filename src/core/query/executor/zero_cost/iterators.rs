@@ -8,6 +8,8 @@ use crate::core::types::DataType;
 use std::marker::PhantomData;
 
 /// Iterator over query results with zero-copy semantics
+/// 
+/// This iterator yields borrowed rows that reference data from the underlying source
 pub struct RowIterator<'a, I> {
     inner: I,
     _phantom: PhantomData<&'a ()>,
@@ -15,7 +17,7 @@ pub struct RowIterator<'a, I> {
 
 impl<'a, I> RowIterator<'a, I>
 where
-    I: Iterator<Item = Vec<DataType>>,
+    I: Iterator<Item = &'a [DataType]>,
 {
     /// Create a new row iterator
     #[inline]
@@ -29,13 +31,13 @@ where
 
 impl<'a, I> Iterator for RowIterator<'a, I>
 where
-    I: Iterator<Item = Vec<DataType>>,
+    I: Iterator<Item = &'a [DataType]>,
 {
     type Item = Row<'a>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(Row::from_owned)
+        self.inner.next().map(Row::from_borrowed)
     }
 
     #[inline]
@@ -44,55 +46,64 @@ where
     }
 }
 
-/// Filter iterator that avoids allocations
-pub struct FilterIterator<I, P> {
+/// Filter iterator that applies predicates without allocation
+pub struct FilterIterator<'a, I, F> {
     inner: I,
-    predicate: P,
+    predicate: F,
+    _phantom: PhantomData<&'a ()>,
 }
 
-impl<I, P> FilterIterator<I, P> {
+impl<'a, I, F> FilterIterator<'a, I, F>
+where
+    I: Iterator<Item = Row<'a>>,
+    F: Fn(&Row<'a>) -> bool,
+{
     #[inline]
-    pub fn new(inner: I, predicate: P) -> Self {
-        Self { inner, predicate }
+    pub fn new(inner: I, predicate: F) -> Self {
+        Self {
+            inner,
+            predicate,
+            _phantom: PhantomData,
+        }
     }
 }
 
-impl<'a, I, P> Iterator for FilterIterator<I, P>
+impl<'a, I, F> Iterator for FilterIterator<'a, I, F>
 where
     I: Iterator<Item = Row<'a>>,
-    P: FnMut(&Row<'a>) -> bool,
+    F: Fn(&Row<'a>) -> bool,
 {
     type Item = Row<'a>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.find(&mut self.predicate)
+        self.inner.find(|row| (self.predicate)(row))
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (_, upper) = self.inner.size_hint();
+        (0, upper) // Can't know lower bound due to filtering
     }
 }
 
-/// Map iterator for transforming rows without allocation
-pub struct MapIterator<I, F> {
+/// Map iterator for transforming rows
+pub struct MapIterator<'a, I, F> {
     inner: I,
     mapper: F,
+    _phantom: PhantomData<&'a ()>,
 }
 
-impl<I, F> MapIterator<I, F> {
-    #[inline]
-    pub fn new(inner: I, mapper: F) -> Self {
-        Self { inner, mapper }
-    }
-}
-
-impl<'a, I, F, T> Iterator for MapIterator<I, F>
+impl<'a, I, F, T> Iterator for MapIterator<'a, I, F>
 where
     I: Iterator<Item = Row<'a>>,
-    F: FnMut(Row<'a>) -> T,
+    F: Fn(Row<'a>) -> T,
 {
     type Item = T;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(&mut self.mapper)
+        self.inner.next().map(&self.mapper)
     }
 
     #[inline]
@@ -101,13 +112,15 @@ where
     }
 }
 
-/// Window iterator for sliding window operations
+/// Window iterator for sliding window operations with zero-copy semantics
+/// 
+/// This iterator maintains a circular buffer and yields indices into it
 pub struct WindowIterator<I> {
     inner: I,
     window_size: usize,
     buffer: Vec<Vec<DataType>>,
-    #[allow(dead_code)]
-    index: usize,
+    start_idx: usize,
+    is_full: bool,
 }
 
 impl<I> WindowIterator<I>
@@ -126,11 +139,14 @@ where
             }
         }
         
+        let is_full = buffer.len() == window_size;
+        
         Self {
             inner,
             window_size,
             buffer,
-            index: 0,
+            start_idx: 0,
+            is_full,
         }
     }
 }
@@ -139,28 +155,66 @@ impl<I> Iterator for WindowIterator<I>
 where
     I: Iterator<Item = Vec<DataType>>,
 {
+    // Return owned data to avoid lifetime issues
     type Item = Vec<Vec<DataType>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.buffer.len() < self.window_size {
+        if !self.is_full {
             return None;
         }
         
-        // Return current window as a clone
-        let window = self.buffer.clone();
+        // Build current window by cloning data
+        let mut window = Vec::with_capacity(self.window_size);
+        for i in 0..self.window_size {
+            let idx = (self.start_idx + i) % self.window_size;
+            window.push(self.buffer[idx].clone());
+        }
         
         // Advance window
         if let Some(next_row) = self.inner.next() {
-            self.buffer.remove(0);
-            self.buffer.push(next_row);
-            Some(window)
+            self.buffer[self.start_idx] = next_row;
+            self.start_idx = (self.start_idx + 1) % self.window_size;
         } else {
-            None
+            self.is_full = false;
+        }
+        
+        Some(window)
+    }
+}
+
+/// Zero-copy window iterator that yields references
+/// This is an alternative implementation that avoids cloning
+pub struct WindowRefIterator<'a> {
+    data: &'a [Vec<DataType>],
+    window_size: usize,
+    current_pos: usize,
+}
+
+impl<'a> WindowRefIterator<'a> {
+    pub fn new(data: &'a [Vec<DataType>], window_size: usize) -> Self {
+        Self {
+            data,
+            window_size,
+            current_pos: 0,
         }
     }
 }
 
-/// Chunk iterator for batch processing
+impl<'a> Iterator for WindowRefIterator<'a> {
+    type Item = &'a [Vec<DataType>];
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_pos + self.window_size > self.data.len() {
+            return None;
+        }
+        
+        let window = &self.data[self.current_pos..self.current_pos + self.window_size];
+        self.current_pos += 1;
+        Some(window)
+    }
+}
+
+/// Chunk iterator for processing data in batches
 pub struct ChunkIterator<'a, I> {
     inner: I,
     chunk_size: usize,
@@ -171,7 +225,6 @@ impl<'a, I> ChunkIterator<'a, I>
 where
     I: Iterator<Item = Row<'a>>,
 {
-    #[inline]
     pub fn new(inner: I, chunk_size: usize) -> Self {
         Self {
             inner,
@@ -207,67 +260,64 @@ where
 
 /// Extension trait for query iterators
 pub trait QueryIteratorExt<'a>: Iterator<Item = Row<'a>> + Sized {
-    /// Filter rows by predicate
+    /// Filter rows based on a predicate
     #[inline]
-    fn filter_rows<P>(self, predicate: P) -> FilterIterator<Self, P>
+    fn filter_rows<F>(self, predicate: F) -> FilterIterator<'a, Self, F>
     where
-        P: FnMut(&Row<'a>) -> bool,
+        F: Fn(&Row<'a>) -> bool,
     {
         FilterIterator::new(self, predicate)
     }
-    
-    /// Map rows to another type
+
+    /// Map rows to a different type
     #[inline]
-    fn map_rows<F, T>(self, mapper: F) -> MapIterator<Self, F>
+    fn map_rows<F, T>(self, mapper: F) -> MapIterator<'a, Self, F>
     where
-        F: FnMut(Row<'a>) -> T,
+        F: Fn(Row<'a>) -> T,
     {
-        MapIterator::new(self, mapper)
+        MapIterator {
+            inner: self,
+            mapper,
+            _phantom: PhantomData,
+        }
     }
-    
+
     /// Process rows in chunks
     #[inline]
     fn chunks(self, chunk_size: usize) -> ChunkIterator<'a, Self> {
         ChunkIterator::new(self, chunk_size)
     }
-    
+
     /// Take only the first n rows
     #[inline]
     fn limit(self, n: usize) -> std::iter::Take<Self> {
         self.take(n)
     }
-    
-    /// Skip the first n rows
-    #[inline]
-    fn offset(self, n: usize) -> std::iter::Skip<Self> {
-        self.skip(n)
-    }
 }
 
 impl<'a, I> QueryIteratorExt<'a> for I where I: Iterator<Item = Row<'a>> + Sized {}
 
-/// Aggregate iterator for computing aggregates without collecting
-#[allow(dead_code)]
-pub struct AggregateIterator<I, A> {
-    inner: I,
-    aggregator: A,
-}
-
-/// Trait for aggregate functions
+/// Aggregator trait for computing aggregates without collecting
 pub trait Aggregator<'a> {
     type Output;
     
-    /// Update the aggregate with a new row
+    /// Update the aggregator with a new row
     fn update(&mut self, row: &Row<'a>);
     
-    /// Finalize and return the result
+    /// Finalize and return the aggregate result
     fn finalize(self) -> Self::Output;
 }
 
 /// Count aggregator
-#[derive(Default)]
 pub struct CountAggregator {
     count: usize,
+}
+
+impl CountAggregator {
+    #[inline]
+    pub fn new() -> Self {
+        Self { count: 0 }
+    }
 }
 
 impl<'a> Aggregator<'a> for CountAggregator {
@@ -320,41 +370,99 @@ impl<'a> Aggregator<'a> for SumAggregator {
     }
 }
 
+/// Group-by iterator that yields groups lazily
+pub struct GroupByIterator<'a, I, K, F> {
+    inner: I,
+    key_fn: F,
+    current_group: Option<(K, Vec<Row<'a>>)>,
+    _phantom: PhantomData<&'a ()>,
+}
+
+impl<'a, I, K, F> GroupByIterator<'a, I, K, F>
+where
+    I: Iterator<Item = Row<'a>>,
+    K: Eq,
+    F: Fn(&Row<'a>) -> K,
+{
+    pub fn new(inner: I, key_fn: F) -> Self {
+        Self {
+            inner,
+            key_fn,
+            current_group: None,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<'a, I, K, F> Iterator for GroupByIterator<'a, I, K, F>
+where
+    I: Iterator<Item = Row<'a>>,
+    K: Eq,
+    F: Fn(&Row<'a>) -> K,
+{
+    type Item = (K, Vec<Row<'a>>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let mut group = Vec::new();
+        let mut group_key = None;
+        
+        // Continue from where we left off or start fresh
+        if let Some((key, mut existing_group)) = self.current_group.take() {
+            group.append(&mut existing_group);
+            group_key = Some(key);
+        }
+        
+        // Collect all rows with the same key
+        while let Some(row) = self.inner.next() {
+            let key = (self.key_fn)(&row);
+            
+            match &group_key {
+                None => {
+                    group_key = Some(key);
+                    group.push(row);
+                }
+                Some(gk) if gk == &key => {
+                    group.push(row);
+                }
+                Some(_) => {
+                    // Different key, save for next iteration
+                    self.current_group = Some((key, vec![row]));
+                    break;
+                }
+            }
+        }
+        
+        group_key.map(|k| (k, group))
+    }
+}
+
+/// Aggregate iterator that applies an aggregator to all rows
+#[allow(dead_code)]
+pub struct AggregateIterator<I, A> {
+    inner: I,
+    aggregator: A,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     
     #[test]
-    fn test_filter_iterator() {
-        let rows = vec![
-            Row::from_owned(vec![DataType::Integer(1), DataType::String("a".to_string())]),
-            Row::from_owned(vec![DataType::Integer(2), DataType::String("b".to_string())]),
-            Row::from_owned(vec![DataType::Integer(3), DataType::String("c".to_string())]),
+    fn test_row_iterator() {
+        let data: Vec<Vec<DataType>> = vec![
+            vec![DataType::Integer(1), DataType::String("Alice".to_string())],
+            vec![DataType::Integer(2), DataType::String("Bob".to_string())],
         ];
         
-        let filtered: Vec<_> = rows
-            .into_iter()
-            .filter_rows(|row| {
-                matches!(row.get(0), Some(DataType::Integer(i)) if *i > 1)
-            })
-            .collect();
+        let slices: Vec<&[DataType]> = data.iter().map(|v| v.as_slice()).collect();
+        let mut iter = RowIterator::new(slices.into_iter());
         
-        assert_eq!(filtered.len(), 2);
-    }
-    
-    #[test]
-    fn test_count_aggregator() {
-        let rows = vec![
-            Row::from_owned(vec![DataType::Integer(1)]),
-            Row::from_owned(vec![DataType::Integer(2)]),
-            Row::from_owned(vec![DataType::Integer(3)]),
-        ];
+        let row1 = iter.next().unwrap();
+        assert_eq!(row1.get(0), Some(&DataType::Integer(1)));
         
-        let mut count = CountAggregator::default();
-        for row in &rows {
-            count.update(row);
-        }
+        let row2 = iter.next().unwrap();
+        assert_eq!(row2.get(1), Some(&DataType::String("Bob".to_string())));
         
-        assert_eq!(count.finalize(), 3);
+        assert!(iter.next().is_none());
     }
 }

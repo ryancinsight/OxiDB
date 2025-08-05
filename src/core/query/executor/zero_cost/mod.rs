@@ -15,6 +15,9 @@ pub mod processors;
 pub mod validators;
 pub mod transformers;
 
+// Re-export commonly used types
+pub use iterators::{WindowIterator, WindowRefIterator};
+
 /// Zero-cost wrapper for query results that avoids unnecessary allocations
 pub struct QueryResult<'a> {
     /// Column names - can be borrowed or owned
