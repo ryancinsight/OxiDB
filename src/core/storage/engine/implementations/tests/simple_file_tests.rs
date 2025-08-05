@@ -1103,6 +1103,7 @@ fn test_scan_operation() -> Result<(), OxidbError> {
 }
 
 #[test]
+#[allow(deprecated)]
 fn test_physical_wal_lsn_integration() {
     let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("lsn_test.db");

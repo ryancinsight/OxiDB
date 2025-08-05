@@ -1,11 +1,12 @@
-//! Borrowed data structures for zero-cost database operations
+//! Zero-copy borrowed data structures for efficient data access
 //! 
-//! This module provides borrowed versions of common database structures
-//! that avoid allocations and enable efficient data processing.
+//! This module provides borrowed versions of common data structures used in database
+//! operations, avoiding allocations and copies wherever possible.
 
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use crate::core::common::types::Value;
+use crate::api::types::Row;
 
 /// Borrowed row that avoids allocating a Vec for values
 #[derive(Debug)]
@@ -103,10 +104,10 @@ impl<'a> BorrowedSchema<'a> {
     }
 }
 
-/// Borrowed predicate that avoids cloning expressions
+/// Comparison predicate for efficient filtering
 #[derive(Debug)]
 pub struct BorrowedPredicate<'a> {
-    column: Cow<'a, str>,
+    column_index: usize,
     operator: ComparisonOp,
     value: BorrowedValue<'a>,
 }
@@ -134,28 +135,47 @@ pub enum BorrowedValue<'a> {
     Boolean(bool),
     Blob(Cow<'a, [u8]>),
     Vector(Cow<'a, [f32]>),
-    List(Cow<'a, [BorrowedValue<'a>]>),
+    /// List of values
+    List(Vec<BorrowedValue<'a>>),
     Null,
 }
 
 impl<'a> BorrowedPredicate<'a> {
     /// Create a new borrowed predicate
-    pub fn new(column: Cow<'a, str>, operator: ComparisonOp, value: BorrowedValue<'a>) -> Self {
+    pub fn new(column_index: usize, operator: ComparisonOp, value: BorrowedValue<'a>) -> Self {
         Self {
-            column,
+            column_index,
             operator,
             value,
         }
     }
     
-    /// Evaluate predicate against a value
-    pub fn evaluate(&self, row_value: &Value) -> bool {
-        match (&self.value, row_value) {
+    /// Evaluate predicate against a row
+    pub fn evaluate(&self, row: &Row) -> bool {
+        // Get column value by index
+        let column_value = match row.get(self.column_index) {
+            Some(val) => val,
+            None => return false,
+        };
+        
+        // Compare with predicate value
+        match (&self.value, column_value) {
             (BorrowedValue::Integer(a), Value::Integer(b)) => {
                 self.compare_ordered(a, b)
             }
             (BorrowedValue::Float(a), Value::Float(b)) => {
-                self.compare_ordered(a, b)
+                // For floats, use partial comparison with NaN handling
+                match (a.partial_cmp(b), self.operator) {
+                    (Some(std::cmp::Ordering::Less), ComparisonOp::LessThan) => true,
+                    (Some(std::cmp::Ordering::Less), ComparisonOp::LessThanOrEqual) => true,
+                    (Some(std::cmp::Ordering::Equal), ComparisonOp::LessThanOrEqual) => true,
+                    (Some(std::cmp::Ordering::Equal), ComparisonOp::GreaterThanOrEqual) => true,
+                    (Some(std::cmp::Ordering::Equal), ComparisonOp::Equal) => true,
+                    (Some(std::cmp::Ordering::Greater), ComparisonOp::GreaterThan) => true,
+                    (Some(std::cmp::Ordering::Greater), ComparisonOp::GreaterThanOrEqual) => true,
+                    (None, ComparisonOp::NotEqual) => true, // NaN != anything
+                    _ => false,
+                }
             }
             (BorrowedValue::Text(a), Value::Text(b)) => {
                 match self.operator {
@@ -324,14 +344,19 @@ mod tests {
     #[test]
     fn test_borrowed_predicate() {
         let pred = BorrowedPredicate::new(
-            Cow::Borrowed("age"),
+            0, // age column index
             ComparisonOp::GreaterThan,
             BorrowedValue::Integer(25),
         );
         
-        assert!(pred.evaluate(&Value::Integer(30)));
-        assert!(!pred.evaluate(&Value::Integer(20)));
-        assert!(!pred.evaluate(&Value::Text("30".to_string())));
+        // Create test rows
+        let row1 = Row::new(vec![Value::Integer(30)]);
+        let row2 = Row::new(vec![Value::Integer(20)]);
+        let row3 = Row::new(vec![Value::Text("30".to_string())]);
+        
+        assert!(pred.evaluate(&row1));
+        assert!(!pred.evaluate(&row2));
+        assert!(!pred.evaluate(&row3));
     }
     
     #[test]
@@ -343,7 +368,7 @@ mod tests {
                     projection: None,
                 }),
                 predicate: BorrowedPredicate::new(
-                    Cow::Borrowed("active"),
+                    0, // active column index
                     ComparisonOp::Equal,
                     BorrowedValue::Boolean(true),
                 ),

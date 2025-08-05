@@ -4,7 +4,7 @@
 //! enabling efficient data processing with minimal memory overhead.
 
 use std::borrow::Cow;
-use std::ops::{Deref, Index};
+use std::ops::Index;
 use std::slice;
 use crate::core::common::types::Value;
 use crate::api::types::Row;
@@ -137,8 +137,8 @@ impl<'a> ColumnView<'a> {
             .and_then(|row| row.get(self.column_index))
     }
     
-    /// Create an iterator over column values
-    pub fn iter(&self) -> impl Iterator<Item = Option<&'a Value>> + 'a {
+    /// Iterator over column values
+    pub fn iter(&self) -> impl Iterator<Item = Option<&'a Value>> + '_ {
         self.rows
             .iter()
             .map(move |row| row.get(self.column_index))
@@ -298,7 +298,7 @@ impl<'a> ProjectionView<'a> {
     }
     
     /// Iterate over projected values
-    pub fn iter(&self) -> impl Iterator<Item = Option<&'a Value>> + 'a {
+    pub fn iter(&self) -> impl Iterator<Item = Option<&'a Value>> + '_ {
         self.indices
             .iter()
             .map(move |&idx| self.row.get(idx))

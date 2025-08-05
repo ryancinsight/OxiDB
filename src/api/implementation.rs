@@ -1,5 +1,6 @@
-// src/api/implementation.rs
-//! Contains the private implementation logic for the API layer.
+//! Implementation of the Oxidb API
+
+#![allow(deprecated)]
 
 use super::types::Oxidb; // To refer to the Oxidb struct in types.rs
 use crate::core::common::OxidbError;

@@ -140,7 +140,7 @@ where
     
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.find(&self.predicate)
+        self.iter.find(|row| (self.predicate)(row))
     }
     
     fn size_hint(&self) -> (usize, Option<usize>) {

@@ -9,9 +9,8 @@
 //! - Product recommendations using vector similarity
 
 use oxidb::{Connection, OxidbError, QueryResult};
-use oxidb::core::types::{DataType, OrderedFloat, HashableVectorData, VectorData};
+use oxidb::core::types::DataType;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -178,7 +177,7 @@ impl EcommerceDB {
         match result {
             QueryResult::Data(data) => {
                 if let Some(row) = data.rows().next() {
-                    Ok(Some(self.row_to_product_from_row(row)?))
+                    Ok(Some(self.row_to_product(row)?))
                 } else {
                     Ok(None)
                 }
@@ -191,15 +190,20 @@ impl EcommerceDB {
         let sql = format!("SELECT * FROM products WHERE category = '{}'", category);
         let result = self.db.execute(&sql)?;
         
-        result.rows.iter()
-            .map(|row| self.row_to_product(row))
-            .collect()
+        match result {
+            QueryResult::Data(data) => {
+                data.rows.iter()
+                    .map(|row| self.row_to_product(row))
+                    .collect()
+            }
+            _ => Ok(Vec::new()),
+        }
     }
     
     fn find_similar_products(&mut self, product_id: &str, limit: usize) -> Result<Vec<Product>, OxidbError> {
         // First get the product's embedding
         let product = self.get_product(product_id)?
-            .ok_or_else(|| OxidbError::KeyNotFound)?;
+            .ok_or_else(|| OxidbError::NotFound("Product not found".to_string()))?;
         
         if let Some(embedding) = product.embedding {
             // Use vector similarity search to find similar products
@@ -215,17 +219,21 @@ impl EcommerceDB {
             );
             
             let result = self.db.execute(&sql)?;
-            result.rows.iter()
-                .map(|row| self.row_to_product(row))
-                .collect()
+            match result {
+                QueryResult::Data(data) => {
+                    data.rows.iter()
+                        .map(|row| self.row_to_product(row))
+                        .collect()
+                }
+                _ => Ok(Vec::new()),
+            }
         } else {
             // Fallback to category-based recommendations
-            self.search_products_by_category(&product.category)?
+            Ok(self.search_products_by_category(&product.category)?
                 .into_iter()
                 .filter(|p| p.id != product_id)
                 .take(limit)
-                .collect::<Vec<_>>()
-                .into()
+                .collect())
         }
     }
     
@@ -252,10 +260,15 @@ impl EcommerceDB {
         let sql = format!("SELECT * FROM users WHERE email = '{}'", email);
         let result = self.db.execute(&sql)?;
         
-        if let Some(row) = result.rows.first() {
-            Ok(Some(self.row_to_user(row)?))
-        } else {
-            Ok(None)
+        match result {
+            QueryResult::Data(data) => {
+                if let Some(row) = data.rows.first() {
+                    Ok(Some(self.row_to_user(row)?))
+                } else {
+                    Ok(None)
+                }
+            }
+            _ => Ok(None),
         }
     }
     
@@ -290,9 +303,14 @@ impl EcommerceDB {
         let sql = format!("SELECT * FROM orders WHERE user_id = '{}'", user_id);
         let result = self.db.execute(&sql)?;
         
-        result.rows.iter()
-            .map(|row| self.row_to_order(row))
-            .collect()
+        match result {
+            QueryResult::Data(data) => {
+                data.rows.iter()
+                    .map(|row| self.row_to_order(row))
+                    .collect()
+            }
+            _ => Ok(Vec::new()),
+        }
     }
     
     // Shopping cart
@@ -315,10 +333,15 @@ impl EcommerceDB {
         let sql = format!("SELECT * FROM shopping_carts WHERE user_id = '{}'", user_id);
         let result = self.db.execute(&sql)?;
         
-        if let Some(row) = result.rows.first() {
-            Ok(Some(self.row_to_cart(row)?))
-        } else {
-            Ok(None)
+        match result {
+            QueryResult::Data(data) => {
+                if let Some(row) = data.rows.first() {
+                    Ok(Some(self.row_to_cart(row)?))
+                } else {
+                    Ok(None)
+                }
+            }
+            _ => Ok(None),
         }
     }
     
@@ -396,7 +419,10 @@ impl EcommerceDB {
         match data {
             DataType::String(s) => Ok(s.clone()),
             DataType::Null => Ok(String::new()),
-            _ => Err(OxidbError::TypeMismatch),
+            _ => Err(OxidbError::TypeMismatch { 
+                expected: "String".to_string(), 
+                found: format!("{:?}", data) 
+            }),
         }
     }
     
@@ -404,14 +430,20 @@ impl EcommerceDB {
         match data {
             DataType::Float(f) => Ok(f.0),
             DataType::Integer(i) => Ok(*i as f64),
-            _ => Err(OxidbError::TypeMismatch),
+            _ => Err(OxidbError::TypeMismatch { 
+                expected: "Float".to_string(), 
+                found: format!("{:?}", data) 
+            }),
         }
     }
     
     fn get_integer(&mut self, data: &DataType) -> Result<i64, OxidbError> {
         match data {
             DataType::Integer(i) => Ok(*i),
-            _ => Err(OxidbError::TypeMismatch),
+            _ => Err(OxidbError::TypeMismatch { 
+                expected: "Integer".to_string(), 
+                found: format!("{:?}", data) 
+            }),
         }
     }
     
@@ -419,7 +451,10 @@ impl EcommerceDB {
         match data {
             DataType::Vector(v) => Ok(Some(v.0.data.clone())),
             DataType::Null => Ok(None),
-            _ => Err(OxidbError::TypeMismatch),
+            _ => Err(OxidbError::TypeMismatch { 
+                expected: "Vector".to_string(), 
+                found: format!("{:?}", data) 
+            }),
         }
     }
 }
@@ -429,7 +464,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== E-commerce Website Database Example ===\n");
     
     // Initialize database
-    let db = EcommerceDB::new("ecommerce.db")?;
+    let mut db = EcommerceDB::new("ecommerce.db")?;
     
     // Create sample products
     let products = vec![
