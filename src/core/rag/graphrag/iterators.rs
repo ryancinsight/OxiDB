@@ -39,9 +39,19 @@ impl<'a> Iterator for SimilarityIterator<'a> {
         // Use iterator combinators to find next matching entity efficiently
         self.entities.find_map(|(node_id, entity)| {
             entity.embedding.as_ref().and_then(|embedding| {
+                // Check cache first
+                if let Some(&cached_similarity) = self.similarity_cache.get(node_id) {
+                    if cached_similarity >= self.threshold {
+                        return Some((*node_id, cached_similarity));
+                    } else {
+                        return None;
+                    }
+                }
                 match cosine_similarity(self.query_embedding, &embedding.vector) {
                     Ok(similarity) => {
                         let similarity_f64 = f64::from(similarity);
+                        // Store in cache
+                        self.similarity_cache.insert(*node_id, similarity_f64);
                         if similarity_f64 >= self.threshold {
                             Some((*node_id, similarity_f64))
                         } else {
