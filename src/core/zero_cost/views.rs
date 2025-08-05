@@ -338,9 +338,9 @@ mod tests {
     #[test]
     fn test_column_view() {
         let rows = vec![
-            Row::new(vec![Value::Integer(1), Value::Text("a".to_string())]),
-            Row::new(vec![Value::Integer(2), Value::Text("b".to_string())]),
-            Row::new(vec![Value::Integer(3), Value::Text("c".to_string())]),
+            Row::from_slice(&[Value::Integer(1), Value::Text("a".to_string())]),
+            Row::from_slice(&[Value::Integer(2), Value::Text("b".to_string())]),
+            Row::from_slice(&[Value::Integer(3), Value::Text("c".to_string())]),
         ];
         
         let col_view = ColumnView::new(&rows, 0);
