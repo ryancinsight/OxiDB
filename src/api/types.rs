@@ -14,7 +14,6 @@
 /// let conn = Connection::open("my_database.db")?;
 /// conn.execute("SELECT * FROM users")?;
 /// ```
-/*
 #[deprecated(
     since = "0.2.0",
     note = "Use the Connection API instead for better ergonomics and type safety"
@@ -22,9 +21,8 @@
 pub struct Oxidb {
     /// The query executor responsible for handling database operations.
     /// Visible within the `api` module (`crate::api`) to allow `implementation.rs` to access it.
-    pub(crate) executor: QueryExecutor<SimpleFileKvStore>,
+    pub(crate) executor: crate::core::query::executor::QueryExecutor<crate::core::storage::engine::simple_file_kv_store::SimpleFileKvStore>,
 }
-*/
 
 /// Represents the result of a query execution.
 #[derive(Debug, Clone, PartialEq)]

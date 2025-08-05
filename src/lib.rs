@@ -174,7 +174,7 @@ pub use crate::core::common::OxidbError;
 #[allow(deprecated)]
 mod tests {
     // Imports used by tests in this module
-    use crate::Oxidb;
+    use crate::api::types::Oxidb;
     use crate::core::common::OxidbError;
     use std::fs::{self, File}; // fs and File are used
     use std::io::Write;
@@ -355,10 +355,10 @@ mod tests {
         let mut db = Oxidb::new_from_config_file(config_file_path.clone()).unwrap();
 
         let expected_db_path = custom_data_dir.join(custom_db_filename);
-        assert_eq!(db.database_path(), expected_db_path);
+        assert_eq!(db.database_path(), expected_db_path.to_str().unwrap());
         // For index_path, the config now specifies a full path for index_base_path
         let expected_index_path = custom_data_dir.join(custom_index_dir);
-        assert_eq!(db.index_path(), expected_index_path);
+        assert_eq!(db.index_path(), expected_index_path.to_str().unwrap());
 
         db.execute_query_str("INSERT test 1").unwrap();
         let val = db.execute_query_str("GET test").unwrap();

@@ -1,6 +1,6 @@
 //! Factory methods for creating GraphRAG engines with common configurations
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use crate::core::rag::embedder::SemanticEmbedder;
 use super::{GraphRAGEngineImpl, GraphRAGConfig};
 use crate::core::graph::GraphStore;
@@ -10,7 +10,7 @@ pub struct GraphRAGFactory;
 
 impl GraphRAGFactory {
     /// Create a default GraphRAG engine
-    pub fn create_default(graph_store: Arc<dyn GraphStore>) -> GraphRAGEngineImpl {
+    pub fn create_default<T: GraphStore + 'static>(graph_store: T) -> GraphRAGEngineImpl {
         let config = GraphRAGConfig {
             default_similarity_threshold: 0.7,
             max_traversal_depth: 3,
@@ -19,11 +19,11 @@ impl GraphRAGFactory {
         
         let embedder = Arc::new(SemanticEmbedder::new(384)); // Default dimension
         
-        GraphRAGEngineImpl::new(graph_store, embedder, config)
+        GraphRAGEngineImpl::new(Arc::new(Mutex::new(graph_store)), embedder, config)
     }
     
     /// Create a high-precision GraphRAG engine
-    pub fn create_high_precision(graph_store: Arc<dyn GraphStore>) -> GraphRAGEngineImpl {
+    pub fn create_high_precision<T: GraphStore + 'static>(graph_store: T) -> GraphRAGEngineImpl {
         let config = GraphRAGConfig {
             default_similarity_threshold: 0.85,
             max_traversal_depth: 5,
@@ -32,11 +32,11 @@ impl GraphRAGFactory {
         
         let embedder = Arc::new(SemanticEmbedder::new(768)); // Higher dimension for precision
         
-        GraphRAGEngineImpl::new(graph_store, embedder, config)
+        GraphRAGEngineImpl::new(Arc::new(Mutex::new(graph_store)), embedder, config)
     }
     
     /// Create a fast GraphRAG engine for real-time queries
-    pub fn create_fast(graph_store: Arc<dyn GraphStore>) -> GraphRAGEngineImpl {
+    pub fn create_fast<T: GraphStore + 'static>(graph_store: T) -> GraphRAGEngineImpl {
         let config = GraphRAGConfig {
             default_similarity_threshold: 0.6,
             max_traversal_depth: 2,
@@ -45,6 +45,6 @@ impl GraphRAGFactory {
         
         let embedder = Arc::new(SemanticEmbedder::new(128)); // Lower dimension for speed
         
-        GraphRAGEngineImpl::new(graph_store, embedder, config)
+        GraphRAGEngineImpl::new(Arc::new(Mutex::new(graph_store)), embedder, config)
     }
 }
