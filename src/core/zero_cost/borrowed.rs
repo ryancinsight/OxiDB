@@ -161,11 +161,21 @@ impl<'a> BorrowedPredicate<'a> {
         // Compare with predicate value
         match (&self.value, column_value) {
             (BorrowedValue::Integer(a), Value::Integer(b)) => {
-                self.compare_ordered(a, b)
+                // Note: We compare b (column value) against a (predicate value)
+                // For example: "age > 25" means column_value > 25
+                match self.operator {
+                    ComparisonOp::Equal => b == a,
+                    ComparisonOp::NotEqual => b != a,
+                    ComparisonOp::LessThan => b < a,
+                    ComparisonOp::LessThanOrEqual => b <= a,
+                    ComparisonOp::GreaterThan => b > a,
+                    ComparisonOp::GreaterThanOrEqual => b >= a,
+                    _ => false,
+                }
             }
             (BorrowedValue::Float(a), Value::Float(b)) => {
                 // For floats, use partial comparison with NaN handling
-                match (a.partial_cmp(b), self.operator) {
+                match (b.partial_cmp(a), self.operator) {
                     (Some(std::cmp::Ordering::Less), ComparisonOp::LessThan) => true,
                     (Some(std::cmp::Ordering::Less), ComparisonOp::LessThanOrEqual) => true,
                     (Some(std::cmp::Ordering::Equal), ComparisonOp::LessThanOrEqual) => true,
@@ -181,11 +191,21 @@ impl<'a> BorrowedPredicate<'a> {
                 match self.operator {
                     ComparisonOp::Like => self.pattern_match(a, b),
                     ComparisonOp::NotLike => !self.pattern_match(a, b),
-                    _ => self.compare_ordered(a.as_ref(), b.as_str()),
+                    ComparisonOp::Equal => b.as_str() == a.as_ref(),
+                    ComparisonOp::NotEqual => b.as_str() != a.as_ref(),
+                    ComparisonOp::LessThan => b.as_str() < a.as_ref(),
+                    ComparisonOp::LessThanOrEqual => b.as_str() <= a.as_ref(),
+                    ComparisonOp::GreaterThan => b.as_str() > a.as_ref(),
+                    ComparisonOp::GreaterThanOrEqual => b.as_str() >= a.as_ref(),
+                    _ => false,
                 }
             }
             (BorrowedValue::Boolean(a), Value::Boolean(b)) => {
-                self.compare_equality(a, b)
+                match self.operator {
+                    ComparisonOp::Equal => b == a,
+                    ComparisonOp::NotEqual => b != a,
+                    _ => false,
+                }
             }
             (BorrowedValue::Null, Value::Null) => {
                 matches!(self.operator, ComparisonOp::Equal)
@@ -194,32 +214,76 @@ impl<'a> BorrowedPredicate<'a> {
         }
     }
     
-    fn compare_ordered<T: Ord + ?Sized>(&self, a: &T, b: &T) -> bool {
-        match self.operator {
-            ComparisonOp::Equal => a == b,
-            ComparisonOp::NotEqual => a != b,
-            ComparisonOp::LessThan => a < b,
-            ComparisonOp::LessThanOrEqual => a <= b,
-            ComparisonOp::GreaterThan => a > b,
-            ComparisonOp::GreaterThanOrEqual => a >= b,
-            _ => false,
-        }
-    }
-    
-    fn compare_equality<T: PartialEq>(&self, a: &T, b: &T) -> bool {
-        match self.operator {
-            ComparisonOp::Equal => a == b,
-            ComparisonOp::NotEqual => a != b,
-            _ => false,
-        }
-    }
-    
     fn pattern_match(&self, pattern: &str, text: &str) -> bool {
-        // Simple LIKE pattern matching (% for any chars, _ for single char)
-        let pattern = pattern.replace('%', ".*").replace('_', ".");
-        regex::Regex::new(&format!("^{}$", pattern))
-            .map(|re| re.is_match(text))
-            .unwrap_or(false)
+        // Efficient SQL LIKE pattern matching without regex
+        // % matches zero or more characters
+        // _ matches exactly one character
+        
+        let pattern_chars: Vec<char> = pattern.chars().collect();
+        let text_chars: Vec<char> = text.chars().collect();
+        
+        self.match_pattern(&pattern_chars, 0, &text_chars, 0)
+    }
+    
+    fn match_pattern(&self, pattern: &[char], p_idx: usize, text: &[char], t_idx: usize) -> bool {
+        // Base case: reached end of both pattern and text
+        if p_idx >= pattern.len() && t_idx >= text.len() {
+            return true;
+        }
+        
+        // Pattern exhausted but text remains
+        if p_idx >= pattern.len() {
+            return false;
+        }
+        
+        match pattern.get(p_idx) {
+            Some('%') => {
+                // Handle consecutive % by skipping them
+                let mut next_p_idx = p_idx;
+                while next_p_idx < pattern.len() && pattern[next_p_idx] == '%' {
+                    next_p_idx += 1;
+                }
+                
+                // If % is at the end, it matches everything remaining
+                if next_p_idx >= pattern.len() {
+                    return true;
+                }
+                
+                // Try matching the rest of the pattern at each position in text
+                for i in t_idx..=text.len() {
+                    if self.match_pattern(pattern, next_p_idx, text, i) {
+                        return true;
+                    }
+                }
+                
+                false
+            }
+            Some('_') => {
+                // _ must match exactly one character
+                if t_idx >= text.len() {
+                    return false;
+                }
+                self.match_pattern(pattern, p_idx + 1, text, t_idx + 1)
+            }
+            Some('\\') if p_idx + 1 < pattern.len() => {
+                // Handle escaped characters
+                if t_idx >= text.len() || text[t_idx] != pattern[p_idx + 1] {
+                    return false;
+                }
+                self.match_pattern(pattern, p_idx + 2, text, t_idx + 1)
+            }
+            Some(&c) => {
+                // Regular character must match exactly
+                if t_idx >= text.len() || text[t_idx] != c {
+                    return false;
+                }
+                self.match_pattern(pattern, p_idx + 1, text, t_idx + 1)
+            }
+            None => {
+                // Should not happen due to bounds check above
+                false
+            }
+        }
     }
 }
 
@@ -376,5 +440,89 @@ mod tests {
         );
         
         assert_eq!(plan.estimate_cost(), 110); // 100 for scan + 10 for filter
+    }
+    
+    #[test]
+    fn test_pattern_matching() {
+        // Test exact matches
+        let pred = BorrowedPredicate::new(0, ComparisonOp::Like, BorrowedValue::Text("hello".into()));
+        // Note: pattern_match(pattern, text)
+        assert!(pred.pattern_match("hello", "hello"));
+        assert!(!pred.pattern_match("hello", "world"));
+        
+        // Test % wildcard (matches zero or more characters)
+        assert!(pred.pattern_match("h%", "hello"));
+        assert!(pred.pattern_match("h%", "h"));
+        assert!(pred.pattern_match("%ello", "hello"));
+        assert!(pred.pattern_match("%ello", "jello"));  // Fixed: jello ends with ello
+        assert!(pred.pattern_match("h%o", "hello"));
+        assert!(pred.pattern_match("%", "anything"));
+        assert!(pred.pattern_match("%%", "anything"));
+        assert!(pred.pattern_match("h%l%o", "hello"));
+        assert!(pred.pattern_match("%low", "yellow"));  // This matches: yellow ends with low
+        
+        // Test _ wildcard (matches exactly one character)
+        assert!(pred.pattern_match("h_llo", "hello"));
+        assert!(!pred.pattern_match("h_llo", "hllo"));
+        assert!(!pred.pattern_match("h_llo", "heello"));
+        assert!(pred.pattern_match("_ello", "hello"));
+        assert!(pred.pattern_match("hell_", "hello"));
+        assert!(pred.pattern_match("_____", "hello"));
+        assert!(!pred.pattern_match("______", "hello"));
+        
+        // Test combinations
+        assert!(pred.pattern_match("h_l%", "hello"));
+        assert!(pred.pattern_match("h_l%", "help"));
+        assert!(pred.pattern_match("%l_o", "hello"));
+        assert!(pred.pattern_match("%l_w", "yellow"));  // Fixed: yellow has l_w pattern
+        assert!(!pred.pattern_match("%l_o", "helo"));
+        
+        // Test escaped characters
+        assert!(pred.pattern_match("h\\%llo", "h%llo"));
+        assert!(!pred.pattern_match("h\\%llo", "hello"));
+        assert!(pred.pattern_match("h\\_llo", "h_llo"));
+        assert!(!pred.pattern_match("h\\_llo", "hello"));
+        assert!(pred.pattern_match("h\\\\llo", "h\\llo"));
+        
+        // Test edge cases
+        assert!(pred.pattern_match("", ""));
+        assert!(!pred.pattern_match("", "hello"));
+        assert!(!pred.pattern_match("hello", ""));
+        assert!(pred.pattern_match("%", ""));
+        
+        // Test Unicode
+        assert!(pred.pattern_match("h%", "héllo"));
+        assert!(pred.pattern_match("h_llo", "héllo"));
+        assert!(pred.pattern_match("%世界", "你好世界"));
+        assert!(pred.pattern_match("你_世界", "你好世界"));
+    }
+    
+    #[test]
+    fn test_like_predicate_evaluation() {
+        let pred = BorrowedPredicate::new(
+            0,
+            ComparisonOp::Like,
+            BorrowedValue::Text("John%".into()),
+        );
+        
+        let row1 = Row::new(vec![Value::Text("John Doe".to_string())]);
+        let row2 = Row::new(vec![Value::Text("Jane Doe".to_string())]);
+        let row3 = Row::new(vec![Value::Text("John".to_string())]);
+        let row4 = Row::new(vec![Value::Integer(42)]);
+        
+        assert!(pred.evaluate(&row1));
+        assert!(!pred.evaluate(&row2));
+        assert!(pred.evaluate(&row3));
+        assert!(!pred.evaluate(&row4)); // Type mismatch
+        
+        // Test NOT LIKE
+        let not_pred = BorrowedPredicate::new(
+            0,
+            ComparisonOp::NotLike,
+            BorrowedValue::Text("John%".into()),
+        );
+        
+        assert!(!not_pred.evaluate(&row1));
+        assert!(not_pred.evaluate(&row2));
     }
 }
