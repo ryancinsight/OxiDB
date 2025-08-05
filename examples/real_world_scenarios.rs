@@ -1,8 +1,6 @@
-use oxidb::{Connection, OxidbError, QueryResult};
-use std::collections::HashMap;
+use oxidb::{Connection, OxidbError};
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use serde::{Serialize, Deserialize};
 
 /// Real-world scenario tests for Oxidb
@@ -123,19 +121,36 @@ impl UserRepository for DatabaseRepository {
     }
 
     fn find_user_by_email(&self, email: &str) -> Result<Option<User>, OxidbError> {
-        let conn = self.connection.lock().unwrap();
+        let mut conn = self.connection.lock().unwrap();
         let result = conn.query_all(&format!("SELECT * FROM users WHERE email = '{}'", email))?;
         
-        if result.rows.is_empty() {
+        if result.is_empty() {
             Ok(None)
         } else {
-            let row = &result.rows[0];
+            let row = &result[0];
+            // Assuming columns: id, username, email, created_at, is_active
             Ok(Some(User {
-                id: row.get("id").unwrap_or("0".to_string()).parse().unwrap_or(0),
-                username: row.get("username").unwrap_or_default(),
-                email: row.get("email").unwrap_or_default(),
-                created_at: row.get("created_at").unwrap_or_default(),
-                is_active: row.get("is_active").unwrap_or("true".to_string()) == "true",
+                id: match row.get(0) {
+                    Some(oxidb::Value::Integer(i)) => *i as u64,
+                    _ => 0,
+                },
+                username: match row.get(1) {
+                    Some(oxidb::Value::Text(s)) => s.clone(),
+                    _ => String::new(),
+                },
+                email: match row.get(2) {
+                    Some(oxidb::Value::Text(s)) => s.clone(),
+                    _ => String::new(),
+                },
+                created_at: match row.get(3) {
+                    Some(oxidb::Value::Text(s)) => s.clone(),
+                    _ => String::new(),
+                },
+                is_active: match row.get(4) {
+                    Some(oxidb::Value::Boolean(b)) => *b,
+                    Some(oxidb::Value::Integer(i)) => *i != 0,
+                    _ => true,
+                },
             }))
         }
     }
@@ -161,18 +176,38 @@ impl ProductRepository for DatabaseRepository {
     }
 
     fn find_products_by_category(&self, category: &str) -> Result<Vec<Product>, OxidbError> {
-        let conn = self.connection.lock().unwrap();
+        let mut conn = self.connection.lock().unwrap();
         let result = conn.query_all(&format!("SELECT * FROM products WHERE category = '{}'", category))?;
         
         let mut products = Vec::new();
-        for row in result.rows {
+        for row in result {
+            // Assuming columns: id, name, price, category, stock_quantity, description
             products.push(Product {
-                id: row.get("id").unwrap_or("0".to_string()).parse().unwrap_or(0),
-                name: row.get("name").unwrap_or_default(),
-                price: row.get("price").unwrap_or("0".to_string()).parse().unwrap_or(0.0),
-                category: row.get("category").unwrap_or_default(),
-                stock_quantity: row.get("stock_quantity").unwrap_or("0".to_string()).parse().unwrap_or(0),
-                description: row.get("description").unwrap_or_default(),
+                id: match row.get(0) {
+                    Some(oxidb::Value::Integer(i)) => *i as u64,
+                    _ => 0,
+                },
+                name: match row.get(1) {
+                    Some(oxidb::Value::Text(s)) => s.clone(),
+                    _ => String::new(),
+                },
+                price: match row.get(2) {
+                    Some(oxidb::Value::Float(f)) => *f,
+                    Some(oxidb::Value::Integer(i)) => *i as f64,
+                    _ => 0.0,
+                },
+                category: match row.get(3) {
+                    Some(oxidb::Value::Text(s)) => s.clone(),
+                    _ => String::new(),
+                },
+                stock_quantity: match row.get(4) {
+                    Some(oxidb::Value::Integer(i)) => *i as i32,
+                    _ => 0,
+                },
+                description: match row.get(5) {
+                    Some(oxidb::Value::Text(s)) => s.clone(),
+                    _ => String::new(),
+                },
             });
         }
         Ok(products)
@@ -200,21 +235,41 @@ impl OrderRepository for DatabaseRepository {
     }
 
     fn find_orders_by_user(&self, user_id: u64) -> Result<Vec<Order>, OxidbError> {
-        let conn = self.connection.lock().unwrap();
+        let mut conn = self.connection.lock().unwrap();
         let result = conn.query_all(&format!("SELECT * FROM orders WHERE user_id = {}", user_id))?;
         
         let mut orders = Vec::new();
-        for row in result.rows {
-            let product_ids_str = row.get("product_ids").unwrap_or("[]".to_string());
+        for row in result {
+            // Assuming columns: id, user_id, product_ids, total_amount, status, created_at
+            let product_ids_str = match row.get(2) {
+                Some(oxidb::Value::Text(s)) => s.clone(),
+                _ => "[]".to_string(),
+            };
             let product_ids: Vec<u64> = serde_json::from_str(&product_ids_str).unwrap_or_default();
             
             orders.push(Order {
-                id: row.get("id").unwrap_or("0".to_string()).parse().unwrap_or(0),
-                user_id: row.get("user_id").unwrap_or("0".to_string()).parse().unwrap_or(0),
+                id: match row.get(0) {
+                    Some(oxidb::Value::Integer(i)) => *i as u64,
+                    _ => 0,
+                },
+                user_id: match row.get(1) {
+                    Some(oxidb::Value::Integer(i)) => *i as u64,
+                    _ => 0,
+                },
                 product_ids,
-                total_amount: row.get("total_amount").unwrap_or("0".to_string()).parse().unwrap_or(0.0),
-                status: row.get("status").unwrap_or_default(),
-                created_at: row.get("created_at").unwrap_or_default(),
+                total_amount: match row.get(3) {
+                    Some(oxidb::Value::Float(f)) => *f,
+                    Some(oxidb::Value::Integer(i)) => *i as f64,
+                    _ => 0.0,
+                },
+                status: match row.get(4) {
+                    Some(oxidb::Value::Text(s)) => s.clone(),
+                    _ => String::new(),
+                },
+                created_at: match row.get(5) {
+                    Some(oxidb::Value::Text(s)) => s.clone(),
+                    _ => String::new(),
+                },
             });
         }
         Ok(orders)

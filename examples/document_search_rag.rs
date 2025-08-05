@@ -105,7 +105,7 @@ impl DocumentSearchDB {
         Ok(())
     }
     
-    fn update_document_embedding(&self, doc_id: &str, embedding: &[f32]) -> Result<(), OxidbError> {
+    fn update_document_embedding(&mut self, doc_id: &str, embedding: &[f32]) -> Result<(), OxidbError> {
         let embedding_str = format!("[{}]", embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
         
         let sql = format!(

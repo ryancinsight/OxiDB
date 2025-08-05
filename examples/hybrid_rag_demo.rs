@@ -1,11 +1,14 @@
-//! Demonstrates the GraphRAG system for knowledge graph-based retrieval
+//! Hybrid RAG Demo
+//! 
+//! This example demonstrates how to use both traditional retrieval and graph-based
+//! knowledge retrieval in a hybrid approach.
 
 use oxidb::Connection;
 use oxidb::core::rag::{Document, KnowledgeNode};
 use oxidb::core::rag::retriever::InMemoryRetriever;
-use oxidb::core::rag::graphrag::GraphRAGEngineBuilder;
 use std::collections::HashMap;
 use std::sync::Arc;
+use oxidb::Value;
 
 // Simple synchronous embedding function for the example
 fn generate_embedding(text: &str, dimension: usize) -> Vec<f32> {
@@ -69,38 +72,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Document::new(
             "doc1".to_string(),
             "TechCorp announces revolutionary AI breakthrough in natural language processing".to_string(),
-            HashMap::from([("category".to_string(), "tech".to_string())]),
-        ),
+        ).with_metadata(HashMap::from([("category".to_string(), Value::Text("tech".to_string()))])),
         Document::new(
             "doc2".to_string(),
             "TechCorp's new SmartAnalytics platform leverages machine learning for business insights".to_string(),
-            HashMap::from([("category".to_string(), "product".to_string())]),
-        ),
+        ).with_metadata(HashMap::from([("category".to_string(), Value::Text("product".to_string()))])),
         Document::new(
             "doc3".to_string(),
             "CEO Jane Smith leads TechCorp to record profits with innovative AI strategy".to_string(),
-            HashMap::from([("category".to_string(), "business".to_string())]),
-        ),
+        ).with_metadata(HashMap::from([("category".to_string(), Value::Text("business".to_string()))])),
         Document::new(
             "doc4".to_string(),
             "TechCorp acquires DataViz Solutions to expand visualization capabilities".to_string(),
-            HashMap::from([("category".to_string(), "acquisition".to_string())]),
-        ),
+        ).with_metadata(HashMap::from([("category".to_string(), Value::Text("acquisition".to_string()))])),
     ];
-
-    // Create embedding dimension
-    let embedding_dimension = 384;
     
-    // Embed documents
+    // Add documents with embeddings
     let mut embedded_docs = Vec::new();
     for doc in documents {
+        // Generate embedding for the document
+        let embedding_dimension = 384;
         let embedding = generate_embedding(&doc.content, embedding_dimension);
-        let embedded_doc = doc.with_embedding(oxidb::core::rag::Embedding { data: embedding });
+        let embedded_doc = doc.with_embedding(oxidb::core::rag::Embedding { vector: embedding });
         embedded_docs.push(embedded_doc);
     }
 
     // Store documents in retriever
-    let retriever = Arc::new(InMemoryRetriever::new(embedded_docs));
+    let _retriever = Arc::new(InMemoryRetriever::new(embedded_docs));
 
     // Create sample nodes for the knowledge graph
     let nodes = vec![
