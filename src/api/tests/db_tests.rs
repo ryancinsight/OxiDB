@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use crate::api::Oxidb;
 use crate::core::common::OxidbError;
 // use crate::core::query::commands::Command; // Removed unused import

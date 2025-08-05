@@ -1,5 +1,4 @@
-use oxidb::{Connection, OxidbError, QueryResult};
-use std::collections::HashMap;
+use oxidb::{Connection, OxidbError};
 use std::sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -111,7 +110,7 @@ impl SimpleConnectionPool {
     fn new(max_size: usize) -> Result<Self, OxidbError> {
         let mut connections = Vec::new();
         for _ in 0..max_size {
-            let conn = Connection::new(":memory:")?;
+            let conn = Connection::open_in_memory()?;
             connections.push(Arc::new(Mutex::new(conn)));
         }
 
@@ -129,7 +128,7 @@ impl ConnectionPool for SimpleConnectionPool {
             Ok(conn)
         } else {
             // Create new connection if pool is empty
-            let conn = Connection::new(":memory:")?;
+            let conn = Connection::open_in_memory()?;
             Ok(Arc::new(Mutex::new(conn)))
         }
     }
@@ -163,7 +162,7 @@ impl PerformanceTestSuite {
 
     fn setup_test_schema(&self) -> Result<(), OxidbError> {
         let conn = self.pool.get_connection()?;
-        let conn = conn.lock().unwrap();
+        let mut conn = conn.lock().unwrap();
 
         // Create tables with constraints for edge case testing
         conn.execute("CREATE TABLE IF NOT EXISTS large_data_test (
@@ -227,7 +226,7 @@ impl PerformanceTestSuite {
         let query_start = Instant::now();
         for category in 0..10 {
             let query = format!("SELECT COUNT(*) FROM large_data_test WHERE category = 'category_{}'", category);
-            match conn.query(&query) {
+            match conn.query_all(&query) {
                 Ok(_) => self.metrics.record_success(),
                 Err(_) => self.metrics.record_failure(),
             }
@@ -238,9 +237,9 @@ impl PerformanceTestSuite {
         // Range query test
         let range_start = Instant::now();
         let range_query = "SELECT * FROM large_data_test WHERE value BETWEEN 100 AND 200 ORDER BY value";
-        match conn.query(range_query) {
+        match conn.query_all(range_query) {
             Ok(result) => {
-                println!("  ✅ Range query returned {} records", result.rows.len());
+                println!("  ✅ Range query returned {} records", result.len());
                 self.metrics.record_success();
             }
             Err(_) => self.metrics.record_failure(),
@@ -297,7 +296,7 @@ impl PerformanceTestSuite {
                             1 => {
                                 // Select operation
                                 let query = format!("SELECT COUNT(*) FROM concurrent_test WHERE thread_id = {}", thread_id);
-                                match conn_guard.query(&query) {
+                                match conn_guard.query_all(&query) {
                                     Ok(_) => metrics.record_success(),
                                     Err(_) => metrics.record_failure(),
                                 }
@@ -316,7 +315,7 @@ impl PerformanceTestSuite {
                             3 => {
                                 // Complex query operation
                                 let query = "SELECT thread_id, COUNT(*), AVG(operation_count) FROM concurrent_test GROUP BY thread_id";
-                                match conn_guard.query(query) {
+                                match conn_guard.query_all(query) {
                                     Ok(_) => metrics.record_success(),
                                     Err(_) => metrics.record_failure(),
                                 }
@@ -411,9 +410,9 @@ impl PerformanceTestSuite {
 
         // Test complex query with edge cases
         let complex_query = "SELECT * FROM large_data_test WHERE data LIKE '%nonexistent%' AND value > 999999 ORDER BY id DESC LIMIT 0";
-        match conn.query(complex_query) {
+        match conn.query_all(complex_query) {
             Ok(result) => {
-                println!("  ✅ Complex edge case query returned {} results", result.rows.len());
+                println!("  ✅ Complex edge case query returned {} results", result.len());
                 self.metrics.record_success();
             }
             Err(e) => {
@@ -437,9 +436,9 @@ impl PerformanceTestSuite {
 
         // Test large result set handling
         let large_result_query = "SELECT * FROM large_data_test ORDER BY id";
-        match conn.query(large_result_query) {
+        match conn.query_all(large_result_query) {
             Ok(result) => {
-                println!("  ✅ Large result set query returned {} rows", result.rows.len());
+                println!("  ✅ Large result set query returned {} rows", result.len());
                 self.metrics.record_success();
             }
             Err(e) => {
@@ -457,7 +456,7 @@ impl PerformanceTestSuite {
         ];
 
         for (i, query) in queries.iter().enumerate() {
-            match conn.query(query) {
+            match conn.query_all(query) {
                 Ok(_) => {
                     println!("  ✅ Resource test query {} completed", i + 1);
                     self.metrics.record_success();

@@ -1,501 +1,337 @@
-// src/core/zero_cost/iterators.rs
-//! Advanced iterator combinators and zero-cost iterator abstractions for database operations
+//! Zero-cost iterator abstractions for database operations
+//! 
+//! This module provides efficient, allocation-free iterators that leverage
+//! Rust's zero-cost abstractions for maximum performance.
 
 use std::marker::PhantomData;
+use crate::core::common::types::Value;
+use crate::api::types::Row;
 
-/// Zero-cost iterator adapter that provides window functions over database rows
-pub struct WindowIterator<I, T, F> {
-    iter: I,
-    window_size: usize,
-    step: usize,
-    buffer: Vec<T>,
-    #[allow(dead_code)]
+/// Zero-cost iterator over database rows that avoids allocations
+pub struct RowRefIterator<'a> {
+    rows: &'a [Row],
     position: usize,
-    func: F,
-    _phantom: PhantomData<T>,
 }
 
-impl<I, T, F, R> WindowIterator<I, T, F>
-where
-    I: Iterator<Item = T>,
-    T: Clone,
-    F: Fn(&[T]) -> R,
-{
-    /// Create a new window iterator
-    pub fn new(iter: I, window_size: usize, step: usize, func: F) -> Self {
-        Self {
-            iter,
-            window_size,
-            step,
-            buffer: Vec::with_capacity(window_size),
-            position: 0,
-            func,
-            _phantom: PhantomData,
-        }
-    }
-}
-
-impl<I, T, F, R> Iterator for WindowIterator<I, T, F>
-where
-    I: Iterator<Item = T>,
-    T: Clone,
-    F: Fn(&[T]) -> R,
-{
-    type Item = R;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // Fill buffer to window size
-        while self.buffer.len() < self.window_size {
-            if let Some(item) = self.iter.next() {
-                self.buffer.push(item);
-            } else {
-                return None;
-            }
-        }
-
-        if self.buffer.len() == self.window_size {
-            let result = (self.func)(&self.buffer);
-            
-            // Slide the window
-            for _ in 0..self.step.min(self.buffer.len()) {
-                self.buffer.remove(0);
-            }
-            
-            // Fill buffer again if needed
-            while self.buffer.len() < self.window_size {
-                if let Some(item) = self.iter.next() {
-                    self.buffer.push(item);
-                } else {
-                    break;
-                }
-            }
-            
-            Some(result)
-        } else {
-            None
-        }
-    }
-}
-
-/// Zero-cost iterator for chunked processing of database rows
-pub struct ChunkedIterator<I, T> {
-    iter: I,
-    chunk_size: usize,
-    _phantom: PhantomData<T>,
-}
-
-impl<I, T> ChunkedIterator<I, T> {
-    /// Create a new chunked iterator
+impl<'a> RowRefIterator<'a> {
+    /// Create a new row reference iterator
     #[inline]
-    pub const fn new(iter: I, chunk_size: usize) -> Self {
+    pub const fn new(rows: &'a [Row]) -> Self {
         Self {
-            iter,
-            chunk_size,
-            _phantom: PhantomData,
+            rows,
+            position: 0,
         }
     }
 }
 
-impl<I, T> Iterator for ChunkedIterator<I, T>
-where
-    I: Iterator<Item = T>,
-{
-    type Item = Vec<T>;
-
+impl<'a> Iterator for RowRefIterator<'a> {
+    type Item = &'a Row;
+    
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        let mut chunk = Vec::with_capacity(self.chunk_size);
-        
-        for _ in 0..self.chunk_size {
-            if let Some(item) = self.iter.next() {
-                chunk.push(item);
-            } else {
-                break;
-            }
-        }
-        
-        if chunk.is_empty() {
-            None
+        if self.position < self.rows.len() {
+            let row = &self.rows[self.position];
+            self.position += 1;
+            Some(row)
         } else {
-            Some(chunk)
+            None
+        }
+    }
+    
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.rows.len().saturating_sub(self.position);
+        (remaining, Some(remaining))
+    }
+    
+    #[inline]
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        self.position = self.position.saturating_add(n);
+        self.next()
+    }
+}
+
+impl<'a> ExactSizeIterator for RowRefIterator<'a> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.rows.len().saturating_sub(self.position)
+    }
+}
+
+impl<'a> DoubleEndedIterator for RowRefIterator<'a> {
+    #[inline]
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.position < self.rows.len() {
+            let row = &self.rows[self.rows.len() - 1];
+            Some(row)
+        } else {
+            None
         }
     }
 }
 
-/// Zero-cost iterator adapter for SQL aggregation functions
-pub struct AggregateIterator<I, T, F, A> {
+/// Zero-cost column projection iterator
+pub struct ColumnProjection<'a, I> {
     iter: I,
-    group_by: F,
-    aggregate_fn: A,
-    current_group: Option<T>,
-    group_items: Vec<T>,
-    _phantom: PhantomData<T>,
+    column_indices: &'a [usize],
+    _phantom: PhantomData<&'a ()>,
 }
 
-impl<I, T, F, A, K, V> AggregateIterator<I, T, F, A>
+impl<'a, I> ColumnProjection<'a, I> 
 where
-    I: Iterator<Item = T>,
-    T: Clone,
-    F: Fn(&T) -> K,
-    A: Fn(&[T]) -> V,
-    K: PartialEq,
+    I: Iterator<Item = &'a Row>,
 {
-    /// Create a new aggregate iterator
-    pub fn new(iter: I, group_by: F, aggregate_fn: A) -> Self {
+    /// Create a new column projection iterator
+    #[inline]
+    pub fn new(iter: I, column_indices: &'a [usize]) -> Self {
         Self {
             iter,
-            group_by,
-            aggregate_fn,
-            current_group: None,
-            group_items: Vec::new(),
+            column_indices,
             _phantom: PhantomData,
         }
     }
 }
 
-impl<I, T, F, A, K, V> Iterator for AggregateIterator<I, T, F, A>
+impl<'a, I> Iterator for ColumnProjection<'a, I>
 where
-    I: Iterator<Item = T>,
-    T: Clone,
-    F: Fn(&T) -> K,
-    A: Fn(&[T]) -> V,
-    K: PartialEq,
+    I: Iterator<Item = &'a Row>,
 {
-    type Item = (K, V);
-
+    type Item = Vec<&'a Value>;
+    
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            if let Some(item) = self.iter.next() {
-                let group_key = (self.group_by)(&item);
-                
-                match &self.current_group {
-                    None => {
-                        self.current_group = Some(item.clone());
-                        self.group_items.push(item);
-                    }
-                    Some(current) => {
-                        let current_key = (self.group_by)(current);
-                        if current_key == group_key {
-                            self.group_items.push(item);
-                        } else {
-                            // New group found, return current group result
-                            let result_key = current_key;
-                            let result_value = (self.aggregate_fn)(&self.group_items);
-                            
-                            // Start new group
-                            self.current_group = Some(item.clone());
-                            self.group_items.clear();
-                            self.group_items.push(item);
-                            
-                            return Some((result_key, result_value));
-                        }
-                    }
-                }
-            } else {
-                // End of iterator, return final group if exists
-                if let Some(current) = self.current_group.take() {
-                    let result_key = (self.group_by)(&current);
-                    let result_value = (self.aggregate_fn)(&self.group_items);
-                    self.group_items.clear();
-                    return Some((result_key, result_value));
-                } else {
-                    return None;
-                }
-            }
+        self.iter.next().map(|row| {
+            self.column_indices
+                .iter()
+                .filter_map(|&idx| row.get(idx))
+                .collect()
+        })
+    }
+}
+
+/// Zero-cost filter iterator that avoids allocations
+pub struct FilterIterator<'a, I, F> {
+    iter: I,
+    predicate: F,
+    _phantom: PhantomData<&'a ()>,
+}
+
+impl<'a, I, F> FilterIterator<'a, I, F>
+where
+    I: Iterator<Item = &'a Row>,
+    F: Fn(&'a Row) -> bool,
+{
+    /// Create a new filter iterator
+    #[inline]
+    pub fn new(iter: I, predicate: F) -> Self {
+        Self {
+            iter,
+            predicate,
+            _phantom: PhantomData,
         }
     }
 }
 
-/// Zero-cost iterator for parallel processing with work-stealing
-pub struct ParallelIterator<I, T> {
+impl<'a, I, F> Iterator for FilterIterator<'a, I, F>
+where
+    I: Iterator<Item = &'a Row>,
+    F: Fn(&'a Row) -> bool,
+{
+    type Item = &'a Row;
+    
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.find(|row| (self.predicate)(row))
+    }
+    
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (_, upper) = self.iter.size_hint();
+        (0, upper)
+    }
+}
+
+/// Window iterator for sliding window operations
+pub struct WindowIterator<'a, T> {
+    data: &'a [T],
+    window_size: usize,
+    position: usize,
+}
+
+impl<'a, T> WindowIterator<'a, T> {
+    /// Create a new window iterator
+    #[inline]
+    pub const fn new(data: &'a [T], window_size: usize) -> Self {
+        Self {
+            data,
+            window_size,
+            position: 0,
+        }
+    }
+}
+
+impl<'a, T> Iterator for WindowIterator<'a, T> {
+    type Item = &'a [T];
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.position + self.window_size <= self.data.len() {
+            let window = &self.data[self.position..self.position + self.window_size];
+            self.position += 1;
+            Some(window)
+        } else {
+            None
+        }
+    }
+    
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.data.len()
+            .saturating_sub(self.position)
+            .saturating_sub(self.window_size - 1);
+        (remaining, Some(remaining))
+    }
+}
+
+/// Batched iterator for processing rows in chunks
+pub struct BatchedIterator<'a, I> {
     iter: I,
     batch_size: usize,
-    _phantom: PhantomData<T>,
+    _phantom: PhantomData<&'a ()>,
 }
 
-impl<I, T> ParallelIterator<I, T> 
+impl<'a, I> BatchedIterator<'a, I>
 where
-    T: Sync,
+    I: Iterator<Item = &'a Row>,
 {
-    /// Create a new parallel iterator
+    /// Create a new batched iterator
     #[inline]
-    pub const fn new(iter: I, batch_size: usize) -> Self {
+    pub fn new(iter: I, batch_size: usize) -> Self {
         Self {
             iter,
             batch_size,
             _phantom: PhantomData,
         }
     }
-    
-    /// Process items in parallel using the provided function
-    pub fn for_each_parallel<F>(self, func: F)
-    where
-        I: Iterator<Item = T> + Send,
-        T: Send + Clone,
-        F: Fn(T) + Send + Sync + Clone,
-    {
-        use std::sync::Arc;
-        use std::thread;
-        
-        let items: Vec<T> = self.iter.collect();
-        let chunk_size = self.batch_size;
-        let func = Arc::new(func);
-        
-        thread::scope(|s| {
-            for chunk in items.chunks(chunk_size) {
-                let func = Arc::clone(&func);
-                s.spawn(move || {
-                    for item in chunk {
-                        func(item.clone());
-                    }
-                });
-            }
-        });
-    }
 }
 
-/// Zero-cost iterator combinator extensions
-pub trait IteratorExt<T>: Iterator<Item = T> + Sized 
+impl<'a, I> Iterator for BatchedIterator<'a, I>
 where
-    T: Sync,
+    I: Iterator<Item = &'a Row>,
 {
-    /// Create a window iterator
-    fn windows<F, R>(self, window_size: usize, step: usize, func: F) -> WindowIterator<Self, T, F>
-    where
-        T: Clone,
-        F: Fn(&[T]) -> R,
-    {
-        WindowIterator::new(self, window_size, step, func)
-    }
+    type Item = Vec<&'a Row>;
     
-    /// Create a chunked iterator
-    fn chunks(self, chunk_size: usize) -> ChunkedIterator<Self, T> {
-        ChunkedIterator::new(self, chunk_size)
-    }
-    
-    /// Create an aggregate iterator
-    fn group_by_aggregate<F, A, K, V>(
-        self,
-        group_by: F,
-        aggregate_fn: A,
-    ) -> AggregateIterator<Self, T, F, A>
-    where
-        T: Clone,
-        F: Fn(&T) -> K,
-        A: Fn(&[T]) -> V,
-        K: PartialEq,
-    {
-        AggregateIterator::new(self, group_by, aggregate_fn)
-    }
-    
-    /// Create a parallel iterator
-    fn parallel(self, batch_size: usize) -> ParallelIterator<Self, T> {
-        ParallelIterator::new(self, batch_size)
-    }
-    
-    /// Efficient count with early termination
-    fn count_while<P>(mut self, mut predicate: P) -> usize
-    where
-        P: FnMut(&T) -> bool,
-    {
-        let mut count = 0;
-        while let Some(item) = self.next() {
-            if predicate(&item) {
-                count += 1;
-            } else {
-                break;
-            }
-        }
-        count
-    }
-    
-    /// Zero-allocation exists check
-    fn exists<P>(mut self, predicate: P) -> bool
-    where
-        P: FnMut(T) -> bool,
-    {
-        self.any(predicate)
-    }
-    
-    /// Efficient min/max with single pass
-    fn min_max_by<F, K>(mut self, mut key_fn: F) -> Option<(T, T)>
-    where
-        F: FnMut(&T) -> K,
-        K: Ord + Clone,
-        T: Clone,
-    {
-        let first = self.next()?;
-        let mut min = first.clone();
-        let mut max = first;
-        let mut min_key = key_fn(&min);
-        let mut max_key = min_key.clone();
-        
-        for item in self {
-            let key = key_fn(&item);
-            if key < min_key {
-                min = item.clone();
-                min_key = key.clone();
-            }
-            if key > max_key {
-                max = item;
-                max_key = key;
-            }
-        }
-        
-        Some((min, max))
-    }
-}
-
-// Implement the extension trait for all iterators
-impl<I, T> IteratorExt<T> for I where I: Iterator<Item = T>, T: Sync {}
-
-/// SQL window function implementations
-pub mod window_functions {
-    /// ROW_NUMBER window function
-    pub fn row_number<T>() -> impl Fn(&[T]) -> usize {
-        |_| 1 // This would be stateful in real implementation
-    }
-    
-    /// RANK window function
-    pub fn rank<T, F, K>(_key_fn: F) -> impl Fn(&[T]) -> usize
-    where
-        F: Fn(&T) -> K + Clone,
-        K: Ord,
-        T: Clone,
-    {
-        move |window: &[T]| {
-            if window.is_empty() {
-                return 0;
-            }
-            // Simplified rank calculation
-            1
-        }
-    }
-    
-    /// LAG window function
-    pub fn lag<T>(offset: usize) -> impl Fn(&[T]) -> Option<T>
-    where
-        T: Clone,
-    {
-        move |window: &[T]| {
-            if window.len() > offset {
-                Some(window[window.len() - 1 - offset].clone())
-            } else {
-                None
-            }
-        }
-    }
-    
-    /// LEAD window function
-    pub fn lead<T>(offset: usize) -> impl Fn(&[T]) -> Option<T>
-    where
-        T: Clone,
-    {
-        move |window: &[T]| {
-            if offset < window.len() {
-                Some(window[offset].clone())
-            } else {
-                None
-            }
-        }
-    }
-    
-    /// SUM window function
-    pub fn sum<T, F, N>(value_fn: F) -> impl Fn(&[T]) -> N
-    where
-        F: Fn(&T) -> N + Clone,
-        N: std::ops::Add<Output = N> + Default,
-        T: Clone,
-    {
-        move |window: &[T]| {
-            window.iter().map(&value_fn).fold(N::default(), |acc, x| acc + x)
-        }
-    }
-    
-    /// AVG window function
-    pub fn avg<T, F>(value_fn: F) -> impl Fn(&[T]) -> f64
-    where
-        F: Fn(&T) -> f64 + Clone,
-        T: Clone,
-    {
-        move |window: &[T]| {
-            if window.is_empty() {
-                0.0
-            } else {
-                let sum: f64 = window.iter().map(&value_fn).sum();
-                sum / window.len() as f64
-            }
+    fn next(&mut self) -> Option<Self::Item> {
+        let batch: Vec<_> = self.iter
+            .by_ref()
+            .take(self.batch_size)
+            .collect();
+            
+        if batch.is_empty() {
+            None
+        } else {
+            Some(batch)
         }
     }
 }
+
+/// Chain multiple iterators without allocation
+pub struct ChainedIterator<'a, I1, I2> {
+    first: Option<I1>,
+    second: I2,
+    _phantom: PhantomData<&'a ()>,
+}
+
+impl<'a, I1, I2> ChainedIterator<'a, I1, I2>
+where
+    I1: Iterator<Item = &'a Row>,
+    I2: Iterator<Item = &'a Row>,
+{
+    /// Create a new chained iterator
+    #[inline]
+    pub fn new(first: I1, second: I2) -> Self {
+        Self {
+            first: Some(first),
+            second,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<'a, I1, I2> Iterator for ChainedIterator<'a, I1, I2>
+where
+    I1: Iterator<Item = &'a Row>,
+    I2: Iterator<Item = &'a Row>,
+{
+    type Item = &'a Row;
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(ref mut first) = self.first {
+            if let Some(item) = first.next() {
+                return Some(item);
+            }
+            self.first = None;
+        }
+        self.second.next()
+    }
+}
+
+/// Extension trait for zero-cost iterator operations
+pub trait ZeroCostIteratorExt<'a>: Iterator<Item = &'a Row> + Sized {
+    /// Project specific columns without allocation
+    fn project_columns(self, column_indices: &'a [usize]) -> ColumnProjection<'a, Self> {
+        ColumnProjection::new(self, column_indices)
+    }
+    
+    /// Filter rows without allocation
+    fn filter_rows<F>(self, predicate: F) -> FilterIterator<'a, Self, F>
+    where
+        F: Fn(&'a Row) -> bool,
+    {
+        FilterIterator::new(self, predicate)
+    }
+    
+    /// Process rows in batches
+    fn batched(self, batch_size: usize) -> BatchedIterator<'a, Self> {
+        BatchedIterator::new(self, batch_size)
+    }
+    
+    /// Chain with another iterator
+    fn chain_with<I2>(self, other: I2) -> ChainedIterator<'a, Self, I2>
+    where
+        I2: Iterator<Item = &'a Row>,
+    {
+        ChainedIterator::new(self, other)
+    }
+}
+
+impl<'a, I> ZeroCostIteratorExt<'a> for I where I: Iterator<Item = &'a Row> + Sized {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::common::types::Value;
+    
+    #[test]
+    fn test_row_ref_iterator() {
+        let rows = vec![
+            Row::new(vec![Value::Integer(1), Value::Text("a".to_string())]),
+            Row::new(vec![Value::Integer(2), Value::Text("b".to_string())]),
+        ];
+        
+        let mut iter = RowRefIterator::new(&rows);
+        assert_eq!(iter.len(), 2);
+        assert!(iter.next().is_some());
+        assert_eq!(iter.len(), 1);
+        assert!(iter.next().is_some());
+        assert_eq!(iter.len(), 0);
+        assert!(iter.next().is_none());
+    }
     
     #[test]
     fn test_window_iterator() {
-        let data = vec![1, 2, 3, 4, 5, 6];
-        let windows: Vec<_> = data
-            .into_iter()
-            .windows(3, 1, |window| window.iter().sum::<i32>())
-            .collect();
-        
-        assert_eq!(windows, vec![6, 9, 12, 15]); // [1,2,3], [2,3,4], [3,4,5], [4,5,6]
-    }
-    
-    #[test]
-    fn test_chunked_iterator() {
-        let data = vec![1, 2, 3, 4, 5, 6, 7];
-        let chunks: Vec<_> = data.into_iter().chunks(3).collect();
-        
-        assert_eq!(chunks, vec![vec![1, 2, 3], vec![4, 5, 6], vec![7]]);
-    }
-    
-    #[test]
-    fn test_aggregate_iterator() {
-        #[derive(Clone, PartialEq, Debug)]
-        struct Record {
-            group: i32,
-            value: i32,
-        }
-        
-        let data = vec![
-            Record { group: 1, value: 10 },
-            Record { group: 1, value: 20 },
-            Record { group: 2, value: 30 },
-            Record { group: 2, value: 40 },
-        ];
-        
-        let aggregated: Vec<_> = data
-            .into_iter()
-            .group_by_aggregate(
-                |r| r.group,
-                |group| group.iter().map(|r| r.value).sum::<i32>(),
-            )
-            .collect();
-        
-        assert_eq!(aggregated, vec![(1, 30), (2, 70)]);
-    }
-    
-    #[test]
-    fn test_iterator_extensions() {
         let data = vec![1, 2, 3, 4, 5];
-        
-        assert_eq!(data.iter().count_while(|&&x| x < 4), 3);
-        assert!(data.iter().exists(|&x| x == 3));
-        
-        let (min, max) = data.iter().min_max_by(|&x| *x).unwrap();
-        assert_eq!((*min, *max), (1, 5));
-    }
-    
-    #[test]
-    fn test_window_functions() {
-        let data = vec![10, 20, 30, 40, 50];
-        
-        let sum_fn = window_functions::sum(|&x: &i32| x);
-        assert_eq!(sum_fn(&data[0..3]), 60);
-        
-        let avg_fn = window_functions::avg(|&x: &i32| x as f64);
-        assert_eq!(avg_fn(&data[0..3]), 20.0);
+        let windows: Vec<_> = WindowIterator::new(&data, 3).collect();
+        assert_eq!(windows.len(), 3);
+        assert_eq!(windows[0], &[1, 2, 3]);
+        assert_eq!(windows[1], &[2, 3, 4]);
+        assert_eq!(windows[2], &[3, 4, 5]);
     }
 }

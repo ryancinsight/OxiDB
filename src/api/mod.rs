@@ -10,9 +10,11 @@ pub mod errors;
 pub mod traits;
 pub mod types;
 
+// Public exports
+#[allow(deprecated)]
+pub use self::types::{Oxidb, QueryResult, QueryResultData, Row};
 pub use self::connection::Connection;
 pub use self::errors::Error as ApiError;
-pub use self::types::{Oxidb, QueryResult, QueryResultData, Row};
 
 // Re-export key types/traits for easier use by external crates, if desired.
 // For example:

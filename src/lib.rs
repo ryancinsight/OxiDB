@@ -165,7 +165,8 @@ pub mod wasm;
 // Re-export key types for easier use by library consumers.
 // Connection is the main entry point for database operations (new ergonomic API).
 pub use api::Connection;
-// Legacy Oxidb API is still available for backward compatibility.
+// Re-export the main API types
+#[allow(deprecated)]
 pub use api::Oxidb;
 // Query result types for the new API.
 pub use api::{QueryResult, QueryResultData, Row};
@@ -175,6 +176,7 @@ pub use crate::core::common::types::Value;
 pub use crate::core::common::OxidbError;
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     // Imports used by tests in this module
     use crate::Oxidb;

@@ -1,534 +1,390 @@
-// src/core/zero_cost/borrowed.rs
-//! Borrowed data abstractions that minimize allocations and enable zero-copy operations
+//! Zero-copy borrowed data structures for efficient data access
+//! 
+//! This module provides borrowed versions of common data structures used in database
+//! operations, avoiding allocations and copies wherever possible.
 
 use std::borrow::Cow;
 use std::marker::PhantomData;
-use std::ops::Deref;
+use crate::core::common::types::Value;
+use crate::api::types::Row;
 
-/// Zero-copy borrowed slice with compile-time guarantees
+/// Borrowed row that avoids allocating a Vec for values
 #[derive(Debug)]
-pub struct BorrowedSlice<'a, T> {
-    data: &'a [T],
-    _phantom: PhantomData<&'a T>,
+pub struct BorrowedRow<'a> {
+    values: &'a [Value],
+    _phantom: PhantomData<&'a ()>,
 }
 
-impl<'a, T> BorrowedSlice<'a, T> {
-    /// Create a new borrowed slice
+impl<'a> BorrowedRow<'a> {
+    /// Create a new borrowed row
     #[inline]
-    pub const fn new(data: &'a [T]) -> Self {
+    pub const fn new(values: &'a [Value]) -> Self {
         Self {
-            data,
+            values,
             _phantom: PhantomData,
         }
     }
     
-    /// Get the length
+    /// Get a value by index
+    #[inline]
+    pub fn get(&self, index: usize) -> Option<&'a Value> {
+        self.values.get(index)
+    }
+    
+    /// Get the number of values
     #[inline]
     pub const fn len(&self) -> usize {
-        self.data.len()
+        self.values.len()
     }
     
     /// Check if empty
     #[inline]
     pub const fn is_empty(&self) -> bool {
-        self.data.is_empty()
+        self.values.is_empty()
     }
     
-    /// Get element by index
+    /// Iterate over values
     #[inline]
-    pub fn get(&self, index: usize) -> Option<&'a T> {
-        self.data.get(index)
-    }
-    
-    /// Create a sub-slice
-    #[inline]
-    pub fn slice(&self, start: usize, end: usize) -> BorrowedSlice<'a, T> {
-        BorrowedSlice::new(&self.data[start..end])
-    }
-    
-    /// Iterate over elements
-    #[inline]
-    pub fn iter(&self) -> std::slice::Iter<'a, T> {
-        self.data.iter()
-    }
-    
-    /// Split at index
-    #[inline]
-    pub fn split_at(&self, mid: usize) -> (BorrowedSlice<'a, T>, BorrowedSlice<'a, T>) {
-        let (left, right) = self.data.split_at(mid);
-        (BorrowedSlice::new(left), BorrowedSlice::new(right))
-    }
-    
-    /// Get first element
-    #[inline]
-    pub fn first(&self) -> Option<&'a T> {
-        self.data.first()
-    }
-    
-    /// Get last element
-    #[inline]
-    pub fn last(&self) -> Option<&'a T> {
-        self.data.last()
-    }
-    
-    /// Create windows of specified size
-    pub fn windows(&self, size: usize) -> impl Iterator<Item = BorrowedSlice<'a, T>> {
-        self.data.windows(size).map(BorrowedSlice::new)
-    }
-    
-    /// Create chunks of specified size
-    pub fn chunks(&self, chunk_size: usize) -> impl Iterator<Item = BorrowedSlice<'a, T>> {
-        self.data.chunks(chunk_size).map(BorrowedSlice::new)
+    pub fn iter(&self) -> std::slice::Iter<'a, Value> {
+        self.values.iter()
     }
 }
 
-impl<'a, T> Deref for BorrowedSlice<'a, T> {
-    type Target = [T];
-    
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.data
-    }
-}
-
-impl<'a, T> AsRef<[T]> for BorrowedSlice<'a, T> {
-    #[inline]
-    fn as_ref(&self) -> &[T] {
-        self.data
-    }
-}
-
-impl<'a, T> IntoIterator for BorrowedSlice<'a, T> {
-    type Item = &'a T;
-    type IntoIter = std::slice::Iter<'a, T>;
-    
-    #[inline]
-    fn into_iter(self) -> Self::IntoIter {
-        self.data.iter()
-    }
-}
-
-/// Zero-copy borrowed string with optional interning
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum BorrowedStr<'a> {
-    /// Borrowed from existing string
-    Borrowed(&'a str),
-    /// Statically allocated (interned)
-    Static(&'static str),
-}
-
-impl<'a> BorrowedStr<'a> {
-    /// Create from borrowed string
-    #[inline]
-    pub const fn borrowed(s: &'a str) -> Self {
-        Self::Borrowed(s)
-    }
-    
-    /// Create from static string
-    #[inline]
-    pub const fn static_str(s: &'static str) -> Self {
-        Self::Static(s)
-    }
-    
-    /// Get string slice
-    #[inline]
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::Borrowed(s) => s,
-            Self::Static(s) => s,
-        }
-    }
-    
-    /// Get length
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.as_str().len()
-    }
-    
-    /// Check if empty
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.as_str().is_empty()
-    }
-    
-    /// Check if static
-    #[inline]
-    pub const fn is_static(&self) -> bool {
-        matches!(self, Self::Static(_))
-    }
-    
-    /// Convert to owned string
-    #[inline]
-    pub fn to_owned(&self) -> String {
-        self.as_str().to_owned()
-    }
-    
-    /// Create a Cow from this borrowed string
-    #[inline]
-    pub fn to_cow(&self) -> Cow<'a, str> {
-        match self {
-            Self::Borrowed(s) => Cow::Borrowed(s),
-            Self::Static(s) => Cow::Borrowed(s),
-        }
-    }
-}
-
-impl<'a> AsRef<str> for BorrowedStr<'a> {
-    #[inline]
-    fn as_ref(&self) -> &str {
-        self.as_str()
-    }
-}
-
-impl<'a> std::fmt::Display for BorrowedStr<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
-
-impl<'a> From<&'a str> for BorrowedStr<'a> {
-    #[inline]
-    fn from(s: &'a str) -> Self {
-        Self::Borrowed(s)
-    }
-}
-
-/// Zero-copy borrowed bytes
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct BorrowedBytes<'a> {
-    data: &'a [u8],
-}
-
-impl<'a> BorrowedBytes<'a> {
-    /// Create from borrowed bytes
-    #[inline]
-    pub const fn new(data: &'a [u8]) -> Self {
-        Self { data }
-    }
-    
-    /// Get byte slice
-    #[inline]
-    pub const fn as_bytes(&self) -> &'a [u8] {
-        self.data
-    }
-    
-    /// Get length
-    #[inline]
-    pub const fn len(&self) -> usize {
-        self.data.len()
-    }
-    
-    /// Check if empty
-    #[inline]
-    pub const fn is_empty(&self) -> bool {
-        self.data.is_empty()
-    }
-    
-    /// Get byte by index
-    #[inline]
-    pub fn get(&self, index: usize) -> Option<u8> {
-        self.data.get(index).copied()
-    }
-    
-    /// Create a sub-slice
-    #[inline]
-    pub fn slice(&self, start: usize, end: usize) -> BorrowedBytes<'a> {
-        BorrowedBytes::new(&self.data[start..end])
-    }
-    
-    /// Split at index
-    #[inline]
-    pub fn split_at(&self, mid: usize) -> (BorrowedBytes<'a>, BorrowedBytes<'a>) {
-        let (left, right) = self.data.split_at(mid);
-        (BorrowedBytes::new(left), BorrowedBytes::new(right))
-    }
-    
-    /// Convert to owned bytes
-    #[inline]
-    pub fn to_vec(&self) -> Vec<u8> {
-        self.data.to_vec()
-    }
-    
-    /// Create a Cow from this borrowed bytes
-    #[inline]
-    pub fn to_cow(&self) -> Cow<'a, [u8]> {
-        Cow::Borrowed(self.data)
-    }
-    
-    /// Try to convert to UTF-8 string
-    pub fn to_str(&self) -> Result<&'a str, std::str::Utf8Error> {
-        std::str::from_utf8(self.data)
-    }
-}
-
-impl<'a> AsRef<[u8]> for BorrowedBytes<'a> {
-    #[inline]
-    fn as_ref(&self) -> &[u8] {
-        self.data
-    }
-}
-
-impl<'a> Deref for BorrowedBytes<'a> {
-    type Target = [u8];
-    
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        self.data
-    }
-}
-
-impl<'a> From<&'a [u8]> for BorrowedBytes<'a> {
-    #[inline]
-    fn from(data: &'a [u8]) -> Self {
-        Self::new(data)
-    }
-}
-
-impl<'a> From<&'a str> for BorrowedBytes<'a> {
-    #[inline]
-    fn from(s: &'a str) -> Self {
-        Self::new(s.as_bytes())
-    }
-}
-
-/// Zero-copy key-value pair for database operations
-#[derive(Debug, Clone)]
-pub struct BorrowedKeyValue<'a, K, V> {
-    key: &'a K,
-    value: &'a V,
-}
-
-impl<'a, K, V> BorrowedKeyValue<'a, K, V> {
-    /// Create a new borrowed key-value pair
-    #[inline]
-    pub const fn new(key: &'a K, value: &'a V) -> Self {
-        Self { key, value }
-    }
-    
-    /// Get the key
-    #[inline]
-    pub const fn key(&self) -> &'a K {
-        self.key
-    }
-    
-    /// Get the value
-    #[inline]
-    pub const fn value(&self) -> &'a V {
-        self.value
-    }
-    
-    /// Destructure into key and value
-    #[inline]
-    pub const fn into_parts(self) -> (&'a K, &'a V) {
-        (self.key, self.value)
-    }
-}
-
-/// Zero-copy iterator over borrowed key-value pairs
+/// Borrowed schema that avoids string allocations
 #[derive(Debug)]
-pub struct BorrowedKeyValueIter<'a, K, V> {
-    keys: std::slice::Iter<'a, K>,
-    values: std::slice::Iter<'a, V>,
+pub struct BorrowedSchema<'a> {
+    table_name: Cow<'a, str>,
+    column_names: Cow<'a, [Cow<'a, str>]>,
+    column_types: &'a [crate::core::common::types::DataType],
 }
 
-impl<'a, K, V> BorrowedKeyValueIter<'a, K, V> {
-    /// Create a new borrowed key-value iterator
-    #[inline]
-    pub fn new(keys: &'a [K], values: &'a [V]) -> Self {
+impl<'a> BorrowedSchema<'a> {
+    /// Create a new borrowed schema
+    pub fn new(
+        table_name: Cow<'a, str>,
+        column_names: Cow<'a, [Cow<'a, str>]>,
+        column_types: &'a [crate::core::common::types::DataType],
+    ) -> Self {
         Self {
-            keys: keys.iter(),
-            values: values.iter(),
-        }
-    }
-}
-
-impl<'a, K, V> Iterator for BorrowedKeyValueIter<'a, K, V> {
-    type Item = BorrowedKeyValue<'a, K, V>;
-    
-    fn next(&mut self) -> Option<Self::Item> {
-        match (self.keys.next(), self.values.next()) {
-            (Some(key), Some(value)) => Some(BorrowedKeyValue::new(key, value)),
-            _ => None,
+            table_name,
+            column_names,
+            column_types,
         }
     }
     
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let keys_hint = self.keys.size_hint();
-        let values_hint = self.values.size_hint();
-        let min = keys_hint.0.min(values_hint.0);
-        let max = match (keys_hint.1, values_hint.1) {
-            (Some(k), Some(v)) => Some(k.min(v)),
-            _ => None,
-        };
-        (min, max)
-    }
-}
-
-/// Zero-copy borrowed map view
-#[derive(Debug)]
-pub struct BorrowedMap<'a, K, V> {
-    keys: &'a [K],
-    values: &'a [V],
-}
-
-impl<'a, K, V> BorrowedMap<'a, K, V> {
-    /// Create a new borrowed map view
+    /// Get table name
     #[inline]
-    pub fn new(keys: &'a [K], values: &'a [V]) -> Option<Self> {
-        if keys.len() == values.len() {
-            Some(Self { keys, values })
-        } else {
-            None
-        }
+    pub fn table_name(&self) -> &str {
+        &self.table_name
     }
     
-    /// Get the number of key-value pairs
+    /// Get column count
     #[inline]
-    pub fn len(&self) -> usize {
-        self.keys.len()
+    pub fn column_count(&self) -> usize {
+        self.column_names.len()
     }
     
-    /// Check if the map is empty
+    /// Get column name by index
     #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.keys.is_empty()
+    pub fn column_name(&self, index: usize) -> Option<&str> {
+        self.column_names.get(index).map(|cow| cow.as_ref())
     }
     
-    /// Get value by index
+    /// Get column type by index
     #[inline]
-    pub fn get_by_index(&self, index: usize) -> Option<BorrowedKeyValue<'a, K, V>> {
-        match (self.keys.get(index), self.values.get(index)) {
-            (Some(key), Some(value)) => Some(BorrowedKeyValue::new(key, value)),
-            _ => None,
-        }
+    pub fn column_type(&self, index: usize) -> Option<&crate::core::common::types::DataType> {
+        self.column_types.get(index)
     }
     
-    /// Find value by key (linear search)
-    pub fn get<Q>(&self, key: &Q) -> Option<&'a V>
-    where
-        K: PartialEq<Q>,
-    {
-        self.keys
+    /// Find column index by name
+    pub fn find_column(&self, name: &str) -> Option<usize> {
+        self.column_names
             .iter()
-            .position(|k| k == key)
-            .and_then(|index| self.values.get(index))
-    }
-    
-    /// Iterate over key-value pairs
-    #[inline]
-    pub fn iter(&self) -> BorrowedKeyValueIter<'a, K, V> {
-        BorrowedKeyValueIter::new(self.keys, self.values)
-    }
-    
-    /// Get keys slice
-    #[inline]
-    pub const fn keys(&self) -> &'a [K] {
-        self.keys
-    }
-    
-    /// Get values slice
-    #[inline]
-    pub const fn values(&self) -> &'a [V] {
-        self.values
+            .position(|col| col == name)
     }
 }
 
-impl<'a, K, V> IntoIterator for BorrowedMap<'a, K, V> {
-    type Item = BorrowedKeyValue<'a, K, V>;
-    type IntoIter = BorrowedKeyValueIter<'a, K, V>;
-    
-    #[inline]
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
+/// Comparison predicate for efficient filtering
+#[derive(Debug)]
+pub struct BorrowedPredicate<'a> {
+    column_index: usize,
+    operator: ComparisonOp,
+    value: BorrowedValue<'a>,
 }
 
-/// Zero-copy borrowed option that avoids Option allocation overhead
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BorrowedOption<'a, T> {
-    Some(&'a T),
-    None,
+pub enum ComparisonOp {
+    Equal,
+    NotEqual,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
+    Like,
+    NotLike,
+    In,
+    NotIn,
 }
 
-impl<'a, T> BorrowedOption<'a, T> {
-    /// Create a Some variant
-    #[inline]
-    pub const fn some(value: &'a T) -> Self {
-        Self::Some(value)
-    }
-    
-    /// Create a None variant
-    #[inline]
-    pub const fn none() -> Self {
-        Self::None
-    }
-    
-    /// Check if Some
-    #[inline]
-    pub const fn is_some(&self) -> bool {
-        matches!(self, Self::Some(_))
-    }
-    
-    /// Check if None
-    #[inline]
-    pub const fn is_none(&self) -> bool {
-        matches!(self, Self::None)
-    }
-    
-    /// Unwrap the value (panics if None)
-    #[inline]
-    pub const fn unwrap(self) -> &'a T {
-        match self {
-            Self::Some(value) => value,
-            Self::None => panic!("called `BorrowedOption::unwrap()` on a `None` value"),
+/// Borrowed value that can reference existing data
+#[derive(Debug)]
+pub enum BorrowedValue<'a> {
+    Integer(i64),
+    Float(f64),
+    Text(Cow<'a, str>),
+    Boolean(bool),
+    Blob(Cow<'a, [u8]>),
+    Vector(Cow<'a, [f32]>),
+    /// List of values
+    List(Vec<BorrowedValue<'a>>),
+    Null,
+}
+
+impl<'a> BorrowedPredicate<'a> {
+    /// Create a new borrowed predicate
+    pub fn new(column_index: usize, operator: ComparisonOp, value: BorrowedValue<'a>) -> Self {
+        Self {
+            column_index,
+            operator,
+            value,
         }
     }
     
-    /// Get the value or a default
-    #[inline]
-    pub const fn unwrap_or(self, default: &'a T) -> &'a T {
-        match self {
-            Self::Some(value) => value,
-            Self::None => default,
+    /// Evaluate predicate against a row
+    pub fn evaluate(&self, row: &Row) -> bool {
+        // Get column value by index
+        let column_value = match row.get(self.column_index) {
+            Some(val) => val,
+            None => return false,
+        };
+        
+        // Compare with predicate value
+        match (&self.value, column_value) {
+            (BorrowedValue::Integer(a), Value::Integer(b)) => {
+                // Note: We compare b (column value) against a (predicate value)
+                // For example: "age > 25" means column_value > 25
+                match self.operator {
+                    ComparisonOp::Equal => b == a,
+                    ComparisonOp::NotEqual => b != a,
+                    ComparisonOp::LessThan => b < a,
+                    ComparisonOp::LessThanOrEqual => b <= a,
+                    ComparisonOp::GreaterThan => b > a,
+                    ComparisonOp::GreaterThanOrEqual => b >= a,
+                    _ => false,
+                }
+            }
+            (BorrowedValue::Float(a), Value::Float(b)) => {
+                // For floats, use partial comparison with NaN handling
+                match (b.partial_cmp(a), self.operator) {
+                    (Some(std::cmp::Ordering::Less), ComparisonOp::LessThan) => true,
+                    (Some(std::cmp::Ordering::Less), ComparisonOp::LessThanOrEqual) => true,
+                    (Some(std::cmp::Ordering::Equal), ComparisonOp::LessThanOrEqual) => true,
+                    (Some(std::cmp::Ordering::Equal), ComparisonOp::GreaterThanOrEqual) => true,
+                    (Some(std::cmp::Ordering::Equal), ComparisonOp::Equal) => true,
+                    (Some(std::cmp::Ordering::Greater), ComparisonOp::GreaterThan) => true,
+                    (Some(std::cmp::Ordering::Greater), ComparisonOp::GreaterThanOrEqual) => true,
+                    (None, ComparisonOp::NotEqual) => true, // NaN != anything
+                    _ => false,
+                }
+            }
+            (BorrowedValue::Text(a), Value::Text(b)) => {
+                match self.operator {
+                    ComparisonOp::Like => self.pattern_match(a, b),
+                    ComparisonOp::NotLike => !self.pattern_match(a, b),
+                    ComparisonOp::Equal => b.as_str() == a.as_ref(),
+                    ComparisonOp::NotEqual => b.as_str() != a.as_ref(),
+                    ComparisonOp::LessThan => b.as_str() < a.as_ref(),
+                    ComparisonOp::LessThanOrEqual => b.as_str() <= a.as_ref(),
+                    ComparisonOp::GreaterThan => b.as_str() > a.as_ref(),
+                    ComparisonOp::GreaterThanOrEqual => b.as_str() >= a.as_ref(),
+                    _ => false,
+                }
+            }
+            (BorrowedValue::Boolean(a), Value::Boolean(b)) => {
+                match self.operator {
+                    ComparisonOp::Equal => b == a,
+                    ComparisonOp::NotEqual => b != a,
+                    _ => false,
+                }
+            }
+            (BorrowedValue::Null, Value::Null) => {
+                matches!(self.operator, ComparisonOp::Equal)
+            }
+            _ => false,
         }
     }
     
-    /// Map the contained value
-    #[inline]
-    pub fn map<U, F>(self, f: F) -> BorrowedOption<'a, U>
-    where
-        F: FnOnce(&'a T) -> &'a U,
-    {
-        match self {
-            Self::Some(value) => BorrowedOption::Some(f(value)),
-            Self::None => BorrowedOption::None,
-        }
+    fn pattern_match(&self, pattern: &str, text: &str) -> bool {
+        // Efficient SQL LIKE pattern matching without regex
+        // % matches zero or more characters
+        // _ matches exactly one character
+        
+        let pattern_chars: Vec<char> = pattern.chars().collect();
+        let text_chars: Vec<char> = text.chars().collect();
+        
+        self.match_pattern(&pattern_chars, 0, &text_chars, 0)
     }
     
-    /// Convert to standard Option
-    #[inline]
-    pub const fn to_option(self) -> Option<&'a T> {
-        match self {
-            Self::Some(value) => Some(value),
-            Self::None => None,
+    fn match_pattern(&self, pattern: &[char], p_idx: usize, text: &[char], t_idx: usize) -> bool {
+        // Base case: reached end of both pattern and text
+        if p_idx >= pattern.len() && t_idx >= text.len() {
+            return true;
+        }
+        
+        // Pattern exhausted but text remains
+        if p_idx >= pattern.len() {
+            return false;
+        }
+        
+        match pattern.get(p_idx) {
+            Some('%') => {
+                // Handle consecutive % by skipping them
+                let mut next_p_idx = p_idx;
+                while next_p_idx < pattern.len() && pattern[next_p_idx] == '%' {
+                    next_p_idx += 1;
+                }
+                
+                // If % is at the end, it matches everything remaining
+                if next_p_idx >= pattern.len() {
+                    return true;
+                }
+                
+                // Try matching the rest of the pattern at each position in text
+                for i in t_idx..=text.len() {
+                    if self.match_pattern(pattern, next_p_idx, text, i) {
+                        return true;
+                    }
+                }
+                
+                false
+            }
+            Some('_') => {
+                // _ must match exactly one character
+                if t_idx >= text.len() {
+                    return false;
+                }
+                self.match_pattern(pattern, p_idx + 1, text, t_idx + 1)
+            }
+            Some('\\') if p_idx + 1 < pattern.len() => {
+                // Handle escaped characters
+                if t_idx >= text.len() || text[t_idx] != pattern[p_idx + 1] {
+                    return false;
+                }
+                self.match_pattern(pattern, p_idx + 2, text, t_idx + 1)
+            }
+            Some(&c) => {
+                // Regular character must match exactly
+                if t_idx >= text.len() || text[t_idx] != c {
+                    return false;
+                }
+                self.match_pattern(pattern, p_idx + 1, text, t_idx + 1)
+            }
+            None => {
+                // Should not happen due to bounds check above
+                false
+            }
         }
     }
 }
 
-impl<'a, T> From<Option<&'a T>> for BorrowedOption<'a, T> {
-    #[inline]
-    fn from(opt: Option<&'a T>) -> Self {
-        match opt {
-            Some(value) => Self::Some(value),
-            None => Self::None,
-        }
-    }
+/// Borrowed query plan that references existing nodes
+#[derive(Debug)]
+pub struct BorrowedQueryPlan<'a> {
+    root: BorrowedPlanNode<'a>,
 }
 
-impl<'a, T> From<BorrowedOption<'a, T>> for Option<&'a T> {
+#[derive(Debug)]
+pub enum BorrowedPlanNode<'a> {
+    Scan {
+        table: Cow<'a, str>,
+        projection: Option<Cow<'a, [usize]>>,
+    },
+    Filter {
+        input: Box<BorrowedPlanNode<'a>>,
+        predicate: BorrowedPredicate<'a>,
+    },
+    Join {
+        left: Box<BorrowedPlanNode<'a>>,
+        right: Box<BorrowedPlanNode<'a>>,
+        join_type: JoinType,
+        on: BorrowedPredicate<'a>,
+    },
+    Aggregate {
+        input: Box<BorrowedPlanNode<'a>>,
+        group_by: Cow<'a, [usize]>,
+        aggregates: Cow<'a, [AggregateFunc]>,
+    },
+    Sort {
+        input: Box<BorrowedPlanNode<'a>>,
+        order_by: Cow<'a, [(usize, SortOrder)]>,
+    },
+    Limit {
+        input: Box<BorrowedPlanNode<'a>>,
+        limit: usize,
+        offset: usize,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JoinType {
+    Inner,
+    Left,
+    Right,
+    Full,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AggregateFunc {
+    Count,
+    Sum,
+    Avg,
+    Min,
+    Max,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortOrder {
+    Ascending,
+    Descending,
+}
+
+impl<'a> BorrowedQueryPlan<'a> {
+    /// Create a new borrowed query plan
     #[inline]
-    fn from(borrowed_opt: BorrowedOption<'a, T>) -> Self {
-        borrowed_opt.to_option()
+    pub const fn new(root: BorrowedPlanNode<'a>) -> Self {
+        Self { root }
+    }
+    
+    /// Get the root node
+    #[inline]
+    pub const fn root(&self) -> &BorrowedPlanNode<'a> {
+        &self.root
+    }
+    
+    /// Estimate the cost of this plan (simplified)
+    pub fn estimate_cost(&self) -> u64 {
+        self.estimate_node_cost(&self.root)
+    }
+    
+    fn estimate_node_cost(&self, node: &BorrowedPlanNode<'a>) -> u64 {
+        match node {
+            BorrowedPlanNode::Scan { .. } => 100,
+            BorrowedPlanNode::Filter { input, .. } => {
+                10 + self.estimate_node_cost(input)
+            }
+            BorrowedPlanNode::Join { left, right, .. } => {
+                1000 + self.estimate_node_cost(left) + self.estimate_node_cost(right)
+            }
+            BorrowedPlanNode::Aggregate { input, .. } => {
+                500 + self.estimate_node_cost(input)
+            }
+            BorrowedPlanNode::Sort { input, .. } => {
+                200 + self.estimate_node_cost(input)
+            }
+            BorrowedPlanNode::Limit { input, .. } => {
+                1 + self.estimate_node_cost(input)
+            }
+        }
     }
 }
 
@@ -537,130 +393,136 @@ mod tests {
     use super::*;
     
     #[test]
-    fn test_borrowed_slice() {
-        let data = vec![1, 2, 3, 4, 5];
-        let slice = BorrowedSlice::new(&data);
+    fn test_borrowed_row() {
+        let values = vec![
+            Value::Integer(42),
+            Value::Text("test".to_string()),
+        ];
         
-        assert_eq!(slice.len(), 5);
-        assert!(!slice.is_empty());
-        assert_eq!(slice.get(2), Some(&3));
-        assert_eq!(slice.first(), Some(&1));
-        assert_eq!(slice.last(), Some(&5));
-        
-        let (left, right) = slice.split_at(3);
-        assert_eq!(left.len(), 3);
-        assert_eq!(right.len(), 2);
-        
-        let sub_slice = slice.slice(1, 4);
-        assert_eq!(sub_slice.len(), 3);
-        assert_eq!(sub_slice.get(0), Some(&2));
+        let row = BorrowedRow::new(&values);
+        assert_eq!(row.len(), 2);
+        assert_eq!(row.get(0), Some(&Value::Integer(42)));
+        assert_eq!(row.get(1), Some(&Value::Text("test".to_string())));
     }
     
     #[test]
-    fn test_borrowed_str() {
-        let borrowed = BorrowedStr::borrowed("hello");
-        let static_str = BorrowedStr::static_str("world");
+    fn test_borrowed_predicate() {
+        let pred = BorrowedPredicate::new(
+            0, // age column index
+            ComparisonOp::GreaterThan,
+            BorrowedValue::Integer(25),
+        );
         
-        assert_eq!(borrowed.as_str(), "hello");
-        assert_eq!(static_str.as_str(), "world");
-        assert_eq!(borrowed.len(), 5);
-        assert!(!borrowed.is_empty());
-        assert!(!borrowed.is_static());
-        assert!(static_str.is_static());
+        // Create test rows
+        let row1 = Row::new(vec![Value::Integer(30)]);
+        let row2 = Row::new(vec![Value::Integer(20)]);
+        let row3 = Row::new(vec![Value::Text("30".to_string())]);
         
-        let cow = borrowed.to_cow();
-        assert!(matches!(cow, Cow::Borrowed(_)));
+        assert!(pred.evaluate(&row1));
+        assert!(!pred.evaluate(&row2));
+        assert!(!pred.evaluate(&row3));
     }
     
     #[test]
-    fn test_borrowed_bytes() {
-        let data = b"hello world";
-        let bytes = BorrowedBytes::new(data);
+    fn test_borrowed_query_plan() {
+        let plan = BorrowedQueryPlan::new(
+            BorrowedPlanNode::Filter {
+                input: Box::new(BorrowedPlanNode::Scan {
+                    table: Cow::Borrowed("users"),
+                    projection: None,
+                }),
+                predicate: BorrowedPredicate::new(
+                    0, // active column index
+                    ComparisonOp::Equal,
+                    BorrowedValue::Boolean(true),
+                ),
+            }
+        );
         
-        assert_eq!(bytes.len(), 11);
-        assert!(!bytes.is_empty());
-        assert_eq!(bytes.get(0), Some(b'h'));
-        
-        let (left, right) = bytes.split_at(5);
-        assert_eq!(left.as_bytes(), b"hello");
-        assert_eq!(right.as_bytes(), b" world");
-        
-        let sub_bytes = bytes.slice(6, 11);
-        assert_eq!(sub_bytes.as_bytes(), b"world");
-        
-        assert_eq!(bytes.to_str().unwrap(), "hello world");
+        assert_eq!(plan.estimate_cost(), 110); // 100 for scan + 10 for filter
     }
     
     #[test]
-    fn test_borrowed_key_value() {
-        let key = "name";
-        let value = "Alice";
-        let kv = BorrowedKeyValue::new(&key, &value);
+    fn test_pattern_matching() {
+        // Test exact matches
+        let pred = BorrowedPredicate::new(0, ComparisonOp::Like, BorrowedValue::Text("hello".into()));
+        // Note: pattern_match(pattern, text)
+        assert!(pred.pattern_match("hello", "hello"));
+        assert!(!pred.pattern_match("hello", "world"));
         
-        assert_eq!(kv.key(), &"name");
-        assert_eq!(kv.value(), &"Alice");
+        // Test % wildcard (matches zero or more characters)
+        assert!(pred.pattern_match("h%", "hello"));
+        assert!(pred.pattern_match("h%", "h"));
+        assert!(pred.pattern_match("%ello", "hello"));
+        assert!(pred.pattern_match("%ello", "jello"));  // Fixed: jello ends with ello
+        assert!(pred.pattern_match("h%o", "hello"));
+        assert!(pred.pattern_match("%", "anything"));
+        assert!(pred.pattern_match("%%", "anything"));
+        assert!(pred.pattern_match("h%l%o", "hello"));
+        assert!(pred.pattern_match("%low", "yellow"));  // This matches: yellow ends with low
         
-        let (k, v) = kv.into_parts();
-        assert_eq!(k, &"name");
-        assert_eq!(v, &"Alice");
+        // Test _ wildcard (matches exactly one character)
+        assert!(pred.pattern_match("h_llo", "hello"));
+        assert!(!pred.pattern_match("h_llo", "hllo"));
+        assert!(!pred.pattern_match("h_llo", "heello"));
+        assert!(pred.pattern_match("_ello", "hello"));
+        assert!(pred.pattern_match("hell_", "hello"));
+        assert!(pred.pattern_match("_____", "hello"));
+        assert!(!pred.pattern_match("______", "hello"));
+        
+        // Test combinations
+        assert!(pred.pattern_match("h_l%", "hello"));
+        assert!(pred.pattern_match("h_l%", "help"));
+        assert!(pred.pattern_match("%l_o", "hello"));
+        assert!(pred.pattern_match("%l_w", "yellow"));  // Fixed: yellow has l_w pattern
+        assert!(!pred.pattern_match("%l_o", "helo"));
+        
+        // Test escaped characters
+        assert!(pred.pattern_match("h\\%llo", "h%llo"));
+        assert!(!pred.pattern_match("h\\%llo", "hello"));
+        assert!(pred.pattern_match("h\\_llo", "h_llo"));
+        assert!(!pred.pattern_match("h\\_llo", "hello"));
+        assert!(pred.pattern_match("h\\\\llo", "h\\llo"));
+        
+        // Test edge cases
+        assert!(pred.pattern_match("", ""));
+        assert!(!pred.pattern_match("", "hello"));
+        assert!(!pred.pattern_match("hello", ""));
+        assert!(pred.pattern_match("%", ""));
+        
+        // Test Unicode
+        assert!(pred.pattern_match("h%", "héllo"));
+        assert!(pred.pattern_match("h_llo", "héllo"));
+        assert!(pred.pattern_match("%世界", "你好世界"));
+        assert!(pred.pattern_match("你_世界", "你好世界"));
     }
     
     #[test]
-    fn test_borrowed_map() {
-        let keys = vec!["a", "b", "c"];
-        let values = vec![1, 2, 3];
+    fn test_like_predicate_evaluation() {
+        let pred = BorrowedPredicate::new(
+            0,
+            ComparisonOp::Like,
+            BorrowedValue::Text("John%".into()),
+        );
         
-        let map = BorrowedMap::new(&keys, &values).unwrap();
+        let row1 = Row::new(vec![Value::Text("John Doe".to_string())]);
+        let row2 = Row::new(vec![Value::Text("Jane Doe".to_string())]);
+        let row3 = Row::new(vec![Value::Text("John".to_string())]);
+        let row4 = Row::new(vec![Value::Integer(42)]);
         
-        assert_eq!(map.len(), 3);
-        assert!(!map.is_empty());
-        assert_eq!(map.get(&"b"), Some(&2));
-        assert_eq!(map.get(&"d"), None);
+        assert!(pred.evaluate(&row1));
+        assert!(!pred.evaluate(&row2));
+        assert!(pred.evaluate(&row3));
+        assert!(!pred.evaluate(&row4)); // Type mismatch
         
-        let kv = map.get_by_index(1).unwrap();
-        assert_eq!(kv.key(), &"b");
-        assert_eq!(kv.value(), &2);
+        // Test NOT LIKE
+        let not_pred = BorrowedPredicate::new(
+            0,
+            ComparisonOp::NotLike,
+            BorrowedValue::Text("John%".into()),
+        );
         
-        let collected: Vec<_> = map.iter().collect();
-        assert_eq!(collected.len(), 3);
-    }
-    
-    #[test]
-    fn test_borrowed_option() {
-        let value = 42;
-        let some_opt = BorrowedOption::some(&value);
-        let none_opt = BorrowedOption::<i32>::none();
-        
-        assert!(some_opt.is_some());
-        assert!(!some_opt.is_none());
-        assert!(!none_opt.is_some());
-        assert!(none_opt.is_none());
-        
-        assert_eq!(some_opt.unwrap(), &42);
-        assert_eq!(some_opt.unwrap_or(&0), &42);
-        assert_eq!(none_opt.unwrap_or(&0), &0);
-        
-        let mapped = some_opt.map(|x| x);
-        assert!(mapped.is_some());
-        
-        let std_option: Option<&i32> = some_opt.into();
-        assert_eq!(std_option, Some(&42));
-    }
-    
-    #[test]
-    fn test_borrowed_slice_windows_and_chunks() {
-        let data = vec![1, 2, 3, 4, 5, 6];
-        let slice = BorrowedSlice::new(&data);
-        
-        let windows: Vec<_> = slice.windows(3).collect();
-        assert_eq!(windows.len(), 4);
-        assert_eq!(windows[0].as_ref(), &[1, 2, 3]);
-        assert_eq!(windows[1].as_ref(), &[2, 3, 4]);
-        
-        let chunks: Vec<_> = slice.chunks(2).collect();
-        assert_eq!(chunks.len(), 3);
-        assert_eq!(chunks[0].as_ref(), &[1, 2]);
-        assert_eq!(chunks[1].as_ref(), &[3, 4]);
-        assert_eq!(chunks[2].as_ref(), &[5, 6]);
+        assert!(!not_pred.evaluate(&row1));
+        assert!(not_pred.evaluate(&row2));
     }
 }

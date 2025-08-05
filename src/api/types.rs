@@ -7,11 +7,32 @@ use crate::core::storage::engine::SimpleFileKvStore;
 // No, Oxidb struct itself does not need PathBuf, Config, etc. directly.
 // QueryExecutor and SimpleFileKvStore are essential.
 
-/// `Oxidb` is the primary structure providing the public API for the key-value store.
-///
-/// It encapsulates a `QueryExecutor` instance to manage database operations,
-/// which in turn uses a `SimpleFileKvStore` for persistence.
-#[derive(Debug)]
+/// Legacy database handle for OxidDB operations
+/// 
+/// # Deprecated
+/// 
+/// This API is deprecated and will be removed in a future version.
+/// Please use the `Connection` API instead, which provides a more
+/// ergonomic and type-safe interface.
+/// 
+/// # Migration Guide
+/// 
+/// Instead of:
+/// ```rust,ignore
+/// let db = Oxidb::new("mydb.db")?;
+/// db.execute_sql("SELECT * FROM users")?;
+/// ```
+/// 
+/// Use:
+/// ```rust,ignore
+/// use oxidb::Connection;
+/// let mut conn = Connection::open("mydb.db")?;
+/// conn.execute("SELECT * FROM users")?;
+/// ```
+#[deprecated(
+    since = "0.2.0",
+    note = "Use the Connection API instead for better ergonomics and type safety"
+)]
 pub struct Oxidb {
     /// The query executor responsible for handling database operations.
     /// Visible within the `api` module (`crate::api`) to allow `implementation.rs` to access it.

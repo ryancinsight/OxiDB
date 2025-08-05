@@ -1,8 +1,6 @@
-use oxidb::{Connection, OxidbError, QueryResult};
-use std::collections::HashMap;
+use oxidb::{Connection, OxidbError};
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use serde::{Serialize, Deserialize};
 
 /// Real-world scenario tests for Oxidb
@@ -64,14 +62,14 @@ struct DatabaseRepository {
 
 impl DatabaseRepository {
     fn new() -> Result<Self, OxidbError> {
-        let conn = Connection::new(":memory:")?;
+        let conn = Connection::open_in_memory()?;
         Ok(Self {
             connection: Arc::new(Mutex::new(conn)),
         })
     }
 
     fn setup_schema(&self) -> Result<(), OxidbError> {
-        let conn = self.connection.lock().unwrap();
+        let mut conn = self.connection.lock().unwrap();
         
         // Users table
         conn.execute("CREATE TABLE IF NOT EXISTS users (
@@ -114,7 +112,7 @@ impl DatabaseRepository {
 
 impl UserRepository for DatabaseRepository {
     fn create_user(&self, user: &User) -> Result<(), OxidbError> {
-        let conn = self.connection.lock().unwrap();
+        let mut conn = self.connection.lock().unwrap();
         conn.execute(&format!(
             "INSERT INTO users (id, username, email, created_at, is_active) VALUES ({}, '{}', '{}', '{}', {})",
             user.id, user.username, user.email, user.created_at, user.is_active
@@ -123,25 +121,42 @@ impl UserRepository for DatabaseRepository {
     }
 
     fn find_user_by_email(&self, email: &str) -> Result<Option<User>, OxidbError> {
-        let conn = self.connection.lock().unwrap();
-        let result = conn.query(&format!("SELECT * FROM users WHERE email = '{}'", email))?;
+        let mut conn = self.connection.lock().unwrap();
+        let result = conn.query_all(&format!("SELECT * FROM users WHERE email = '{}'", email))?;
         
-        if result.rows.is_empty() {
+        if result.is_empty() {
             Ok(None)
         } else {
-            let row = &result.rows[0];
+            let row = &result[0];
+            // Assuming columns: id, username, email, created_at, is_active
             Ok(Some(User {
-                id: row.get("id").unwrap_or("0".to_string()).parse().unwrap_or(0),
-                username: row.get("username").unwrap_or_default(),
-                email: row.get("email").unwrap_or_default(),
-                created_at: row.get("created_at").unwrap_or_default(),
-                is_active: row.get("is_active").unwrap_or("true".to_string()) == "true",
+                id: match row.get(0) {
+                    Some(oxidb::Value::Integer(i)) => *i as u64,
+                    _ => 0,
+                },
+                username: match row.get(1) {
+                    Some(oxidb::Value::Text(s)) => s.clone(),
+                    _ => String::new(),
+                },
+                email: match row.get(2) {
+                    Some(oxidb::Value::Text(s)) => s.clone(),
+                    _ => String::new(),
+                },
+                created_at: match row.get(3) {
+                    Some(oxidb::Value::Text(s)) => s.clone(),
+                    _ => String::new(),
+                },
+                is_active: match row.get(4) {
+                    Some(oxidb::Value::Boolean(b)) => *b,
+                    Some(oxidb::Value::Integer(i)) => *i != 0,
+                    _ => true,
+                },
             }))
         }
     }
 
     fn update_user_status(&self, user_id: u64, is_active: bool) -> Result<(), OxidbError> {
-        let conn = self.connection.lock().unwrap();
+        let mut conn = self.connection.lock().unwrap();
         conn.execute(&format!(
             "UPDATE users SET is_active = {} WHERE id = {}",
             is_active, user_id
@@ -152,7 +167,7 @@ impl UserRepository for DatabaseRepository {
 
 impl ProductRepository for DatabaseRepository {
     fn create_product(&self, product: &Product) -> Result<(), OxidbError> {
-        let conn = self.connection.lock().unwrap();
+        let mut conn = self.connection.lock().unwrap();
         conn.execute(&format!(
             "INSERT INTO products (id, name, price, category, stock_quantity, description) VALUES ({}, '{}', {}, '{}', {}, '{}')",
             product.id, product.name, product.price, product.category, product.stock_quantity, product.description
@@ -161,25 +176,45 @@ impl ProductRepository for DatabaseRepository {
     }
 
     fn find_products_by_category(&self, category: &str) -> Result<Vec<Product>, OxidbError> {
-        let conn = self.connection.lock().unwrap();
-        let result = conn.query(&format!("SELECT * FROM products WHERE category = '{}'", category))?;
+        let mut conn = self.connection.lock().unwrap();
+        let result = conn.query_all(&format!("SELECT * FROM products WHERE category = '{}'", category))?;
         
         let mut products = Vec::new();
-        for row in result.rows {
+        for row in result {
+            // Assuming columns: id, name, price, category, stock_quantity, description
             products.push(Product {
-                id: row.get("id").unwrap_or("0".to_string()).parse().unwrap_or(0),
-                name: row.get("name").unwrap_or_default(),
-                price: row.get("price").unwrap_or("0".to_string()).parse().unwrap_or(0.0),
-                category: row.get("category").unwrap_or_default(),
-                stock_quantity: row.get("stock_quantity").unwrap_or("0".to_string()).parse().unwrap_or(0),
-                description: row.get("description").unwrap_or_default(),
+                id: match row.get(0) {
+                    Some(oxidb::Value::Integer(i)) => *i as u64,
+                    _ => 0,
+                },
+                name: match row.get(1) {
+                    Some(oxidb::Value::Text(s)) => s.clone(),
+                    _ => String::new(),
+                },
+                price: match row.get(2) {
+                    Some(oxidb::Value::Float(f)) => *f,
+                    Some(oxidb::Value::Integer(i)) => *i as f64,
+                    _ => 0.0,
+                },
+                category: match row.get(3) {
+                    Some(oxidb::Value::Text(s)) => s.clone(),
+                    _ => String::new(),
+                },
+                stock_quantity: match row.get(4) {
+                    Some(oxidb::Value::Integer(i)) => *i as i32,
+                    _ => 0,
+                },
+                description: match row.get(5) {
+                    Some(oxidb::Value::Text(s)) => s.clone(),
+                    _ => String::new(),
+                },
             });
         }
         Ok(products)
     }
 
     fn update_stock(&self, product_id: u64, new_quantity: i32) -> Result<(), OxidbError> {
-        let conn = self.connection.lock().unwrap();
+        let mut conn = self.connection.lock().unwrap();
         conn.execute(&format!(
             "UPDATE products SET stock_quantity = {} WHERE id = {}",
             new_quantity, product_id
@@ -190,7 +225,7 @@ impl ProductRepository for DatabaseRepository {
 
 impl OrderRepository for DatabaseRepository {
     fn create_order(&self, order: &Order) -> Result<(), OxidbError> {
-        let conn = self.connection.lock().unwrap();
+        let mut conn = self.connection.lock().unwrap();
         let product_ids_json = serde_json::to_string(&order.product_ids).unwrap_or_default();
         conn.execute(&format!(
             "INSERT INTO orders (id, user_id, product_ids, total_amount, status, created_at) VALUES ({}, {}, '{}', {}, '{}', '{}')",
@@ -200,28 +235,48 @@ impl OrderRepository for DatabaseRepository {
     }
 
     fn find_orders_by_user(&self, user_id: u64) -> Result<Vec<Order>, OxidbError> {
-        let conn = self.connection.lock().unwrap();
-        let result = conn.query(&format!("SELECT * FROM orders WHERE user_id = {}", user_id))?;
+        let mut conn = self.connection.lock().unwrap();
+        let result = conn.query_all(&format!("SELECT * FROM orders WHERE user_id = {}", user_id))?;
         
         let mut orders = Vec::new();
-        for row in result.rows {
-            let product_ids_str = row.get("product_ids").unwrap_or("[]".to_string());
+        for row in result {
+            // Assuming columns: id, user_id, product_ids, total_amount, status, created_at
+            let product_ids_str = match row.get(2) {
+                Some(oxidb::Value::Text(s)) => s.clone(),
+                _ => "[]".to_string(),
+            };
             let product_ids: Vec<u64> = serde_json::from_str(&product_ids_str).unwrap_or_default();
             
             orders.push(Order {
-                id: row.get("id").unwrap_or("0".to_string()).parse().unwrap_or(0),
-                user_id: row.get("user_id").unwrap_or("0".to_string()).parse().unwrap_or(0),
+                id: match row.get(0) {
+                    Some(oxidb::Value::Integer(i)) => *i as u64,
+                    _ => 0,
+                },
+                user_id: match row.get(1) {
+                    Some(oxidb::Value::Integer(i)) => *i as u64,
+                    _ => 0,
+                },
                 product_ids,
-                total_amount: row.get("total_amount").unwrap_or("0".to_string()).parse().unwrap_or(0.0),
-                status: row.get("status").unwrap_or_default(),
-                created_at: row.get("created_at").unwrap_or_default(),
+                total_amount: match row.get(3) {
+                    Some(oxidb::Value::Float(f)) => *f,
+                    Some(oxidb::Value::Integer(i)) => *i as f64,
+                    _ => 0.0,
+                },
+                status: match row.get(4) {
+                    Some(oxidb::Value::Text(s)) => s.clone(),
+                    _ => String::new(),
+                },
+                created_at: match row.get(5) {
+                    Some(oxidb::Value::Text(s)) => s.clone(),
+                    _ => String::new(),
+                },
             });
         }
         Ok(orders)
     }
 
     fn update_order_status(&self, order_id: u64, status: &str) -> Result<(), OxidbError> {
-        let conn = self.connection.lock().unwrap();
+        let mut conn = self.connection.lock().unwrap();
         conn.execute(&format!(
             "UPDATE orders SET status = '{}' WHERE id = {}",
             status, order_id
@@ -250,10 +305,10 @@ impl ECommerceService {
     fn process_order(&self, user_email: &str, product_ids: Vec<u64>) -> Result<u64, OxidbError> {
         // Validate user exists and is active
         let user = self.user_repo.find_user_by_email(user_email)?
-            .ok_or_else(|| OxidbError::InvalidInput("User not found".to_string()))?;
+            .ok_or_else(|| OxidbError::InvalidInput { message: "User not found".to_string() })?;
         
         if !user.is_active {
-            return Err(OxidbError::InvalidInput("User account is inactive".to_string()));
+            return Err(OxidbError::InvalidInput { message: "User account is inactive".to_string() });
         }
 
         // Calculate total amount and validate stock
@@ -279,7 +334,7 @@ impl ECommerceService {
 
     fn get_user_order_history(&self, user_email: &str) -> Result<Vec<Order>, OxidbError> {
         let user = self.user_repo.find_user_by_email(user_email)?
-            .ok_or_else(|| OxidbError::InvalidInput("User not found".to_string()))?;
+            .ok_or_else(|| OxidbError::InvalidInput { message: "User not found".to_string() })?;
         
         self.order_repo.find_orders_by_user(user.id)
     }
@@ -364,7 +419,7 @@ fn run_ecommerce_scenario() -> Result<(), OxidbError> {
 
     // Test order processing with inactive user (should fail)
     match service.process_order("bob@example.com", vec![1]) {
-        Err(OxidbError::InvalidInput(msg)) if msg.contains("inactive") => {
+        Err(OxidbError::InvalidInput { message }) if message.contains("inactive") => {
             println!("✅ Correctly rejected order for inactive user");
         }
         _ => println!("❌ Should have rejected order for inactive user"),
@@ -491,7 +546,7 @@ fn run_analytics_scenario() -> Result<(), OxidbError> {
             name: format!("Product {}", i),
             price: (i as f64) * 10.0 + 9.99,
             category: categories[(i as usize - 1) % categories.len()].to_string(),
-            stock_quantity: (i * 10) % 100,
+            stock_quantity: ((i * 10) % 100) as i32,
             description: format!("Description for product {}", i),
         };
         repo.create_product(&product)?;

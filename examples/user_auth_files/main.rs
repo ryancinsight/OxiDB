@@ -1,11 +1,8 @@
 use anyhow::Result;
 use clap::Parser;
-use oxidb::core::query::executor::ExecutionResult; // For handling query results
-use oxidb::core::types::DataType; // For parsing query results
-use oxidb::{Oxidb, OxidbError};
+use oxidb::{Connection, OxidbError, QueryResult};
 use serde::{Deserialize, Serialize};
 // use sha2::{Digest, Sha256}; // Removed to minimize dependencies
-use std::collections::HashMap; // For parsing map data type
 use std::path::Path;
 // std::fs and std::io might be needed if reading file content from the filesystem
 // For now, content is string argument.
@@ -75,13 +72,13 @@ struct UserFile {
 }
 
 // --- Database Initialization ---
-fn ensure_tables_exist(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn ensure_tables_exist(db: &mut Connection) -> Result<(), OxidbError> {
     // Create Users Table
     let create_users_table_query = format!(
         "CREATE TABLE {} (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)",
         USERS_TABLE
     );
-    match db.execute_query_str(&create_users_table_query) {
+    match db.execute(&create_users_table_query) {
         Ok(_) => {}
         Err(e) => {
             if !e.to_string().to_lowercase().contains("already exists")
@@ -98,7 +95,7 @@ fn ensure_tables_exist(db: &mut Oxidb) -> Result<(), OxidbError> {
         "CREATE TABLE {} (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, file_name TEXT NOT NULL, file_content BLOB NOT NULL)",
         USER_FILES_TABLE
     );
-    match db.execute_query_str(&create_user_files_table_query) {
+    match db.execute(&create_user_files_table_query) {
         Ok(_) => {}
         Err(e) => {
             if !e.to_string().to_lowercase().contains("already exists")
@@ -110,69 +107,6 @@ fn ensure_tables_exist(db: &mut Oxidb) -> Result<(), OxidbError> {
         }
     }
     Ok(())
-}
-
-// --- Helper functions for parsing query results ---
-fn get_string_from_map(item_map: &HashMap<Vec<u8>, DataType>, key: &str) -> Result<String> {
-    item_map
-        .get(key.as_bytes())
-        .and_then(|data_type| match data_type {
-            DataType::String(s) => Some(s.clone()),
-            _ => None,
-        })
-        .ok_or_else(|| anyhow::anyhow!("Map missing string key '{}' or not a String", key))
-}
-
-fn get_u64_from_map(item_map: &HashMap<Vec<u8>, DataType>, key: &str) -> Result<u64> {
-    item_map
-        .get(key.as_bytes())
-        .and_then(|data_type| match data_type {
-            DataType::Integer(i) => Some(*i as u64),
-            DataType::String(s) => s.parse::<u64>().ok(),
-            _ => None,
-        })
-        .ok_or_else(|| anyhow::anyhow!("Map missing key '{}' or not a u64 compatible type", key))
-}
-
-// Updated to expect DataType::RawBytes
-fn get_raw_bytes_from_map(item_map: &HashMap<Vec<u8>, DataType>, key: &str) -> Result<Vec<u8>> {
-    item_map
-        .get(key.as_bytes())
-        .and_then(|data_type| match data_type {
-            DataType::RawBytes(b) => Some(b.clone()),
-            _ => None,
-        })
-        .ok_or_else(|| anyhow::anyhow!("Map missing key '{}' or not RawBytes", key))
-}
-
-fn parse_user_files_from_result(values: Vec<DataType>) -> Result<Vec<UserFile>> {
-    let mut files = Vec::new();
-    if values.is_empty() {
-        return Ok(files);
-    }
-    if values.len() % 2 != 0 {
-        return Err(anyhow::anyhow!(
-            "Invalid data structure for UserFiles: odd number of values. Expected key-value pairs."
-        ));
-    }
-
-    for chunk in values.chunks_exact(2) {
-        if let DataType::Map(map_data) = &chunk[1] {
-            let item_map = &map_data.0;
-            files.push(UserFile {
-                id: get_u64_from_map(item_map, "id")?,
-                user_id: get_u64_from_map(item_map, "user_id")?,
-                file_name: get_string_from_map(item_map, "file_name")?,
-                content: get_raw_bytes_from_map(item_map, "file_content")?, // Updated call
-            });
-        } else {
-            return Err(anyhow::anyhow!(
-                "Expected item data to be a Map for user_files. Found: {:?}",
-                chunk[1]
-            ));
-        }
-    }
-    Ok(files)
 }
 
 // --- Password Hashing ---
@@ -187,7 +121,7 @@ fn hash_password(password: &str) -> String {
 }
 
 // --- User Management Functions ---
-fn register_user(db: &mut Oxidb, username: &str, password: &str) -> Result<()> {
+fn register_user(db: &mut Connection, username: &str, password: &str) -> Result<()> {
     ensure_tables_exist(db)?;
     let hashed_password = hash_password(password);
     let escaped_username = username.replace("'", "''");
@@ -198,8 +132,8 @@ fn register_user(db: &mut Oxidb, username: &str, password: &str) -> Result<()> {
         USERS_TABLE, escaped_username, escaped_hashed_password
     );
 
-    match db.execute_query_str(&query)? {
-        ExecutionResult::Success => {
+    match db.execute(&query)? {
+        QueryResult::RowsAffected(n) if n > 0 => {
             println!("User '{}' registered successfully.", username);
             Ok(())
         }
@@ -207,7 +141,7 @@ fn register_user(db: &mut Oxidb, username: &str, password: &str) -> Result<()> {
     }
 }
 
-fn login_user(db: &mut Oxidb, username: &str, password: &str) -> Result<Option<User>> {
+fn login_user(db: &mut Connection, username: &str, password: &str) -> Result<Option<User>> {
     ensure_tables_exist(db)?;
     let escaped_username = username.replace("'", "''");
     let query = format!(
@@ -215,25 +149,38 @@ fn login_user(db: &mut Oxidb, username: &str, password: &str) -> Result<Option<U
         USERS_TABLE, escaped_username
     );
 
-    match db.execute_query_str(&query)? {
-        ExecutionResult::Values(values) => {
-            if values.is_empty() {
+    match db.execute(&query)? {
+        QueryResult::Data(data) => {
+            if data.rows.is_empty() {
                 println!("Login failed: User '{}' not found.", username);
                 return Ok(None);
             }
-            if values.len() != 2 {
-                return Err(anyhow::anyhow!(
-                    "Login error: Unexpected data structure for user '{}'.",
-                    username
-                ));
-            }
-            if let DataType::Map(map_data) = &values[1] {
-                let item_map = &map_data.0;
-                let stored_hash = get_string_from_map(item_map, "password_hash")?;
+            
+            let row = &data.rows[0];
+            // Assuming columns are: id, username, password_hash
+            if let (Some(id_val), Some(username_val), Some(password_hash_val)) = 
+                (row.get(0), row.get(1), row.get(2)) {
+                
+                use oxidb::Value;
+                let id = match id_val {
+                    Value::Integer(i) => *i as u64,
+                    _ => return Err(anyhow::anyhow!("Invalid id type")),
+                };
+                
+                let stored_username = match username_val {
+                    Value::Text(s) => s.clone(),
+                    _ => return Err(anyhow::anyhow!("Invalid username type")),
+                };
+                
+                let stored_hash = match password_hash_val {
+                    Value::Text(s) => s.clone(),
+                    _ => return Err(anyhow::anyhow!("Invalid password_hash type")),
+                };
+                
                 if hash_password(password) == stored_hash {
                     Ok(Some(User {
-                        id: get_u64_from_map(item_map, "id")?,
-                        username: get_string_from_map(item_map, "username")?,
+                        id,
+                        username: stored_username,
                     }))
                 } else {
                     println!("Login failed: Incorrect password for user '{}'.", username);
@@ -241,21 +188,17 @@ fn login_user(db: &mut Oxidb, username: &str, password: &str) -> Result<Option<U
                 }
             } else {
                 Err(anyhow::anyhow!(
-                    "Login error: Expected user data to be a Map for user '{}'.",
+                    "Login error: Missing data for user '{}'.",
                     username
                 ))
             }
-        }
-        ExecutionResult::Success => {
-            println!("Login failed: User '{}' not found (ExecutionResult::Success).", username);
-            Ok(None)
         }
         other => Err(anyhow::anyhow!("Login failed for user '{}': {:?}", username, other)),
     }
 }
 
 // --- File Management Functions ---
-fn add_file(db: &mut Oxidb, user_id: u64, file_name: &str, content: &str) -> Result<()> {
+fn add_file(db: &mut Connection, user_id: u64, file_name: &str, content: &str) -> Result<()> {
     ensure_tables_exist(db)?;
     let escaped_file_name = file_name.replace("'", "''");
     let content_bytes = content.as_bytes();
@@ -267,8 +210,8 @@ fn add_file(db: &mut Oxidb, user_id: u64, file_name: &str, content: &str) -> Res
         USER_FILES_TABLE, user_id, escaped_file_name, hex_content
     );
 
-    match db.execute_query_str(&query)? {
-        ExecutionResult::Success => {
+    match db.execute(&query)? {
+        QueryResult::RowsAffected(n) if n > 0 => {
             println!("File '{}' added successfully for user ID {}.", file_name, user_id);
             Ok(())
         }
@@ -276,38 +219,51 @@ fn add_file(db: &mut Oxidb, user_id: u64, file_name: &str, content: &str) -> Res
     }
 }
 
-fn list_files(db: &mut Oxidb, user_id: u64) -> Result<()> {
+fn list_files(db: &mut Connection, user_id: u64) -> Result<()> {
     ensure_tables_exist(db)?;
     let query = format!(
         "SELECT id, user_id, file_name, file_content FROM {} WHERE user_id = {}",
         USER_FILES_TABLE, user_id
     );
 
-    match db.execute_query_str(&query)? {
-        ExecutionResult::Values(values) => {
-            if values.is_empty() {
+    match db.execute(&query)? {
+        QueryResult::Data(data) => {
+            if data.rows.is_empty() {
                 println!("No files found for user ID {}.", user_id);
                 return Ok(());
             }
-            match parse_user_files_from_result(values) {
-                Ok(files) => {
-                    println!("Files for user ID {}:", user_id);
-                    for file in files {
-                        let content_preview = String::from_utf8_lossy(&file.content);
-                        println!(
-                            "- ID: {}, Name: {}, Content Preview (lossy UTF-8): {:.50}{}",
-                            file.id,
-                            file.file_name,
-                            content_preview.chars().take(50).collect::<String>(),
-                            if content_preview.len() > 50 { "..." } else { "" }
-                        );
-                    }
+            println!("Files for user ID {}:", user_id);
+            for row in &data.rows {
+                // Columns: id, user_id, file_name, file_content
+                if let (Some(id_val), Some(_user_id_val), Some(name_val), Some(content_val)) = 
+                    (row.get(0), row.get(1), row.get(2), row.get(3)) {
+                    
+                    use oxidb::Value;
+                    let file_id = match id_val {
+                        Value::Integer(i) => *i,
+                        _ => continue,
+                    };
+                    
+                    let file_name = match name_val {
+                        Value::Text(s) => s.clone(),
+                        _ => continue,
+                    };
+                    
+                    let content = match content_val {
+                        Value::Blob(b) => b.clone(),
+                        _ => continue,
+                    };
+                    
+                    let content_preview = String::from_utf8_lossy(&content);
+                    println!(
+                        "- ID: {}, Name: {}, Content Preview (lossy UTF-8): {:.50}{}",
+                        file_id,
+                        file_name,
+                        content_preview.chars().take(50).collect::<String>(),
+                        if content_preview.len() > 50 { "..." } else { "" }
+                    );
                 }
-                Err(e) => eprintln!("Error parsing files for user ID {}: {}", user_id, e),
             }
-        }
-        ExecutionResult::Success => {
-            println!("No files found for user ID {} (ExecutionResult::Success).", user_id);
         }
         other => {
             eprintln!("Unexpected result when listing files for user ID {}: {:?}", user_id, other)
@@ -316,27 +272,54 @@ fn list_files(db: &mut Oxidb, user_id: u64) -> Result<()> {
     Ok(())
 }
 
-fn get_file(db: &mut Oxidb, user_id: u64, file_id: u64) -> Result<Option<UserFile>> {
+fn get_file(db: &mut Connection, user_id: u64, file_id: u64) -> Result<Option<UserFile>> {
     ensure_tables_exist(db)?;
     let query = format!(
         "SELECT id, user_id, file_name, file_content FROM {} WHERE id = {} AND user_id = {}",
         USER_FILES_TABLE, file_id, user_id
     );
 
-    match db.execute_query_str(&query)? {
-        ExecutionResult::Values(values) => {
-            if values.is_empty() {
+    match db.execute(&query)? {
+        QueryResult::Data(data) => {
+            if data.rows.is_empty() {
                 return Ok(None); // File not found or not owned by user
             }
-            match parse_user_files_from_result(values) {
-                Ok(mut files) if !files.is_empty() => Ok(files.pop()), // Should be only one
-                Ok(_) => Ok(None),                                     // Parsed but somehow empty
-                Err(e) => {
-                    Err(anyhow::anyhow!("Error parsing file data for file ID {}: {}", file_id, e))
-                }
+            let row = &data.rows[0];
+            // Columns: id, user_id, file_name, file_content
+            if let (Some(id_val), Some(user_id_val), Some(name_val), Some(content_val)) = 
+                (row.get(0), row.get(1), row.get(2), row.get(3)) {
+                
+                use oxidb::Value;
+                let id = match id_val {
+                    Value::Integer(i) => *i as u64,
+                    _ => return Err(anyhow::anyhow!("Invalid file id type")),
+                };
+                
+                let user_id = match user_id_val {
+                    Value::Integer(i) => *i as u64,
+                    _ => return Err(anyhow::anyhow!("Invalid user_id type")),
+                };
+                
+                let file_name = match name_val {
+                    Value::Text(s) => s.clone(),
+                    _ => return Err(anyhow::anyhow!("Invalid file_name type")),
+                };
+                
+                let content = match content_val {
+                    Value::Blob(b) => b.clone(),
+                    _ => return Err(anyhow::anyhow!("Invalid file_content type")),
+                };
+                
+                Ok(Some(UserFile {
+                    id,
+                    user_id,
+                    file_name,
+                    content,
+                }))
+            } else {
+                Err(anyhow::anyhow!("Missing data for file ID {}", file_id))
             }
         }
-        ExecutionResult::Success => Ok(None), // No file found
         other => Err(anyhow::anyhow!("Failed to get file ID {}: {:?}", file_id, other)),
     }
 }
@@ -351,7 +334,7 @@ fn main() -> Result<()> {
             std::fs::create_dir_all(parent_dir)?;
         }
     }
-    let mut db = Oxidb::new(DB_PATH)?;
+    let mut db = Connection::open(DB_PATH)?;
 
     // Attempt to load session or state if applicable (e.g. from a file)
     // For this example, session is ephemeral and starts empty.

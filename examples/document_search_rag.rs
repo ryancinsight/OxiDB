@@ -4,8 +4,7 @@
 //! It simulates a knowledge base system where documents are stored with embeddings
 //! and can be searched using natural language queries.
 
-use oxidb::{Oxidb, OxidbError};
-use oxidb::core::types::{DataType, OrderedFloat, HashableVectorData, VectorData};
+use oxidb::{Connection, Value, OxidbError};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};
@@ -39,13 +38,17 @@ struct SearchResult {
 }
 
 struct DocumentSearchDB {
-    db: Oxidb,
+    conn: Connection,
     embedding_dimension: usize,
 }
 
 impl DocumentSearchDB {
     fn new(db_path: &str, embedding_dimension: usize) -> Result<Self, OxidbError> {
-        let db = Oxidb::open(db_path)?;
+        let mut conn = if db_path == ":memory:" {
+            Connection::open_in_memory()?
+        } else {
+            Connection::open(db_path)?
+        };
         
         // Create table for documents with vector embeddings
         let create_table_sql = format!(
@@ -53,210 +56,217 @@ impl DocumentSearchDB {
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
                 content TEXT NOT NULL,
-                category TEXT,
-                author TEXT,
                 embedding VECTOR[{}] NOT NULL,
                 metadata TEXT,
-                created_at TEXT,
-                updated_at TEXT
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )",
             embedding_dimension
         );
         
-        db.execute_sql(&create_table_sql)?;
+        conn.execute(&create_table_sql)?;
         
-        // Create indexes for better performance
-        db.execute_sql("CREATE INDEX IF NOT EXISTS idx_documents_category ON documents(category)")?;
-        db.execute_sql("CREATE INDEX IF NOT EXISTS idx_documents_author ON documents(author)")?;
+        // Create index on embeddings for similarity search
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_doc_embeddings ON documents(embedding)"
+        )?;
         
-        // Create a vector index for similarity search (HNSW)
-        db.execute_sql("CREATE INDEX IF NOT EXISTS idx_documents_embedding ON documents USING hnsw(embedding)")?;
-        
-        Ok(DocumentSearchDB { db, embedding_dimension })
+        Ok(Self {
+            conn,
+            embedding_dimension,
+        })
     }
     
-    // Document management
-    fn add_document(&self, doc: &Document) -> Result<(), OxidbError> {
-        let metadata_json = serde_json::to_string(&doc.metadata).unwrap();
-        let embedding_str = format!("[{}]", doc.embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
+    fn add_document(&mut self, doc: Document) -> Result<(), OxidbError> {
+        // Generate embedding for the document
+        let embedding = generate_embedding(&doc.content, self.embedding_dimension);
         
-        let sql = format!(
-            "INSERT INTO documents (id, title, content, category, author, embedding, metadata, created_at, updated_at) 
-             VALUES ('{}', '{}', '{}', '{}', '{}', {}, '{}', '{}', '{}')",
-            doc.id,
-            doc.title.replace("'", "''"),
-            doc.content.replace("'", "''"),
-            doc.category,
-            doc.author,
-            embedding_str,
-            metadata_json.replace("'", "''"),
-            doc.created_at.to_rfc3339(),
-            doc.updated_at.to_rfc3339()
-        );
+        // Store document in database using parameterized query
+        let sql = "INSERT INTO documents (id, title, content, embedding, metadata) 
+                   VALUES (?, ?, ?, ?, ?)";
         
-        self.db.execute_sql(&sql)?;
+        self.conn.execute_with_params(
+            sql,
+            &[
+                Value::Text(doc.id),
+                Value::Text(doc.title),
+                Value::Text(doc.content),
+                Value::Vector(embedding),
+                Value::Text(serde_json::to_string(&doc.metadata).unwrap_or_default()),
+            ]
+        )?;
+        
         Ok(())
     }
     
-    fn update_document_embedding(&self, doc_id: &str, embedding: &[f32]) -> Result<(), OxidbError> {
-        let embedding_str = format!("[{}]", embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
+    fn update_document_embedding(&mut self, doc_id: &str, embedding: &[f32]) -> Result<(), OxidbError> {
+        let sql = "UPDATE documents SET embedding = ?, updated_at = ? WHERE id = ?";
         
-        let sql = format!(
-            "UPDATE documents SET embedding = {}, updated_at = '{}' WHERE id = '{}'",
-            embedding_str,
-            Utc::now().to_rfc3339(),
-            doc_id
-        );
+        self.conn.execute_with_params(
+            sql,
+            &[
+                Value::Vector(embedding.to_vec()),
+                Value::Text(Utc::now().to_rfc3339()),
+                Value::Text(doc_id.to_string()),
+            ]
+        )?;
         
-        self.db.execute_sql(&sql)?;
         Ok(())
     }
     
     // Semantic search using vector similarity
-    fn semantic_search(&self, query: &SearchQuery) -> Result<Vec<SearchResult>, OxidbError> {
-        let embedding_str = format!("[{}]", query.embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
+    fn semantic_search(&mut self, query: SearchQuery) -> Result<Vec<SearchResult>, OxidbError> {
+        // Build SQL with conditional WHERE clause
+        let (sql, params) = if let Some(category) = &query.category_filter {
+            (
+                "SELECT *, vector_distance(embedding, ?) as distance 
+                 FROM documents 
+                 WHERE category = ? 
+                 ORDER BY distance ASC 
+                 LIMIT ?",
+                vec![
+                    Value::Vector(query.embedding.clone()),
+                    Value::Text(category.clone()),
+                    Value::Integer(query.limit as i64),
+                ]
+            )
+        } else {
+            (
+                "SELECT *, vector_distance(embedding, ?) as distance 
+                 FROM documents 
+                 ORDER BY distance ASC 
+                 LIMIT ?",
+                vec![
+                    Value::Vector(query.embedding.clone()),
+                    Value::Integer(query.limit as i64),
+                ]
+            )
+        };
         
-        let mut sql = format!(
-            "SELECT *, vector_distance(embedding, {}) as distance 
-             FROM documents",
-            embedding_str
-        );
-        
-        // Add category filter if specified
-        if let Some(category) = &query.category_filter {
-            sql.push_str(&format!(" WHERE category = '{}'", category));
-        }
-        
-        // Order by similarity (lower distance = higher similarity)
-        sql.push_str(&format!(" ORDER BY distance ASC LIMIT {}", query.limit));
-        
-        let result = self.db.execute_sql(&sql)?;
+        let result = self.conn.execute_with_params(sql, &params)?;
         
         let mut search_results = Vec::new();
-        for row in result.rows {
-            let doc = self.row_to_document(&row)?;
-            let distance = self.get_float(&row[row.len() - 1])?;
-            
-            // Convert distance to similarity score (1 / (1 + distance))
-            let score = 1.0 / (1.0 + distance);
-            
-            // Extract relevant snippet
-            let snippet = self.extract_snippet(&doc.content, &query.text, 150);
-            
-            search_results.push(SearchResult {
-                document: doc,
-                score,
-                snippet,
-            });
+        match result {
+            oxidb::QueryResult::Data(data) => {
+                let columns = &data.columns;
+                for row in &data.rows {
+                    let doc = self.row_to_document(row, columns)?;
+                    let score = Self::get_float_column(row, columns, "distance")
+                        .map(|distance| 1.0 - distance.min(1.0)) // Convert distance to similarity
+                        .unwrap_or(0.0);
+                    
+                    let snippet = self.generate_snippet(&doc.content, &query.text);
+                    
+                    search_results.push(SearchResult {
+                        document: doc,
+                        score,
+                        snippet,
+                    });
+                }
+            }
+            _ => {}
         }
         
         Ok(search_results)
     }
     
     // Hybrid search combining keyword and semantic search
-    fn hybrid_search(&self, query: &SearchQuery, keyword_weight: f32) -> Result<Vec<SearchResult>, OxidbError> {
+    fn hybrid_search(&mut self, query: &SearchQuery, keyword_weight: f32) -> Result<Vec<SearchResult>, OxidbError> {
         // Semantic search results
-        let semantic_results = self.semantic_search(query)?;
+        let semantic_results = self.semantic_search(query.clone())?;
         
-        // Keyword search
+        // Keyword search with parameterized queries
         let keywords = query.text.split_whitespace()
             .map(|k| k.to_lowercase())
             .collect::<Vec<_>>();
         
-        let mut keyword_conditions = Vec::new();
+        // Build parameterized query for keyword search
+        let mut conditions = Vec::new();
+        let mut params = Vec::new();
+        
         for keyword in &keywords {
-            keyword_conditions.push(format!(
-                "(LOWER(title) LIKE '%{}%' OR LOWER(content) LIKE '%{}%')",
-                keyword, keyword
-            ));
+            conditions.push("(LOWER(title) LIKE ? OR LOWER(content) LIKE ?)");
+            let pattern = format!("%{}%", keyword);
+            params.push(Value::Text(pattern.clone()));
+            params.push(Value::Text(pattern));
         }
         
-        let keyword_sql = format!(
-            "SELECT * FROM documents WHERE {}",
-            keyword_conditions.join(" OR ")
-        );
+        let (sql, final_params) = if let Some(category) = &query.category_filter {
+            let sql = format!(
+                "SELECT * FROM documents WHERE ({}) AND category = ?",
+                conditions.join(" OR ")
+            );
+            params.push(Value::Text(category.clone()));
+            (sql, params)
+        } else {
+            let sql = format!(
+                "SELECT * FROM documents WHERE {}",
+                conditions.join(" OR ")
+            );
+            (sql, params)
+        };
         
-        if let Some(category) = &query.category_filter {
-            let keyword_sql = format!("{} AND category = '{}'", keyword_sql, category);
-        }
-        
-        let keyword_result = self.db.execute_sql(&keyword_sql)?;
+        let keyword_result = self.conn.execute_with_params(&sql, &final_params)?;
         
         // Combine results with weighted scoring
-        let mut combined_results = HashMap::new();
+        let mut combined_results: HashMap<String, SearchResult> = HashMap::new();
         
         // Add semantic results
         for result in semantic_results {
-            combined_results.insert(
-                result.document.id.clone(),
-                (result, 1.0 - keyword_weight)
-            );
+            combined_results.insert(result.document.id.clone(), result);
         }
         
         // Add keyword results
-        for row in keyword_result.rows {
-            let doc = self.row_to_document(&row)?;
-            let doc_id = doc.id.clone();
-            
-            // Calculate keyword score based on match count
-            let mut keyword_score = 0.0;
-            let content_lower = doc.content.to_lowercase();
-            let title_lower = doc.title.to_lowercase();
-            
-            for keyword in &keywords {
-                if title_lower.contains(keyword) {
-                    keyword_score += 2.0; // Title matches are weighted higher
-                }
-                if content_lower.contains(keyword) {
-                    keyword_score += 1.0;
+        match keyword_result {
+            oxidb::QueryResult::Data(data) => {
+                for row in &data.rows {
+                    let doc = self.row_to_document(row, &data.columns)?;
+                    let doc_id = doc.id.clone();
+                    
+                    let snippet = self.generate_snippet(&doc.content, &query.text);
+                    let keyword_score = keyword_weight;
+                    
+                    if let Some(existing) = combined_results.get_mut(&doc_id) {
+                        // Document found in both searches - combine scores
+                        existing.score = existing.score * (1.0 - keyword_weight) + keyword_score;
+                    } else {
+                        // Document only found in keyword search
+                        combined_results.insert(doc_id, SearchResult {
+                            document: doc,
+                            score: keyword_score,
+                            snippet,
+                        });
+                    }
                 }
             }
-            
-            let normalized_score = (keyword_score / keywords.len() as f32).min(1.0);
-            let snippet = self.extract_snippet(&doc.content, &query.text, 150);
-            
-            if let Some((existing_result, semantic_weight)) = combined_results.get_mut(&doc_id) {
-                // Document found in both searches - combine scores
-                existing_result.score = existing_result.score * semantic_weight + normalized_score * keyword_weight;
-            } else {
-                // Document only found in keyword search
-                combined_results.insert(
-                    doc_id,
-                    (SearchResult {
-                        document: doc,
-                        score: normalized_score * keyword_weight,
-                        snippet,
-                    }, keyword_weight)
-                );
-            }
+            _ => {}
         }
         
         // Sort by combined score
-        let mut final_results: Vec<SearchResult> = combined_results.into_values()
-            .map(|(result, _)| result)
-            .collect();
+        let mut results: Vec<_> = combined_results.into_values().collect();
+        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
         
-        final_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
-        final_results.truncate(query.limit);
-        
-        Ok(final_results)
+        Ok(results.into_iter().take(query.limit).collect())
     }
     
     // Get documents by category
-    fn get_documents_by_category(&self, category: &str) -> Result<Vec<Document>, OxidbError> {
-        let sql = format!("SELECT * FROM documents WHERE category = '{}'", category);
-        let result = self.db.execute_sql(&sql)?;
+    fn get_documents_by_category(&mut self, category: &str) -> Result<Vec<Document>, OxidbError> {
+        let sql = "SELECT * FROM documents WHERE category = ?";
+        let result = self.conn.execute_with_params(sql, &[Value::Text(category.to_string())])?;
         
-        result.rows.iter()
-            .map(|row| self.row_to_document(row))
-            .collect()
+        match result {
+            oxidb::QueryResult::Data(data) => {
+                data.rows.iter()
+                    .map(|row| self.row_to_document(row, &data.columns))
+                    .collect()
+            }
+            _ => Ok(Vec::new()),
+        }
     }
     
     // Helper methods
     fn extract_snippet(&self, content: &str, query: &str, max_length: usize) -> String {
         // Find the most relevant part of the content
         let query_words: Vec<&str> = query.split_whitespace().collect();
-        let content_lower = content.to_lowercase();
         
         let mut best_start = 0;
         let mut best_score = 0;
@@ -296,67 +306,130 @@ impl DocumentSearchDB {
         snippet
     }
     
-    fn row_to_document(&self, row: &[DataType]) -> Result<Document, OxidbError> {
+    // Helper method to generate a snippet from content
+    fn generate_snippet(&self, content: &str, query: &str) -> String {
+        let query_lower = query.to_lowercase();
+        let content_lower = content.to_lowercase();
+        
+        // Find the first occurrence of any query word
+        let words: Vec<&str> = query_lower.split_whitespace().collect();
+        let mut best_pos = None;
+        
+        for word in &words {
+            if let Some(pos) = content_lower.find(word) {
+                best_pos = Some(best_pos.map_or(pos, |p: usize| p.min(pos)));
+            }
+        }
+        
+        let snippet_start = best_pos.unwrap_or(0);
+        let snippet_length = 200;
+        
+        // Extract snippet around the match
+        let start = snippet_start.saturating_sub(50);
+        let end = (start + snippet_length).min(content.len());
+        
+        let mut snippet = content[start..end].to_string();
+        
+        // Add ellipsis if needed
+        if start > 0 {
+            snippet = format!("...{}", snippet);
+        }
+        if end < content.len() {
+            snippet = format!("{}...", snippet);
+        }
+        
+        snippet
+    }
+    
+    // Helper method to safely extract a text value from a row by column name
+    fn get_text_column(row: &oxidb::Row, columns: &[String], column_name: &str) -> Result<String, OxidbError> {
+        match row.get_by_name(columns, column_name) {
+            Some(Value::Text(s)) => Ok(s.clone()),
+            Some(Value::Null) => Ok(String::new()),
+            Some(_) => Err(OxidbError::TypeMismatch {
+                expected: "Text".to_string(),
+                found: format!("different type for column '{}'", column_name),
+            }),
+            None => Err(OxidbError::NotFound(format!("Column '{}' not found", column_name))),
+        }
+    }
+    
+    // Helper method to safely extract a vector value from a row by column name
+    fn get_vector_column(row: &oxidb::Row, columns: &[String], column_name: &str) -> Result<Vec<f32>, OxidbError> {
+        match row.get_by_name(columns, column_name) {
+            Some(Value::Vector(v)) => Ok(v.clone()),
+            Some(Value::Null) => Ok(vec![]),
+            Some(_) => Err(OxidbError::TypeMismatch {
+                expected: "Vector".to_string(),
+                found: format!("different type for column '{}'", column_name),
+            }),
+            None => Err(OxidbError::NotFound(format!("Column '{}' not found", column_name))),
+        }
+    }
+    
+    // Helper method to safely extract a float value from a row by column name
+    fn get_float_column(row: &oxidb::Row, columns: &[String], column_name: &str) -> Result<f32, OxidbError> {
+        match row.get_by_name(columns, column_name) {
+            Some(Value::Float(f)) => Ok(*f as f32),
+            Some(Value::Integer(i)) => Ok(*i as f32),
+            Some(Value::Null) => Ok(0.0),
+            Some(_) => Err(OxidbError::TypeMismatch {
+                expected: "Float".to_string(),
+                found: format!("different type for column '{}'", column_name),
+            }),
+            None => Err(OxidbError::NotFound(format!("Column '{}' not found", column_name))),
+        }
+    }
+    
+    fn row_to_document(&self, row: &oxidb::Row, columns: &[String]) -> Result<Document, OxidbError> {
+        // Parse metadata from JSON string
+        let metadata_str = Self::get_text_column(row, columns, "metadata")?;
+        let metadata: HashMap<String, String> = if metadata_str.is_empty() {
+            HashMap::new()
+        } else {
+            serde_json::from_str(&metadata_str).unwrap_or_default()
+        };
+        
         Ok(Document {
-            id: self.get_string(&row[0])?,
-            title: self.get_string(&row[1])?,
-            content: self.get_string(&row[2])?,
-            category: self.get_string(&row[3])?,
-            author: self.get_string(&row[4])?,
-            embedding: self.get_vector(&row[5])?.unwrap_or_default(),
-            metadata: serde_json::from_str(&self.get_string(&row[6])?).unwrap_or_default(),
-            created_at: DateTime::parse_from_rfc3339(&self.get_string(&row[7])?)
-                .unwrap()
-                .with_timezone(&Utc),
-            updated_at: DateTime::parse_from_rfc3339(&self.get_string(&row[8])?)
-                .unwrap()
-                .with_timezone(&Utc),
+            id: Self::get_text_column(row, columns, "id")?,
+            title: Self::get_text_column(row, columns, "title")?,
+            content: Self::get_text_column(row, columns, "content")?,
+            category: Self::get_text_column(row, columns, "category")?,
+            author: Self::get_text_column(row, columns, "author")?,
+            embedding: Self::get_vector_column(row, columns, "embedding")?,
+            metadata,
+            created_at: Utc::now(), // These would ideally come from the database too
+            updated_at: Utc::now(),
         })
     }
-    
-    fn get_string(&self, data: &DataType) -> Result<String, OxidbError> {
-        match data {
-            DataType::String(s) => Ok(s.clone()),
-            DataType::Null => Ok(String::new()),
-            _ => Err(OxidbError::TypeMismatch),
-        }
-    }
-    
-    fn get_float(&self, data: &DataType) -> Result<f32, OxidbError> {
-        match data {
-            DataType::Float(f) => Ok(f.0 as f32),
-            DataType::Integer(i) => Ok(*i as f32),
-            _ => Err(OxidbError::TypeMismatch),
-        }
-    }
-    
-    fn get_vector(&self, data: &DataType) -> Result<Option<Vec<f32>>, OxidbError> {
-        match data {
-            DataType::Vector(v) => Ok(Some(v.0.data.clone())),
-            DataType::Null => Ok(None),
-            _ => Err(OxidbError::TypeMismatch),
-        }
-    }
+
 }
 
 // Simulated embedding function (in real use, this would use a model like BERT or OpenAI embeddings)
 fn generate_embedding(text: &str, dimension: usize) -> Vec<f32> {
-    // This is a simple hash-based embedding for demonstration
-    // In production, use proper embedding models
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    
     let mut embedding = vec![0.0; dimension];
     let words: Vec<&str> = text.split_whitespace().collect();
     
     for (i, word) in words.iter().enumerate() {
-        let hash = word.chars().map(|c| c as u32).sum::<u32>();
-        let index = (hash as usize + i) % dimension;
-        embedding[index] = ((hash % 100) as f32 / 100.0) * 2.0 - 1.0;
+        let mut hasher = DefaultHasher::new();
+        word.hash(&mut hasher);
+        let hash = hasher.finish();
+        
+        // Distribute word influence across embedding dimensions
+        for j in 0..dimension {
+            let idx = (i + j) % dimension;
+            embedding[idx] += ((hash >> j) & 0xFF) as f32 / 255.0;
+        }
     }
     
     // Normalize the embedding
-    let magnitude = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let magnitude: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
     if magnitude > 0.0 {
-        for x in &mut embedding {
-            *x /= magnitude;
+        for value in &mut embedding {
+            *value /= magnitude;
         }
     }
     
@@ -366,8 +439,8 @@ fn generate_embedding(text: &str, dimension: usize) -> Vec<f32> {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Document Search RAG Example ===\n");
     
-    let embedding_dim = 128;
-    let db = DocumentSearchDB::new("document_search.db", embedding_dim)?;
+    let embedding_dim = 384;
+    let mut db = DocumentSearchDB::new(":memory:", embedding_dim)?;
     
     // Create sample documents
     let documents = vec![
@@ -446,7 +519,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Add documents to database
     println!("Adding documents to database...");
     for doc in &documents {
-        db.add_document(doc)?;
+        db.add_document(doc.clone())?;
         println!("Added: {} by {}", doc.title, doc.author);
     }
     
@@ -460,7 +533,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     
     println!("Query: {}", query1.text);
-    let results = db.semantic_search(&query1)?;
+    let results = db.semantic_search(query1)?;
     
     for (i, result) in results.iter().enumerate() {
         println!("\n{}. {} (Score: {:.3})", i + 1, result.document.title, result.score);
@@ -478,7 +551,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     
     println!("Query: {} (Category: Databases)", query2.text);
-    let results = db.semantic_search(&query2)?;
+    let results = db.semantic_search(query2)?;
     
     for (i, result) in results.iter().enumerate() {
         println!("\n{}. {} (Score: {:.3})", i + 1, result.document.title, result.score);
