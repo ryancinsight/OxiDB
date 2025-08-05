@@ -133,17 +133,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Insert nodes into database
     for node in &nodes {
-        conn.execute(&format!(
-            "INSERT INTO nodes (id, entity_type, name, description, confidence) VALUES ({}, '{}', '{}', '{}', {})",
-            node.id, node.entity_type, node.name, 
-            node.description.as_ref().unwrap_or(&String::new()), 
-            node.confidence_score
-        ))?;
+        conn.execute_with_params(
+            "INSERT INTO nodes (id, entity_type, name, description, confidence) VALUES (?, ?, ?, ?, ?)",
+            &[
+                Value::Integer(node.id as i64),
+                Value::Text(node.entity_type.clone()),
+                Value::Text(node.name.clone()),
+                Value::Text(node.description.as_ref().unwrap_or(&String::new()).clone()),
+                Value::Float(node.confidence_score as f64),
+            ]
+        )?;
     }
 
     // Create relationships
-    conn.execute("INSERT INTO edges (source_id, target_id, relationship_type, confidence) VALUES (1, 2, 'develops', 0.9)")?;
-    conn.execute("INSERT INTO edges (source_id, target_id, relationship_type, confidence) VALUES (1, 3, 'acquired', 0.95)")?;
+    conn.execute_with_params(
+        "INSERT INTO edges (source_id, target_id, relationship_type, confidence) VALUES (?, ?, ?, ?)",
+        &[
+            Value::Integer(1),
+            Value::Integer(2),
+            Value::Text("develops".to_string()),
+            Value::Float(0.9),
+        ]
+    )?;
+    
+    conn.execute_with_params(
+        "INSERT INTO edges (source_id, target_id, relationship_type, confidence) VALUES (?, ?, ?, ?)",
+        &[
+            Value::Integer(1),
+            Value::Integer(3),
+            Value::Text("acquired".to_string()),
+            Value::Float(0.95),
+        ]
+    )?;
 
     println!("Knowledge Graph created with {} nodes", nodes.len());
     println!("\nNodes:");
@@ -157,47 +178,62 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("========================\n");
 
     // Find all products developed by TechCorp
-    let result = conn.query_all(
+    let result = conn.execute_with_params(
         "SELECT n2.name, n2.description 
          FROM nodes n1 
          JOIN edges e ON n1.id = e.source_id 
          JOIN nodes n2 ON e.target_id = n2.id 
-         WHERE n1.name = 'TechCorp' AND e.relationship_type = 'develops'"
+         WHERE n1.name = ? AND e.relationship_type = ?",
+        &[
+            Value::Text("TechCorp".to_string()),
+            Value::Text("develops".to_string()),
+        ]
     )?;
 
     println!("Products developed by TechCorp:");
-    for row in &result {
-        let name = match row.get(0).unwrap_or(&oxidb::Value::Null) {
-            oxidb::Value::Text(s) => s,
-            _ => "Unknown",
-        };
-        let desc = match row.get(1).unwrap_or(&oxidb::Value::Null) {
-            oxidb::Value::Text(s) => s,
-            _ => "No description",
-        };
-        println!("  - {}: {}", name, desc);
+    match result {
+        oxidb::QueryResult::Data(data) => {
+            for row in &data.rows {
+                let name = match row.get(0).unwrap_or(&oxidb::Value::Null) {
+                    oxidb::Value::Text(s) => s,
+                    _ => "Unknown",
+                };
+                let desc = match row.get(1).unwrap_or(&oxidb::Value::Null) {
+                    oxidb::Value::Text(s) => s,
+                    _ => "No description",
+                };
+                println!("  - {}: {}", name, desc);
+            }
+        }
+        _ => println!("  No products found"),
     }
 
     // Find all acquisitions
-    let result = conn.query_all(
+    let result = conn.execute_with_params(
         "SELECT n1.name, n2.name, e.relationship_type 
          FROM nodes n1 
          JOIN edges e ON n1.id = e.source_id 
          JOIN nodes n2 ON e.target_id = n2.id 
-         WHERE e.relationship_type = 'acquired'"
+         WHERE e.relationship_type = ?",
+        &[Value::Text("acquired".to_string())]
     )?;
 
     println!("\nAcquisitions:");
-    for row in &result {
-        let source = match row.get(0).unwrap_or(&oxidb::Value::Null) {
-            oxidb::Value::Text(s) => s,
-            _ => "Unknown",
-        };
-        let target = match row.get(1).unwrap_or(&oxidb::Value::Null) {
-            oxidb::Value::Text(s) => s,
-            _ => "Unknown",
-        };
-        println!("  - {} acquired {}", source, target);
+    match result {
+        oxidb::QueryResult::Data(data) => {
+            for row in &data.rows {
+                let acquirer = match row.get(0).unwrap_or(&oxidb::Value::Null) {
+                    oxidb::Value::Text(s) => s,
+                    _ => "Unknown",
+                };
+                let acquired = match row.get(1).unwrap_or(&oxidb::Value::Null) {
+                    oxidb::Value::Text(s) => s,
+                    _ => "Unknown",
+                };
+                println!("  - {} acquired {}", acquirer, acquired);
+            }
+        }
+        _ => println!("  No acquisitions found"),
     }
 
     println!("\n✅ GraphRAG demo completed successfully!");
