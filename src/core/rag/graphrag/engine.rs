@@ -78,54 +78,88 @@ impl GraphRAGEngineImpl {
 
 #[async_trait]
 impl GraphRAGEngine for GraphRAGEngineImpl {
-    async fn query(&self, _context: &GraphRAGContext) -> Result<GraphRAGResult, OxidbError> {
-        // TODO: Implement query logic
+    async fn query(&self, context: &GraphRAGContext) -> Result<GraphRAGResult, OxidbError> {
+        // Example: Retrieve documents related to the query from the graph_store
+        let node_ids = self.graph_store.find_nodes_by_query(&context.query).await?;
+        let mut documents = Vec::new();
+        let mut scores = Vec::new();
+        for node_id in node_ids {
+            if let Some(node) = self.entities.get(&node_id) {
+                documents.push(node.document.clone());
+                scores.push(node.score);
+            }
+        }
+        // Reasoning paths can be computed or left empty for now
         Ok(GraphRAGResult {
-            documents: Vec::new(),
+            documents,
             reasoning_paths: Vec::new(),
-            scores: Vec::new(),
+            scores,
             metadata: HashMap::new(),
         })
     }
 
     async fn add_document(
         &mut self,
-        _document: &crate::core::rag::core_components::Document,
+        document: &crate::core::rag::core_components::Document,
     ) -> Result<NodeId, OxidbError> {
-        // TODO: Implement add document logic
-        Ok(0)
+        // Add the document as a node in the graph_store
+        let node_id = self.graph_store.add_node(document.clone()).await?;
+        let knowledge_node = KnowledgeNode {
+            id: node_id,
+            document: document.clone(),
+            score: 0.0,
+            metadata: HashMap::new(),
+        };
+        self.entities.insert(node_id, knowledge_node);
+        Ok(node_id)
     }
 
     async fn add_relationship(
         &mut self,
-        _source: NodeId,
-        _target: NodeId,
-        _relationship_type: &str,
-        _weight: f64,
+        source: NodeId,
+        target: NodeId,
+        relationship_type: &str,
+        weight: f64,
     ) -> Result<(), OxidbError> {
-        // TODO: Implement add relationship logic
+        // Add the relationship to the graph_store and local map
+        self.graph_store.add_edge(source, target, relationship_type, weight).await?;
+        let edge = KnowledgeEdge {
+            source,
+            target,
+            relationship_type: relationship_type.to_string(),
+            weight,
+        };
+        self.relationships.insert((source, target), edge);
         Ok(())
     }
 
-    async fn update_embeddings(&mut self, _node_id: NodeId) -> Result<(), OxidbError> {
-        // TODO: Implement update embeddings logic
-        Ok(())
+    async fn update_embeddings(&mut self, node_id: NodeId) -> Result<(), OxidbError> {
+        // Update the embedding for the node using the embedder
+        if let Some(node) = self.entities.get_mut(&node_id) {
+            let embedding = self.embedder.embed(&node.document).await?;
+            node.metadata.insert("embedding".to_string(), format!("{:?}", embedding));
+            Ok(())
+        } else {
+            Err(OxidbError::NotFound)
+        }
     }
 
     async fn get_reasoning_paths(
         &self,
-        _start: NodeId,
-        _end: NodeId,
-        _max_depth: usize,
+        start: NodeId,
+        end: NodeId,
+        max_depth: usize,
     ) -> Result<Vec<ReasoningPath>, OxidbError> {
-        // TODO: Implement get reasoning paths logic
-        Ok(Vec::new())
+        // Example: Use graph_store to find reasoning paths
+        let paths = self.graph_store.find_paths(start, end, max_depth).await?;
+        Ok(paths)
     }
 
     async fn clear(&mut self) -> Result<(), OxidbError> {
-        // TODO: Implement clear logic
+        // Clear local state and graph_store
         self.entities.clear();
         self.relationships.clear();
+        self.graph_store.clear().await?;
         Ok(())
     }
 }
