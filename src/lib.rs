@@ -162,17 +162,12 @@ pub mod event_engine;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 
-// Re-export key types for easier use by library consumers.
-// Connection is the main entry point for database operations (new ergonomic API).
-pub use api::Connection;
-// Re-export the main API types
-#[allow(deprecated)]
-pub use api::Oxidb;
-// Query result types for the new API.
-pub use api::{QueryResult, QueryResultData, Row};
-// Value type for parameterized queries.
-pub use crate::core::common::types::Value;
-// OxidbError is the primary error type used throughout the crate.
+// Public API exports
+// Note: Oxidb struct is deprecated and removed. Use Connection API instead.
+pub use api::{Connection, QueryResult, QueryResultData, Row};
+pub use crate::core::types::Value;
+
+// Core module exports for advanced users
 pub use crate::core::common::OxidbError;
 
 #[cfg(test)]

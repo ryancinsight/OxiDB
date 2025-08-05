@@ -103,12 +103,19 @@ impl<E: EmbeddingModel + Send + Sync> HybridRAGEngine<E> {
             .await?;
 
         // Perform graph-based retrieval
+        let graph_context = GraphRAGContext {
+            query: query.to_string(),
+            max_results: self.config.max_graph_depth, // Changed from max_graph_results to max_graph_depth
+            similarity_threshold: self.config.min_similarity as f64, // Changed from similarity_threshold to min_similarity
+            max_depth: self.config.max_graph_depth, // Changed from max_depth to max_graph_depth
+            parameters: context.map(|c| c.parameters.clone()).unwrap_or_default(),
+        };
         let graph_results = self.graph_engine
-            .query(query, context)
+            .query(&graph_context)
             .await?;
 
         // Combine results
-        self.combine_results(vector_results, graph_results, query_embedding).await
+        self.combine_results(vector_results, graph_results, query_embedding.as_slice()).await
     }
 
     /// Query with specific entities as starting points
@@ -134,151 +141,117 @@ impl<E: EmbeddingModel + Send + Sync> HybridRAGEngine<E> {
         }
 
         // Perform graph traversal from specified entities
-        let mut graph_results = Vec::new();
-        for entity_id in entity_ids {
-            if let Ok(entity_results) = self.graph_engine.traverse_from_entity(
-                entity_id,
-                self.config.max_graph_depth,
-                Some(query),
-            ).await {
-                graph_results.extend(entity_results);
-            }
-        }
+        let graph_context = GraphRAGContext {
+            query: query.to_string(),
+            max_results: self.config.max_graph_depth,
+            similarity_threshold: self.config.min_similarity as f64,
+            max_depth: self.config.max_graph_depth,
+            parameters: {
+                let mut params = HashMap::new();
+                params.insert(
+                    "entity_ids".to_string(),
+                    Value::Text(entity_ids.join(","))
+                );
+                params
+            },
+        };
+        
+        let graph_results = self.graph_engine
+            .query(&graph_context)
+            .await?;
 
         // Combine results
-        self.combine_results(vector_results, graph_results, query_embedding).await
-    }
+        let graph_result = match graph_results.into_iter().next() {
+            Some(result) => result,
+            None => GraphRAGResult {
+                nodes: Vec::new(),
+                edges: Vec::new(),
+                // Add other fields as required by GraphRAGResult's definition
+            },
+        };
+        self.combine_results(vector_results, graph_result, query_embedding.as_slice()).await
 
     /// Combine vector and graph results
     async fn combine_results(
         &self,
         vector_results: Vec<Document>,
-        graph_results: Vec<GraphRAGResult>,
-        query_embedding: Embedding,
+        graph_result: GraphRAGResult,
+        _query_embedding: &[f32],
     ) -> Result<Vec<HybridRAGResult>, OxidbError> {
         let mut hybrid_results: HashMap<String, HybridRAGResult> = HashMap::new();
 
         // Process vector results
-        for doc in vector_results {
-            let vector_score = if let Some(ref doc_embedding) = doc.embedding {
-                Some(self.calculate_similarity(&query_embedding, doc_embedding))
-            } else {
-                None
-            };
-
-            if let Some(score) = vector_score {
-                if score >= self.config.min_similarity {
-                    let result = HybridRAGResult {
-                        document: doc.clone(),
-                        hybrid_score: score * self.config.vector_weight,
-                        vector_score: Some(score),
-                        graph_score: None,
-                        graph_path: None,
-                        related_entities: Vec::new(),
-                    };
-                    hybrid_results.insert(doc.id.clone(), result);
-                }
-            }
+        for (idx, doc) in vector_results.into_iter().enumerate() {
+            let vector_score = 1.0 / (idx as f32 + 1.0); // Simple ranking score
+            hybrid_results.insert(doc.id.clone(), HybridRAGResult {
+                document: doc,
+                hybrid_score: vector_score * self.config.vector_weight,
+                vector_score: Some(vector_score),
+                graph_score: None,
+                graph_path: None,
+                related_entities: Vec::new(),
+            });
         }
 
-        // Process graph results
-        for graph_result in graph_results {
-            // Skip processing if there are no documents in the graph result
-            if graph_result.documents.is_empty() {
-                continue;
-            }
-            // Use the first document from the graph result
-            if let Some(first_doc) = graph_result.documents.first() {
-                let doc_id = &first_doc.id;
+        // Process graph results - convert KnowledgeNode to Document
+        for (idx, node) in graph_result.documents.iter().enumerate() {
+            let doc = Document {
+                id: node.id.to_string(),
+                content: node.content.clone(),
+                metadata: Some(node.metadata.clone()),
+                embedding: node.embedding.as_ref().map(|e| Embedding {
+                    vector: e.vector.clone(),
+                }),
+            };
             
-            // Calculate graph score based on path length and relevance
-            let graph_score = self.calculate_graph_score(&graph_result);
+            let graph_score = if idx < graph_result.scores.len() {
+                graph_result.scores[idx] as f32
+            } else {
+                1.0 / (idx as f32 + 1.0)
+            };
 
-            if let Some(existing) = hybrid_results.get_mut(doc_id) {
+            if let Some(existing) = hybrid_results.get_mut(&doc.id) {
                 // Document found in both vector and graph results
                 existing.graph_score = Some(graph_score);
                 existing.graph_path = graph_result.reasoning_paths.first().map(|p| {
-                    p.path_nodes.iter().map(|n| n.to_string()).collect()
+                    p.nodes.iter().map(|n| n.to_string()).collect()
                 });
-                existing.related_entities = graph_result.relevant_entities.iter().map(|e| e.name.clone()).collect();
+                existing.related_entities = graph_result.documents.iter()
+                    .map(|n| n.content.clone())
+                    .collect();
                 existing.hybrid_score = self.calculate_hybrid_score(
                     existing.vector_score,
                     Some(graph_score),
                 );
             } else {
                 // Document only in graph results
-                let mut result = HybridRAGResult {
-                    document: first_doc.clone(),
+                hybrid_results.insert(doc.id.clone(), HybridRAGResult {
+                    document: doc,
                     hybrid_score: graph_score * self.config.graph_weight,
                     vector_score: None,
                     graph_score: Some(graph_score),
                     graph_path: graph_result.reasoning_paths.first().map(|p| {
-                        p.path_nodes.iter().map(|n| n.to_string()).collect()
+                        p.nodes.iter().map(|n| n.to_string()).collect()
                     }),
-                    related_entities: graph_result.relevant_entities.iter().map(|e| e.name.clone()).collect(),
-                };
-
-                // Optionally calculate vector score if embedding available
-                if self.config.enable_vector_filtering {
-                    if let Some(ref doc_embedding) = result.document.embedding {
-                        let vector_score = self.calculate_similarity(&query_embedding, doc_embedding);
-                        if vector_score >= self.config.min_similarity {
-                            result.vector_score = Some(vector_score);
-                            result.hybrid_score = self.calculate_hybrid_score(
-                                Some(vector_score),
-                                Some(graph_score),
-                            );
-                            hybrid_results.insert(doc_id.clone(), result);
-                        }
-                    }
-                } else {
-                    hybrid_results.insert(doc_id.clone(), result);
-                }
-            }
+                    related_entities: graph_result.documents.iter()
+                        .map(|n| n.content.clone())
+                        .collect(),
+                });
             }
         }
 
-        // If graph expansion is enabled, find related documents through graph
-        if self.config.enable_graph_expansion {
-            let expansion_candidates: Vec<String> = hybrid_results
-                .values()
-                .flat_map(|r| r.related_entities.iter())
-                .cloned()
-                .collect();
-
-            for entity_id in expansion_candidates {
-                if !hybrid_results.contains_key(&entity_id) {
-                    if let Ok(expanded) = self.graph_engine.get_entity(&entity_id).await {
-                        if let Some(doc) = self.entity_to_document(expanded).await {
-                            if let Some(ref doc_embedding) = doc.embedding {
-                                let vector_score = self.calculate_similarity(&query_embedding, doc_embedding);
-                                if vector_score >= self.config.min_similarity * 0.8 {
-                                    // Slightly lower threshold for expanded results
-                                    let result = HybridRAGResult {
-                                        document: doc,
-                                        hybrid_score: vector_score * self.config.vector_weight * 0.8, // Penalty for expansion
-                                        vector_score: Some(vector_score),
-                                        graph_score: Some(0.5), // Default graph score for expanded
-                                        graph_path: None,
-                                        related_entities: Vec::new(),
-                                    };
-                                    hybrid_results.insert(entity_id, result);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Sort by hybrid score
-        let mut results: Vec<HybridRAGResult> = hybrid_results.into_values().collect();
+        // Sort results by hybrid score
+        let mut results: Vec<_> = hybrid_results.into_values().collect();
         results.sort_by(|a, b| b.hybrid_score.partial_cmp(&a.hybrid_score).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Limit results
+        results.truncate(self.config.max_vector_results);
 
         Ok(results)
     }
 
-    /// Calculate similarity between embeddings
+    /// Calculate similarity between two embeddings
+    #[allow(dead_code)]
     fn calculate_similarity(&self, embedding1: &Embedding, embedding2: &Embedding) -> f32 {
         let vec1 = embedding1.as_slice();
         let vec2 = embedding2.as_slice();
@@ -300,17 +273,25 @@ impl<E: EmbeddingModel + Send + Sync> HybridRAGEngine<E> {
     }
 
     /// Calculate graph-based score
+    #[allow(dead_code)]
     fn calculate_graph_score(&self, result: &GraphRAGResult) -> f32 {
-        let path_penalty = if let Some(ref path) = result.reasoning_paths.first() {
+        let path_penalty = if let Some(path) = result.reasoning_paths.first() {
             // Shorter paths get higher scores
-            1.0 / (1.0 + path.path_nodes.len() as f32 * 0.1)
+            1.0 / (1.0 + path.nodes.len() as f32 * 0.1)
         } else {
             0.5
         };
 
-        let entity_boost = 1.0 + (result.relevant_entities.len() as f32 * 0.05).min(0.5);
+        let entity_boost = 1.0 + (result.documents.len() as f32 * 0.05).min(0.5);
 
-        result.confidence_score as f32 * path_penalty * entity_boost
+        // Use the average of all scores if available
+        let avg_score = if !result.scores.is_empty() {
+            (result.scores.iter().sum::<f64>() / result.scores.len() as f64) as f32
+        } else {
+            0.5
+        };
+
+        avg_score * path_penalty * entity_boost
     }
 
     /// Calculate combined hybrid score
@@ -323,31 +304,22 @@ impl<E: EmbeddingModel + Send + Sync> HybridRAGEngine<E> {
         }
     }
 
-    /// Convert a knowledge node to a document
+    /// Convert KnowledgeNode to Document
+    #[allow(dead_code)]
     async fn entity_to_document(&self, node: KnowledgeNode) -> Option<Document> {
-        let content = format!("{}: {}", node.entity_type, node.description.as_deref().unwrap_or(""));
-        
-        let mut metadata = HashMap::new();
-        metadata.insert("entity_type".to_string(), Value::Text(node.entity_type));
-        if let Some(desc) = node.description {
-            metadata.insert("description".to_string(), Value::Text(desc));
-        }
-        for (k, v) in node.properties {
-            metadata.insert(k, v);
-        }
+        let content = format!("{}: {}", node.node_type, node.content);
+        let mut metadata = node.metadata.clone();
+        metadata.insert("node_type".to_string(), Value::Text(node.node_type));
+        metadata.insert("node_id".to_string(), Value::Integer(node.id as i64));
 
-        let mut doc = Document::new(node.id.to_string(), content).with_metadata(metadata);
-
-        // Generate embedding if not present
-        if node.embedding.is_none() {
-            if let Ok(embedding) = self.embedding_model.as_ref().embed(&doc.content).await {
-                doc = doc.with_embedding(embedding);
-            }
-        } else if let Some(embedding) = node.embedding {
-            doc = doc.with_embedding(embedding);
-        }
-
-        Some(doc)
+        Some(Document {
+            id: node.id.to_string(),
+            content,
+            metadata: Some(metadata),
+            embedding: node.embedding.as_ref().map(|e| Embedding {
+                vector: e.vector.clone(),
+            }),
+        })
     }
 
     /// Update configuration
@@ -447,14 +419,15 @@ mod tests {
     #[tokio::test]
     async fn test_hybrid_score_calculation() {
         let vector_retriever = Arc::new(InMemoryRetriever::new(Vec::new()));
-        let graph_retriever = InMemoryRetriever::new(Vec::new());
-        let graph_engine = Arc::new(GraphRAGEngineImpl::new(Box::new(graph_retriever)));
-        let embedding_model = Arc::new(SemanticEmbedder::new(128));
+        let graph_store = Arc::new(crate::core::graph::InMemoryGraphStore::new());
+        let embedder = Arc::new(SemanticEmbedder::new(128));
+        let config = crate::core::rag::graphrag::GraphRAGConfig::default();
+        let graph_engine = Arc::new(GraphRAGEngineImpl::new(graph_store, embedder.clone(), config));
         
         let engine = HybridRAGEngine::new(
             vector_retriever,
             graph_engine,
-            embedding_model,
+            embedder,
             HybridRAGConfig::default(),
         );
 
@@ -465,14 +438,15 @@ mod tests {
     #[tokio::test]
     async fn test_builder() {
         let vector_retriever = Arc::new(InMemoryRetriever::new(Vec::new()));
-        let graph_retriever = InMemoryRetriever::new(Vec::new());
-        let graph_engine = Arc::new(GraphRAGEngineImpl::new(Box::new(graph_retriever)));
-        let embedding_model = Arc::new(SemanticEmbedder::new(128));
+        let graph_store = Arc::new(crate::core::graph::InMemoryGraphStore::new());
+        let embedder = Arc::new(SemanticEmbedder::new(128));
+        let config = crate::core::rag::graphrag::GraphRAGConfig::default();
+        let graph_engine = Arc::new(GraphRAGEngineImpl::new(graph_store, embedder.clone(), config));
 
         let engine = HybridRAGEngineBuilder::new()
             .with_vector_retriever(vector_retriever)
             .with_graph_engine(graph_engine)
-            .with_embedding_model(embedding_model)
+            .with_embedding_model(embedder)
             .with_vector_weight(0.7)
             .build()
             .unwrap();

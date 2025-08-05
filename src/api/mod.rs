@@ -2,7 +2,7 @@
 //! # Oxidb API Module
 //!
 //! This module provides the public API for interacting with the Oxidb database.
-//! It exposes both the legacy `Oxidb` struct and the new ergonomic `Connection` API.
+//! It exposes the modern `Connection` API for database operations.
 
 pub mod implementation;
 pub mod connection;
@@ -11,8 +11,8 @@ pub mod traits;
 pub mod types;
 
 // Public exports
-#[allow(deprecated)]
-pub use self::types::{Oxidb, QueryResult, QueryResultData, Row};
+// Note: Oxidb struct is deprecated and no longer exported. Use Connection API instead.
+pub use self::types::{QueryResult, QueryResultData, Row};
 pub use self::connection::Connection;
 pub use self::errors::Error as ApiError;
 

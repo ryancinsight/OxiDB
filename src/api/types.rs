@@ -1,34 +1,20 @@
-// src/api/types.rs
-//! Defines the data structures and enumerations used within the API layer.
-// Required for Oxidb::new_with_config if it were here, but methods are in implementation
-use crate::core::query::executor::QueryExecutor;
-use crate::core::storage::engine::SimpleFileKvStore;
-// std::path::PathBuf is not directly used in the struct fields, but methods in implementation might return it.
-// No, Oxidb struct itself does not need PathBuf, Config, etc. directly.
-// QueryExecutor and SimpleFileKvStore are essential.
+//! API type definitions
 
-/// Legacy database handle for OxidDB operations
+// DataType is imported where needed in the data_type_to_value function
+// since Oxidb struct is deprecated
+
+/// **Deprecated**: Use the Connection API instead.
 /// 
-/// # Deprecated
+/// # Example
+/// ```ignore
+/// // Old way (deprecated):
+/// let db = Oxidb::new("my_database.db")?;
 /// 
-/// This API is deprecated and will be removed in a future version.
-/// Please use the `Connection` API instead, which provides a more
-/// ergonomic and type-safe interface.
-/// 
-/// # Migration Guide
-/// 
-/// Instead of:
-/// ```rust,ignore
-/// let db = Oxidb::new("mydb.db")?;
-/// db.execute_sql("SELECT * FROM users")?;
-/// ```
-/// 
-/// Use:
-/// ```rust,ignore
-/// use oxidb::Connection;
-/// let mut conn = Connection::open("mydb.db")?;
+/// // New way:
+/// let conn = Connection::open("my_database.db")?;
 /// conn.execute("SELECT * FROM users")?;
 /// ```
+/*
 #[deprecated(
     since = "0.2.0",
     note = "Use the Connection API instead for better ergonomics and type safety"
@@ -38,6 +24,7 @@ pub struct Oxidb {
     /// Visible within the `api` module (`crate::api`) to allow `implementation.rs` to access it.
     pub(crate) executor: QueryExecutor<SimpleFileKvStore>,
 }
+*/
 
 /// Represents the result of a query execution.
 #[derive(Debug, Clone, PartialEq)]
@@ -71,6 +58,14 @@ impl Row {
     #[must_use]
     pub const fn new(values: Vec<crate::core::common::types::Value>) -> Self {
         Self { values }
+    }
+
+    /// Creates a new row from a slice of values
+    #[must_use]
+    pub fn from_slice(values: &[crate::core::common::types::Value]) -> Self {
+        Self {
+            values: values.to_vec(),
+        }
     }
 
     /// Gets a value by column index

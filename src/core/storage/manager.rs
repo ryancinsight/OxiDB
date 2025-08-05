@@ -361,13 +361,13 @@ where
 
     pub fn build(self) -> Result<EnhancedStorageManager<S, T, L, D>, OxidbError> {
         let storage_engine = self.storage_engine
-            .ok_or_else(|| OxidbError::Configuration { section: "Unknown".to_string(), message: "Storage engine not provided".to_string( }))?;
+            .ok_or_else(|| OxidbError::Configuration("Storage engine not provided".to_string()))?;
         let transaction_manager = self.transaction_manager
-            .ok_or_else(|| OxidbError::Configuration { section: "Unknown".to_string(), message: "Transaction manager not provided".to_string( }))?;
+            .ok_or_else(|| OxidbError::Configuration("Transaction manager not provided".to_string()))?;
         let lock_manager = self.lock_manager
-            .ok_or_else(|| OxidbError::Configuration { section: "Unknown".to_string(), message: "Lock manager not provided".to_string( }))?;
+            .ok_or_else(|| OxidbError::Configuration("Lock manager not provided".to_string()))?;
         let durability_manager = self.durability_manager
-            .ok_or_else(|| OxidbError::Configuration { section: "Unknown".to_string(), message: "Durability manager not provided".to_string( }))?;
+            .ok_or_else(|| OxidbError::Configuration("Durability manager not provided".to_string()))?;
 
         Ok(EnhancedStorageManager::new(
             storage_engine,
