@@ -8,15 +8,12 @@
 //! - SQL window functions, CTEs, views, and triggers
 //! - Performance optimizations through compile-time guarantees
 
-use oxidb::{Connection, OxidbError};
-use oxidb::core::types::DataType;
 use oxidb::core::zero_cost::{
-    ZeroCopyView, StringView, BytesView, BorrowedSlice, BorrowedStr, 
-    RowIterator, ColumnView, IteratorExt, window_functions
+    StringView, BytesView, BorrowedValue, BorrowedRow
 };
 use oxidb::core::sql::advanced::{
     WindowFunction, WindowSpec, WindowFrame, FrameType, FrameBoundary,
-    CommonTableExpression, WithClause, ViewDefinition, TriggerDefinition,
+    CommonTableExpression, ViewDefinition,
     SqlExpression, SelectStatement, SelectClause, SelectColumn,
     OrderByClause, SortOrder, NullsOrder, DatabaseContext, AdvancedSqlExecutor
 };
@@ -39,76 +36,114 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Demonstrate zero-copy views for efficient data access
 fn demonstrate_zero_copy_views() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🔍 Zero-Copy Views Demonstration");
-    println!("================================");
+    println!("\n🎯 Zero-Copy Views Demo\n");
     
-    // Sample data that we'll create views over without copying
-    let sample_data = vec![
-        vec![DataType::String("Alice".to_string()), DataType::String("Engineering".to_string()), DataType::Integer(75000)],
-        vec![DataType::String("Bob".to_string()), DataType::String("Sales".to_string()), DataType::Integer(65000)],
-        vec![DataType::String("Carol".to_string()), DataType::String("Engineering".to_string()), DataType::Integer(80000)],
-        vec![DataType::String("David".to_string()), DataType::String("Marketing".to_string()), DataType::Integer(70000)],
-        vec![DataType::String("Eve".to_string()), DataType::String("Engineering".to_string()), DataType::Integer(85000)],
-    ];
-    
+    // Sample data - employee records
     let column_names = vec![
-        "name".to_string(),
-        "department".to_string(), 
+        "id".to_string(),
+        "name".to_string(), 
+        "department".to_string(),
         "salary".to_string()
     ];
     
-    println!("📊 Original data: {} rows, {} columns", sample_data.len(), column_names.len());
+    // Create rows using the Row type
+    use oxidb::api::types::Row;
+    use oxidb::core::common::types::Value;
+    
+    let sample_data = vec![
+        Row::from_slice(&[
+            Value::Integer(1),
+            Value::Text("Alice Johnson".to_string()),
+            Value::Text("Engineering".to_string()),
+            Value::Float(95000.0)
+        ]),
+        Row::from_slice(&[
+            Value::Integer(2),
+            Value::Text("Bob Smith".to_string()),
+            Value::Text("Sales".to_string()),
+            Value::Float(75000.0)
+        ]),
+        Row::from_slice(&[
+            Value::Integer(3),
+            Value::Text("Carol White".to_string()),
+            Value::Text("Engineering".to_string()),
+            Value::Float(105000.0)
+        ]),
+        Row::from_slice(&[
+            Value::Integer(4),
+            Value::Text("David Brown".to_string()),
+            Value::Text("HR".to_string()),
+            Value::Float(65000.0)
+        ]),
+        Row::from_slice(&[
+            Value::Integer(5),
+            Value::Text("Eve Davis".to_string()),
+            Value::Text("Engineering".to_string()),
+            Value::Float(115000.0)
+        ]),
+    ];
     
     // Create zero-copy views over the data
     let start = Instant::now();
     
     // Zero-copy table view - no data is copied
-    let table_view = oxidb::core::zero_cost::views::TableView::new(&sample_data, &column_names);
+    use std::borrow::Cow;
+    let table_view = oxidb::core::zero_cost::views::TableView::new(&sample_data, Cow::Borrowed(&column_names));
     
-    // Zero-copy slice view - view only rows 1-3
-    let slice_view = table_view.slice(1..4);
-    println!("📋 Slice view (rows 1-3): {} rows", slice_view.row_count());
+    // Since slice and filter methods don't exist on TableView, let's demonstrate other zero-copy operations
+    println!("📊 Table view created with {} rows", table_view.row_count());
+    println!("📋 Column count: {}", table_view.column_count());
     
-    // Zero-copy filtered view - only Engineering department
-    let filtered_view = table_view.filter(|row| {
-        if let Some(dept) = row.get_column_by_name("department") {
-            match dept {
-                oxidb::core::types::DataType::String(s) => s == "Engineering",
-                _ => false,
-            }
-        } else {
-            false
+    // Get specific rows without copying
+    if let Some(row) = table_view.get_row(0) {
+        println!("🔍 First row ID: {:?}", row.get(0));
+    }
+    
+    // Zero-copy column view
+    let salary_column = oxidb::core::zero_cost::views::ColumnView::new(&sample_data, 3);
+    println!("\n💰 Salary column analysis:");
+    
+    let mut total_salary = 0.0;
+    let mut count = 0;
+    for i in 0..sample_data.len() {
+        if let Some(Value::Float(salary)) = salary_column.get(i) {
+            total_salary += salary;
+            count += 1;
         }
-    });
+    }
     
-    let engineering_count = filtered_view.count();
-    println!("🏭 Engineering employees: {}", engineering_count);
-    
-    // Zero-copy projected view - only name and salary columns  
-    let projection_indices = vec![0, 2]; // name and salary
-    let projected_view = table_view.project(&projection_indices);
-    println!("📈 Projected view: {} columns", projected_view.column_count());
-    
-    let view_creation_time = start.elapsed();
-    println!("⚡ All views created in: {:?} (zero-copy!)", view_creation_time);
+    if count > 0 {
+        println!("   Average salary: ${:.2}", total_salary / count as f64);
+    }
     
     // Demonstrate string views with zero allocation
     let sample_text = "Hello, Zero-Copy World!";
     let string_view = StringView::Borrowed(sample_text);
-    let bytes_view = BytesView::Borrowed(sample_text.as_bytes());
     
-    println!("📝 String view length: {} (borrowed: {})", 
-             string_view.len(), !string_view.is_owned());
-    println!("🔢 Bytes view length: {} bytes", bytes_view.len());
+    println!("\n📝 String view demonstration:");
+    println!("   Original: '{}'", sample_text);
+    println!("   View length: {} (borrowed: {})", 
+             string_view.len(), 
+             matches!(string_view, std::borrow::Cow::Borrowed(_)));
     
-    println!("✅ Zero-copy views completed\n");
+    // Bytes view for binary data
+    let binary_data = vec![0xDE, 0xAD, 0xBE, 0xEF];
+    let bytes_view = BytesView::Borrowed(&binary_data);
+    
+    println!("\n🔢 Bytes view demonstration:");
+    println!("   Binary data length: {} bytes", bytes_view.len());
+    println!("   First 4 bytes: {:02X} {:02X} {:02X} {:02X}", 
+             bytes_view[0], bytes_view[1], bytes_view[2], bytes_view[3]);
+    
+    let total_time = start.elapsed();
+    println!("\n⚡ Total demo time: {:?}", total_time);
+    
     Ok(())
 }
 
 /// Demonstrate advanced iterator combinators and window functions
 fn demonstrate_iterator_combinators() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🔄 Iterator Combinators Demonstration");
-    println!("====================================");
+    println!("\n🔄 Iterator Combinators Demo\n");
     
     // Sample sales data for analysis
     let sales_data = vec![
@@ -130,46 +165,61 @@ fn demonstrate_iterator_combinators() -> Result<(), Box<dyn std::error::Error>> 
     
     let start = Instant::now();
     
-    // Window function: 3-quarter moving average
+    // Window function: 3-quarter moving average using standard library windows
     let moving_averages: Vec<f64> = sales_data
-        .iter()
-        .windows(3, 1, |window| {
+        .windows(3)
+        .map(|window| {
             let sum: i32 = window.iter().map(|(_, sales)| *sales).sum();
             sum as f64 / window.len() as f64
         })
         .collect();
     
-    println!("📈 3-period moving averages: {} values", moving_averages.len());
+    println!("\n📈 3-period moving averages: {} values", moving_averages.len());
     for (i, avg) in moving_averages.iter().take(3).enumerate() {
         println!("   Period {}: ${:.2}", i + 1, avg);
     }
     
-    // Group by quarter and aggregate
-    let quarterly_totals: Vec<_> = sales_data
-        .iter()
-        .group_by_aggregate(
-            |&(quarter, _)| quarter,
-            |group| group.iter().map(|(_, sales)| *sales).sum::<i32>()
-        )
-        .collect();
+    // Group by quarter and aggregate using itertools-like functionality
+    use std::collections::HashMap;
+    let mut quarterly_totals: HashMap<&str, i32> = HashMap::new();
     
-    println!("📊 Quarterly totals:");
-    for (quarter, total) in quarterly_totals {
+    for (quarter, sales) in &sales_data {
+        *quarterly_totals.entry(quarter).or_insert(0) += sales;
+    }
+    
+    println!("\n💰 Quarterly totals:");
+    let mut quarters: Vec<_> = quarterly_totals.iter().collect();
+    quarters.sort_by_key(|(q, _)| *q);
+    for (quarter, total) in quarters {
         println!("   {}: ${}", quarter, total);
     }
     
-    // Chunked processing for batch operations
-    let chunks: Vec<_> = sales_data.iter().chunks(4).collect();
-    println!("📦 Data processed in {} chunks of up to 4 records", chunks.len());
+    // Chunking operations - process data in batches
+    let batch_size = 4;
+    let chunks: Vec<Vec<_>> = sales_data
+        .chunks(batch_size)
+        .map(|chunk| chunk.to_vec())
+        .collect();
     
-    // Efficient min/max with single pass
-    if let Some((min_sale, max_sale)) = sales_data.iter().min_max_by(|item| item.1) {
-        println!("💰 Sales range: ${} - ${}", min_sale.1, max_sale.1);
+    println!("\n📦 Data chunks: {} batches of size {}", chunks.len(), batch_size);
+    
+    // Min/max operations
+    let min_sale = sales_data.iter().min_by_key(|item| item.1);
+    let max_sale = sales_data.iter().max_by_key(|item| item.1);
+    
+    if let (Some(min), Some(max)) = (min_sale, max_sale) {
+        println!("\n📊 Sales range:");
+        println!("   Min: {} - ${}", min.0, min.1);
+        println!("   Max: {} - ${}", max.0, max.1);
     }
     
-    // Count with early termination
-    let high_sales_count = sales_data.iter().count_while(|(_, sales)| *sales > 100_000);
-    println!("🎯 High sales (>$100k): {} records", high_sales_count);
+    // Count operations with predicates
+    let high_sales_count = sales_data
+        .iter()
+        .filter(|(_, sales)| *sales > 120_000)
+        .count();
+    
+    println!("\n🎯 High sales (>$120k): {} records", high_sales_count);
     
     let iterator_time = start.elapsed();
     println!("⚡ Iterator operations completed in: {:?}", iterator_time);
@@ -180,59 +230,69 @@ fn demonstrate_iterator_combinators() -> Result<(), Box<dyn std::error::Error>> 
 
 /// Demonstrate borrowed data structures for zero-allocation operations
 fn demonstrate_borrowed_data_structures() -> Result<(), Box<dyn std::error::Error>> {
-    println!("📚 Borrowed Data Structures Demonstration");
-    println!("=========================================");
+    println!("\n📚 Borrowed Data Structures Demo\n");
     
     let start = Instant::now();
     
-    // Borrowed slice operations
-    let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    let borrowed_slice = BorrowedSlice::new(&data);
+    // Demonstrate BorrowedRow
+    use oxidb::core::common::types::Value;
+    let values = vec![
+        Value::Integer(1),
+        Value::Text("Alice".to_string()),
+        Value::Float(95000.0),
+    ];
     
-    println!("📋 Original slice length: {}", borrowed_slice.len());
+    let borrowed_row = BorrowedRow::new(&values);
     
-    // Zero-copy sub-slicing
-    let sub_slice = borrowed_slice.slice(2, 7);
-    println!("✂️  Sub-slice (2..7): {} elements", sub_slice.len());
-    
-    // Zero-copy splitting
-    let (left, right) = borrowed_slice.split_at(5);
-    println!("🔄 Split at 5: left={}, right={}", left.len(), right.len());
-    
-    // Windows and chunks without allocation
-    let windows: Vec<_> = borrowed_slice.windows(3).collect();
-    println!("🪟 Windows of size 3: {} windows", windows.len());
-    
-    let chunks: Vec<_> = borrowed_slice.chunks(4).collect();
-    println!("📦 Chunks of size 4: {} chunks", chunks.len());
+    println!("📋 Borrowed row with {} values:", borrowed_row.len());
+    for (i, val) in borrowed_row.iter().enumerate() {
+        println!("   Column {}: {:?}", i, val);
+    }
     
     // Borrowed string operations
     let text = "Zero-cost string operations are efficient!";
-    let borrowed_str = BorrowedStr::borrowed(text);
+    let borrowed_str = StringView::Borrowed(text);
     
-    println!("📝 Borrowed string: '{}' (length: {})", 
-             borrowed_str.as_str(), borrowed_str.len());
+    println!("\n📝 Borrowed string: '{}' (length: {})", 
+             borrowed_str, borrowed_str.len());
     
-    // Static string interning
-    let static_str = BorrowedStr::static_str("STATIC_CONSTANT");
-    println!("🔒 Static string: '{}' (is_static: {})", 
-             static_str.as_str(), static_str.is_static());
+    // Check if borrowed vs owned
+    match &borrowed_str {
+        std::borrow::Cow::Borrowed(_) => println!("   ✅ String is borrowed (zero-copy)"),
+        std::borrow::Cow::Owned(_) => println!("   ❌ String is owned (allocated)"),
+    }
     
-    // Borrowed key-value operations
-    let keys = vec!["name", "age", "city"];
-    let values = vec!["Alice", "30", "New York"];
+    // Demonstrate BorrowedPredicate for efficient filtering
+    use oxidb::core::zero_cost::borrowed::{BorrowedPredicate, ComparisonOp};
+    use oxidb::api::types::Row;
     
-    if let Some(borrowed_map) = oxidb::core::zero_cost::borrowed::BorrowedMap::new(&keys, &values) {
-        println!("🗺️  Borrowed map: {} entries", borrowed_map.len());
-        
-        if let Some(age) = borrowed_map.get(&"age") {
-            println!("   Age lookup: {}", age);
-        }
-        
-        // Zero-allocation iteration
-        for (i, kv) in borrowed_map.iter().enumerate().take(2) {
-            println!("   Entry {}: {} = {}", i, kv.key(), kv.value());
-        }
+    let predicate = BorrowedPredicate::new(
+        2, // salary column index
+        ComparisonOp::GreaterThan,
+        BorrowedValue::Float(80000.0),
+    );
+    
+    // Test rows
+    let test_rows = vec![
+        Row::from_slice(&[
+            Value::Integer(1),
+            Value::Text("Bob".to_string()),
+            Value::Float(75000.0),
+        ]),
+        Row::from_slice(&[
+            Value::Integer(2),
+            Value::Text("Carol".to_string()),
+            Value::Float(95000.0),
+        ]),
+    ];
+    
+    println!("\n🔍 Filtering with borrowed predicate (salary > 80k):");
+    for (i, row) in test_rows.iter().enumerate() {
+        let matches = predicate.evaluate(row);
+        println!("   Row {}: {} (salary: {:?})", 
+                 i, 
+                 if matches { "✅ matches" } else { "❌ no match" },
+                 row.get(2));
     }
     
     let borrowed_time = start.elapsed();
@@ -244,8 +304,7 @@ fn demonstrate_borrowed_data_structures() -> Result<(), Box<dyn std::error::Erro
 
 /// Demonstrate SQL window functions with zero-cost abstractions
 fn demonstrate_window_functions() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🪟 SQL Window Functions Demonstration");
-    println!("====================================");
+    println!("\n🪟 SQL Window Functions Demo\n");
     
     // Sample employee data for window function analysis
     let employee_data = vec![
@@ -264,48 +323,46 @@ fn demonstrate_window_functions() -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
     
     // Simulate ROW_NUMBER() window function
-    let row_number_fn = window_functions::row_number::<(_, _, _)>();
-    println!("🔢 ROW_NUMBER() function created");
-    
-    // Simulate RANK() window function by salary
-    let rank_fn = window_functions::rank(|(_, _, salary): &(_, _, i32)| *salary);
-    println!("🏆 RANK() function created");
-    
-    // Simulate LAG() function to get previous salary
-    let lag_fn = window_functions::lag::<(_, _, i32)>(1);
-    println!("⬅️  LAG() function created");
-    
-    // Simulate SUM() window function for running total
-    let sum_fn = window_functions::sum(|(_, _, salary): &(_, _, i32)| *salary as i64);
-    println!("➕ SUM() window function created");
-    
-    // Simulate AVG() window function for running average
-    let avg_fn = window_functions::avg(|(_, _, salary): &(_, _, i32)| *salary as f64);
-    println!("📊 AVG() window function created");
-    
-    // Apply window functions to sample data
-    let sample_window = &employee_data[0..3];
-    
-    let sum_result = sum_fn(sample_window);
-    let avg_result = avg_fn(sample_window);
-    let lag_result = lag_fn(sample_window);
-    
-    println!("📈 Window function results on first 3 employees:");
-    println!("   SUM: ${}", sum_result);
-    println!("   AVG: ${:.2}", avg_result);
-    println!("   LAG: {:?}", lag_result.map(|(name, _, salary)| (name, salary)));
-    
-    // Demonstrate partitioning by department
-    let mut departments: std::collections::HashMap<&str, Vec<_>> = std::collections::HashMap::new();
-    for emp in &employee_data {
-        departments.entry(emp.1).or_default().push(emp);
+    println!("\n🔢 ROW_NUMBER() over departments:");
+    let mut dept_counters = std::collections::HashMap::new();
+    for (name, dept, salary) in &employee_data {
+        let counter = dept_counters.entry(dept).or_insert(0);
+        *counter += 1;
+        println!("   {} ({}) - Row #{} in department", name, dept, counter);
     }
     
-    println!("🏢 Partitioned by department:");
-    for (dept, employees) in departments {
-        let dept_avg = avg_fn(&employees);
-        println!("   {}: {} employees, avg salary: ${:.2}", 
-                 dept, employees.len(), dept_avg);
+    // Simulate RANK() window function - ranking by salary within departments
+    println!("\n📊 RANK() by salary within departments:");
+    use std::collections::HashMap;
+    let mut by_dept: HashMap<&str, Vec<(&str, i32)>> = HashMap::new();
+    
+    for (name, dept, salary) in &employee_data {
+        by_dept.entry(dept).or_insert_with(Vec::new).push((name, *salary));
+    }
+    
+    for (dept, mut employees) in by_dept {
+        employees.sort_by_key(|(_, salary)| -*salary); // Sort by salary descending
+        println!("\n   Department: {}", dept);
+        
+        let mut rank = 1;
+        let mut prev_salary = None;
+        for (i, (name, salary)) in employees.iter().enumerate() {
+            if prev_salary != Some(salary) {
+                rank = i + 1;
+            }
+            println!("     Rank {}: {} - ${}", rank, name, salary);
+            prev_salary = Some(salary);
+        }
+    }
+    
+    // Simulate running totals (cumulative sum)
+    println!("\n💰 Running totals by department:");
+    let mut dept_totals: HashMap<&str, i32> = HashMap::new();
+    
+    for (name, dept, salary) in &employee_data {
+        let total = dept_totals.entry(dept).or_insert(0);
+        *total += salary;
+        println!("   {} ({}) - Department total: ${}", name, dept, total);
     }
     
     let window_time = start.elapsed();
@@ -338,7 +395,7 @@ fn demonstrate_advanced_sql_features() -> Result<(), Box<dyn std::error::Error>>
     println!("⚙️  Advanced SQL executor initialized");
     
     // Demonstrate Common Table Expression (CTE) structure
-    let cte = CommonTableExpression {
+    let _cte = CommonTableExpression {
         name: "department_totals".to_string(),
         columns: Some(vec!["dept".to_string(), "total_salary".to_string(), "avg_salary".to_string()]),
         query: Box::new(SelectStatement {
@@ -385,12 +442,12 @@ fn demonstrate_advanced_sql_features() -> Result<(), Box<dyn std::error::Error>>
         recursive: false,
     };
     
-    println!("📊 CTE 'department_totals' defined with aggregations");
+    println!("📋 CTE 'department_totals' structure created");
     
     // Demonstrate View creation
     let view = ViewDefinition {
         name: "high_earners".to_string(),
-        columns: Some(vec!["name".to_string(), "salary".to_string(), "department".to_string()]),
+        columns: Some(vec!["name".to_string(), "department".to_string(), "salary".to_string()]),
         query: SelectStatement {
             with: None,
             select: SelectClause {
@@ -401,11 +458,11 @@ fn demonstrate_advanced_sql_features() -> Result<(), Box<dyn std::error::Error>>
                         alias: None,
                     },
                     SelectColumn::Expression {
-                        expr: SqlExpression::Column("salary".to_string()),
+                        expr: SqlExpression::Column("department".to_string()),
                         alias: None,
                     },
                     SelectColumn::Expression {
-                        expr: SqlExpression::Column("department".to_string()),
+                        expr: SqlExpression::Column("salary".to_string()),
                         alias: None,
                     },
                 ],
@@ -419,9 +476,7 @@ fn demonstrate_advanced_sql_features() -> Result<(), Box<dyn std::error::Error>>
             where_clause: Some(SqlExpression::BinaryOp {
                 left: Box::new(SqlExpression::Column("salary".to_string())),
                 op: oxidb::core::sql::advanced::BinaryOperator::Gt,
-                right: Box::new(SqlExpression::Literal(
-                    oxidb::core::types::DataType::Integer(75000)
-                )),
+                right: Box::new(SqlExpression::Literal(oxidb::core::types::DataType::Integer(80000))),
             }),
             group_by: vec![],
             having: None,
@@ -438,15 +493,10 @@ fn demonstrate_advanced_sql_features() -> Result<(), Box<dyn std::error::Error>>
         check_option: None,
     };
     
-    // Execute view creation
-    let view_result = executor.execute(&oxidb::core::sql::advanced::SqlStatement::CreateView(view));
-    match view_result {
-        Ok(_) => println!("👁️  View 'high_earners' created successfully"),
-        Err(e) => println!("❌ View creation failed: {}", e),
-    }
+    println!("👁️  View 'high_earners' structure created");
     
-    // Demonstrate Window Function in SQL
-    let window_spec = WindowSpec {
+    // Demonstrate Window Function specification
+    let _window_spec = WindowSpec {
         partition_by: vec![SqlExpression::Column("department".to_string())],
         order_by: vec![OrderByClause {
             expr: SqlExpression::Column("salary".to_string()),
@@ -460,40 +510,36 @@ fn demonstrate_advanced_sql_features() -> Result<(), Box<dyn std::error::Error>>
         }),
     };
     
-    let window_function = WindowFunction::RowNumber;
-    println!("🪟 Window function ROW_NUMBER() OVER (PARTITION BY department ORDER BY salary DESC) defined");
+    let _window_function = WindowFunction::RowNumber;
+    println!("🪟 Window function ROW_NUMBER() specification created");
     
     // Demonstrate complex expression with CASE
-    let case_expr = SqlExpression::Case {
+    let _case_expr = SqlExpression::Case {
         expr: None,
         when_clauses: vec![
             (
                 SqlExpression::BinaryOp {
                     left: Box::new(SqlExpression::Column("salary".to_string())),
                     op: oxidb::core::sql::advanced::BinaryOperator::Gt,
-                    right: Box::new(SqlExpression::Literal(
-                        oxidb::core::types::DataType::Integer(80000)
-                    )),
+                    right: Box::new(SqlExpression::Literal(oxidb::core::types::DataType::Integer(100000))),
                 },
-                SqlExpression::Literal(oxidb::core::types::DataType::String("High".to_string())),
+                SqlExpression::Literal(oxidb::core::types::DataType::String("Senior".to_string())),
             ),
             (
                 SqlExpression::BinaryOp {
                     left: Box::new(SqlExpression::Column("salary".to_string())),
                     op: oxidb::core::sql::advanced::BinaryOperator::Gt,
-                    right: Box::new(SqlExpression::Literal(
-                        oxidb::core::types::DataType::Integer(60000)
-                    )),
+                    right: Box::new(SqlExpression::Literal(oxidb::core::types::DataType::Integer(70000))),
                 },
-                SqlExpression::Literal(oxidb::core::types::DataType::String("Medium".to_string())),
+                SqlExpression::Literal(oxidb::core::types::DataType::String("Mid-level".to_string())),
             ),
         ],
         else_clause: Some(Box::new(SqlExpression::Literal(
-            oxidb::core::types::DataType::String("Low".to_string())
+            oxidb::core::types::DataType::String("Junior".to_string())
         ))),
     };
     
-    println!("🔀 CASE expression for salary categories defined");
+    println!("🎯 CASE expression for salary categorization created");
     
     let sql_time = start.elapsed();
     println!("⚡ Advanced SQL features demonstrated in: {:?}", sql_time);
@@ -504,8 +550,7 @@ fn demonstrate_advanced_sql_features() -> Result<(), Box<dyn std::error::Error>>
 
 /// Demonstrate performance optimizations through zero-cost abstractions
 fn demonstrate_performance_optimizations() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🚀 Performance Optimizations Demonstration");
-    println!("==========================================");
+    println!("\n🚀 Performance Optimizations Demo\n");
     
     const DATASET_SIZE: usize = 100_000;
     
@@ -522,94 +567,89 @@ fn demonstrate_performance_optimizations() -> Result<(), Box<dyn std::error::Err
     
     println!("📊 Generated dataset: {} records", large_dataset.len());
     
-    // Test 1: Zero-copy iteration vs traditional approach
+    // Test 1: Direct iteration (already zero-cost in Rust)
     let start = Instant::now();
     
-    // Zero-copy approach using borrowed slices
-    let borrowed_slice = BorrowedSlice::new(&large_dataset);
-    let zero_copy_sum: f64 = borrowed_slice
+    let sum: f64 = large_dataset
         .iter()
         .map(|(_, _, value)| *value)
         .sum();
     
-    let zero_copy_time = start.elapsed();
+    let iteration_time = start.elapsed();
     
-    // Traditional approach (for comparison)
-    let start = Instant::now();
-    let traditional_sum: f64 = large_dataset
-        .iter()
-        .map(|(_, _, value)| *value)
-        .sum();
+    println!("\n💰 Sum calculation: {:.2} (time: {:?})", sum, iteration_time);
     
-    let traditional_time = start.elapsed();
-    
-    println!("💰 Sum calculation results:");
-    println!("   Zero-copy approach: {:.2} (time: {:?})", zero_copy_sum, zero_copy_time);
-    println!("   Traditional approach: {:.2} (time: {:?})", traditional_sum, traditional_time);
-    
-    // Test 2: Window operations with zero-cost abstractions
+    // Test 2: Window operations using standard library
     let start = Instant::now();
     
-    let sample_data: Vec<_> = large_dataset.iter().take(1000).collect();
-    let moving_averages: Vec<_> = sample_data
-        .windows(10, 1, |window| {
-            let sum: f64 = window.iter().map(|(_, _, value)| **value).sum();
+    let sample_data: Vec<_> = large_dataset.iter().take(1000).cloned().collect();
+    let moving_averages: Vec<f64> = sample_data
+        .windows(10)
+        .map(|window| {
+            let sum: f64 = window.iter().map(|(_, _, value)| *value).sum();
             sum / window.len() as f64
         })
         .collect();
     
     let window_time = start.elapsed();
-    println!("📈 Moving averages: {} values computed in {:?}", 
+    
+    println!("\n📈 Moving averages: {} values computed in {:?}", 
              moving_averages.len(), window_time);
+    if let Some(first_avg) = moving_averages.first() {
+        println!("   First average: {:.2}", first_avg);
+    }
     
-    // Test 3: Chunked processing for batch operations
+    // Test 3: Efficient string operations with Cow
     let start = Instant::now();
     
-    let chunk_results: Vec<_> = borrowed_slice
-        .chunks(1000)
-        .map(|chunk| {
-            let chunk_sum: f64 = chunk.iter().map(|(_, _, value)| *value).sum();
-            let chunk_avg = chunk_sum / chunk.len() as f64;
-            (chunk.len(), chunk_avg)
-        })
+    // Using Cow to avoid unnecessary allocations
+    let string_views: Vec<StringView> = large_dataset
+        .iter()
+        .take(1000)
+        .map(|(name, _, _)| StringView::Borrowed(name.as_str()))
         .collect();
     
-    let chunk_time = start.elapsed();
-    println!("📦 Chunked processing: {} chunks processed in {:?}", 
-             chunk_results.len(), chunk_time);
+    let string_time = start.elapsed();
     
-    // Test 4: Memory-efficient filtering with zero allocations
+    println!("\n📝 String views: {} created in {:?} (zero allocations)", 
+             string_views.len(), string_time);
+    
+    // Test 4: Batch processing with chunks
     let start = Instant::now();
     
-    let high_value_count = borrowed_slice
-        .iter()
-        .count_while(|(_, _, value)| *value > 50000.0);
-    
-    let filter_time = start.elapsed();
-    println!("🎯 High-value records: {} found in {:?} (zero allocation)", 
-             high_value_count, filter_time);
-    
-    // Test 5: Parallel processing simulation
-    let start = Instant::now();
-    
-    // Simulate parallel processing with work-stealing
-    let batch_size = 10_000;
-    let batches: Vec<_> = borrowed_slice.chunks(batch_size).collect();
-    
-    let parallel_results: Vec<_> = batches
-        .iter()
+    let batch_size = 1000;
+    let batch_results: Vec<f64> = large_dataset
+        .chunks(batch_size)
         .map(|batch| {
-            // Simulate parallel work
-            let batch_max = batch.iter()
+            batch.iter()
                 .map(|(_, _, value)| *value)
-                .fold(0.0f64, |acc, x| acc.max(x));
-            batch_max
+                .sum::<f64>() / batch.len() as f64
         })
         .collect();
     
-    let parallel_time = start.elapsed();
-    println!("⚡ Parallel simulation: {} batches processed in {:?}", 
-             parallel_results.len(), parallel_time);
+    let batch_time = start.elapsed();
+    
+    println!("\n📦 Batch processing: {} batches processed in {:?}", 
+             batch_results.len(), batch_time);
+    
+    // Test 5: Parallel iteration (if rayon is available)
+    // Note: This is commented out as rayon is not a dependency
+    // #[cfg(feature = "rayon")]
+    // {
+    //     use rayon::prelude::*;
+    //     
+    //     let start = Instant::now();
+    //     
+    //     let parallel_sum: f64 = large_dataset
+    //         .par_iter()
+    //         .map(|(_, _, value)| *value)
+    //         .sum();
+    //     
+    //     let parallel_time = start.elapsed();
+    //     
+    //     println!("\n🔀 Parallel sum: {:.2} (time: {:?})", parallel_sum, parallel_time);
+    //     println!("   Speedup: {:.2}x", iteration_time.as_secs_f64() / parallel_time.as_secs_f64());
+    // }
     
     // Summary of optimizations
     println!("\n🎯 Performance Optimization Summary:");

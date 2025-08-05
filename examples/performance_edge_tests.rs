@@ -350,7 +350,7 @@ impl PerformanceTestSuite {
         let start_time = Instant::now();
 
         let conn = self.pool.get_connection()?;
-        let conn = conn.lock().unwrap();
+        let mut conn = conn.lock().unwrap();
 
         // Test empty string handling
         let empty_string_query = "INSERT INTO large_data_test (id, data, value, timestamp, category) VALUES (999999, '', 0, '2024-01-01T00:00:00Z', '')";
@@ -432,7 +432,7 @@ impl PerformanceTestSuite {
         let start_time = Instant::now();
 
         let conn = self.pool.get_connection()?;
-        let conn = conn.lock().unwrap();
+        let mut conn = conn.lock().unwrap();
 
         // Test large result set handling
         let large_result_query = "SELECT * FROM large_data_test ORDER BY id";

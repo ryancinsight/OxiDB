@@ -73,6 +73,14 @@ impl Row {
         Self { values }
     }
 
+    /// Creates a new row from a slice of values
+    #[must_use]
+    pub fn from_slice(values: &[crate::core::common::types::Value]) -> Self {
+        Self {
+            values: values.to_vec(),
+        }
+    }
+
     /// Gets a value by column index
     #[must_use]
     pub fn get(&self, index: usize) -> Option<&crate::core::common::types::Value> {
