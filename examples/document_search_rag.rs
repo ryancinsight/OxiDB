@@ -147,12 +147,12 @@ impl DocumentSearchDB {
         let mut search_results = Vec::new();
         match result {
             oxidb::QueryResult::Data(data) => {
+                let columns = &data.columns;
                 for row in &data.rows {
-                    let doc = self.row_to_document(row)?;
-                    let score = match row.get(10) { // Assuming distance is the 11th column
-                        Some(Value::Float(f)) => 1.0 - (*f as f32).min(1.0), // Convert distance to similarity
-                        _ => 0.0,
-                    };
+                    let doc = self.row_to_document(row, columns)?;
+                    let score = Self::get_float_column(row, columns, "distance")
+                        .map(|distance| 1.0 - distance.min(1.0)) // Convert distance to similarity
+                        .unwrap_or(0.0);
                     
                     let snippet = self.generate_snippet(&doc.content, &query.text);
                     
@@ -219,7 +219,7 @@ impl DocumentSearchDB {
         match keyword_result {
             oxidb::QueryResult::Data(data) => {
                 for row in &data.rows {
-                    let doc = self.row_to_document(row)?;
+                    let doc = self.row_to_document(row, &data.columns)?;
                     let doc_id = doc.id.clone();
                     
                     let snippet = self.generate_snippet(&doc.content, &query.text);
@@ -256,7 +256,7 @@ impl DocumentSearchDB {
         match result {
             oxidb::QueryResult::Data(data) => {
                 data.rows.iter()
-                    .map(|row| self.row_to_document(row))
+                    .map(|row| self.row_to_document(row, &data.columns))
                     .collect()
             }
             _ => Ok(Vec::new()),
@@ -341,48 +341,65 @@ impl DocumentSearchDB {
         snippet
     }
     
-    fn row_to_document(&self, row: &oxidb::Row) -> Result<Document, OxidbError> {
+    // Helper method to safely extract a text value from a row by column name
+    fn get_text_column(row: &oxidb::Row, columns: &[String], column_name: &str) -> Result<String, OxidbError> {
+        match row.get_by_name(columns, column_name) {
+            Some(Value::Text(s)) => Ok(s.clone()),
+            Some(Value::Null) => Ok(String::new()),
+            Some(_) => Err(OxidbError::TypeMismatch {
+                expected: "Text".to_string(),
+                found: format!("different type for column '{}'", column_name),
+            }),
+            None => Err(OxidbError::NotFound(format!("Column '{}' not found", column_name))),
+        }
+    }
+    
+    // Helper method to safely extract a vector value from a row by column name
+    fn get_vector_column(row: &oxidb::Row, columns: &[String], column_name: &str) -> Result<Vec<f32>, OxidbError> {
+        match row.get_by_name(columns, column_name) {
+            Some(Value::Vector(v)) => Ok(v.clone()),
+            Some(Value::Null) => Ok(vec![]),
+            Some(_) => Err(OxidbError::TypeMismatch {
+                expected: "Vector".to_string(),
+                found: format!("different type for column '{}'", column_name),
+            }),
+            None => Err(OxidbError::NotFound(format!("Column '{}' not found", column_name))),
+        }
+    }
+    
+    // Helper method to safely extract a float value from a row by column name
+    fn get_float_column(row: &oxidb::Row, columns: &[String], column_name: &str) -> Result<f32, OxidbError> {
+        match row.get_by_name(columns, column_name) {
+            Some(Value::Float(f)) => Ok(*f as f32),
+            Some(Value::Integer(i)) => Ok(*i as f32),
+            Some(Value::Null) => Ok(0.0),
+            Some(_) => Err(OxidbError::TypeMismatch {
+                expected: "Float".to_string(),
+                found: format!("different type for column '{}'", column_name),
+            }),
+            None => Err(OxidbError::NotFound(format!("Column '{}' not found", column_name))),
+        }
+    }
+    
+    fn row_to_document(&self, row: &oxidb::Row, columns: &[String]) -> Result<Document, OxidbError> {
+        // Parse metadata from JSON string
+        let metadata_str = Self::get_text_column(row, columns, "metadata")?;
+        let metadata: HashMap<String, String> = if metadata_str.is_empty() {
+            HashMap::new()
+        } else {
+            serde_json::from_str(&metadata_str).unwrap_or_default()
+        };
+        
         Ok(Document {
-            id: match row.get(0).ok_or(OxidbError::NotFound("Column 0 not found".to_string()))? {
-                Value::Text(s) => s.clone(),
-                _ => String::new(),
-            },
-            title: match row.get(1).ok_or(OxidbError::NotFound("Column 1 not found".to_string()))? {
-                Value::Text(s) => s.clone(),
-                _ => String::new(),
-            },
-            content: match row.get(2).ok_or(OxidbError::NotFound("Column 2 not found".to_string()))? {
-                Value::Text(s) => s.clone(),
-                _ => String::new(),
-            },
-            category: match row.get(3).ok_or(OxidbError::NotFound("Column 3 not found".to_string()))? {
-                Value::Text(s) => s.clone(),
-                _ => String::new(),
-            },
-            author: match row.get(4).ok_or(OxidbError::NotFound("Column 4 not found".to_string()))? {
-                Value::Text(s) => s.clone(),
-                _ => String::new(),
-            },
-            embedding: match row.get(5).ok_or(OxidbError::NotFound("Column 5 not found".to_string()))? {
-                Value::Vector(v) => v.clone(),
-                _ => vec![],
-            },
-            metadata: match row.get(6).ok_or(OxidbError::NotFound("Column 6 not found".to_string()))? {
-                Value::Text(s) => serde_json::from_str(&s).unwrap_or_default(),
-                _ => HashMap::new(),
-            },
-            created_at: match row.get(7).ok_or(OxidbError::NotFound("Column 7 not found".to_string()))? {
-                Value::Text(s) => DateTime::parse_from_rfc3339(&s)
-                    .unwrap_or_else(|_| DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z").unwrap())
-                    .with_timezone(&Utc),
-                _ => Utc::now(),
-            },
-            updated_at: match row.get(8).ok_or(OxidbError::NotFound("Column 8 not found".to_string()))? {
-                Value::Text(s) => DateTime::parse_from_rfc3339(&s)
-                    .unwrap_or_else(|_| DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z").unwrap())
-                    .with_timezone(&Utc),
-                _ => Utc::now(),
-            },
+            id: Self::get_text_column(row, columns, "id")?,
+            title: Self::get_text_column(row, columns, "title")?,
+            content: Self::get_text_column(row, columns, "content")?,
+            category: Self::get_text_column(row, columns, "category")?,
+            author: Self::get_text_column(row, columns, "author")?,
+            embedding: Self::get_vector_column(row, columns, "embedding")?,
+            metadata,
+            created_at: Utc::now(), // These would ideally come from the database too
+            updated_at: Utc::now(),
         })
     }
 
