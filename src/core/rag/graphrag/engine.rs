@@ -173,7 +173,7 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
         let edge_data = Some(crate::core::graph::GraphData::new(relationship_type.to_string())
             .with_property("weight".to_string(), crate::core::common::types::Value::Float(weight)));
         
-        let edge_id = self.graph_store.lock().unwrap().add_edge(source, target, relationship, edge_data)?;
+        let edge_id = self.graph_store.lock().expect("Failed to acquire graph_store lock (possibly poisoned)").add_edge(source, target, relationship, edge_data)?;
         
         // Store knowledge edge
         let edge = KnowledgeEdge {
