@@ -40,7 +40,9 @@ impl<'a> Iterator for SimilarityIterator<'a> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         // Use iterator combinators to find next matching entity efficiently
-        // This is a zero-cost abstraction - no intermediate allocations
+        // This abstraction avoids intermediate heap allocations and does not allocate
+        // intermediate collections; iterator combinators like `find_map` are allocation-free
+        // in the current implementation.
         self.entities.find_map(|(node_id, entity)| {
             entity.embedding.as_ref().and_then(|embedding| {
                 match cosine_similarity(self.query_embedding, &embedding.vector) {
