@@ -17,12 +17,6 @@ pub trait CommandProcessor<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 's
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcessor<S> for Command {
     fn process(&self, executor: &mut QueryExecutor<S>) -> Result<ExecutionResult, OxidbError> {
         match self {
-            Self::Insert { key, value } => executor.handle_insert(key.clone(), value.clone()),
-            Self::Get { key } => executor.handle_get(key.clone()),
-            Self::Delete { key } => executor.handle_delete(key.clone()),
-            Self::FindByIndex { index_name, value } => {
-                executor.handle_find_by_index(index_name.clone(), value.clone())
-            }
             Self::BeginTransaction => executor.handle_begin_transaction(),
             Self::CommitTransaction => executor.handle_commit_transaction(),
             Self::RollbackTransaction => executor.handle_rollback_transaction(),
@@ -235,12 +229,35 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                     }
                     // --- End: Per-column index updates ---
 
-                    // Call low-level KV insert (which might handle its own generic indexing e.g. "default_value_index")
-                    // The `handle_insert` method itself also adds undo logs for the main data and its "default_value_index".
-                    // We need to ensure that the undo log entries from `handle_insert` (especially for `IndexRevertInsert`
-                    // on `default_value_index`) are correctly managed alongside the per-column index undo logs added above.
-                    // The current structure should be fine as they are separate entries in the undo log.
-                    executor.handle_insert(kv_key.clone(), row_data_type)?;
+                    // Direct storage operation instead of using legacy handle_insert
+                    // Serialize the row data
+                    let value_bytes = crate::core::common::serialization::serialize_data_type(&row_data_type)?;
+                    
+                    // Create transaction for store operation
+                    let tx_for_store = crate::core::transaction::Transaction::new(current_op_tx_id);
+                    
+                    // Generate LSN
+                    let new_lsn = executor.log_manager.next_lsn();
+                    
+                    // Update transaction's prev_lsn if in active transaction
+                    if current_op_tx_id != crate::core::common::types::TransactionId(0) {
+                        if let Some(active_tx_mut) = executor.transaction_manager.get_active_transaction_mut() {
+                            active_tx_mut.prev_lsn = new_lsn;
+                        }
+                    }
+                    
+                    // Store the data
+                    executor.store.write().unwrap().put(
+                        kv_key.clone(),
+                        value_bytes.clone(),
+                        &tx_for_store,
+                        new_lsn,
+                    )?;
+                    
+                    // Update default_value_index
+                    let mut indexed_values_map = std::collections::HashMap::new();
+                    indexed_values_map.insert("default_value_index".to_string(), value_bytes);
+                    executor.index_manager.write().unwrap().on_insert_data(&indexed_values_map, &kv_key)?;
                 }
                 Ok(ExecutionResult::Updated { count: values.len() }) // Return rows affected
             }

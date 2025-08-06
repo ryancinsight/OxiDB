@@ -300,9 +300,317 @@ pub trait ZeroCostIteratorExt<'a>: Iterator<Item = &'a Row> + Sized {
     {
         ChainedIterator::new(self, other)
     }
+    
+    /// Map rows to another type without allocation
+    fn map_rows<F, T>(self, map_fn: F) -> MapIterator<'a, Self, F, T>
+    where
+        F: FnMut(&'a Row) -> T,
+    {
+        MapIterator::new(self, map_fn)
+    }
+    
+    /// Flat map rows for expanding transformations
+    fn flat_map_rows<F, U>(self, flat_map_fn: F) -> FlatMapIterator<'a, Self, F, U>
+    where
+        F: FnMut(&'a Row) -> U,
+        U: IntoIterator,
+    {
+        FlatMapIterator::new(self, flat_map_fn)
+    }
+    
+    /// Scan with state for running computations
+    fn scan_rows<St, F, T>(self, initial_state: St, scan_fn: F) -> ScanIterator<'a, Self, St, F>
+    where
+        F: FnMut(&mut St, &'a Row) -> Option<T>,
+    {
+        ScanIterator::new(self, initial_state, scan_fn)
+    }
+    
+    /// Take rows while predicate is true
+    fn take_while_rows<P>(self, predicate: P) -> TakeWhileIterator<'a, Self, P>
+    where
+        P: FnMut(&&'a Row) -> bool,
+    {
+        TakeWhileIterator::new(self, predicate)
+    }
+    
+    /// Skip rows while predicate is true
+    fn skip_while_rows<P>(self, predicate: P) -> SkipWhileIterator<'a, Self, P>
+    where
+        P: FnMut(&&'a Row) -> bool,
+    {
+        SkipWhileIterator::new(self, predicate)
+    }
+    
+    /// Make iterator peekable
+    fn peekable_rows(self) -> PeekableIterator<'a, Self> {
+        PeekableIterator::new(self)
+    }
 }
 
 impl<'a, I> ZeroCostIteratorExt<'a> for I where I: Iterator<Item = &'a Row> + Sized {}
+
+/// Zero-cost map iterator that transforms rows without allocation
+pub struct MapIterator<'a, I, F, T> {
+    iter: I,
+    map_fn: F,
+    _phantom: PhantomData<(&'a (), T)>,
+}
+
+impl<'a, I, F, T> MapIterator<'a, I, F, T>
+where
+    I: Iterator<Item = &'a Row>,
+    F: FnMut(&'a Row) -> T,
+{
+    #[inline]
+    pub fn new(iter: I, map_fn: F) -> Self {
+        Self {
+            iter,
+            map_fn,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<'a, I, F, T> Iterator for MapIterator<'a, I, F, T>
+where
+    I: Iterator<Item = &'a Row>,
+    F: FnMut(&'a Row) -> T,
+{
+    type Item = T;
+    
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(&mut self.map_fn)
+    }
+    
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+/// Zero-cost flat map iterator for expanding rows
+pub struct FlatMapIterator<'a, I, F, U: IntoIterator> {
+    iter: I,
+    flat_map_fn: F,
+    current: Option<U::IntoIter>,
+    _phantom: PhantomData<&'a ()>,
+}
+
+impl<'a, I, F, U> FlatMapIterator<'a, I, F, U>
+where
+    I: Iterator<Item = &'a Row>,
+    F: FnMut(&'a Row) -> U,
+    U: IntoIterator,
+{
+    #[inline]
+    pub fn new(iter: I, flat_map_fn: F) -> Self {
+        Self {
+            iter,
+            flat_map_fn,
+            current: None,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<'a, I, F, U> Iterator for FlatMapIterator<'a, I, F, U>
+where
+    I: Iterator<Item = &'a Row>,
+    F: FnMut(&'a Row) -> U,
+    U: IntoIterator,
+{
+    type Item = U::Item;
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(ref mut inner) = self.current {
+                if let Some(item) = inner.next() {
+                    return Some(item);
+                }
+            }
+            
+            match self.iter.next() {
+                Some(row) => self.current = Some((self.flat_map_fn)(row).into_iter()),
+                None => return None,
+            }
+        }
+    }
+}
+
+/// Zero-cost scan iterator for stateful transformations
+pub struct ScanIterator<'a, I, St, F> {
+    iter: I,
+    state: St,
+    scan_fn: F,
+    _phantom: PhantomData<&'a ()>,
+}
+
+impl<'a, I, St, F, T> ScanIterator<'a, I, St, F>
+where
+    I: Iterator<Item = &'a Row>,
+    F: FnMut(&mut St, &'a Row) -> Option<T>,
+{
+    #[inline]
+    pub fn new(iter: I, initial_state: St, scan_fn: F) -> Self {
+        Self {
+            iter,
+            state: initial_state,
+            scan_fn,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<'a, I, St, F, T> Iterator for ScanIterator<'a, I, St, F>
+where
+    I: Iterator<Item = &'a Row>,
+    F: FnMut(&mut St, &'a Row) -> Option<T>,
+{
+    type Item = T;
+    
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().and_then(|row| (self.scan_fn)(&mut self.state, row))
+    }
+}
+
+/// Zero-cost take while iterator
+pub struct TakeWhileIterator<'a, I, P> {
+    iter: I,
+    predicate: P,
+    done: bool,
+    _phantom: PhantomData<&'a ()>,
+}
+
+impl<'a, I, P> TakeWhileIterator<'a, I, P>
+where
+    I: Iterator<Item = &'a Row>,
+    P: FnMut(&&'a Row) -> bool,
+{
+    #[inline]
+    pub fn new(iter: I, predicate: P) -> Self {
+        Self {
+            iter,
+            predicate,
+            done: false,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<'a, I, P> Iterator for TakeWhileIterator<'a, I, P>
+where
+    I: Iterator<Item = &'a Row>,
+    P: FnMut(&&'a Row) -> bool,
+{
+    type Item = &'a Row;
+    
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            None
+        } else {
+            self.iter.next().and_then(|row| {
+                if (self.predicate)(&row) {
+                    Some(row)
+                } else {
+                    self.done = true;
+                    None
+                }
+            })
+        }
+    }
+}
+
+/// Zero-cost skip while iterator
+pub struct SkipWhileIterator<'a, I, P> {
+    iter: I,
+    predicate: Option<P>,
+    _phantom: PhantomData<&'a ()>,
+}
+
+impl<'a, I, P> SkipWhileIterator<'a, I, P>
+where
+    I: Iterator<Item = &'a Row>,
+    P: FnMut(&&'a Row) -> bool,
+{
+    #[inline]
+    pub fn new(iter: I, predicate: P) -> Self {
+        Self {
+            iter,
+            predicate: Some(predicate),
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<'a, I, P> Iterator for SkipWhileIterator<'a, I, P>
+where
+    I: Iterator<Item = &'a Row>,
+    P: FnMut(&&'a Row) -> bool,
+{
+    type Item = &'a Row;
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(mut predicate) = self.predicate.take() {
+            // Skip elements while predicate is true
+            while let Some(row) = self.iter.next() {
+                if !predicate(&row) {
+                    return Some(row);
+                }
+            }
+            None
+        } else {
+            // Predicate already failed, just pass through
+            self.iter.next()
+        }
+    }
+}
+
+/// Zero-cost peekable iterator
+pub struct PeekableIterator<'a, I> {
+    iter: I,
+    peeked: Option<Option<&'a Row>>,
+}
+
+impl<'a, I> PeekableIterator<'a, I>
+where
+    I: Iterator<Item = &'a Row>,
+{
+    #[inline]
+    pub fn new(iter: I) -> Self {
+        Self {
+            iter,
+            peeked: None,
+        }
+    }
+    
+    /// Peek at the next element without consuming it
+    #[inline]
+    pub fn peek(&mut self) -> Option<&&'a Row> {
+        if self.peeked.is_none() {
+            self.peeked = Some(self.iter.next());
+        }
+        self.peeked.as_ref().unwrap().as_ref()
+    }
+}
+
+impl<'a, I> Iterator for PeekableIterator<'a, I>
+where
+    I: Iterator<Item = &'a Row>,
+{
+    type Item = &'a Row;
+    
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.peeked.take() {
+            Some(v) => v,
+            None => self.iter.next(),
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -333,5 +641,108 @@ mod tests {
         assert_eq!(windows[0], &[1, 2, 3]);
         assert_eq!(windows[1], &[2, 3, 4]);
         assert_eq!(windows[2], &[3, 4, 5]);
+    }
+    
+    #[test]
+    fn test_map_iterator() {
+        let rows = vec![
+            Row::new(vec![Value::Integer(1)]),
+            Row::new(vec![Value::Integer(2)]),
+            Row::new(vec![Value::Integer(3)]),
+        ];
+        
+        let iter = RowRefIterator::new(&rows);
+        let mapped: Vec<_> = iter.map_rows(|row| {
+            match row.values.first() {
+                Some(Value::Integer(n)) => *n * 2,
+                _ => 0,
+            }
+        }).collect();
+        
+        assert_eq!(mapped, vec![2, 4, 6]);
+    }
+    
+    #[test]
+    fn test_filter_iterator() {
+        let rows = vec![
+            Row::new(vec![Value::Integer(1)]),
+            Row::new(vec![Value::Integer(2)]),
+            Row::new(vec![Value::Integer(3)]),
+            Row::new(vec![Value::Integer(4)]),
+        ];
+        
+        let iter = RowRefIterator::new(&rows);
+        let filtered: Vec<_> = iter.filter_rows(|row| {
+            match row.values.first() {
+                Some(Value::Integer(n)) => *n % 2 == 0,
+                _ => false,
+            }
+        }).collect();
+        
+        assert_eq!(filtered.len(), 2);
+    }
+    
+    #[test]
+    fn test_scan_iterator() {
+        let rows = vec![
+            Row::new(vec![Value::Integer(1)]),
+            Row::new(vec![Value::Integer(2)]),
+            Row::new(vec![Value::Integer(3)]),
+        ];
+        
+        let iter = RowRefIterator::new(&rows);
+        let sums: Vec<_> = iter.scan_rows(0i64, |sum, row| {
+            match row.values.first() {
+                Some(Value::Integer(n)) => {
+                    *sum += n;
+                    Some(*sum)
+                },
+                _ => None,
+            }
+        }).collect();
+        
+        assert_eq!(sums, vec![1, 3, 6]);
+    }
+    
+    #[test]
+    fn test_take_while_iterator() {
+        let rows = vec![
+            Row::new(vec![Value::Integer(1)]),
+            Row::new(vec![Value::Integer(2)]),
+            Row::new(vec![Value::Integer(3)]),
+            Row::new(vec![Value::Integer(1)]),
+        ];
+        
+        let iter = RowRefIterator::new(&rows);
+        let taken: Vec<_> = iter.take_while_rows(|row| {
+            match row.values.first() {
+                Some(Value::Integer(n)) => *n < 3,
+                _ => false,
+            }
+        }).collect();
+        
+        assert_eq!(taken.len(), 2);
+    }
+    
+    #[test]
+    fn test_peekable_iterator() {
+        let rows = vec![
+            Row::new(vec![Value::Integer(1)]),
+            Row::new(vec![Value::Integer(2)]),
+        ];
+        
+        let iter = RowRefIterator::new(&rows);
+        let mut peekable = iter.peekable_rows();
+        
+        // Peek doesn't consume
+        assert!(peekable.peek().is_some());
+        assert!(peekable.peek().is_some());
+        
+        // Next consumes
+        assert!(peekable.next().is_some());
+        assert!(peekable.peek().is_some());
+        assert!(peekable.next().is_some());
+        assert!(peekable.peek().is_none());
+        assert!(peekable.next().is_none());
     }
 }

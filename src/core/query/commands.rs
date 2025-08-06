@@ -61,25 +61,11 @@ pub struct ParameterizedCommand {
 /// These are internal representations, not directly parsed from strings yet.
 #[derive(Debug, PartialEq, Clone)] // For testing and inspection
 pub enum Command {
-    Insert {
-        key: Key,
-        value: DataType,
-    },
-    Get {
-        key: Key,
-    },
-    Delete {
-        key: Key,
-    },
     // Transaction control commands
     BeginTransaction,
     CommitTransaction,
     RollbackTransaction,
-    FindByIndex {
-        index_name: String,
-        value: Value,
-    }, // Find by secondary index
-    Vacuum, // Added Vacuum command
+    Vacuum, // Database maintenance command
     // SQL-like commands
     Select {
         columns: SelectColumnSpec,
@@ -122,8 +108,6 @@ pub enum Command {
         statement: Statement,
         parameters: Vec<ParamValue>,
     },
-    // Potentially others later, like:
-    // Scan { prefix: Option<Key> },
 }
 
 // Example of how these might be constructed (not strictly part of this file,

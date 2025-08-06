@@ -25,7 +25,6 @@ use crate::core::storage::engine::traits::KeyValueStore;
 use crate::core::storage::engine::SimpleFileKvStore;
 use crate::core::transaction::lock_manager::LockManager;
 use crate::core::transaction::manager::TransactionManager;
-use crate::core::transaction::LockType; // Added LockType import
 use crate::core::transaction::Transaction;
 use crate::core::types::DataType;
 use crate::core::wal::log_manager::LogManager; // Added LogManager
@@ -367,6 +366,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
     // New home for handle_insert, handle_get, handle_delete:
 
+    // Legacy handler methods - commented out to enforce SQL-only API
+    // These methods are preserved for reference but should not be used
+    /*
     pub(crate) fn handle_insert(
         &mut self,
         key: Vec<u8>,
@@ -621,6 +623,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         );
         Ok(ExecutionResult::Deleted(deleted))
     }
+    */
 
     #[allow(unused_variables)] // Remove when implemented
     pub(crate) fn handle_sql_delete(
@@ -1326,8 +1329,33 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             // Create the final data structure
             let row_data = DataType::Map(crate::core::types::JsonSafeMap(row_map));
 
-            // Insert the row
-            self.handle_insert(primary_key, row_data)?;
+            // Direct storage operation instead of using legacy handle_insert
+            let value_bytes = crate::core::common::serialization::serialize_data_type(&row_data)?;
+            let current_tx_id = self.transaction_manager.current_active_transaction_id()
+                .unwrap_or(TransactionId(0));
+            let tx_for_store = Transaction::new(current_tx_id);
+            let new_lsn = self.log_manager.next_lsn();
+            
+            // Update transaction's prev_lsn if in active transaction
+            if current_tx_id != TransactionId(0) {
+                if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
+                    active_tx_mut.prev_lsn = new_lsn;
+                }
+            }
+            
+            // Store the data
+            self.store.write().unwrap().put(
+                primary_key.clone(),
+                value_bytes.clone(),
+                &tx_for_store,
+                new_lsn,
+            )?;
+            
+            // Update default_value_index
+            let mut indexed_values_map = std::collections::HashMap::new();
+            indexed_values_map.insert("default_value_index".to_string(), value_bytes);
+            self.index_manager.write().unwrap().on_insert_data(&indexed_values_map, &primary_key)?;
+            
             insert_count += 1;
         }
 
