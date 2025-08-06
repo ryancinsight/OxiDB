@@ -593,7 +593,11 @@ where
         if self.peeked.is_none() {
             self.peeked = Some(self.iter.next());
         }
-        self.peeked.as_ref().unwrap().as_ref()
+        match self.peeked.as_ref() {
+            Some(Some(row)) => Some(row),
+            Some(None) => None,
+            None => None, // This should not happen, but handle gracefully
+        }
     }
 }
 
