@@ -1,6 +1,6 @@
 // src/core/rag/embedder.rs
 
-use super::core_components::{Document, Embedding};
+use super::document::{Document, Embedding};
 use crate::core::common::OxidbError;
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -379,7 +379,7 @@ impl EmbeddingModel for MockEmbeddingModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::rag::core_components::Document;
+    use crate::core::rag::document::Document;
 
     #[tokio::test]
     async fn test_semantic_embedder() {

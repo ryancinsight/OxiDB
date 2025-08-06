@@ -11,7 +11,7 @@
 //! - Provides detailed analysis of both approaches
 
 // Graph imports not needed for this example
-use oxidb::core::rag::core_components::{Document, Embedding};
+use oxidb::core::rag::document::{Document, Embedding};
 use oxidb::core::rag::graphrag::{GraphRAGEngineImpl, GraphRAGContext, KnowledgeNode, KnowledgeEdge};
 use oxidb::core::rag::retriever::{InMemoryRetriever, SimilarityMetric};
 use oxidb::core::rag::{GraphRAGEngine, Retriever};

@@ -1,6 +1,6 @@
 // src/core/rag/retriever.rs
 
-use super::core_components::{Document, Embedding};
+use super::document::{Document, Embedding};
 use crate::core::common::OxidbError;
 use crate::core::vector::similarity::{cosine_similarity, dot_product};
 use async_trait::async_trait; // Assuming these are pub
@@ -88,7 +88,7 @@ impl Retriever for InMemoryRetriever {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::rag::core_components::Embedding; // Ensure Embedding is in scope
+    use crate::core::rag::document::Embedding; // Ensure Embedding is in scope
     use crate::core::rag::embedder::{EmbeddingModel, MockEmbeddingModel}; // For generating embeddings
     use approx::assert_relative_eq;
 

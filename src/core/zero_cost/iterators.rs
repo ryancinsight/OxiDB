@@ -5,7 +5,7 @@
 
 use std::marker::PhantomData;
 use crate::core::common::types::Value;
-use crate::api::types::Row;
+use crate::core::common::types::Row;
 
 /// Zero-cost iterator over database rows that avoids allocations
 pub struct RowRefIterator<'a> {
@@ -102,7 +102,7 @@ where
         self.iter.next().map(|row| {
             self.column_indices
                 .iter()
-                .filter_map(|&idx| row.get(idx))
+                .filter_map(|&idx| row.values.get(idx))
                 .collect()
         })
     }

@@ -23,7 +23,7 @@ pub mod types;
 pub use algorithms::{GraphAlgorithms, PathFinding};
 pub use storage::{GraphStorage, GraphStore, InMemoryGraphStore};
 pub use traversal::{GraphTraversal, TraversalDirection, TraversalStrategy};
-pub use types::{Edge, EdgeId, GraphData, Node, NodeId, Relationship};
+pub use types::{Edge, EdgeId, GraphData, Node, NodeId, Relationship, RelationshipDirection};
 
 use crate::core::common::types::Value;
 use crate::core::common::OxidbError;

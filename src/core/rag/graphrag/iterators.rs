@@ -9,6 +9,9 @@ use crate::core::vector::similarity::cosine_similarity;
 use std::collections::hash_map;
 
 /// Custom iterator for efficient similarity calculations without intermediate collections
+/// 
+/// This iterator follows zero-cost abstraction principles by computing similarities
+/// on-demand without caching, avoiding allocations and maintaining efficiency.
 pub struct SimilarityIterator<'a> {
     entities: hash_map::Iter<'a, NodeId, KnowledgeNode>,
     query_embedding: &'a [f32],
@@ -37,21 +40,14 @@ impl<'a> Iterator for SimilarityIterator<'a> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         // Use iterator combinators to find next matching entity efficiently
+        // This abstraction avoids intermediate heap allocations and does not allocate
+        // intermediate collections; iterator combinators like `find_map` are allocation-free
+        // in the current implementation.
         self.entities.find_map(|(node_id, entity)| {
             entity.embedding.as_ref().and_then(|embedding| {
-                // Check cache first
-                if let Some(&cached_similarity) = self.similarity_cache.get(node_id) {
-                    if cached_similarity >= self.threshold {
-                        return Some((*node_id, cached_similarity));
-                    } else {
-                        return None;
-                    }
-                }
                 match cosine_similarity(self.query_embedding, &embedding.vector) {
                     Ok(similarity) => {
                         let similarity_f64 = f64::from(similarity);
-                        // Store in cache
-                        self.similarity_cache.insert(*node_id, similarity_f64);
                         if similarity_f64 >= self.threshold {
                             Some((*node_id, similarity_f64))
                         } else {

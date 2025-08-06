@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use oxidb::core::common::OxidbError;
 use oxidb::core::rag::{
-    core_components::{Document, Embedding},
+    document::{Document, Embedding},
     embedder::EmbeddingModel,
     graphrag::{GraphRAGContext, GraphRAGEngine, GraphRAGResult, KnowledgeNode, ReasoningPath},
     hybrid::{HybridRAGEngine, HybridRAGConfig, HybridRAGResult},

@@ -7,7 +7,7 @@ use std::borrow::Cow;
 use std::ops::Index;
 use std::slice;
 use crate::core::common::types::Value;
-use crate::api::types::Row;
+use crate::core::common::types::Row;
 
 /// Zero-copy view over a row's values
 #[derive(Debug)]
@@ -134,14 +134,14 @@ impl<'a> ColumnView<'a> {
     pub fn get(&self, row_index: usize) -> Option<&'a Value> {
         self.rows
             .get(row_index)
-            .and_then(|row| row.get(self.column_index))
+                            .and_then(|row| row.values.get(self.column_index))
     }
     
     /// Iterator over column values
     pub fn iter(&self) -> impl Iterator<Item = Option<&'a Value>> + '_ {
         self.rows
             .iter()
-            .map(move |row| row.get(self.column_index))
+            .map(move |row| row.values.get(self.column_index))
     }
     
     /// Count non-null values
@@ -282,7 +282,7 @@ impl<'a> ProjectionView<'a> {
     pub fn get(&self, index: usize) -> Option<&'a Value> {
         self.indices
             .get(index)
-            .and_then(|&col_idx| self.row.get(col_idx))
+            .and_then(|&col_idx| self.row.values.get(col_idx))
     }
     
     /// Get the number of projected columns
@@ -301,7 +301,7 @@ impl<'a> ProjectionView<'a> {
     pub fn iter(&self) -> impl Iterator<Item = Option<&'a Value>> + '_ {
         self.indices
             .iter()
-            .map(move |&idx| self.row.get(idx))
+            .map(move |&idx| self.row.values.get(idx))
     }
 }
 

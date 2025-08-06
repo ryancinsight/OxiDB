@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::core::common::OxidbError;
 use crate::core::common::types::Value;
 use crate::core::rag::{
-    core_components::{Document, Embedding},
+    document::{Document, Embedding},
     embedder::EmbeddingModel,
     graphrag::{GraphRAGContext, GraphRAGEngine, GraphRAGResult, KnowledgeNode},
     retriever::{Retriever, SimilarityMetric},
@@ -156,20 +156,11 @@ impl<E: EmbeddingModel + Send + Sync> HybridRAGEngine<E> {
             },
         };
         
-        let graph_results = self.graph_engine
+        let graph_result = self.graph_engine
             .query(&graph_context)
             .await?;
-
-        // Combine results
-        let graph_result = match graph_results.into_iter().next() {
-            Some(result) => result,
-            None => GraphRAGResult {
-                nodes: Vec::new(),
-                edges: Vec::new(),
-                // Add other fields as required by GraphRAGResult's definition
-            },
-        };
         self.combine_results(vector_results, graph_result, query_embedding.as_slice()).await
+    }
 
     /// Combine vector and graph results
     async fn combine_results(
@@ -406,7 +397,7 @@ mod tests {
     use crate::core::rag::embedder::SemanticEmbedder;
     use crate::core::rag::graphrag::GraphRAGEngineImpl;
     use crate::core::rag::retriever::InMemoryRetriever;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     #[tokio::test]
     async fn test_hybrid_config() {
@@ -419,10 +410,10 @@ mod tests {
     #[tokio::test]
     async fn test_hybrid_score_calculation() {
         let vector_retriever = Arc::new(InMemoryRetriever::new(Vec::new()));
-        let graph_store = Arc::new(crate::core::graph::InMemoryGraphStore::new());
+        let graph_store = crate::core::graph::InMemoryGraphStore::new();
         let embedder = Arc::new(SemanticEmbedder::new(128));
         let config = crate::core::rag::graphrag::GraphRAGConfig::default();
-        let graph_engine = Arc::new(GraphRAGEngineImpl::new(graph_store, embedder.clone(), config));
+        let graph_engine = Arc::new(GraphRAGEngineImpl::new(Arc::new(Mutex::new(graph_store)), embedder.clone(), config));
         
         let engine = HybridRAGEngine::new(
             vector_retriever,
@@ -438,10 +429,10 @@ mod tests {
     #[tokio::test]
     async fn test_builder() {
         let vector_retriever = Arc::new(InMemoryRetriever::new(Vec::new()));
-        let graph_store = Arc::new(crate::core::graph::InMemoryGraphStore::new());
+        let graph_store = crate::core::graph::InMemoryGraphStore::new();
         let embedder = Arc::new(SemanticEmbedder::new(128));
         let config = crate::core::rag::graphrag::GraphRAGConfig::default();
-        let graph_engine = Arc::new(GraphRAGEngineImpl::new(graph_store, embedder.clone(), config));
+        let graph_engine = Arc::new(GraphRAGEngineImpl::new(Arc::new(Mutex::new(graph_store)), embedder.clone(), config));
 
         let engine = HybridRAGEngineBuilder::new()
             .with_vector_retriever(vector_retriever)

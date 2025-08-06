@@ -6,11 +6,11 @@ use super::engine::GraphRAGEngineImpl;
 use super::types::GraphRAGConfig;
 use crate::core::common::OxidbError;
 use crate::core::graph::GraphStore;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Builder for GraphRAG engines
 pub struct GraphRAGEngineBuilder {
-    graph_store: Option<Arc<dyn GraphStore>>,
+    graph_store: Option<Arc<Mutex<dyn GraphStore>>>,
     embedder: Option<Arc<dyn crate::core::rag::embedder::EmbeddingModel + Send + Sync>>,
     config: GraphRAGConfig,
 }
@@ -32,11 +32,12 @@ impl GraphRAGEngineBuilder {
     }
 
     /// Set the graph store
-    pub fn with_graph_store(
+    pub fn with_graph_store<T: GraphStore + 'static>(
         mut self,
-        store: Arc<dyn GraphStore>,
+        store: T,
     ) -> Self {
-        self.graph_store = Some(store);
+        // Wrap the store in a Mutex for thread-safe access
+        self.graph_store = Some(Arc::new(Mutex::new(store)));
         self
     }
 

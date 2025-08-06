@@ -1,4 +1,4 @@
-// src/core/rag/core_components.rs
+// src/core/rag/document.rs
 
 use crate::core::common::types::Value;
 use std::collections::HashMap;

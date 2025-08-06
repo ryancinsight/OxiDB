@@ -6,6 +6,7 @@
 
 use crate::core::graph::{NodeId, EdgeId};
 use crate::core::common::types::Value;
+use crate::core::rag::document::Embedding;
 use std::collections::HashMap;
 
 /// Represents a knowledge node in the graph with semantic information
@@ -102,14 +103,7 @@ impl Default for GraphRAGConfig {
     }
 }
 
-/// Embedding representation
-#[derive(Debug, Clone)]
-pub struct Embedding {
-    /// The embedding vector
-    pub vector: Vec<f32>,
-    /// Model used to generate the embedding
-    pub model: String,
-}
+
 
 /// Edge information for graph traversal
 #[allow(dead_code)]

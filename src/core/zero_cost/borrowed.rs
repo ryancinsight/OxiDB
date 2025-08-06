@@ -6,7 +6,7 @@
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use crate::core::common::types::Value;
-use crate::api::types::Row;
+use crate::core::common::types::Row;
 
 /// Borrowed row that avoids allocating a Vec for values
 #[derive(Debug)]
@@ -153,7 +153,7 @@ impl<'a> BorrowedPredicate<'a> {
     /// Evaluate predicate against a row
     pub fn evaluate(&self, row: &Row) -> bool {
         // Get column value by index
-        let column_value = match row.get(self.column_index) {
+        let column_value = match row.values.get(self.column_index) {
             Some(val) => val,
             None => return false,
         };
