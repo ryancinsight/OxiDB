@@ -194,7 +194,7 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
             node.embedding = Some(embedding);
             Ok(())
         } else {
-            Err(OxidbError::NotFound("Node not found".to_string()))
+            Err(OxidbError::NotFound(format!("Node not found: {}", node_id)))
         }
     }
 
