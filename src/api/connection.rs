@@ -4,7 +4,9 @@ use crate::core::common::OxidbError;
 use crate::core::config::Config;
 use crate::core::performance::{PerformanceContext, PerformanceAnalyzer};
 use crate::core::query::executor::QueryExecutor;
-use crate::core::query::parser::parse_sql_to_ast;
+use crate::core::query::parser::parse_query;
+use crate::core::query::sql::parser::SqlParser;
+use crate::core::query::sql::tokenizer::Tokenizer;
 
 use crate::core::storage::engine::SimpleFileKvStore;
 use crate::core::wal::log_manager::LogManager;
@@ -25,6 +27,25 @@ pub struct Connection {
     executor: QueryExecutor<SimpleFileKvStore>,
     /// Performance monitoring context
     performance: PerformanceContext,
+}
+
+// Helper function to convert DataType to Value
+fn data_type_to_value(data_type: crate::core::types::DataType) -> Value {
+    use crate::core::types::DataType;
+    
+    match data_type {
+        DataType::Integer(i) => Value::Integer(i),
+        DataType::Float(f) => Value::Float(f.0),
+        DataType::String(s) => Value::Text(s),
+        DataType::Boolean(b) => Value::Boolean(b),
+        DataType::RawBytes(b) => Value::Blob(b),
+        DataType::Vector(v) => Value::Vector(v.0.data),
+        DataType::Null => Value::Null,
+        DataType::Map(map) => Value::Text(
+            serde_json::to_string(&map.0).unwrap_or_else(|_| "{}".to_string())
+        ),
+        DataType::JsonBlob(json) => Value::Text(json.0.to_string()),
+    }
 }
 
 impl Connection {
@@ -100,208 +121,178 @@ impl Connection {
         self.performance.config.slow_query_threshold = Duration::from_millis(100);
     }
 
-    /// Executes a SQL query and returns the result set
-    /// 
-    /// This method is optimized for SELECT statements that return data.
-    /// 
-    /// # Arguments
-    /// 
-    /// * `sql` - The SQL query to execute
-    /// 
-    /// # Returns
-    /// 
-    /// A `QueryResult` containing the rows returned by the query
-    /// 
-    /// # Errors
-    /// 
-    /// Returns an error if:
-    /// - The SQL cannot be parsed
-    /// - The query execution fails
-    /// - The connection is closed
-    /// 
-    /// # Example
-    /// 
+    /// Execute a SQL query and return the results.
+    ///
+    /// # Examples
+    ///
     /// ```no_run
     /// # use oxidb::Connection;
-    /// # fn example() -> Result<(), oxidb::OxidbError> {
-    /// let conn = Connection::open("test.db")?;
-    /// let result = conn.query("SELECT * FROM users")?;
-    /// if let Some(rows) = result.rows {
-    ///     for row in rows.rows {
-    ///         println!("{:?}", row);
-    ///     }
+    /// # use oxidb::Config;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut conn = Connection::new(Config::default())?;
+    /// let result = conn.query("SELECT * FROM users WHERE age > 18")?;
+    /// for row in result.rows {
+    ///     println!("{:?}", row);
     /// }
     /// # Ok(())
     /// # }
     /// ```
     pub fn query(&mut self, sql: &str) -> Result<QueryResult, OxidbError> {
-        // Parse SQL to AST
-        let statement = parse_sql_to_ast(sql)?;
-        let result = self.executor.execute_ast_statement(statement)?;
+        // Parse SQL to Command
+        let command = parse_query(sql)?;
+        let result = self.executor.execute_command(command)?;
         
         // Convert ExecutionResult to QueryResult
         use crate::core::query::executor::ExecutionResult;
         
         let query_result = match result {
             ExecutionResult::Query { columns, rows } => {
-                // Convert DataType rows to Value rows
-                let value_rows: Vec<crate::api::types::Row> = rows.into_iter().map(|data_row| {
-                    let mut row = Row::new();
-                    for (i, value) in data_row.into_iter().enumerate() {
-                        if i < columns.len() {
-                            row.insert(columns[i].clone(), Self::data_type_to_value(value));
-                        }
-                    }
-                    row
-                }).collect();
+                // Convert Vec<Vec<DataType>> rows to Value rows
+                let converted_rows = rows.into_iter()
+                    .map(|row_values| Row {
+                        values: row_values.into_iter()
+                            .map(data_type_to_value)
+                            .collect(),
+                    })
+                    .collect();
                 
-                QueryResult::with_rows(columns, value_rows)
+                QueryResult {
+                    columns,
+                    rows: converted_rows,
+                }
             }
+            ExecutionResult::Updated { count } => QueryResult {
+                columns: vec!["affected_rows".to_string()],
+                rows: vec![Row {
+                    values: vec![Value::Integer(count as i64)],
+                }],
+            },
+            ExecutionResult::Value(Some(dt)) => QueryResult {
+                columns: vec!["value".to_string()],
+                rows: vec![Row {
+                    values: vec![data_type_to_value(dt)],
+                }],
+            },
+            ExecutionResult::Value(None) => QueryResult {
+                columns: vec!["value".to_string()],
+                rows: vec![],
+            },
+            ExecutionResult::Values(dts) => QueryResult {
+                columns: vec!["value".to_string()],
+                rows: dts.into_iter()
+                    .map(|dt| Row {
+                        values: vec![data_type_to_value(dt)],
+                    })
+                    .collect(),
+            },
+            ExecutionResult::Deleted(success) => QueryResult {
+                columns: vec!["deleted".to_string()],
+                rows: vec![Row {
+                    values: vec![Value::Boolean(success)],
+                }],
+            },
+            ExecutionResult::Success => QueryResult {
+                columns: vec![],
+                rows: vec![],
+            },
             ExecutionResult::RankedResults(results) => {
                 // For ranked results, include distance as a column
                 let columns = vec!["distance".to_string(), "data".to_string()];
-                let value_rows: Vec<crate::api::types::Row> = results.into_iter().map(|(distance, data_types)| {
-                    let mut row = Row::new();
-                    row.insert("distance".to_string(), Value::Float(f64::from(distance)));
-                    // Combine other values into a single data field
-                    if !data_types.is_empty() {
-                        row.insert("data".to_string(), Self::data_type_to_value(data_types[0].clone()));
-                    }
-                    row
-                }).collect();
+                let converted_rows = results.into_iter()
+                    .map(|(distance, data_values)| Row {
+                        values: vec![
+                            Value::Float(f64::from(distance)),
+                            // Combine data values into a single JSON string
+                            Value::Text(serde_json::to_string(&data_values).unwrap_or_else(|_| "[]".to_string())),
+                        ],
+                    })
+                    .collect();
                 
-                QueryResult::with_rows(columns, value_rows)
-            }
-            _ => {
-                // For non-query operations, return affected rows count
-                let rows_affected = match result {
-                    ExecutionResult::Success => 0,
-                    ExecutionResult::Deleted(true) => 1,
-                    ExecutionResult::Deleted(false) => 0,
-                    ExecutionResult::Updated { count } => count as usize,
-                    _ => 0,
-                };
-                QueryResult::affected(rows_affected)
-            }
+                QueryResult {
+                    columns,
+                    rows: converted_rows,
+                }
+            },
         };
-        
-        // Track in connection info
-        // self.info.lock().unwrap().mark_used(); // This line was removed as per the new_code
         
         Ok(query_result)
     }
-    
-    /// Helper method to convert DataType to Value
-    fn data_type_to_value(data_type: crate::core::types::DataType) -> Value {
-        use crate::core::types::DataType;
-        
-        match data_type {
-            DataType::Integer(i) => Value::Integer(i),
-            DataType::Float(f) => Value::Float(f.0),
-            DataType::String(s) => Value::Text(s),
-            DataType::Boolean(b) => Value::Boolean(b),
-            DataType::RawBytes(b) => Value::Blob(b),
-            DataType::Vector(v) => Value::Vector(v.0.data),
-            DataType::Null => Value::Null,
-            DataType::Map(map) => Value::Text(
-                serde_json::to_string(&map.0).unwrap_or_else(|_| "{}".to_string())
-            ),
-            DataType::JsonBlob(json) => Value::Text(json.0.to_string()),
-        }
-    }
 
-    /// Executes a SQL statement without returning results
-    /// 
-    /// This method is optimized for statements that don't return data (INSERT, UPDATE, DELETE, DDL).
-    /// 
-    /// # Arguments
-    /// 
-    /// * `sql` - The SQL statement to execute
-    /// 
-    /// # Returns
-    /// 
-    /// The number of rows affected by the operation
-    /// 
-    /// # Errors
-    /// 
-    /// Returns an error if:
-    /// - The SQL cannot be parsed
-    /// - The statement execution fails
-    /// - The connection is closed
-    /// 
-    /// # Example
-    /// 
+    /// Execute a SQL statement that modifies the database.
+    ///
+    /// Returns the number of rows affected by the operation.
+    ///
+    /// # Examples
+    ///
     /// ```no_run
     /// # use oxidb::Connection;
-    /// # fn example() -> Result<(), oxidb::OxidbError> {
-    /// let conn = Connection::open("test.db")?;
-    /// let rows_affected = conn.execute("INSERT INTO users (name) VALUES ('Alice')")?;
-    /// println!("Inserted {} rows", rows_affected);
+    /// # use oxidb::Config;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut conn = Connection::new(Config::default())?;
+    /// let affected = conn.execute("INSERT INTO users (name, age) VALUES ('Alice', 25)")?;
+    /// println!("Inserted {} rows", affected);
     /// # Ok(())
     /// # }
     /// ```
     pub fn execute(&mut self, sql: &str) -> Result<u64, OxidbError> {
-        // Parse SQL to AST
-        let statement = parse_sql_to_ast(sql)?;
-        let result = self.executor.execute_ast_statement(statement)?;
+        // Parse SQL to Command
+        let command = parse_query(sql)?;
+        let result = self.executor.execute_command(command)?;
         
         // Convert ExecutionResult to rows affected count
         use crate::core::query::executor::ExecutionResult;
-        let rows_affected = match result {
-            ExecutionResult::Success => 0,
-            ExecutionResult::Deleted(true) => 1,
-            ExecutionResult::Deleted(false) => 0,
-            ExecutionResult::Updated { count } => count as u64,
-            ExecutionResult::Query { rows, .. } => rows.len() as u64,
-            ExecutionResult::Value(_) => 0,
-            ExecutionResult::Values(_) => 0,
-            ExecutionResult::RankedResults(ref results) => results.len() as u64,
-        };
         
-        // Track in connection info
-        // self.info.lock().unwrap().mark_used(); // This line was removed as per the new_code
-        
-        Ok(rows_affected)
+        match result {
+            ExecutionResult::Updated { count } => Ok(count as u64),
+            ExecutionResult::Deleted(true) => Ok(1),
+            ExecutionResult::Deleted(false) => Ok(0),
+            ExecutionResult::Success => Ok(0),
+            _ => Ok(0),
+        }
     }
 
-    /// Begins a new transaction.
+    /// Begin a new transaction.
     ///
     /// # Errors
-    /// Returns `OxidbError` if:
+    ///
+    /// This function will return an error if:
     /// - A transaction is already active
     /// - The transaction manager fails to initialize the transaction
     /// - WAL logging fails during transaction start
     pub fn begin_transaction(&mut self) -> Result<(), OxidbError> {
-        let statement = parse_sql_to_ast("BEGIN")?;
-        self.executor.execute_ast_statement(statement)?;
+        let command = parse_query("BEGIN")?;
+        self.executor.execute_command(command)?;
         Ok(())
     }
 
-    /// Commits the current transaction.
+    /// Commit the current transaction.
     ///
     /// # Errors
-    /// Returns `OxidbError` if:
+    ///
+    /// This function will return an error if:
     /// - No active transaction exists
-    /// - WAL flush fails during commit
+    /// - WAL flush operations fail
+    /// - Lock release encounters system errors
     /// - Data persistence to disk fails
     /// - Transaction state consistency cannot be maintained
     pub fn commit(&mut self) -> Result<(), OxidbError> {
-        let statement = parse_sql_to_ast("COMMIT")?;
-        self.executor.execute_ast_statement(statement)?;
+        let command = parse_query("COMMIT")?;
+        self.executor.execute_command(command)?;
         Ok(())
     }
 
-    /// Rolls back the current transaction.
+    /// Rollback the current transaction.
     ///
     /// # Errors
-    /// Returns `OxidbError` if:
+    ///
+    /// This function will return an error if:
     /// - No active transaction exists
-    /// - Rollback operations fail during undo processing
+    /// - Undo operations fail to restore previous state
     /// - WAL recovery encounters corrupted entries
     /// - Lock release fails during rollback cleanup
     pub fn rollback(&mut self) -> Result<(), OxidbError> {
-        let statement = parse_sql_to_ast("ROLLBACK")?;
-        self.executor.execute_ast_statement(statement)?;
+        let command = parse_query("ROLLBACK")?;
+        self.executor.execute_command(command)?;
         Ok(())
     }
 
@@ -420,8 +411,16 @@ impl Connection {
         sql: &str,
         params: &[Value],
     ) -> Result<QueryResult, OxidbError> {
-        // Parse the SQL with parameter placeholders
-        let statement = parse_sql_to_ast(sql)?;
+        // Parse SQL directly to AST for parameterized queries
+        let mut tokenizer = Tokenizer::new(sql);
+        let tokens = tokenizer.tokenize().map_err(|e| {
+            OxidbError::SqlParsing(format!("SQL tokenizer error: {e}"))
+        })?;
+        
+        let mut parser = SqlParser::new(tokens);
+        let statement = parser.parse().map_err(|e| {
+            OxidbError::SqlParsing(format!("SQL parse error: {e}"))
+        })?;
 
         // Create a parameterized command
         let parameterized_command = crate::core::query::commands::Command::ParameterizedSql {
@@ -437,75 +436,74 @@ impl Connection {
         
         let query_result = match result {
             ExecutionResult::Query { columns, rows } => {
-                // Convert DataType rows to Value rows
-                let value_rows: Vec<crate::api::types::Row> = rows.into_iter().map(|data_row| {
-                    let mut row = Row::new();
-                    for (i, value) in data_row.into_iter().enumerate() {
-                        if i < columns.len() {
-                            row.insert(columns[i].clone(), Self::data_type_to_value(value));
-                        }
-                    }
-                    row
-                }).collect();
+                // Convert Vec<Vec<DataType>> rows to Value rows
+                let converted_rows = rows.into_iter()
+                    .map(|row_values| Row {
+                        values: row_values.into_iter()
+                            .map(data_type_to_value)
+                            .collect(),
+                    })
+                    .collect();
                 
-                QueryResult::with_rows(columns, value_rows)
+                QueryResult {
+                    columns,
+                    rows: converted_rows,
+                }
             }
-            _ => {
-                // For non-query operations, return affected rows count
-                let rows_affected = match result {
-                    ExecutionResult::Success => 0,
-                    ExecutionResult::Deleted(true) => 1,
-                    ExecutionResult::Deleted(false) => 0,
-                    ExecutionResult::Updated { count } => count as usize,
-                    _ => 0,
-                };
-                QueryResult::affected(rows_affected)
-            }
+            ExecutionResult::Updated { count } => QueryResult {
+                columns: vec!["affected_rows".to_string()],
+                rows: vec![Row {
+                    values: vec![Value::Integer(count as i64)],
+                }],
+            },
+            _ => QueryResult {
+                columns: vec![],
+                rows: vec![],
+            },
         };
         
         Ok(query_result)
     }
 
-    /// Executes a query and returns the first row, if any.
+    /// Execute a query and return only the first row, if any.
     ///
-    /// This is a convenience method for queries that are expected to return
-    /// at most one row.
+    /// # Examples
     ///
-    /// # Arguments
-    /// * `sql` - The SQL query string to execute
-    ///
-    /// # Returns
-    /// * `Result<Option<crate::api::types::Row>, OxidbError>` - The first row or None
-    ///
-    /// # Errors
-    /// Returns `OxidbError` if:
-    /// - The SQL query cannot be parsed
-    /// - Query execution fails due to storage or transaction errors
-    /// - Database access is denied or locked
-    pub fn query_row(&mut self, sql: &str) -> Result<Option<crate::api::types::Row>, OxidbError> {
+    /// ```no_run
+    /// # use oxidb::Connection;
+    /// # use oxidb::Config;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut conn = Connection::new(Config::default())?;
+    /// if let Some(row) = conn.query_first("SELECT * FROM users WHERE id = 1")? {
+    ///     println!("Found user: {:?}", row);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn query_first(&mut self, sql: &str) -> Result<Option<Row>, OxidbError> {
         let result = self.query(sql)?;
-        Ok(result.rows.and_then(|rows| rows.rows.into_iter().next()))
+        Ok(result.rows.into_iter().next())
     }
 
-    /// Executes a query and returns all rows.
+    /// Execute a query and return all rows.
     ///
-    /// This is a convenience method for SELECT queries.
+    /// # Examples
     ///
-    /// # Arguments
-    /// * `sql` - The SQL query string to execute
-    ///
-    /// # Returns
-    /// * `Result<Vec<crate::api::types::Row>, OxidbError>` - All rows or an error
-    ///
-    /// # Errors  
-    /// Returns `OxidbError` if:
-    /// - The SQL query cannot be parsed
-    /// - Query execution fails due to storage or transaction errors
-    /// - Memory allocation fails for large result sets
-    /// - Database access is denied or locked
-    pub fn query_all(&mut self, sql: &str) -> Result<Vec<crate::api::types::Row>, OxidbError> {
+    /// ```no_run
+    /// # use oxidb::Connection;
+    /// # use oxidb::Config;
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut conn = Connection::new(Config::default())?;
+    /// let rows = conn.query_all("SELECT * FROM users")?;
+    /// for row in rows {
+    ///     println!("{:?}", row);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn query_all(&mut self, sql: &str) -> Result<Vec<Row>, OxidbError> {
         let result = self.query(sql)?;
-        Ok(result.rows.map(|rows| rows.rows).unwrap_or_default())
+        Ok(result.rows)
     }
 
     /// Executes an UPDATE, INSERT, or DELETE statement and returns the number of affected rows.
@@ -519,8 +517,6 @@ impl Connection {
     pub fn execute_update(&mut self, sql: &str) -> Result<u64, OxidbError> {
         self.execute(sql)
     }
-
-
 
 
 }

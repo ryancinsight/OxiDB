@@ -8,12 +8,13 @@ use crate::core::storage::engine::traits::KeyValueStore;
 // LockType removed
 // Transaction, TransactionState, UndoOperation removed
 // DataType removed
-use std::collections::HashSet; // HashMap removed
+// HashMap removed
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     // handle_insert, handle_delete, and handle_get were removed.
-    // Only handle_find_by_index and other DDL-specific handlers should remain.
+    // handle_find_by_index is also commented out to enforce SQL-only API
 
+    /* Legacy method - commented out to enforce SQL-only API
     /// Handles finding rows by an index lookup.
     /// It retrieves primary keys from the specified index for the given value,
     /// then fetches the actual row data from the store for those primary keys,
@@ -114,7 +115,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         }
         Ok(ExecutionResult::Values(results_vec))
     }
-    // Removed handle_get from here
+    */
 
     /// Handles the creation of a new table.
     /// This involves storing the table's schema and creating any necessary indexes

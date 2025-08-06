@@ -17,12 +17,6 @@ pub trait CommandProcessor<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 's
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcessor<S> for Command {
     fn process(&self, executor: &mut QueryExecutor<S>) -> Result<ExecutionResult, OxidbError> {
         match self {
-            Self::Insert { key, value } => executor.handle_insert(key.clone(), value.clone()),
-            Self::Get { key } => executor.handle_get(key.clone()),
-            Self::Delete { key } => executor.handle_delete(key.clone()),
-            Self::FindByIndex { index_name, value } => {
-                executor.handle_find_by_index(index_name.clone(), value.clone())
-            }
             Self::BeginTransaction => executor.handle_begin_transaction(),
             Self::CommitTransaction => executor.handle_commit_transaction(),
             Self::RollbackTransaction => executor.handle_rollback_transaction(),
@@ -235,12 +229,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                     }
                     // --- End: Per-column index updates ---
 
-                    // Call low-level KV insert (which might handle its own generic indexing e.g. "default_value_index")
-                    // The `handle_insert` method itself also adds undo logs for the main data and its "default_value_index".
-                    // We need to ensure that the undo log entries from `handle_insert` (especially for `IndexRevertInsert`
-                    // on `default_value_index`) are correctly managed alongside the per-column index undo logs added above.
-                    // The current structure should be fine as they are separate entries in the undo log.
-                    executor.handle_insert(kv_key.clone(), row_data_type)?;
+                    // Use helper method for storage operation (DRY principle)
+                    executor.store_row_data(kv_key.clone(), &row_data_type)?;
                 }
                 Ok(ExecutionResult::Updated { count: values.len() }) // Return rows affected
             }

@@ -36,104 +36,80 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn demonstrate_zero_copy_views() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Zero-Copy Data Views ===");
     
-    // Sample employee data
-    let sample_data = vec![
-        vec![
-            DataType::Integer(1),
-            DataType::String("Alice".to_string()),
-            DataType::String("Engineering".to_string()),
-            DataType::Integer(100000),
-        ],
-        vec![
-            DataType::Integer(2),
-            DataType::String("Bob".to_string()),
-            DataType::String("Sales".to_string()),
-            DataType::Integer(90000),
-        ],
-        vec![
-            DataType::Integer(3),
-            DataType::String("Charlie".to_string()),
-            DataType::String("Engineering".to_string()),
-            DataType::Integer(110000),
-        ],
-    ];
-    
-    // Convert to Row format for TableView
-    let rows: Vec<ApiRow> = sample_data.iter()
-        .map(|data| ApiRow::from_slice(
-            &data.iter().map(|dt| match dt {
-                DataType::Integer(i) => Value::Integer(*i),
-                DataType::String(s) => Value::Text(s.clone()),
-                _ => Value::Null,
-            }).collect::<Vec<_>>()
-        ))
-        .collect();
-    
-    let column_names = vec!["id".to_string(), "name".to_string(), "department".to_string(), "salary".to_string()];
-    
-    // Create a zero-copy table view
-    let table_view = TableView::new(&rows, Cow::Borrowed(&column_names));
-    
-    println!("📊 Table view created with {} rows and {} columns", 
-             table_view.row_count(), table_view.column_count());
-    
-    // Manual column analysis (since ColumnView API is different)
-    println!("\n💰 Salary column analysis (zero-copy):");
-    
-    let mut total_salary = 0i64;
-    let mut count = 0;
-    
-    for row in &rows {
-        if let Some(Value::Integer(salary)) = row.get(3) {
-            total_salary += salary;
-            count += 1;
-        }
-    }
-    
-    if count > 0 {
-        println!("  Average salary: ${}", total_salary / count);
-        println!("  Total payroll: ${}", total_salary);
-    }
-    
-    // String views for zero-copy string operations
-    println!("\n📝 String views (zero allocation):");
-    let test_string = "Hello, OxidDB!";
-    let string_view = StringView::Borrowed(test_string);
-    
-    println!("  Original: {}", string_view);
-    println!("  Length: {}", string_view.len());
-    println!("  Is borrowed: {}", matches!(string_view, StringView::Borrowed(_)));
-    
-    Ok(())
-}
-
-/// Demonstrate efficient iterator usage
-fn demonstrate_efficient_iterators() {
-    println!("\n=== Efficient Iterators ===");
-    
-    // Sample data
+    // Sample employee data using new API
     let employees = vec![
-        ApiRow::from_slice(&[
+        ApiRow::new(vec![
             Value::Text("Alice".to_string()),
-            Value::Integer(100000),
-            Value::Text("Engineering".to_string()),
-        ]),
-        ApiRow::from_slice(&[
-            Value::Text("Bob".to_string()),
-            Value::Integer(90000),
-            Value::Text("Engineering".to_string()),
-        ]),
-        ApiRow::from_slice(&[
-            Value::Text("Charlie".to_string()),
             Value::Integer(120000),
+            Value::Text("Engineering".to_string()),
+        ]),
+        ApiRow::new(vec![
+            Value::Text("Bob".to_string()),
+            Value::Integer(80000),
             Value::Text("Sales".to_string()),
         ]),
-        ApiRow::from_slice(&[
+        ApiRow::new(vec![
+            Value::Text("Charlie".to_string()),
+            Value::Integer(150000),
+            Value::Text("Management".to_string()),
+        ]),
+        ApiRow::new(vec![
             Value::Text("David".to_string()),
             Value::Integer(95000),
             Value::Text("Engineering".to_string()),
         ]),
-        ApiRow::from_slice(&[
+        ApiRow::new(vec![
+            Value::Text("Eve".to_string()),
+            Value::Integer(110000),
+            Value::Text("Sales".to_string()),
+        ]),
+    ];
+    
+    // Create zero-copy table view
+    let table_view = TableView::new(&employees);
+    
+    // Demonstrate zero-copy filtering
+    println!("Employees in Engineering (zero-copy filter):");
+    for row in table_view.iter() {
+        if let Some(Value::Text(dept)) = row.get(2) {
+            if dept == "Engineering" {
+                if let Some(Value::Text(name)) = row.get(0) {
+                    println!("  - {}", name);
+                }
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+/// Demonstrate efficient iterator combinators
+fn demonstrate_efficient_iterators() {
+    println!("\n=== Efficient Iterator Combinators ===");
+    
+    // Sample employee data using new API
+    let employees = vec![
+        ApiRow::new(vec![
+            Value::Text("Alice".to_string()),
+            Value::Integer(120000),
+            Value::Text("Engineering".to_string()),
+        ]),
+        ApiRow::new(vec![
+            Value::Text("Bob".to_string()),
+            Value::Integer(80000),
+            Value::Text("Sales".to_string()),
+        ]),
+        ApiRow::new(vec![
+            Value::Text("Charlie".to_string()),
+            Value::Integer(150000),
+            Value::Text("Management".to_string()),
+        ]),
+        ApiRow::new(vec![
+            Value::Text("David".to_string()),
+            Value::Integer(95000),
+            Value::Text("Engineering".to_string()),
+        ]),
+        ApiRow::new(vec![
             Value::Text("Eve".to_string()),
             Value::Integer(110000),
             Value::Text("Sales".to_string()),
@@ -215,7 +191,7 @@ fn demonstrate_borrowed_structures() -> Result<(), Box<dyn std::error::Error>> {
     }
     
     // Create an ApiRow for predicate evaluation
-    let test_row = ApiRow::from_slice(&[
+    let test_row = ApiRow::new(vec![
         Value::Integer(100),
         Value::Text("Test".to_string()),
         Value::Boolean(true),

@@ -1,43 +1,66 @@
 //! Public API types for Oxidb database
 
 use crate::core::common::types::Value;
-use std::collections::HashMap;
 
 /// Represents the result of a query execution.
 #[derive(Debug, Clone, PartialEq)]
 pub struct QueryResult {
-    /// Number of rows affected by the query (for INSERT, UPDATE, DELETE)
-    pub rows_affected: usize,
-    /// The result set for SELECT queries
-    pub rows: Option<RowSet>,
-}
-
-/// Represents a set of rows returned from a query
-#[derive(Debug, Clone, PartialEq)]
-pub struct RowSet {
     /// Column names in the result set
     pub columns: Vec<String>,
-    /// The actual row data
+    /// The actual rows of data
     pub rows: Vec<Row>,
 }
 
 /// Represents a single row of data
-pub type Row = HashMap<String, Value>;
+#[derive(Debug, Clone, PartialEq)]
+pub struct Row {
+    /// Values in the row, ordered by column position
+    pub values: Vec<Value>,
+}
 
 impl QueryResult {
-    /// Create a new QueryResult for non-SELECT queries
-    pub fn affected(rows_affected: usize) -> Self {
+    /// Create a new empty QueryResult
+    pub fn empty() -> Self {
         Self {
-            rows_affected,
-            rows: None,
+            columns: Vec::new(),
+            rows: Vec::new(),
         }
     }
 
-    /// Create a new QueryResult for SELECT queries
-    pub fn with_rows(columns: Vec<String>, rows: Vec<Row>) -> Self {
-        Self {
-            rows_affected: rows.len(),
-            rows: Some(RowSet { columns, rows }),
-        }
+    /// Create a new QueryResult with the given columns and rows
+    pub fn new(columns: Vec<String>, rows: Vec<Row>) -> Self {
+        Self { columns, rows }
+    }
+
+    /// Get the number of rows in the result
+    pub fn row_count(&self) -> usize {
+        self.rows.len()
+    }
+
+    /// Check if the result is empty
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+}
+
+impl Row {
+    /// Create a new row with the given values
+    pub fn new(values: Vec<Value>) -> Self {
+        Self { values }
+    }
+
+    /// Get a value by column index
+    pub fn get(&self, index: usize) -> Option<&Value> {
+        self.values.get(index)
+    }
+
+    /// Get the number of values in the row
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+
+    /// Check if the row is empty
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
     }
 }
