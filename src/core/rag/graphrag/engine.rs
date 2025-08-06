@@ -108,7 +108,14 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
             .collect();
         
         // Sort by score descending
-        matching_docs.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        matching_docs.sort_unstable_by(|a, b| {
+            match (b.1.is_nan(), a.1.is_nan()) {
+                (true, true) => std::cmp::Ordering::Equal,
+                (true, false) => std::cmp::Ordering::Greater, // NaN goes to the end
+                (false, true) => std::cmp::Ordering::Less,
+                (false, false) => b.1.partial_cmp(&a.1).unwrap(),
+            }
+        });
         
         // Take only the top max_results
         matching_docs.truncate(context.max_results);
