@@ -13,7 +13,7 @@
 //! - Performance and quality comparison
 //! - Domain-agnostic knowledge graph construction
 
-use oxidb::core::rag::core_components::Document;
+use oxidb::core::rag::document::Document;
 use oxidb::core::rag::embedder::{EmbeddingModel, SemanticEmbedder, TfIdfEmbedder};
 use oxidb::core::rag::graphrag::{GraphRAGEngineImpl, GraphRAGContext};
 use oxidb::core::rag::retriever::{InMemoryRetriever, SimilarityMetric};

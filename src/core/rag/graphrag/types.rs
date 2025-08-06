@@ -6,7 +6,7 @@
 
 use crate::core::graph::{NodeId, EdgeId};
 use crate::core::common::types::Value;
-use crate::core::rag::core_components::Embedding;
+use crate::core::rag::document::Embedding;
 use std::collections::HashMap;
 
 /// Represents a knowledge node in the graph with semantic information

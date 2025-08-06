@@ -6,7 +6,7 @@
 //! - More sophisticated knowledge graph construction
 //! - Comprehensive performance and quality analysis
 
-use oxidb::core::rag::core_components::Document;
+use oxidb::core::rag::document::Document;
 use oxidb::core::rag::embedder::{EmbeddingModel, SemanticEmbedder, TfIdfEmbedder};
 use oxidb::core::rag::graphrag::{GraphRAGEngineImpl, GraphRAGContext, KnowledgeNode, KnowledgeEdge};
 use oxidb::core::rag::retriever::{InMemoryRetriever, SimilarityMetric};

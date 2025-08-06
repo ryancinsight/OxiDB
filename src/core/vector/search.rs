@@ -5,7 +5,7 @@
 //! It implements various search strategies and indexing methods for high-performance vector retrieval.
 
 use crate::core::common::OxidbError;
-use crate::core::rag::core_components::{Document, Embedding};
+use crate::core::rag::document::{Document, Embedding};
 use crate::core::vector::similarity::{cosine_similarity, dot_product};
 use std::collections::{BinaryHeap, HashMap};
 use std::cmp::Ordering;
@@ -405,7 +405,7 @@ impl VectorSearchEngineFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::rag::core_components::{Document, Embedding};
+    use crate::core::rag::document::{Document, Embedding};
 
     fn create_test_documents() -> Result<Vec<Document>, OxidbError> {
         let mut documents = Vec::new();

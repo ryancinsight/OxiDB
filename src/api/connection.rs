@@ -1,17 +1,17 @@
-use crate::api::types::QueryResult;
+use crate::api::types::{QueryResult, Row};
 use crate::core::common::types::Value;
 use crate::core::common::OxidbError;
 use crate::core::config::Config;
 use crate::core::performance::{PerformanceContext, PerformanceAnalyzer};
 use crate::core::query::executor::QueryExecutor;
-use crate::core::query::parser::{parse_query_string, parse_sql_to_ast};
-use crate::core::query::sql::ast::Statement;
+use crate::core::query::parser::parse_sql_to_ast;
+
 use crate::core::storage::engine::SimpleFileKvStore;
 use crate::core::wal::log_manager::LogManager;
 use crate::core::wal::writer::WalWriter;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use std::path::PathBuf;
 
 /// A database connection that provides an ergonomic API for database operations.
@@ -100,59 +100,168 @@ impl Connection {
         self.performance.config.slow_query_threshold = Duration::from_millis(100);
     }
 
-    /// Executes a SQL query and returns the result.
+    /// Executes a SQL query and returns the result set
+    /// 
+    /// This method is optimized for SELECT statements that return data.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `sql` - The SQL query to execute
+    /// 
+    /// # Returns
+    /// 
+    /// A `QueryResult` containing the rows returned by the query
     /// 
     /// # Errors
     /// 
-    /// Returns `OxidbError` if:
-    /// - The SQL query cannot be parsed
-    /// - The command execution fails due to storage, transaction, or other database errors
-    /// - Performance metrics recording fails (non-fatal, logged but doesn't fail the operation)
-    pub fn execute(&mut self, sql: &str) -> Result<QueryResult, OxidbError> {
-        let start_time = Instant::now();
+    /// Returns an error if:
+    /// - The SQL cannot be parsed
+    /// - The query execution fails
+    /// - The connection is closed
+    /// 
+    /// # Example
+    /// 
+    /// ```no_run
+    /// # use oxidb::Connection;
+    /// # fn example() -> Result<(), oxidb::OxidbError> {
+    /// let conn = Connection::open("test.db")?;
+    /// let result = conn.query("SELECT * FROM users")?;
+    /// if let Some(rows) = result.rows {
+    ///     for row in rows.rows {
+    ///         println!("{:?}", row);
+    ///     }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn query(&mut self, sql: &str) -> Result<QueryResult, OxidbError> {
+        // Parse SQL to AST
+        let statement = parse_sql_to_ast(sql)?;
+        let result = self.executor.execute_ast_statement(statement)?;
         
-        // First try to parse as AST to check for aggregate functions
-        if let Ok(ast_statement) = parse_sql_to_ast(sql) {
-            // Check if this is a SELECT with aggregate functions
-            if let Statement::Select(ref select_stmt) = ast_statement {
-                let has_aggregates = select_stmt.columns.iter().any(|col| {
-                    matches!(col, crate::core::query::sql::ast::SelectColumn::AggregateFunction { .. })
-                });
+        // Convert ExecutionResult to QueryResult
+        use crate::core::query::executor::ExecutionResult;
+        
+        let query_result = match result {
+            ExecutionResult::Query { columns, rows } => {
+                // Convert DataType rows to Value rows
+                let value_rows: Vec<crate::api::types::Row> = rows.into_iter().map(|data_row| {
+                    let mut row = Row::new();
+                    for (i, value) in data_row.into_iter().enumerate() {
+                        if i < columns.len() {
+                            row.insert(columns[i].clone(), Self::data_type_to_value(value));
+                        }
+                    }
+                    row
+                }).collect();
                 
-                if has_aggregates {
-                    // Use AST-based execution for aggregate queries
-                    let result = self.executor.execute_ast_statement(ast_statement)?;
-                    let query_result = QueryResult::from_execution_result(result);
-                    
-                    // Record performance metrics
-                    let duration = start_time.elapsed();
-                    let rows_affected = match &query_result {
-                        QueryResult::RowsAffected(count) => *count,
-                        QueryResult::Data(data) => data.row_count() as u64,
-                        QueryResult::Success => 0,
-                    };
-                    let _ = self.performance.record_query(sql, duration, rows_affected);
-                    
-                    return Ok(query_result);
-                }
+                QueryResult::with_rows(columns, value_rows)
             }
-        }
-        
-        // Fall back to command-based execution for non-aggregate queries
-        let command = parse_query_string(sql)?;
-        let result = self.executor.execute_command(command)?;
-        let query_result = QueryResult::from_execution_result(result);
-
-        // Record performance metrics
-        let duration = start_time.elapsed();
-        let rows_affected = match &query_result {
-            QueryResult::RowsAffected(count) => *count,
-            QueryResult::Data(data) => data.row_count() as u64,
-            QueryResult::Success => 0,
+            ExecutionResult::RankedResults(results) => {
+                // For ranked results, include distance as a column
+                let columns = vec!["distance".to_string(), "data".to_string()];
+                let value_rows: Vec<crate::api::types::Row> = results.into_iter().map(|(distance, data_types)| {
+                    let mut row = Row::new();
+                    row.insert("distance".to_string(), Value::Float(f64::from(distance)));
+                    // Combine other values into a single data field
+                    if !data_types.is_empty() {
+                        row.insert("data".to_string(), Self::data_type_to_value(data_types[0].clone()));
+                    }
+                    row
+                }).collect();
+                
+                QueryResult::with_rows(columns, value_rows)
+            }
+            _ => {
+                // For non-query operations, return affected rows count
+                let rows_affected = match result {
+                    ExecutionResult::Success => 0,
+                    ExecutionResult::Deleted(true) => 1,
+                    ExecutionResult::Deleted(false) => 0,
+                    ExecutionResult::Updated { count } => count as usize,
+                    _ => 0,
+                };
+                QueryResult::affected(rows_affected)
+            }
         };
-        let _ = self.performance.record_query(sql, duration, rows_affected);
-
+        
+        // Track in connection info
+        // self.info.lock().unwrap().mark_used(); // This line was removed as per the new_code
+        
         Ok(query_result)
+    }
+    
+    /// Helper method to convert DataType to Value
+    fn data_type_to_value(data_type: crate::core::types::DataType) -> Value {
+        use crate::core::types::DataType;
+        
+        match data_type {
+            DataType::Integer(i) => Value::Integer(i),
+            DataType::Float(f) => Value::Float(f.0),
+            DataType::String(s) => Value::Text(s),
+            DataType::Boolean(b) => Value::Boolean(b),
+            DataType::RawBytes(b) => Value::Blob(b),
+            DataType::Vector(v) => Value::Vector(v.0.data),
+            DataType::Null => Value::Null,
+            DataType::Map(map) => Value::Text(
+                serde_json::to_string(&map.0).unwrap_or_else(|_| "{}".to_string())
+            ),
+            DataType::JsonBlob(json) => Value::Text(json.0.to_string()),
+        }
+    }
+
+    /// Executes a SQL statement without returning results
+    /// 
+    /// This method is optimized for statements that don't return data (INSERT, UPDATE, DELETE, DDL).
+    /// 
+    /// # Arguments
+    /// 
+    /// * `sql` - The SQL statement to execute
+    /// 
+    /// # Returns
+    /// 
+    /// The number of rows affected by the operation
+    /// 
+    /// # Errors
+    /// 
+    /// Returns an error if:
+    /// - The SQL cannot be parsed
+    /// - The statement execution fails
+    /// - The connection is closed
+    /// 
+    /// # Example
+    /// 
+    /// ```no_run
+    /// # use oxidb::Connection;
+    /// # fn example() -> Result<(), oxidb::OxidbError> {
+    /// let conn = Connection::open("test.db")?;
+    /// let rows_affected = conn.execute("INSERT INTO users (name) VALUES ('Alice')")?;
+    /// println!("Inserted {} rows", rows_affected);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn execute(&mut self, sql: &str) -> Result<u64, OxidbError> {
+        // Parse SQL to AST
+        let statement = parse_sql_to_ast(sql)?;
+        let result = self.executor.execute_ast_statement(statement)?;
+        
+        // Convert ExecutionResult to rows affected count
+        use crate::core::query::executor::ExecutionResult;
+        let rows_affected = match result {
+            ExecutionResult::Success => 0,
+            ExecutionResult::Deleted(true) => 1,
+            ExecutionResult::Deleted(false) => 0,
+            ExecutionResult::Updated { count } => count as u64,
+            ExecutionResult::Query { rows, .. } => rows.len() as u64,
+            ExecutionResult::Value(_) => 0,
+            ExecutionResult::Values(_) => 0,
+            ExecutionResult::RankedResults(ref results) => results.len() as u64,
+        };
+        
+        // Track in connection info
+        // self.info.lock().unwrap().mark_used(); // This line was removed as per the new_code
+        
+        Ok(rows_affected)
     }
 
     /// Begins a new transaction.
@@ -163,8 +272,8 @@ impl Connection {
     /// - The transaction manager fails to initialize the transaction
     /// - WAL logging fails during transaction start
     pub fn begin_transaction(&mut self) -> Result<(), OxidbError> {
-        let command = parse_query_string("BEGIN")?;
-        self.executor.execute_command(command)?;
+        let statement = parse_sql_to_ast("BEGIN")?;
+        self.executor.execute_ast_statement(statement)?;
         Ok(())
     }
 
@@ -177,8 +286,8 @@ impl Connection {
     /// - Data persistence to disk fails
     /// - Transaction state consistency cannot be maintained
     pub fn commit(&mut self) -> Result<(), OxidbError> {
-        let command = parse_query_string("COMMIT")?;
-        self.executor.execute_command(command)?;
+        let statement = parse_sql_to_ast("COMMIT")?;
+        self.executor.execute_ast_statement(statement)?;
         Ok(())
     }
 
@@ -191,8 +300,8 @@ impl Connection {
     /// - WAL recovery encounters corrupted entries
     /// - Lock release fails during rollback cleanup
     pub fn rollback(&mut self) -> Result<(), OxidbError> {
-        let command = parse_query_string("ROLLBACK")?;
-        self.executor.execute_command(command)?;
+        let statement = parse_sql_to_ast("ROLLBACK")?;
+        self.executor.execute_ast_statement(statement)?;
         Ok(())
     }
 
@@ -290,10 +399,10 @@ impl Connection {
     ///         &format!("SELECT * FROM {} WHERE id = ?", table_name),
     ///         &[Value::Integer(1)]
     ///     )?;
-    ///     if let QueryResult::Data(data) = result {
-    ///         assert_eq!(data.row_count(), 1);
-    ///         // Check the row data - note that data is returned in a specific format
-    ///         let row = data.get_row(0).unwrap();
+    ///     if let Some(rows) = result.rows {
+    ///         assert_eq!(rows.rows.len(), 1);
+    ///         // Check the row data
+    ///         let row = &rows.rows[0];
     ///         // The actual data structure may vary based on internal storage
     ///         assert!(row.len() >= 2); // At least 2 columns
     ///     }
@@ -322,7 +431,39 @@ impl Connection {
 
         // Execute the parameterized command
         let result = self.executor.execute_command(parameterized_command)?;
-        Ok(QueryResult::from_execution_result(result))
+        
+        // Convert ExecutionResult to QueryResult
+        use crate::core::query::executor::ExecutionResult;
+        
+        let query_result = match result {
+            ExecutionResult::Query { columns, rows } => {
+                // Convert DataType rows to Value rows
+                let value_rows: Vec<crate::api::types::Row> = rows.into_iter().map(|data_row| {
+                    let mut row = Row::new();
+                    for (i, value) in data_row.into_iter().enumerate() {
+                        if i < columns.len() {
+                            row.insert(columns[i].clone(), Self::data_type_to_value(value));
+                        }
+                    }
+                    row
+                }).collect();
+                
+                QueryResult::with_rows(columns, value_rows)
+            }
+            _ => {
+                // For non-query operations, return affected rows count
+                let rows_affected = match result {
+                    ExecutionResult::Success => 0,
+                    ExecutionResult::Deleted(true) => 1,
+                    ExecutionResult::Deleted(false) => 0,
+                    ExecutionResult::Updated { count } => count as usize,
+                    _ => 0,
+                };
+                QueryResult::affected(rows_affected)
+            }
+        };
+        
+        Ok(query_result)
     }
 
     /// Executes a query and returns the first row, if any.
@@ -342,11 +483,8 @@ impl Connection {
     /// - Query execution fails due to storage or transaction errors
     /// - Database access is denied or locked
     pub fn query_row(&mut self, sql: &str) -> Result<Option<crate::api::types::Row>, OxidbError> {
-        let result = self.execute(sql)?;
-        match result {
-            QueryResult::Data(data) => Ok(data.rows().next().cloned()),
-            _ => Ok(None),
-        }
+        let result = self.query(sql)?;
+        Ok(result.rows.and_then(|rows| rows.rows.into_iter().next()))
     }
 
     /// Executes a query and returns all rows.
@@ -366,11 +504,8 @@ impl Connection {
     /// - Memory allocation fails for large result sets
     /// - Database access is denied or locked
     pub fn query_all(&mut self, sql: &str) -> Result<Vec<crate::api::types::Row>, OxidbError> {
-        let result = self.execute(sql)?;
-        match result {
-            QueryResult::Data(data) => Ok(data.rows().cloned().collect()),
-            _ => Ok(vec![]),
-        }
+        let result = self.query(sql)?;
+        Ok(result.rows.map(|rows| rows.rows).unwrap_or_default())
     }
 
     /// Executes an UPDATE, INSERT, or DELETE statement and returns the number of affected rows.
@@ -382,12 +517,7 @@ impl Connection {
     /// - The statement returns data instead of a row count (e.g., SELECT statements)
     /// - Underlying database operations fail
     pub fn execute_update(&mut self, sql: &str) -> Result<u64, OxidbError> {
-        let result = self.execute(sql)?;
-        match result {
-            QueryResult::RowsAffected(count) => Ok(count),
-            QueryResult::Success => Ok(0),
-            QueryResult::Data(_) => Err(OxidbError::Execution("Expected update result, got data result".to_string())),
-        }
+        self.execute(sql)
     }
 
 
@@ -421,23 +551,20 @@ mod tests {
         let table_name = format!("test_users_{}", std::process::id());
         let create_sql = format!("CREATE TABLE {table_name} (id INTEGER PRIMARY KEY, name TEXT)");
         let result = conn.execute(&create_sql)?;
-        assert_eq!(result, QueryResult::Success);
+        assert_eq!(result, 0);
 
         // Insert data
         let insert_sql = format!("INSERT INTO {table_name} (id, name) VALUES (1, 'Alice')");
         let result = conn.execute(&insert_sql)?;
-        assert_eq!(result, QueryResult::RowsAffected(1));
+        assert_eq!(result, 1);
 
         // Query data
         let select_sql = format!("SELECT * FROM {table_name}");
-        let result = conn.execute(&select_sql)?;
-        match result {
-            QueryResult::Data(data) => {
-                assert_eq!(data.column_count(), 2);
-                assert_eq!(data.row_count(), 1);
-            }
-            _ => assert!(false, "Expected data result"),
-        }
+        let result = conn.query(&select_sql)?;
+        assert!(result.rows.is_some());
+        let rows = result.rows.unwrap();
+        assert_eq!(rows.columns.len(), 2);
+        assert_eq!(rows.rows.len(), 1);
 
         Ok(())
     }
@@ -457,17 +584,14 @@ mod tests {
             &insert_sql,
             &[Value::Integer(1), Value::Text("Bob".to_string()), Value::Integer(25)],
         )?;
-        assert_eq!(result, QueryResult::RowsAffected(1));
+        assert_eq!(result.rows_affected, 1);
 
         // Test parameterized select
         let select_sql = format!("SELECT * FROM {table_name} WHERE id = ?");
         let result = conn.execute_with_params(&select_sql, &[Value::Integer(1)])?;
-        match result {
-            QueryResult::Data(data) => {
-                assert_eq!(data.row_count(), 1);
-            }
-            _ => assert!(false, "Expected data result"),
-        }
+        assert!(result.rows.is_some());
+        let rows = result.rows.unwrap();
+        assert_eq!(rows.rows.len(), 1);
 
         Ok(())
     }
@@ -488,11 +612,10 @@ mod tests {
         conn.commit()?;
 
         let select_sql = format!("SELECT * FROM {table_name}");
-        let result = conn.execute(&select_sql)?;
+        let result = conn.query(&select_sql)?;
         // Should have 1 row
-        if let QueryResult::Data(data) = result {
-            assert_eq!(data.row_count(), 1);
-        }
+        assert!(result.rows.is_some());
+        assert_eq!(result.rows.unwrap().rows.len(), 1);
 
         // Test rollback
         conn.begin_transaction()?;
@@ -500,11 +623,10 @@ mod tests {
         conn.execute(&insert_sql2)?;
         conn.rollback()?;
 
-        let result = conn.execute(&select_sql)?;
+        let result = conn.query(&select_sql)?;
         // Should still have 1 row (rollback worked)
-        if let QueryResult::Data(data) = result {
-            assert_eq!(data.row_count(), 1);
-        }
+        assert!(result.rows.is_some());
+        assert_eq!(result.rows.unwrap().rows.len(), 1);
 
         Ok(())
     }
@@ -526,38 +648,28 @@ mod tests {
         println!("Second INSERT result: {:?}", result2);
 
         // Test basic query operations
-        let result = conn.execute(&format!("SELECT * FROM {} WHERE id = 1", table_name))?;
-        if let QueryResult::Data(data) = result {
-            assert_eq!(data.row_count(), 1);
-        } else {
-            assert!(false, "Expected data result");
-        }
+        let result = conn.query(&format!("SELECT * FROM {} WHERE id = 1", table_name))?;
+        assert!(result.rows.is_some());
+        assert_eq!(result.rows.unwrap().rows.len(), 1);
 
         // Test query_all equivalent
-        let result = conn.execute(&format!("SELECT * FROM {}", table_name))?;
+        let result = conn.query(&format!("SELECT * FROM {}", table_name))?;
         println!("SELECT * result: {:?}", result);
-        if let QueryResult::Data(data) = result {
-            println!("Expected 2 rows, got {} rows", data.row_count());
-            for (i, row) in data.rows.iter().enumerate() {
-                println!("Row {}: {:?}", i, row);
-            }
-            assert_eq!(data.row_count(), 2);
-        } else {
-            assert!(false, "Expected data result");
+        assert!(result.rows.is_some());
+        let rows = result.rows.unwrap();
+        println!("Expected 2 rows, got {} rows", rows.rows.len());
+        for (i, row) in rows.rows.iter().enumerate() {
+            println!("Row {}: {:?}", i, row);
         }
+        assert_eq!(rows.rows.len(), 2);
 
         // Test execute_update equivalent
         let result =
             conn.execute(&format!("UPDATE {} SET name = 'Charlie' WHERE id = 1", table_name))?;
         // Note: Due to global hash indexes, this may affect rows in multiple tables
         // that have the same values. This is a known limitation of the current system.
-        match result {
-            QueryResult::RowsAffected(count) if count >= 1 => {
-                // At least one row was affected, which is what we expect
-                println!("UPDATE affected {} rows (expected >= 1)", count);
-            }
-            _ => assert!(false, "Expected at least 1 row to be affected, got: {:?}", result),
-        }
+        assert!(result >= 1, "Expected at least 1 row to be affected, got: {}", result);
+        println!("UPDATE affected {} rows (expected >= 1)", result);
 
         Ok(())
     }

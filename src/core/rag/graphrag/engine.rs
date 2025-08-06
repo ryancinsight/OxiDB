@@ -19,7 +19,7 @@ pub trait GraphRAGEngine: Send + Sync {
     /// Add a document to the knowledge graph
     async fn add_document(
         &mut self,
-        document: &crate::core::rag::core_components::Document,
+        document: &crate::core::rag::document::Document,
     ) -> Result<NodeId, OxidbError>;
 
     /// Add a relationship between nodes
@@ -48,15 +48,11 @@ pub trait GraphRAGEngine: Send + Sync {
 
 /// Implementation of the GraphRAG engine
 pub struct GraphRAGEngineImpl {
-    #[allow(dead_code)]
     graph_store: Arc<Mutex<dyn GraphStore>>,
-    #[allow(dead_code)]
     embedder: Arc<dyn crate::core::rag::embedder::EmbeddingModel + Send + Sync>,
     #[allow(dead_code)]
     config: GraphRAGConfig,
-    #[allow(dead_code)]
     entities: HashMap<NodeId, KnowledgeNode>,
-    #[allow(dead_code)]
     relationships: HashMap<(NodeId, NodeId), KnowledgeEdge>,
     /// Atomic counter for generating unique node IDs
     next_node_id: Arc<AtomicU64>,
@@ -132,7 +128,7 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
 
     async fn add_document(
         &mut self,
-        document: &crate::core::rag::core_components::Document,
+        document: &crate::core::rag::document::Document,
     ) -> Result<NodeId, OxidbError> {
         // Generate embedding for the document
         let embedding = self.embedder.embed(&document.content).await?;

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::core::common::OxidbError;
 use crate::core::common::types::Value;
 use crate::core::rag::{
-    core_components::{Document, Embedding},
+    document::{Document, Embedding},
     embedder::EmbeddingModel,
     graphrag::{GraphRAGContext, GraphRAGEngine, GraphRAGResult, KnowledgeNode},
     retriever::{Retriever, SimilarityMetric},
