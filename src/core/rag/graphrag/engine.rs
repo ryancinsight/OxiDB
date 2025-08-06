@@ -151,7 +151,8 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
         // Add to graph store
         let graph_data = crate::core::graph::GraphData::new("document".to_string())
             .with_properties(document.metadata.clone().unwrap_or_default());
-        self.graph_store.lock().unwrap().add_node(graph_data)?;
+        let mut graph_store = self.graph_store.lock().map_err(|_| OxidbError::Internal("Failed to acquire graph_store lock".to_string()))?;
+        graph_store.add_node(graph_data)?;
         
         Ok(node_id)
     }
