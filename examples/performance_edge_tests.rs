@@ -195,7 +195,7 @@ impl PerformanceTestSuite {
         let start_time = Instant::now();
 
         let conn = self.pool.get_connection()?;
-        let conn = conn.lock().unwrap();
+        let mut conn = conn.lock().unwrap();
 
         // Bulk insert test
         let insert_start = Instant::now();
@@ -274,7 +274,7 @@ impl PerformanceTestSuite {
                             }
                         };
 
-                        let conn_guard = conn.lock().unwrap();
+                        let mut conn_guard = conn.lock().unwrap();
                         
                         // Mix of operations to simulate real workload
                         match i % 4 {

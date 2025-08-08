@@ -1,3 +1,4 @@
+#![cfg(feature = "legacy_examples")]
 //! MySQL-Style E-commerce Database Example
 //! 
 //! This example demonstrates Oxidb usage patterns that are familiar to MySQL developers.

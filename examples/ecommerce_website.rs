@@ -8,8 +8,7 @@
 //! - Shopping cart functionality
 //! - Product recommendations using vector similarity
 
-use oxidb::{Connection, OxidbError, QueryResult};
-use oxidb::core::types::DataType;
+use oxidb::{Connection, OxidbError, QueryResult, Row, Value};
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 
@@ -174,15 +173,10 @@ impl EcommerceDB {
         let sql = format!("SELECT * FROM products WHERE id = '{}'", product_id);
         let result = self.db.execute(&sql)?;
         
-        match result {
-            QueryResult::Data(data) => {
-                if let Some(row) = data.rows().next() {
-                    Ok(Some(self.row_to_product(row)?))
-                } else {
-                    Ok(None)
-                }
-            }
-            _ => Ok(None),
+        if let oxidb::QueryResult::Data(ds) = result { if let Some(row) = ds.rows.first() {
+            Ok(Some(self.row_to_product(row)?))
+        } else { Ok(None) } } else {
+            Ok(None)
         }
     }
     
@@ -190,14 +184,7 @@ impl EcommerceDB {
         let sql = format!("SELECT * FROM products WHERE category = '{}'", category);
         let result = self.db.execute(&sql)?;
         
-        match result {
-            QueryResult::Data(data) => {
-                data.rows.iter()
-                    .map(|row| self.row_to_product(row))
-                    .collect()
-            }
-            _ => Ok(Vec::new()),
-        }
+        match result { oxidb::QueryResult::Data(ds) => ds.rows.iter().map(|row| self.row_to_product(row)).collect(), _ => Ok(Vec::new()) }
     }
     
     fn find_similar_products(&mut self, product_id: &str, limit: usize) -> Result<Vec<Product>, OxidbError> {
@@ -219,14 +206,7 @@ impl EcommerceDB {
             );
             
             let result = self.db.execute(&sql)?;
-            match result {
-                QueryResult::Data(data) => {
-                    data.rows.iter()
-                        .map(|row| self.row_to_product(row))
-                        .collect()
-                }
-                _ => Ok(Vec::new()),
-            }
+            match result { oxidb::QueryResult::Data(ds) => ds.rows.iter().map(|row| self.row_to_product(row)).collect(), _ => Ok(Vec::new()) }
         } else {
             // Fallback to category-based recommendations
             Ok(self.search_products_by_category(&product.category)?
@@ -260,16 +240,7 @@ impl EcommerceDB {
         let sql = format!("SELECT * FROM users WHERE email = '{}'", email);
         let result = self.db.execute(&sql)?;
         
-        match result {
-            QueryResult::Data(data) => {
-                if let Some(row) = data.rows.first() {
-                    Ok(Some(self.row_to_user(row)?))
-                } else {
-                    Ok(None)
-                }
-            }
-            _ => Ok(None),
-        }
+        if let oxidb::QueryResult::Data(ds) = result { if let Some(row) = ds.rows.first() { Ok(Some(self.row_to_user(row)?)) } else { Ok(None) } } else { Ok(None) }
     }
     
     // Order management
@@ -303,14 +274,7 @@ impl EcommerceDB {
         let sql = format!("SELECT * FROM orders WHERE user_id = '{}'", user_id);
         let result = self.db.execute(&sql)?;
         
-        match result {
-            QueryResult::Data(data) => {
-                data.rows.iter()
-                    .map(|row| self.row_to_order(row))
-                    .collect()
-            }
-            _ => Ok(Vec::new()),
-        }
+        match result { oxidb::QueryResult::Data(ds) => ds.rows.iter().map(|row| self.row_to_order(row)).collect(), _ => Ok(Vec::new()) }
     }
     
     // Shopping cart
@@ -333,16 +297,7 @@ impl EcommerceDB {
         let sql = format!("SELECT * FROM shopping_carts WHERE user_id = '{}'", user_id);
         let result = self.db.execute(&sql)?;
         
-        match result {
-            QueryResult::Data(data) => {
-                if let Some(row) = data.rows.first() {
-                    Ok(Some(self.row_to_cart(row)?))
-                } else {
-                    Ok(None)
-                }
-            }
-            _ => Ok(None),
-        }
+        if let oxidb::QueryResult::Data(ds) = result { if let Some(row) = ds.rows.first() { Ok(Some(self.row_to_cart(row)?)) } else { Ok(None) } } else { Ok(None) }
     }
     
     // Helper methods
@@ -355,106 +310,94 @@ impl EcommerceDB {
         Ok(())
     }
     
-    fn row_to_product(&mut self, row: &[DataType]) -> Result<Product, OxidbError> {
+    fn row_to_product(&mut self, row: &Row) -> Result<Product, OxidbError> {
         // Parse row data into Product struct
         // This is a simplified version - in production you'd want more robust parsing
         Ok(Product {
-            id: self.get_string(&row[0])?,
-            name: self.get_string(&row[1])?,
-            description: self.get_string(&row[2])?,
-            price: self.get_float(&row[3])?,
-            category: self.get_string(&row[4])?,
-            stock: self.get_integer(&row[5])?,
-            embedding: self.get_vector(&row[6])?,
-            tags: serde_json::from_str(&self.get_string(&row[7])?).unwrap_or_default(),
-            created_at: DateTime::parse_from_rfc3339(&self.get_string(&row[8])?)
+            id: self.get_string(row.get(0).ok_or_else(|| OxidbError::Other("Missing id".to_string()))?)?,
+            name: self.get_string(row.get(1).ok_or_else(|| OxidbError::Other("Missing name".to_string()))?)?,
+            description: self.get_string(row.get(2).ok_or_else(|| OxidbError::Other("Missing description".to_string()))?)?,
+            price: self.get_float(row.get(3).ok_or_else(|| OxidbError::Other("Missing price".to_string()))?)?,
+            category: self.get_string(row.get(4).ok_or_else(|| OxidbError::Other("Missing category".to_string()))?)?,
+            stock: self.get_integer(row.get(5).ok_or_else(|| OxidbError::Other("Missing stock".to_string()))?)?,
+            embedding: self.get_vector(row.get(6).ok_or_else(|| OxidbError::Other("Missing embedding".to_string()))?)?,
+            tags: serde_json::from_str(&self.get_string(row.get(7).ok_or_else(|| OxidbError::Other("Missing tags".to_string()))?)?).unwrap_or_default(),
+            created_at: DateTime::parse_from_rfc3339(&self.get_string(row.get(8).ok_or_else(|| OxidbError::Other("Missing created_at".to_string()))?)?)
                 .unwrap()
                 .with_timezone(&Utc),
-            updated_at: DateTime::parse_from_rfc3339(&self.get_string(&row[9])?)
+            updated_at: DateTime::parse_from_rfc3339(&self.get_string(row.get(9).ok_or_else(|| OxidbError::Other("Missing updated_at".to_string()))?)?)
                 .unwrap()
                 .with_timezone(&Utc),
         })
     }
     
-    fn row_to_user(&mut self, row: &[DataType]) -> Result<User, OxidbError> {
+    fn row_to_user(&mut self, row: &Row) -> Result<User, OxidbError> {
         Ok(User {
-            id: self.get_string(&row[0])?,
-            email: self.get_string(&row[1])?,
-            name: self.get_string(&row[2])?,
-            password_hash: self.get_string(&row[3])?,
-            shipping_address: serde_json::from_str(&self.get_string(&row[4])?).unwrap(),
-            created_at: DateTime::parse_from_rfc3339(&self.get_string(&row[5])?)
+            id: self.get_string(row.get(0).ok_or_else(|| OxidbError::Other("Missing id".to_string()))?)?,
+            email: self.get_string(row.get(1).ok_or_else(|| OxidbError::Other("Missing email".to_string()))?)?,
+            name: self.get_string(row.get(2).ok_or_else(|| OxidbError::Other("Missing name".to_string()))?)?,
+            password_hash: self.get_string(row.get(3).ok_or_else(|| OxidbError::Other("Missing password_hash".to_string()))?)?,
+            shipping_address: serde_json::from_str(&self.get_string(row.get(4).ok_or_else(|| OxidbError::Other("Missing shipping_address".to_string()))?)?).unwrap(),
+            created_at: DateTime::parse_from_rfc3339(&self.get_string(row.get(5).ok_or_else(|| OxidbError::Other("Missing created_at".to_string()))?)?)
                 .unwrap()
                 .with_timezone(&Utc),
         })
     }
     
-    fn row_to_order(&mut self, row: &[DataType]) -> Result<Order, OxidbError> {
+    fn row_to_order(&mut self, row: &Row) -> Result<Order, OxidbError> {
         Ok(Order {
-            id: self.get_string(&row[0])?,
-            user_id: self.get_string(&row[1])?,
-            items: serde_json::from_str(&self.get_string(&row[2])?).unwrap(),
-            total: self.get_float(&row[3])?,
-            status: serde_json::from_str(&self.get_string(&row[4])?).unwrap(),
-            created_at: DateTime::parse_from_rfc3339(&self.get_string(&row[5])?)
+            id: self.get_string(row.get(0).ok_or_else(|| OxidbError::Other("Missing id".to_string()))?)?,
+            user_id: self.get_string(row.get(1).ok_or_else(|| OxidbError::Other("Missing user_id".to_string()))?)?,
+            items: serde_json::from_str(&self.get_string(row.get(2).ok_or_else(|| OxidbError::Other("Missing items".to_string()))?)?).unwrap(),
+            total: self.get_float(row.get(3).ok_or_else(|| OxidbError::Other("Missing total".to_string()))?)?,
+            status: serde_json::from_str(&self.get_string(row.get(4).ok_or_else(|| OxidbError::Other("Missing status".to_string()))?)?).unwrap(),
+            created_at: DateTime::parse_from_rfc3339(&self.get_string(row.get(5).ok_or_else(|| OxidbError::Other("Missing created_at".to_string()))?)?)
                 .unwrap()
                 .with_timezone(&Utc),
-            updated_at: DateTime::parse_from_rfc3339(&self.get_string(&row[6])?)
+            updated_at: DateTime::parse_from_rfc3339(&self.get_string(row.get(6).ok_or_else(|| OxidbError::Other("Missing updated_at".to_string()))?)?)
                 .unwrap()
                 .with_timezone(&Utc),
         })
     }
     
-    fn row_to_cart(&mut self, row: &[DataType]) -> Result<ShoppingCart, OxidbError> {
+    fn row_to_cart(&mut self, row: &Row) -> Result<ShoppingCart, OxidbError> {
         Ok(ShoppingCart {
-            user_id: self.get_string(&row[0])?,
-            items: serde_json::from_str(&self.get_string(&row[1])?).unwrap(),
-            updated_at: DateTime::parse_from_rfc3339(&self.get_string(&row[2])?)
+            user_id: self.get_string(row.get(0).ok_or_else(|| OxidbError::Other("Missing user_id".to_string()))?)?,
+            items: serde_json::from_str(&self.get_string(row.get(1).ok_or_else(|| OxidbError::Other("Missing items".to_string()))?)?).unwrap(),
+            updated_at: DateTime::parse_from_rfc3339(&self.get_string(row.get(2).ok_or_else(|| OxidbError::Other("Missing updated_at".to_string()))?)?)
                 .unwrap()
                 .with_timezone(&Utc),
         })
     }
     
-    fn get_string(&mut self, data: &DataType) -> Result<String, OxidbError> {
+    fn get_string(&mut self, data: &Value) -> Result<String, OxidbError> {
         match data {
-            DataType::String(s) => Ok(s.clone()),
-            DataType::Null => Ok(String::new()),
-            _ => Err(OxidbError::TypeMismatch { 
-                expected: "String".to_string(), 
-                found: format!("{:?}", data) 
-            }),
+            Value::Text(s) => Ok(s.clone()),
+            Value::Null => Ok(String::new()),
+            other => Err(OxidbError::Other(format!("Type mismatch: expected Text, found {:?}", other))),
         }
     }
     
-    fn get_float(&mut self, data: &DataType) -> Result<f64, OxidbError> {
+    fn get_float(&mut self, data: &Value) -> Result<f64, OxidbError> {
         match data {
-            DataType::Float(f) => Ok(f.0),
-            DataType::Integer(i) => Ok(*i as f64),
-            _ => Err(OxidbError::TypeMismatch { 
-                expected: "Float".to_string(), 
-                found: format!("{:?}", data) 
-            }),
+            Value::Float(f) => Ok(*f),
+            Value::Integer(i) => Ok(*i as f64),
+            other => Err(OxidbError::Other(format!("Type mismatch: expected Float, found {:?}", other))),
         }
     }
     
-    fn get_integer(&mut self, data: &DataType) -> Result<i64, OxidbError> {
+    fn get_integer(&mut self, data: &Value) -> Result<i64, OxidbError> {
         match data {
-            DataType::Integer(i) => Ok(*i),
-            _ => Err(OxidbError::TypeMismatch { 
-                expected: "Integer".to_string(), 
-                found: format!("{:?}", data) 
-            }),
+            Value::Integer(i) => Ok(*i),
+            other => Err(OxidbError::Other(format!("Type mismatch: expected Integer, found {:?}", other))),
         }
     }
     
-    fn get_vector(&mut self, data: &DataType) -> Result<Option<Vec<f32>>, OxidbError> {
+    fn get_vector(&mut self, data: &Value) -> Result<Option<Vec<f32>>, OxidbError> {
         match data {
-            DataType::Vector(v) => Ok(Some(v.0.data.clone())),
-            DataType::Null => Ok(None),
-            _ => Err(OxidbError::TypeMismatch { 
-                expected: "Vector".to_string(), 
-                found: format!("{:?}", data) 
-            }),
+            Value::Vector(v) => Ok(Some(v.clone())),
+            Value::Null => Ok(None),
+            other => Err(OxidbError::Other(format!("Type mismatch: expected Vector, found {:?}", other))),
         }
     }
 }
