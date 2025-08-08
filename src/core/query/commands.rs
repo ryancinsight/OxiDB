@@ -108,6 +108,11 @@ pub enum Command {
         statement: Statement,
         parameters: Vec<ParamValue>,
     },
+    // Legacy KV-style commands preserved as thin adapters to core handlers
+    Insert { key: Key, value: DataType },
+    Get { key: Key },
+    Delete { key: Key },
+    FindByIndex { index_name: String, value: Vec<u8> },
 }
 
 // Example of how these might be constructed (not strictly part of this file,

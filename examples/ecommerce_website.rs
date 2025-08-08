@@ -8,8 +8,7 @@
 //! - Shopping cart functionality
 //! - Product recommendations using vector similarity
 
-use oxidb::{Connection, OxidbError, QueryResult};
-use oxidb::core::types::DataType;
+use oxidb::{Connection, OxidbError, Value};
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 
@@ -172,32 +171,22 @@ impl EcommerceDB {
     
     fn get_product(&mut self, product_id: &str) -> Result<Option<Product>, OxidbError> {
         let sql = format!("SELECT * FROM products WHERE id = '{}'", product_id);
-        let result = self.db.execute(&sql)?;
-        
-        match result {
-            QueryResult::Data(data) => {
-                if let Some(row) = data.rows().next() {
-                    Ok(Some(self.row_to_product(row)?))
-                } else {
-                    Ok(None)
-                }
-            }
-            _ => Ok(None),
+        let result = self.db.query(&sql)?;
+        if let Some(row) = result.rows.first() {
+            Ok(Some(self.row_to_product(&row.values)?))
+        } else {
+            Ok(None)
         }
     }
     
     fn search_products_by_category(&mut self, category: &str) -> Result<Vec<Product>, OxidbError> {
         let sql = format!("SELECT * FROM products WHERE category = '{}'", category);
-        let result = self.db.execute(&sql)?;
-        
-        match result {
-            QueryResult::Data(data) => {
-                data.rows.iter()
-                    .map(|row| self.row_to_product(row))
-                    .collect()
-            }
-            _ => Ok(Vec::new()),
-        }
+        let result = self.db.query(&sql)?;
+        result
+            .rows
+            .iter()
+            .map(|row| self.row_to_product(&row.values))
+            .collect()
     }
     
     fn find_similar_products(&mut self, product_id: &str, limit: usize) -> Result<Vec<Product>, OxidbError> {
@@ -218,15 +207,12 @@ impl EcommerceDB {
                 product_id, embedding_str, limit
             );
             
-            let result = self.db.execute(&sql)?;
-            match result {
-                QueryResult::Data(data) => {
-                    data.rows.iter()
-                        .map(|row| self.row_to_product(row))
-                        .collect()
-                }
-                _ => Ok(Vec::new()),
-            }
+            let result = self.db.query(&sql)?;
+            result
+                .rows
+                .iter()
+                .map(|row| self.row_to_product(&row.values))
+                .collect()
         } else {
             // Fallback to category-based recommendations
             Ok(self.search_products_by_category(&product.category)?
@@ -258,17 +244,11 @@ impl EcommerceDB {
     
     fn get_user_by_email(&mut self, email: &str) -> Result<Option<User>, OxidbError> {
         let sql = format!("SELECT * FROM users WHERE email = '{}'", email);
-        let result = self.db.execute(&sql)?;
-        
-        match result {
-            QueryResult::Data(data) => {
-                if let Some(row) = data.rows.first() {
-                    Ok(Some(self.row_to_user(row)?))
-                } else {
-                    Ok(None)
-                }
-            }
-            _ => Ok(None),
+        let result = self.db.query(&sql)?;
+        if let Some(row) = result.rows.first() {
+            Ok(Some(self.row_to_user(&row.values)?))
+        } else {
+            Ok(None)
         }
     }
     
@@ -301,16 +281,12 @@ impl EcommerceDB {
     
     fn get_user_orders(&mut self, user_id: &str) -> Result<Vec<Order>, OxidbError> {
         let sql = format!("SELECT * FROM orders WHERE user_id = '{}'", user_id);
-        let result = self.db.execute(&sql)?;
-        
-        match result {
-            QueryResult::Data(data) => {
-                data.rows.iter()
-                    .map(|row| self.row_to_order(row))
-                    .collect()
-            }
-            _ => Ok(Vec::new()),
-        }
+        let result = self.db.query(&sql)?;
+        result
+            .rows
+            .iter()
+            .map(|row| self.row_to_order(&row.values))
+            .collect()
     }
     
     // Shopping cart
@@ -331,17 +307,11 @@ impl EcommerceDB {
     
     fn get_cart(&mut self, user_id: &str) -> Result<Option<ShoppingCart>, OxidbError> {
         let sql = format!("SELECT * FROM shopping_carts WHERE user_id = '{}'", user_id);
-        let result = self.db.execute(&sql)?;
-        
-        match result {
-            QueryResult::Data(data) => {
-                if let Some(row) = data.rows.first() {
-                    Ok(Some(self.row_to_cart(row)?))
-                } else {
-                    Ok(None)
-                }
-            }
-            _ => Ok(None),
+        let result = self.db.query(&sql)?;
+        if let Some(row) = result.rows.first() {
+            Ok(Some(self.row_to_cart(&row.values)?))
+        } else {
+            Ok(None)
         }
     }
     
@@ -355,7 +325,7 @@ impl EcommerceDB {
         Ok(())
     }
     
-    fn row_to_product(&mut self, row: &[DataType]) -> Result<Product, OxidbError> {
+    fn row_to_product(&mut self, row: &[Value]) -> Result<Product, OxidbError> {
         // Parse row data into Product struct
         // This is a simplified version - in production you'd want more robust parsing
         Ok(Product {
@@ -376,7 +346,7 @@ impl EcommerceDB {
         })
     }
     
-    fn row_to_user(&mut self, row: &[DataType]) -> Result<User, OxidbError> {
+    fn row_to_user(&mut self, row: &[Value]) -> Result<User, OxidbError> {
         Ok(User {
             id: self.get_string(&row[0])?,
             email: self.get_string(&row[1])?,
@@ -389,7 +359,7 @@ impl EcommerceDB {
         })
     }
     
-    fn row_to_order(&mut self, row: &[DataType]) -> Result<Order, OxidbError> {
+    fn row_to_order(&mut self, row: &[Value]) -> Result<Order, OxidbError> {
         Ok(Order {
             id: self.get_string(&row[0])?,
             user_id: self.get_string(&row[1])?,
@@ -405,7 +375,7 @@ impl EcommerceDB {
         })
     }
     
-    fn row_to_cart(&mut self, row: &[DataType]) -> Result<ShoppingCart, OxidbError> {
+    fn row_to_cart(&mut self, row: &[Value]) -> Result<ShoppingCart, OxidbError> {
         Ok(ShoppingCart {
             user_id: self.get_string(&row[0])?,
             items: serde_json::from_str(&self.get_string(&row[1])?).unwrap(),
@@ -415,21 +385,21 @@ impl EcommerceDB {
         })
     }
     
-    fn get_string(&mut self, data: &DataType) -> Result<String, OxidbError> {
+    fn get_string(&mut self, data: &Value) -> Result<String, OxidbError> {
         match data {
-            DataType::String(s) => Ok(s.clone()),
-            DataType::Null => Ok(String::new()),
+            Value::Text(s) => Ok(s.clone()),
+            Value::Null => Ok(String::new()),
             _ => Err(OxidbError::TypeMismatch { 
-                expected: "String".to_string(), 
+                expected: "Text".to_string(), 
                 found: format!("{:?}", data) 
             }),
         }
     }
     
-    fn get_float(&mut self, data: &DataType) -> Result<f64, OxidbError> {
+    fn get_float(&mut self, data: &Value) -> Result<f64, OxidbError> {
         match data {
-            DataType::Float(f) => Ok(f.0),
-            DataType::Integer(i) => Ok(*i as f64),
+            Value::Float(f) => Ok(*f),
+            Value::Integer(i) => Ok(*i as f64),
             _ => Err(OxidbError::TypeMismatch { 
                 expected: "Float".to_string(), 
                 found: format!("{:?}", data) 
@@ -437,9 +407,9 @@ impl EcommerceDB {
         }
     }
     
-    fn get_integer(&mut self, data: &DataType) -> Result<i64, OxidbError> {
+    fn get_integer(&mut self, data: &Value) -> Result<i64, OxidbError> {
         match data {
-            DataType::Integer(i) => Ok(*i),
+            Value::Integer(i) => Ok(*i),
             _ => Err(OxidbError::TypeMismatch { 
                 expected: "Integer".to_string(), 
                 found: format!("{:?}", data) 
@@ -447,10 +417,10 @@ impl EcommerceDB {
         }
     }
     
-    fn get_vector(&mut self, data: &DataType) -> Result<Option<Vec<f32>>, OxidbError> {
+    fn get_vector(&mut self, data: &Value) -> Result<Option<Vec<f32>>, OxidbError> {
         match data {
-            DataType::Vector(v) => Ok(Some(v.0.data.clone())),
-            DataType::Null => Ok(None),
+            Value::Vector(v) => Ok(Some(v.clone())),
+            Value::Null => Ok(None),
             _ => Err(OxidbError::TypeMismatch { 
                 expected: "Vector".to_string(), 
                 found: format!("{:?}", data) 

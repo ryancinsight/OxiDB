@@ -74,17 +74,11 @@ path = "examples/ecommerce_website.rs"
 name = "document_search_rag"
 path = "examples/document_search_rag.rs"
 
-[[example]]
-name = "knowledge_graph_rag"
-path = "examples/knowledge_graph_rag.rs"
 
 [[example]]
 name = "sql_compatibility_demo"
 path = "examples/sql_compatibility_demo.rs"
 
-[[example]]
-name = "simple_oxidb_test"
-path = "examples/simple_oxidb_test.rs"
 
 [[example]]
 name = "hybrid_rag_demo"

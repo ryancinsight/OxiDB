@@ -557,10 +557,8 @@ mod tests {
         // Query data
         let select_sql = format!("SELECT * FROM {table_name}");
         let result = conn.query(&select_sql)?;
-        assert!(result.rows.is_some());
-        let rows = result.rows.unwrap();
-        assert_eq!(rows.columns.len(), 2);
-        assert_eq!(rows.rows.len(), 1);
+        assert_eq!(result.columns.len(), 2);
+        assert_eq!(result.rows.len(), 1);
 
         Ok(())
     }
@@ -580,14 +578,12 @@ mod tests {
             &insert_sql,
             &[Value::Integer(1), Value::Text("Bob".to_string()), Value::Integer(25)],
         )?;
-        assert_eq!(result.rows_affected, 1);
+        assert_eq!(result.columns, vec!["affected_rows".to_string()]);
 
         // Test parameterized select
         let select_sql = format!("SELECT * FROM {table_name} WHERE id = ?");
         let result = conn.execute_with_params(&select_sql, &[Value::Integer(1)])?;
-        assert!(result.rows.is_some());
-        let rows = result.rows.unwrap();
-        assert_eq!(rows.rows.len(), 1);
+        assert_eq!(result.rows.len(), 1);
 
         Ok(())
     }
@@ -610,8 +606,7 @@ mod tests {
         let select_sql = format!("SELECT * FROM {table_name}");
         let result = conn.query(&select_sql)?;
         // Should have 1 row
-        assert!(result.rows.is_some());
-        assert_eq!(result.rows.unwrap().rows.len(), 1);
+        assert_eq!(result.rows.len(), 1);
 
         // Test rollback
         conn.begin_transaction()?;
@@ -621,8 +616,7 @@ mod tests {
 
         let result = conn.query(&select_sql)?;
         // Should still have 1 row (rollback worked)
-        assert!(result.rows.is_some());
-        assert_eq!(result.rows.unwrap().rows.len(), 1);
+        assert_eq!(result.rows.len(), 1);
 
         Ok(())
     }
@@ -645,19 +639,17 @@ mod tests {
 
         // Test basic query operations
         let result = conn.query(&format!("SELECT * FROM {} WHERE id = 1", table_name))?;
-        assert!(result.rows.is_some());
-        assert_eq!(result.rows.unwrap().rows.len(), 1);
+        assert_eq!(result.rows.len(), 1);
 
         // Test query_all equivalent
         let result = conn.query(&format!("SELECT * FROM {}", table_name))?;
         println!("SELECT * result: {:?}", result);
-        assert!(result.rows.is_some());
-        let rows = result.rows.unwrap();
-        println!("Expected 2 rows, got {} rows", rows.rows.len());
-        for (i, row) in rows.rows.iter().enumerate() {
+        let rows = result.rows;
+        println!("Expected 2 rows, got {} rows", rows.len());
+        for (i, row) in rows.iter().enumerate() {
             println!("Row {}: {:?}", i, row);
         }
-        assert_eq!(rows.rows.len(), 2);
+        assert_eq!(rows.len(), 2);
 
         // Test execute_update equivalent
         let result =

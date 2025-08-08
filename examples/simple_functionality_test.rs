@@ -1,4 +1,4 @@
-use oxidb::{Connection, OxidbError, QueryResult};
+use oxidb::{Connection, OxidbError};
 
 fn main() -> Result<(), OxidbError> {
     println!("=== Oxidb Simple Functionality Test ===\n");
@@ -42,15 +42,11 @@ fn test_basic_crud(process_id: u32) -> Result<(), OxidbError> {
     
     // Read
     let sql = format!("SELECT * FROM {}", table_name);
-    let result = conn.execute(&sql)?;
-    match result {
-        QueryResult::Data(data) => {
-            println!("✓ Read {} records", data.row_count());
-            for (i, row) in data.rows().enumerate() {
-                println!("  Row {}: {:?}", i + 1, row);
-            }
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
+    let data = conn.query(&sql)?;
+    println!("\n✓ Query returned {} rows", data.row_count());
+    println!("\nColumns: {:?}", data.columns);
+    for row in data.rows {
+        println!("Row: {:?}", row.values);
     }
     
     // Update
@@ -65,12 +61,11 @@ fn test_basic_crud(process_id: u32) -> Result<(), OxidbError> {
     
     // Verify final state
     let sql = format!("SELECT * FROM {}", table_name);
-    let result = conn.execute(&sql)?;
-    match result {
-        QueryResult::Data(data) => {
-            println!("✓ Final count: {} records", data.row_count());
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
+    let data = conn.query(&sql)?;
+    println!("\n✓ Query returned {} rows", data.row_count());
+    println!("\nColumns: {:?}", data.columns);
+    for row in data.rows {
+        println!("Row: {:?}", row.values);
     }
     
     println!("✅ CRUD test passed\n");
@@ -110,12 +105,11 @@ fn test_transactions(process_id: u32) -> Result<(), OxidbError> {
     
     // Verify state
     let sql = format!("SELECT * FROM {}", table_name);
-    let result = conn.execute(&sql)?;
-    match result {
-        QueryResult::Data(data) => {
-            println!("✓ Final balances verified: {} accounts", data.row_count());
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
+    let data = conn.query(&sql)?;
+    println!("\n✓ Query returned {} rows", data.row_count());
+    println!("\nColumns: {:?}", data.columns);
+    for row in data.rows {
+        println!("Row: {:?}", row.values);
     }
     
     println!("✅ Transaction test passed\n");
@@ -148,14 +142,9 @@ fn test_data_types(process_id: u32) -> Result<(), OxidbError> {
     println!("✓ Inserted records with various data types");
     
     let sql = format!("SELECT * FROM {}", table_name);
-    let result = conn.execute(&sql)?;
-    match result {
-        QueryResult::Data(data) => {
-            println!("✓ Retrieved {} records with columns: {:?}", 
-                    data.row_count(), data.columns());
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
-    }
+    let data = conn.query(&sql)?;
+    println!("\n✓ Retrieved {} records with columns: {:?}", 
+                    data.row_count(), data.columns);
     
     println!("✅ Data types test passed\n");
     Ok(())
@@ -184,13 +173,8 @@ fn test_file_persistence(process_id: u32) -> Result<(), OxidbError> {
     {
         let mut conn = Connection::open(&db_file)?;
         let sql = format!("SELECT * FROM {}", table_name);
-        let result = conn.execute(&sql)?;
-        match result {
-            QueryResult::Data(data) => {
-                println!("✓ Reopened database, found {} settings", data.row_count());
-            }
-            _ => return Err(OxidbError::Other("Expected data result".to_string())),
-        }
+        let data = conn.query(&sql)?;
+        println!("\n✓ Reopened database, found {} settings", data.row_count());
     }
     
     // Clean up

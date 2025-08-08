@@ -261,6 +261,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                 // Handle parameterized SQL execution
                 executor.execute_parameterized_statement(statement, parameters)
             }
+            // Added legacy KV and index variants delegating to core handlers
+            Self::Insert { key, value } => executor.handle_insert(key.clone(), value.clone()),
+            Self::Get { key } => executor.handle_get(key.clone()),
+            Self::Delete { key } => executor.handle_delete(key.clone()),
+            Self::FindByIndex { index_name, value } => executor.handle_find_by_index(index_name.clone(), value.clone()),
         }
     }
 }

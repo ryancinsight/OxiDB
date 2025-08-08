@@ -1,4 +1,4 @@
-use oxidb::{Connection, OxidbError, QueryResult};
+use oxidb::{Connection, OxidbError};
 use std::time::Instant;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -108,13 +108,9 @@ fn test_connection_api() -> Result<(), OxidbError> {
     
     // Test data retrieval
     let select_sql = format!("SELECT * FROM {}", table_name);
-    match conn.execute(&select_sql)? {
-        QueryResult::Data(data) => {
-            if data.row_count() != 1 {
-                return Err(OxidbError::Other("Expected 1 row".to_string()));
-            }
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
+    let data = conn.query(&select_sql)?;
+    if data.row_count() != 1 {
+        return Err(OxidbError::Other("Expected 1 row".to_string()));
     }
     
     Ok(())
@@ -155,13 +151,9 @@ fn test_core_functionality() -> Result<(), OxidbError> {
     
     // Test SELECT with WHERE
     let select_sql = format!("SELECT * FROM {} WHERE value > 150", table_name);
-    match conn.execute(&select_sql)? {
-        QueryResult::Data(data) => {
-            if data.row_count() != 1 {
-                return Err(OxidbError::Other("Expected 1 row for WHERE clause".to_string()));
-            }
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
+    let data = conn.query(&select_sql)?;
+    if data.row_count() != 1 {
+        return Err(OxidbError::Other("Expected 1 row for WHERE clause".to_string()));
     }
     
     // Test UPDATE
@@ -170,14 +162,9 @@ fn test_core_functionality() -> Result<(), OxidbError> {
     
     // Verify update
     let select_sql = format!("SELECT value FROM {} WHERE id = 1", table_name);
-    match conn.execute(&select_sql)? {
-        QueryResult::Data(data) => {
-            let rows: Vec<_> = data.rows().collect();
-            if rows.is_empty() {
-                return Err(OxidbError::Other("No rows returned after update".to_string()));
-            }
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
+    let data = conn.query(&select_sql)?;
+    if data.row_count() == 0 {
+        return Err(OxidbError::Other("Expected 1 row after commit".to_string()));
     }
     
     Ok(())
@@ -205,13 +192,9 @@ fn test_performance() -> Result<(), OxidbError> {
     
     // Verify all records were inserted
     let count_sql = format!("SELECT * FROM {}", table_name);
-    match conn.execute(&count_sql)? {
-        QueryResult::Data(data) => {
-            if data.row_count() != 100 {
-                return Err(OxidbError::Other(format!("Expected 100 rows, got {}", data.row_count())));
-            }
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
+    let data = conn.query(&count_sql)?;
+    if data.row_count() != 100 {
+        return Err(OxidbError::Other(format!("Expected 100 rows, got {}", data.row_count())));
     }
     
     println!("   📊 Inserted 100 records in {:?} ({:.2} records/sec)", 
@@ -241,13 +224,9 @@ fn test_data_types_and_edge_cases() -> Result<(), OxidbError> {
     
     // Verify data retrieval
     let select_sql = format!("SELECT * FROM {}", table_name);
-    match conn.execute(&select_sql)? {
-        QueryResult::Data(data) => {
-            if data.row_count() != 3 {
-                return Err(OxidbError::Other(format!("Expected 3 rows, got {}", data.row_count())));
-            }
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
+    let data = conn.query(&select_sql)?;
+    if data.row_count() != 3 {
+        return Err(OxidbError::Other(format!("Expected 3 rows, got {}", data.row_count())));
     }
     
     Ok(())
@@ -273,13 +252,9 @@ fn test_transaction_management() -> Result<(), OxidbError> {
     
     // Verify transaction was committed
     let select_sql = format!("SELECT balance FROM {} WHERE id = 1", table_name);
-    match conn.execute(&select_sql)? {
-        QueryResult::Data(data) => {
-            if data.row_count() != 1 {
-                return Err(OxidbError::Other("Expected 1 row after commit".to_string()));
-            }
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
+    let data = conn.query(&select_sql)?;
+    if data.row_count() != 1 {
+        return Err(OxidbError::Other("Expected 1 row after commit".to_string()));
     }
     
     // Test rollback transaction
@@ -290,12 +265,8 @@ fn test_transaction_management() -> Result<(), OxidbError> {
     
     // Verify transaction was rolled back (balance should still be 900)
     let select_sql = format!("SELECT balance FROM {} WHERE id = 1", table_name);
-    match conn.execute(&select_sql)? {
-        QueryResult::Data(_data) => {
-            // Transaction rollback test passed
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
-    }
+    let _ = conn.query(&select_sql)?;
+    // Transaction rollback test passed
     
     Ok(())
 }

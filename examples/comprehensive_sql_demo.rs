@@ -1,4 +1,4 @@
-use oxidb::{Connection, OxidbError, QueryResult};
+use oxidb::{Connection, OxidbError};
 
 fn main() -> Result<(), OxidbError> {
     println!("=== Oxidb Comprehensive SQL Demo ===\n");
@@ -52,13 +52,8 @@ fn test_basic_table_operations(conn: &mut Connection, process_id: u32) -> Result
 
     // Query data
     let select_sql = format!("SELECT * FROM {}", table_name);
-    let result = conn.execute(&select_sql)?;
-    match result {
-        QueryResult::Data(data) => {
-            println!("✓ Retrieved {} rows", data.row_count());
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
-    }
+    let data = conn.query(&select_sql)?;
+    println!("✓ Retrieved {} rows", data.row_count());
 
     // Update data
     let update_sql = format!("UPDATE {} SET age = 26 WHERE name = 'Alice'", table_name);
@@ -98,13 +93,8 @@ fn test_data_types_and_constraints(conn: &mut Connection, process_id: u32) -> Re
 
     // Query with WHERE clause
     let select_sql = format!("SELECT * FROM {} WHERE price > 50", table_name);
-    let result = conn.execute(&select_sql)?;
-    match result {
-        QueryResult::Data(data) => {
-            println!("✓ Found {} expensive products", data.row_count());
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
-    }
+    let data = conn.query(&select_sql)?;
+    println!("✓ Found {} expensive products", data.row_count());
 
     Ok(())
 }
@@ -137,23 +127,13 @@ fn test_advanced_queries(conn: &mut Connection, process_id: u32) -> Result<(), O
 
     // Query with conditions
     let select_sql = format!("SELECT * FROM {} WHERE amount > 100", table_name);
-    let result = conn.execute(&select_sql)?;
-    match result {
-        QueryResult::Data(data) => {
-            println!("✓ Found {} large orders", data.row_count());
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
-    }
+    let data = conn.query(&select_sql)?;
+    println!("✓ Found {} large orders", data.row_count());
 
     // Query specific customer
     let select_sql = format!("SELECT * FROM {} WHERE customer_name = 'Alice'", table_name);
-    let result = conn.execute(&select_sql)?;
-    match result {
-        QueryResult::Data(data) => {
-            println!("✓ Found {} orders for Alice", data.row_count());
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
-    }
+    let data = conn.query(&select_sql)?;
+    println!("✓ Found {} orders for Alice", data.row_count());
 
     Ok(())
 }
@@ -199,13 +179,8 @@ fn test_transaction_operations(conn: &mut Connection, process_id: u32) -> Result
 
     // Verify balances
     let select_sql = format!("SELECT * FROM {}", table_name);
-    let result = conn.execute(&select_sql)?;
-    match result {
-        QueryResult::Data(data) => {
-            println!("✓ Verified final balances - {} accounts", data.row_count());
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
-    }
+    let data = conn.query(&select_sql)?;
+    println!("✓ Verified final balances - {} accounts", data.row_count());
 
     Ok(())
 }

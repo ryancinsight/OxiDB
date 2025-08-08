@@ -8,7 +8,7 @@
 //! - Indexing and performance optimization
 //! - Common e-commerce business logic patterns
 
-use oxidb::Oxidb;
+use oxidb::Connection;
 use oxidb::core::common::OxidbError;
 use oxidb::core::sql::ExecutionResult;
 use std::collections::HashMap;
@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", "=".repeat(60));
     
     // Initialize database (similar to MySQL connection)
-    let mut db = Oxidb::new("mysql_style_ecommerce.db")?;
+    let mut db = Connection::open("mysql_style_ecommerce.db")?;
     
     // Clean up existing tables (MySQL-style DROP IF EXISTS)
     cleanup_tables(&mut db)?;
@@ -42,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn cleanup_tables(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn cleanup_tables(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n🧹 Cleaning up existing tables...");
     
     let tables = vec![
@@ -58,14 +58,14 @@ fn cleanup_tables(db: &mut Oxidb) -> Result<(), OxidbError> {
     
     for table in tables {
         let drop_sql = format!("DROP TABLE IF EXISTS {}", table);
-        let _ = db.execute_query_str(&drop_sql);
+        let _ = db.execute(&drop_sql);
     }
     
     println!("✓ Tables cleaned up");
     Ok(())
 }
 
-fn create_schema(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn create_schema(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n🏗️  Creating database schema (MySQL-style)...");
     
     // Users table (authentication)
@@ -81,7 +81,7 @@ fn create_schema(db: &mut Oxidb) -> Result<(), OxidbError> {
             is_active BOOLEAN DEFAULT TRUE
         )
     "#;
-    db.execute_query_str(create_users)?;
+    db.execute(&create_users)?;
     println!("✓ Created users table");
     
     // Customers table (customer profiles)
@@ -102,7 +102,7 @@ fn create_schema(db: &mut Oxidb) -> Result<(), OxidbError> {
             INDEX idx_loyalty_points (loyalty_points)
         )
     "#;
-    db.execute_query_str(create_customers)?;
+    db.execute(&create_customers)?;
     println!("✓ Created customers table");
     
     // Categories table (product categorization)
@@ -122,7 +122,7 @@ fn create_schema(db: &mut Oxidb) -> Result<(), OxidbError> {
             INDEX idx_sort_order (sort_order)
         )
     "#;
-    db.execute_query_str(create_categories)?;
+    db.execute(&create_categories)?;
     println!("✓ Created categories table");
     
     // Products table (product catalog)
@@ -155,7 +155,7 @@ fn create_schema(db: &mut Oxidb) -> Result<(), OxidbError> {
             FULLTEXT INDEX idx_search (name, description, short_description)
         )
     "#;
-    db.execute_query_str(create_products)?;
+    db.execute(&create_products)?;
     println!("✓ Created products table");
     
     // Product reviews table
@@ -177,7 +177,7 @@ fn create_schema(db: &mut Oxidb) -> Result<(), OxidbError> {
             INDEX idx_created_at (created_at)
         )
     "#;
-    db.execute_query_str(create_reviews)?;
+    db.execute(&create_reviews)?;
     println!("✓ Created product_reviews table");
     
     // Shopping cart table
@@ -196,7 +196,7 @@ fn create_schema(db: &mut Oxidb) -> Result<(), OxidbError> {
             INDEX idx_added_at (added_at)
         )
     "#;
-    db.execute_query_str(create_cart)?;
+    db.execute(&create_cart)?;
     println!("✓ Created cart_items table");
     
     // Orders table
@@ -230,7 +230,7 @@ fn create_schema(db: &mut Oxidb) -> Result<(), OxidbError> {
             INDEX idx_total_amount (total_amount)
         )
     "#;
-    db.execute_query_str(create_orders)?;
+    db.execute(&create_orders)?;
     println!("✓ Created orders table");
     
     // Order items table
@@ -250,14 +250,14 @@ fn create_schema(db: &mut Oxidb) -> Result<(), OxidbError> {
             INDEX idx_product (product_id)
         )
     "#;
-    db.execute_query_str(create_order_items)?;
+    db.execute(&create_order_items)?;
     println!("✓ Created order_items table");
     
     println!("✅ Database schema created successfully!");
     Ok(())
 }
 
-fn seed_data(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn seed_data(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n🌱 Seeding initial data...");
     
     // Insert users
@@ -273,7 +273,7 @@ fn seed_data(db: &mut Oxidb) -> Result<(), OxidbError> {
             "INSERT INTO users (username, email, password_hash, role) VALUES ('{}', '{}', '{}', '{}')",
             username, email, password_hash, role
         );
-        db.execute_query_str(&sql)?;
+        db.execute(&sql)?;
     }
     println!("✓ Inserted users");
     
@@ -288,7 +288,7 @@ fn seed_data(db: &mut Oxidb) -> Result<(), OxidbError> {
             "INSERT INTO customers (user_id, first_name, last_name, phone, date_of_birth, gender, loyalty_points) VALUES ({}, '{}', '{}', '{}', '{}', '{}', {})",
             user_id, first_name, last_name, phone, dob, gender, rand::random::<u32>() % 1000
         );
-        db.execute_query_str(&sql)?;
+        db.execute(&sql)?;
     }
     println!("✓ Inserted customers");
     
@@ -311,7 +311,7 @@ fn seed_data(db: &mut Oxidb) -> Result<(), OxidbError> {
             "INSERT INTO categories (name, slug, description, parent_id) VALUES ('{}', '{}', '{}', {})",
             name, slug, description, parent_clause
         );
-        db.execute_query_str(&sql)?;
+        db.execute(&sql)?;
     }
     println!("✓ Inserted categories");
     
@@ -330,7 +330,7 @@ fn seed_data(db: &mut Oxidb) -> Result<(), OxidbError> {
             "INSERT INTO products (sku, name, description, short_description, category_id, price, cost_price, weight, dimensions, stock_quantity, is_featured) VALUES ('{}', '{}', '{}', '{}', {}, {}, {}, {}, '{}', {}, {})",
             sku, name, description, short_desc, category_id, price, cost, weight, dimensions, stock, rand::random::<bool>()
         );
-        db.execute_query_str(&sql)?;
+        db.execute(&sql)?;
     }
     println!("✓ Inserted products");
     
@@ -338,7 +338,7 @@ fn seed_data(db: &mut Oxidb) -> Result<(), OxidbError> {
     Ok(())
 }
 
-fn demonstrate_customer_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn demonstrate_customer_operations(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n👥 Customer Operations (MySQL-style)");
     println!("{}", "=".repeat(40));
     
@@ -348,10 +348,10 @@ fn demonstrate_customer_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
         INSERT INTO users (username, email, password_hash, role) 
         VALUES ('alice_cooper', 'alice@example.com', 'hashed_password_123', 'customer')
     "#;
-    db.execute_query_str(register_sql)?;
+    db.execute(&register_sql)?;
     
     // Get the last inserted user ID (MySQL LAST_INSERT_ID() equivalent)
-    let user_result = db.execute_query_str("SELECT id FROM users WHERE username = 'alice_cooper'")?;
+    let user_result = db.query("SELECT id FROM users WHERE username = 'alice_cooper'")?;
     println!("✓ User registered successfully");
     
     // Create customer profile
@@ -359,7 +359,7 @@ fn demonstrate_customer_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
         INSERT INTO customers (user_id, first_name, last_name, phone, gender, loyalty_points) 
         VALUES (5, 'Alice', 'Cooper', '+1-555-0199', 'F', 0)
     "#;
-    db.execute_query_str(customer_sql)?;
+    db.execute(&customer_sql)?;
     println!("✓ Customer profile created");
     
     // Customer login simulation (checking credentials)
@@ -371,7 +371,7 @@ fn demonstrate_customer_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
         LEFT JOIN customers c ON u.id = c.user_id
         WHERE u.email = 'alice@example.com' AND u.is_active = TRUE
     "#;
-    let auth_result = db.execute_query_str(auth_sql)?;
+    let auth_result = db.query(auth_sql)?;
     println!("✓ Customer authentication query executed");
     
     // Update customer profile (MySQL UPDATE with JOIN pattern)
@@ -381,7 +381,7 @@ fn demonstrate_customer_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
         SET phone = '+1-555-0200', loyalty_points = loyalty_points + 100
         WHERE user_id = 5
     "#;
-    db.execute_query_str(update_sql)?;
+    db.execute(&update_sql)?;
     println!("✓ Customer profile updated with loyalty points");
     
     // Customer search (MySQL LIKE pattern matching)
@@ -394,13 +394,13 @@ fn demonstrate_customer_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
         WHERE c.first_name LIKE 'A%' OR c.last_name LIKE 'A%'
         ORDER BY c.loyalty_points DESC
     "#;
-    let search_result = db.execute_query_str(search_sql)?;
+    let search_result = db.query(search_sql)?;
     println!("✓ Customer search completed");
     
     Ok(())
 }
 
-fn demonstrate_product_catalog(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn demonstrate_product_catalog(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n📦 Product Catalog Management");
     println!("{}", "=".repeat(40));
     
@@ -414,7 +414,7 @@ fn demonstrate_product_catalog(db: &mut Oxidb) -> Result<(), OxidbError> {
         WHERE c.slug = 'smartphones' AND p.is_active = TRUE
         ORDER BY p.price DESC
     "#;
-    let result = db.execute_query_str(category_search)?;
+    let result = db.query(category_search)?;
     println!("✓ Found products in smartphones category");
     
     // Full-text search simulation (MySQL MATCH AGAINST equivalent)
@@ -428,7 +428,7 @@ fn demonstrate_product_catalog(db: &mut Oxidb) -> Result<(), OxidbError> {
            OR p.short_description LIKE '%iPhone%'
         ORDER BY p.price DESC
     "#;
-    let search_result = db.execute_query_str(text_search)?;
+    let search_result = db.query(text_search)?;
     println!("✓ Full-text search completed");
     
     // Price range filtering (MySQL BETWEEN)
@@ -444,7 +444,7 @@ fn demonstrate_product_catalog(db: &mut Oxidb) -> Result<(), OxidbError> {
         WHERE p.price BETWEEN 100 AND 1000 AND p.is_active = TRUE
         ORDER BY p.price ASC
     "#;
-    let price_result = db.execute_query_str(price_filter)?;
+    let price_result = db.query(price_filter)?;
     println!("✓ Price filtering completed");
     
     // Product variants/options (MySQL GROUP BY with aggregation)
@@ -462,7 +462,7 @@ fn demonstrate_product_catalog(db: &mut Oxidb) -> Result<(), OxidbError> {
         HAVING product_count > 0
         ORDER BY avg_price DESC
     "#;
-    let analytics_result = db.execute_query_str(analytics_sql)?;
+    let analytics_result = db.query(analytics_sql)?;
     println!("✓ Product analytics generated");
     
     // Low stock alert (MySQL WHERE with threshold)
@@ -474,13 +474,13 @@ fn demonstrate_product_catalog(db: &mut Oxidb) -> Result<(), OxidbError> {
         WHERE p.stock_quantity <= p.min_stock_level AND p.is_active = TRUE
         ORDER BY shortage DESC
     "#;
-    let stock_result = db.execute_query_str(low_stock_sql)?;
+    let stock_result = db.query(low_stock_sql)?;
     println!("✓ Low stock analysis completed");
     
     Ok(())
 }
 
-fn demonstrate_order_management(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn demonstrate_order_management(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n🛒 Order Management System");
     println!("{}", "=".repeat(40));
     
@@ -490,7 +490,7 @@ fn demonstrate_order_management(db: &mut Oxidb) -> Result<(), OxidbError> {
         INSERT INTO cart_items (customer_id, product_id, quantity) 
         VALUES (1, 1, 2), (1, 3, 1)
     "#;
-    db.execute_query_str(add_to_cart)?;
+    db.execute(&add_to_cart)?;
     println!("✓ Items added to cart");
     
     // View cart with product details (MySQL JOIN)
@@ -504,14 +504,14 @@ fn demonstrate_order_management(db: &mut Oxidb) -> Result<(), OxidbError> {
         WHERE ci.customer_id = 1
         ORDER BY ci.added_at DESC
     "#;
-    let cart_result = db.execute_query_str(view_cart)?;
+    let cart_result = db.query(view_cart)?;
     println!("✓ Cart contents retrieved");
     
     // Create order from cart (MySQL transaction pattern)
     println!("\n📋 Creating Order:");
     
     // Start transaction
-    db.execute_query_str("BEGIN TRANSACTION")?;
+    db.execute("BEGIN TRANSACTION")?;
     
     // Generate order number (UUID simulation)
     let order_number = format!("ORD-{}-{}", 
@@ -527,7 +527,7 @@ fn demonstrate_order_management(db: &mut Oxidb) -> Result<(), OxidbError> {
         JOIN products p ON ci.product_id = p.id
         WHERE ci.customer_id = 1
     "#;
-    let totals_result = db.execute_query_str(totals_sql)?;
+    let totals_result = db.query(totals_sql)?;
     
     // Create order record
     let create_order = format!(r#"
@@ -539,11 +539,11 @@ fn demonstrate_order_management(db: &mut Oxidb) -> Result<(), OxidbError> {
                 '123 Main St, City, State 12345',
                 '123 Main St, City, State 12345')
     "#, order_number);
-    db.execute_query_str(&create_order)?;
+    db.execute(&create_order)?;
     
     // Get order ID (simulate LAST_INSERT_ID())
     let order_id_sql = format!("SELECT id FROM orders WHERE order_number = '{}'", order_number);
-    let order_id_result = db.execute_query_str(&order_id_sql)?;
+    let order_id_result = db.query(&order_id_sql)?;
     
     // Create order items from cart
     let create_order_items = r#"
@@ -553,7 +553,7 @@ fn demonstrate_order_management(db: &mut Oxidb) -> Result<(), OxidbError> {
         JOIN products p ON ci.product_id = p.id
         WHERE ci.customer_id = 1
     "#;
-    db.execute_query_str(create_order_items)?;
+    db.execute(&create_order_items)?;
     
     // Update product stock
     let update_stock = r#"
@@ -569,13 +569,13 @@ fn demonstrate_order_management(db: &mut Oxidb) -> Result<(), OxidbError> {
             WHERE customer_id = 1
         )
     "#;
-    db.execute_query_str(update_stock)?;
+    db.execute(&update_stock)?;
     
     // Clear cart
-    db.execute_query_str("DELETE FROM cart_items WHERE customer_id = 1")?;
+    db.execute("DELETE FROM cart_items WHERE customer_id = 1")?;
     
     // Commit transaction
-    db.execute_query_str("COMMIT")?;
+    db.execute("COMMIT")?;
     println!("✓ Order created successfully: {}", order_number);
     
     // Order status tracking
@@ -587,13 +587,13 @@ fn demonstrate_order_management(db: &mut Oxidb) -> Result<(), OxidbError> {
             updated_at = CURRENT_TIMESTAMP
         WHERE order_number = '{}'
     "#, order_number);
-    db.execute_query_str(&update_status)?;
+    db.execute(&update_status)?;
     println!("✓ Order status updated to processing");
     
     Ok(())
 }
 
-fn demonstrate_inventory_tracking(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn demonstrate_inventory_tracking(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n📊 Inventory Management");
     println!("{}", "=".repeat(40));
     
@@ -613,7 +613,7 @@ fn demonstrate_inventory_tracking(db: &mut Oxidb) -> Result<(), OxidbError> {
         WHERE p.is_active = TRUE
         ORDER BY p.stock_quantity ASC, p.sku
     "#;
-    let stock_result = db.execute_query_str(stock_report)?;
+    let stock_result = db.query(stock_report)?;
     println!("✓ Stock level report generated");
     
     // Inventory value calculation
@@ -631,7 +631,7 @@ fn demonstrate_inventory_tracking(db: &mut Oxidb) -> Result<(), OxidbError> {
         GROUP BY c.id, c.name
         ORDER BY cost_value DESC
     "#;
-    let valuation_result = db.execute_query_str(valuation_sql)?;
+    let valuation_result = db.query(valuation_sql)?;
     println!("✓ Inventory valuation completed");
     
     // Restock recommendations
@@ -646,13 +646,13 @@ fn demonstrate_inventory_tracking(db: &mut Oxidb) -> Result<(), OxidbError> {
           AND p.is_active = TRUE
         ORDER BY reorder_cost DESC
     "#;
-    let restock_result = db.execute_query_str(restock_sql)?;
+    let restock_result = db.query(restock_sql)?;
     println!("✓ Restock recommendations generated");
     
     Ok(())
 }
 
-fn demonstrate_reporting_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn demonstrate_reporting_queries(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n📊 Business Intelligence & Reporting");
     println!("{}", "=".repeat(45));
     
@@ -669,7 +669,7 @@ fn demonstrate_reporting_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
         FROM orders o
         WHERE o.status != 'cancelled'
     "#;
-    let sales_result = db.execute_query_str(sales_summary)?;
+    let sales_result = db.query(sales_summary)?;
     println!("✓ Sales summary generated");
     
     // Top selling products
@@ -688,7 +688,7 @@ fn demonstrate_reporting_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
         ORDER BY units_sold DESC, revenue DESC
         LIMIT 10
     "#;
-    let top_products_result = db.execute_query_str(top_products)?;
+    let top_products_result = db.query(top_products)?;
     println!("✓ Top products analysis completed");
     
     // Customer lifetime value
@@ -707,7 +707,7 @@ fn demonstrate_reporting_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
         ORDER BY lifetime_value DESC
         LIMIT 10
     "#;
-    let clv_result = db.execute_query_str(clv_sql)?;
+    let clv_result = db.query(clv_sql)?;
     println!("✓ Customer lifetime value analysis completed");
     
     // Category performance
@@ -727,13 +727,13 @@ fn demonstrate_reporting_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
         HAVING category_revenue > 0
         ORDER BY category_revenue DESC
     "#;
-    let category_result = db.execute_query_str(category_perf)?;
+    let category_result = db.query(category_perf)?;
     println!("✓ Category performance analysis completed");
     
     Ok(())
 }
 
-fn demonstrate_advanced_features(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn demonstrate_advanced_features(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n🚀 Advanced Database Features");
     println!("{}", "=".repeat(40));
     
@@ -758,7 +758,7 @@ fn demonstrate_advanced_features(db: &mut Oxidb) -> Result<(), OxidbError> {
         WHERE p.is_active = TRUE
         ORDER BY COALESCE(sales_data.revenue, 0) DESC, p.name
     "#;
-    let complex_result = db.execute_query_str(complex_query)?;
+    let complex_result = db.query(complex_query)?;
     println!("✓ Complex query with subqueries executed");
     
     // Window functions simulation (MySQL 8.0+ pattern)
