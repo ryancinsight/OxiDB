@@ -1,4 +1,4 @@
-use oxidb::{Connection, OxidbError, QueryResult};
+use oxidb::{Connection, OxidbError};
 use std::time::Instant;
 
 fn main() -> Result<(), OxidbError> {
@@ -47,12 +47,10 @@ fn test_basic_crud() -> Result<(), OxidbError> {
     println!("✓ Inserted 3 users");
     
     // Select data
-    let result = conn.execute("SELECT * FROM demo_users")?;
-    if let QueryResult::Data(data) = result {
-        println!("✓ Retrieved {} users from database", data.row_count());
-        for (i, row) in data.rows().enumerate() {
-            println!("  User {}: {:?}", i + 1, row);
-        }
+    let result = conn.query("SELECT * FROM demo_users")?;
+    println!("✓ Retrieved {} users from database", result.row_count());
+    for (i, row) in result.rows.iter().enumerate() {
+        println!("  User {}: {:?}", i + 1, row.values);
     }
     
     // Update data
@@ -64,12 +62,9 @@ fn test_basic_crud() -> Result<(), OxidbError> {
     println!("✓ Deleted Charlie");
     
     // Verify final state
-    let result = conn.execute("SELECT COUNT(*) FROM demo_users")?;
-    if let QueryResult::Data(data) = result {
-        let rows: Vec<_> = data.rows().collect();
-        if let Some(row) = rows.first() {
-            println!("✓ Final user count: {:?}", row);
-        }
+    let result = conn.query("SELECT COUNT(*) FROM demo_users")?;
+    if let Some(row) = result.rows.first() {
+        println!("✓ Final user count: {:?}", row.values);
     }
     
     Ok(())
@@ -96,12 +91,10 @@ fn test_data_types() -> Result<(), OxidbError> {
     println!("✓ Inserted data with various types including NULL");
     
     // Query and display
-    let result = conn.execute("SELECT * FROM data_demo")?;
-    if let QueryResult::Data(data) = result {
-        println!("✓ Retrieved {} records with mixed data types", data.row_count());
-        for (i, row) in data.rows().enumerate() {
-            println!("  Record {}: {:?}", i + 1, row);
-        }
+    let result = conn.query("SELECT * FROM data_demo")?;
+    println!("✓ Retrieved {} records with mixed data types", result.row_count());
+    for (i, row) in result.rows.iter().enumerate() {
+        println!("  Record {}: {:?}", i + 1, row.values);
     }
     
     Ok(())
@@ -124,11 +117,9 @@ fn test_transactions() -> Result<(), OxidbError> {
     println!("✓ Successfully transferred 100 between accounts");
     
     // Verify balances
-    let result = conn.execute("SELECT id, balance FROM tx_demo ORDER BY id")?;
-    if let QueryResult::Data(data) = result {
-        for row in data.rows() {
-            println!("  Account balance: {:?}", row);
-        }
+    let result = conn.query("SELECT id, balance FROM tx_demo ORDER BY id")?;
+    for row in result.rows {
+        println!("  Account balance: {:?}", row.values);
     }
     
     // Test rollback
@@ -138,12 +129,10 @@ fn test_transactions() -> Result<(), OxidbError> {
     println!("✓ Successfully rolled back large withdrawal");
     
     // Verify balances unchanged
-    let result = conn.execute("SELECT id, balance FROM tx_demo ORDER BY id")?;
-    if let QueryResult::Data(data) = result {
-        println!("✓ Balances after rollback:");
-        for row in data.rows() {
-            println!("  Account balance: {:?}", row);
-        }
+    let result = conn.query("SELECT id, balance FROM tx_demo ORDER BY id")?;
+    println!("✓ Balances after rollback:");
+    for row in result.rows {
+        println!("  Account balance: {:?}", row.values);
     }
     
     Ok(())
@@ -161,27 +150,18 @@ fn test_queries() -> Result<(), OxidbError> {
     println!("✓ Created products table with sample data");
     
     // Test WHERE clause
-    let result = conn.execute("SELECT * FROM products WHERE price > 20")?;
-    if let QueryResult::Data(data) = result {
-        println!("✓ Found {} products over $20", data.row_count());
-    }
+    let result = conn.query("SELECT * FROM products WHERE price > 20")?;
+    println!("✓ Found {} products over $20", result.row_count());
     
     // Test ORDER BY
-    let result = conn.execute("SELECT name, price FROM products ORDER BY price DESC")?;
-    if let QueryResult::Data(data) = result {
-        println!("✓ Products ordered by price (descending):");
-        for row in data.rows() {
-            println!("  {:?}", row);
-        }
-    }
+    let result = conn.query("SELECT name, price FROM products ORDER BY price DESC")?;
+    println!("✓ Products ordered by price (descending):");
+    for row in result.rows { println!("  {:?}", row.values); }
     
     // Test aggregation
-    let result = conn.execute("SELECT COUNT(*) as total_products FROM products")?;
-    if let QueryResult::Data(data) = result {
-        let rows: Vec<_> = data.rows().collect();
-        if let Some(row) = rows.first() {
-            println!("✓ Total products: {:?}", row);
-        }
+    let result = conn.query("SELECT COUNT(*) as total_products FROM products")?;
+    if let Some(row) = result.rows.first() {
+        println!("✓ Total products: {:?}", row.values);
     }
     
     Ok(())
@@ -210,14 +190,11 @@ fn test_performance() -> Result<(), OxidbError> {
     
     // Query performance test
     let start = Instant::now();
-    let result = conn.execute("SELECT COUNT(*) FROM perf_test WHERE value > 500")?;
+    let result = conn.query("SELECT COUNT(*) FROM perf_test WHERE value > 500")?;
     let duration = start.elapsed();
     
-    if let QueryResult::Data(data) = result {
-        let rows: Vec<_> = data.rows().collect();
-        if let Some(row) = rows.first() {
-            println!("✓ Query completed in {:?}, result: {:?}", duration, row);
-        }
+    if let Some(row) = result.rows.first() {
+        println!("✓ Query completed in {:?}, result: {:?}", duration, row.values);
     }
     
     Ok(())
@@ -238,12 +215,10 @@ fn test_file_persistence() -> Result<(), OxidbError> {
     // Reopen database and verify data persists
     {
         let mut conn = Connection::open(&db_path)?;
-        let result = conn.execute("SELECT * FROM persistent_data")?;
-        if let QueryResult::Data(data) = result {
-            println!("✓ Reopened database, found {} persistent records", data.row_count());
-            for row in data.rows() {
-                println!("  Persistent data: {:?}", row);
-            }
+        let result = conn.query("SELECT * FROM persistent_data")?;
+        println!("✓ Reopened database, found {} persistent records", result.row_count());
+        for row in result.rows {
+            println!("  Persistent data: {:?}", row.values);
         }
     }
     

@@ -1,4 +1,4 @@
-use oxidb::{Connection, OxidbError, QueryResult};
+use oxidb::{Connection, OxidbError};
 use std::time::{Duration, Instant};
 
 fn main() -> Result<(), OxidbError> {
@@ -89,15 +89,9 @@ fn benchmark_query_performance() -> Result<(), OxidbError> {
     
     for (name, sql) in &queries {
         let start = Instant::now();
-        let result = conn.execute(sql)?;
+        let result = conn.query(sql)?;
         let duration = start.elapsed();
-        
-        match result {
-            QueryResult::Data(data) => {
-                println!("✓ {}: {} results in {:?}", name, data.row_count(), duration);
-            }
-            _ => println!("✓ {}: completed in {:?}", name, duration),
-        }
+        println!("✓ {}: {} results in {:?}", name, result.row_count(), duration);
     }
     
     println!("✅ Query performance benchmark completed\n");
@@ -227,15 +221,9 @@ fn benchmark_concurrent_operations() -> Result<(), OxidbError> {
     println!("✓ Throughput: {:.0} operations/sec", ops_per_sec);
     
     // Verify data integrity
-    let result = conn.execute("SELECT COUNT(*) as total FROM concurrent_test")?;
-    match result {
-        QueryResult::Data(data) => {
-            let rows: Vec<_> = data.rows().collect();
-            if let Some(row) = rows.first() {
-                println!("✓ Data integrity verified: {:?}", row);
-            }
-        }
-        _ => println!("⚠ Could not verify data integrity"),
+    let data = conn.query("SELECT COUNT(*) as total FROM concurrent_test")?;
+    if let Some(row) = data.rows.first() {
+        println!("✓ Data integrity verified: {:?}", row.values);
     }
     
     println!("✅ Concurrent operations benchmark completed\n");

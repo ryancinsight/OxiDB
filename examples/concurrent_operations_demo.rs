@@ -1,4 +1,4 @@
-use oxidb::{Connection, OxidbError, QueryResult};
+use oxidb::{Connection, OxidbError};
 use std::thread;
 use std::time::Duration;
 
@@ -53,13 +53,8 @@ fn test_sequential_operations() -> Result<(), OxidbError> {
     
     // Verify count
     let count_sql = format!("SELECT * FROM {}", table_name);
-    let result = conn.execute(&count_sql)?;
-    match result {
-        QueryResult::Data(data) => {
-            println!("✓ Verified {} records in table", data.row_count());
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
-    }
+    let data = conn.query(&count_sql)?;
+    println!("✓ Verified {} records in table", data.row_count());
 
     Ok(())
 }
@@ -92,13 +87,8 @@ fn test_simulated_concurrent_reads() -> Result<(), OxidbError> {
     
     for i in 1..=20 {
         let select_sql = format!("SELECT * FROM {} WHERE id <= {}", table_name, i * 2);
-        let result = conn.execute(&select_sql)?;
-        match result {
-            QueryResult::Data(data) => {
-                total_rows += data.row_count();
-            }
-            _ => return Err(OxidbError::Other("Expected data result".to_string())),
-        }
+        let data = conn.query(&select_sql)?;
+        total_rows += data.row_count();
     }
     
     let duration = start.elapsed();
@@ -149,13 +139,8 @@ fn test_simulated_concurrent_writes() -> Result<(), OxidbError> {
 
     // Verify final count
     let count_sql = format!("SELECT * FROM {}", table_name);
-    let result = conn.execute(&count_sql)?;
-    match result {
-        QueryResult::Data(data) => {
-            println!("✓ Verified {} total records", data.row_count());
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
-    }
+    let data = conn.query(&count_sql)?;
+    println!("✓ Verified {} total records", data.row_count());
 
     Ok(())
 }
@@ -190,15 +175,10 @@ fn test_mixed_operations() -> Result<(), OxidbError> {
     for round in 1..=10 {
         // Read operation
         let select_sql = format!("SELECT * FROM {} WHERE counter < {}", table_name, round * 2);
-        let result = conn.execute(&select_sql)?;
-        match result {
-            QueryResult::Data(data) => {
-                operations += 1;
-                if round % 3 == 0 {
-                    println!("✓ Round {}: Read {} records", round, data.row_count());
-                }
-            }
-            _ => return Err(OxidbError::Other("Expected data result".to_string())),
+        let data = conn.query(&select_sql)?;
+        operations += 1;
+        if round % 3 == 0 {
+            println!("✓ Round {}: Read {} records", round, data.row_count());
         }
         
         // Write operation (update)
@@ -225,13 +205,8 @@ fn test_mixed_operations() -> Result<(), OxidbError> {
 
     // Final verification
     let final_sql = format!("SELECT * FROM {}", table_name);
-    let result = conn.execute(&final_sql)?;
-    match result {
-        QueryResult::Data(data) => {
-            println!("✓ Final state: {} records", data.row_count());
-        }
-        _ => return Err(OxidbError::Other("Expected data result".to_string())),
-    }
+    let data = conn.query(&final_sql)?;
+    println!("✓ Final state: {} records", data.row_count());
 
     Ok(())
 }

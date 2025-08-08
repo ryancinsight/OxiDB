@@ -145,25 +145,16 @@ impl DocumentSearchDB {
         let result = self.conn.execute_with_params(sql, &params)?;
         
         let mut search_results = Vec::new();
-        match result {
-            oxidb::QueryResult::Data(data) => {
-                let columns = &data.columns;
-                for row in &data.rows {
-                    let doc = self.row_to_document(row, columns)?;
-                    let score = Self::get_float_column(row, columns, "distance")
-                        .map(|distance| 1.0 - distance.min(1.0)) // Convert distance to similarity
-                        .unwrap_or(0.0);
-                    
-                    let snippet = self.generate_snippet(&doc.content, &query.text);
-                    
-                    search_results.push(SearchResult {
-                        document: doc,
-                        score,
-                        snippet,
-                    });
-                }
+        {
+            let columns = match &result { r => &r.columns };
+            for row in &result.rows {
+                let doc = self.row_to_document(row, columns)?;
+                let score = Self::get_float_column(row, columns, "distance")
+                    .map(|distance| 1.0 - distance.min(1.0))
+                    .unwrap_or(0.0);
+                let snippet = self.generate_snippet(&doc.content, &query.text);
+                search_results.push(SearchResult { document: doc, score, snippet });
             }
-            _ => {}
         }
         
         Ok(search_results)
@@ -216,29 +207,19 @@ impl DocumentSearchDB {
         }
         
         // Add keyword results
-        match keyword_result {
-            oxidb::QueryResult::Data(data) => {
-                for row in &data.rows {
-                    let doc = self.row_to_document(row, &data.columns)?;
-                    let doc_id = doc.id.clone();
-                    
-                    let snippet = self.generate_snippet(&doc.content, &query.text);
-                    let keyword_score = keyword_weight;
-                    
-                    if let Some(existing) = combined_results.get_mut(&doc_id) {
-                        // Document found in both searches - combine scores
-                        existing.score = existing.score * (1.0 - keyword_weight) + keyword_score;
-                    } else {
-                        // Document only found in keyword search
-                        combined_results.insert(doc_id, SearchResult {
-                            document: doc,
-                            score: keyword_score,
-                            snippet,
-                        });
-                    }
+        {
+            let data = &keyword_result;
+            for row in &data.rows {
+                let doc = self.row_to_document(row, &data.columns)?;
+                let doc_id = doc.id.clone();
+                let snippet = self.generate_snippet(&doc.content, &query.text);
+                let keyword_score = keyword_weight;
+                if let Some(existing) = combined_results.get_mut(&doc_id) {
+                    existing.score = existing.score * (1.0 - keyword_weight) + keyword_score;
+                } else {
+                    combined_results.insert(doc_id, SearchResult { document: doc, score: keyword_score, snippet });
                 }
             }
-            _ => {}
         }
         
         // Sort by combined score
@@ -252,15 +233,7 @@ impl DocumentSearchDB {
     fn get_documents_by_category(&mut self, category: &str) -> Result<Vec<Document>, OxidbError> {
         let sql = "SELECT * FROM documents WHERE category = ?";
         let result = self.conn.execute_with_params(sql, &[Value::Text(category.to_string())])?;
-        
-        match result {
-            oxidb::QueryResult::Data(data) => {
-                data.rows.iter()
-                    .map(|row| self.row_to_document(row, &data.columns))
-                    .collect()
-            }
-            _ => Ok(Vec::new()),
-        }
+        result.rows.iter().map(|row| self.row_to_document(row, &result.columns)).collect()
     }
     
     // Helper methods
@@ -343,41 +316,44 @@ impl DocumentSearchDB {
     
     // Helper method to safely extract a text value from a row by column name
     fn get_text_column(row: &oxidb::Row, columns: &[String], column_name: &str) -> Result<String, OxidbError> {
-        match row.get_by_name(columns, column_name) {
-            Some(Value::Text(s)) => Ok(s.clone()),
-            Some(Value::Null) => Ok(String::new()),
-            Some(_) => Err(OxidbError::TypeMismatch {
-                expected: "Text".to_string(),
-                found: format!("different type for column '{}'", column_name),
-            }),
-            None => Err(OxidbError::NotFound(format!("Column '{}' not found", column_name))),
+        if let Some(idx) = columns.iter().position(|c| c == column_name) {
+            match row.values.get(idx) {
+                Some(Value::Text(s)) => Ok(s.clone()),
+                Some(Value::Null) => Ok(String::new()),
+                Some(_) => Err(OxidbError::TypeMismatch { expected: "Text".to_string(), found: format!("different type for column '{}'", column_name) }),
+                None => Err(OxidbError::NotFound(format!("Column '{}' index out of bounds", column_name))),
+            }
+        } else {
+            Err(OxidbError::NotFound(format!("Column '{}' not found", column_name)))
         }
     }
     
     // Helper method to safely extract a vector value from a row by column name
     fn get_vector_column(row: &oxidb::Row, columns: &[String], column_name: &str) -> Result<Vec<f32>, OxidbError> {
-        match row.get_by_name(columns, column_name) {
-            Some(Value::Vector(v)) => Ok(v.clone()),
-            Some(Value::Null) => Ok(vec![]),
-            Some(_) => Err(OxidbError::TypeMismatch {
-                expected: "Vector".to_string(),
-                found: format!("different type for column '{}'", column_name),
-            }),
-            None => Err(OxidbError::NotFound(format!("Column '{}' not found", column_name))),
+        if let Some(idx) = columns.iter().position(|c| c == column_name) {
+            match row.values.get(idx) {
+                Some(Value::Vector(v)) => Ok(v.clone()),
+                Some(Value::Null) => Ok(vec![]),
+                Some(_) => Err(OxidbError::TypeMismatch { expected: "Vector".to_string(), found: format!("different type for column '{}'", column_name) }),
+                None => Err(OxidbError::NotFound(format!("Column '{}' index out of bounds", column_name))),
+            }
+        } else {
+            Err(OxidbError::NotFound(format!("Column '{}' not found", column_name)))
         }
     }
     
     // Helper method to safely extract a float value from a row by column name
     fn get_float_column(row: &oxidb::Row, columns: &[String], column_name: &str) -> Result<f32, OxidbError> {
-        match row.get_by_name(columns, column_name) {
-            Some(Value::Float(f)) => Ok(*f as f32),
-            Some(Value::Integer(i)) => Ok(*i as f32),
-            Some(Value::Null) => Ok(0.0),
-            Some(_) => Err(OxidbError::TypeMismatch {
-                expected: "Float".to_string(),
-                found: format!("different type for column '{}'", column_name),
-            }),
-            None => Err(OxidbError::NotFound(format!("Column '{}' not found", column_name))),
+        if let Some(idx) = columns.iter().position(|c| c == column_name) {
+            match row.values.get(idx) {
+                Some(Value::Float(f)) => Ok(*f as f32),
+                Some(Value::Integer(i)) => Ok(*i as f32),
+                Some(Value::Null) => Ok(0.0),
+                Some(_) => Err(OxidbError::TypeMismatch { expected: "Float".to_string(), found: format!("different type for column '{}'", column_name) }),
+                None => Err(OxidbError::NotFound(format!("Column '{}' index out of bounds", column_name))),
+            }
+        } else {
+            Err(OxidbError::NotFound(format!("Column '{}' not found", column_name)))
         }
     }
     

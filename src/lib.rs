@@ -196,9 +196,8 @@ mod tests {
         let result = conn.query("SELECT * FROM test WHERE id = 1")
             .expect("Failed to query data");
         
-        assert!(result.rows.is_some());
-        let rows = result.rows.unwrap();
-        assert_eq!(rows.rows.len(), 1);
+        assert!(!result.is_empty());
+        assert_eq!(result.row_count(), 1);
     }
 
     #[test]
@@ -225,8 +224,7 @@ mod tests {
         let result = conn.query("SELECT * FROM test")
             .expect("Failed to query data");
         
-        assert!(result.rows.is_some());
-        let rows = result.rows.unwrap();
-        assert_eq!(rows.rows.len(), 0);
+        assert!(result.is_empty());
+        assert_eq!(result.row_count(), 0);
     }
 }

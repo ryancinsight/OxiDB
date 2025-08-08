@@ -3,6 +3,7 @@ use crate::core::common::OxidbError;
 use crate::core::transaction::Transaction; // Added this import
                                            // use crate::core::common::serialization::{deserialize_data_type}; // No longer needed here
 use crate::core::common::types::TransactionId;
+use std::collections::HashSet; // Added for committed_ids filtering
 // Key removed
 use crate::core::storage::engine::traits::KeyValueStore;
 // LockType removed
@@ -11,10 +12,8 @@ use crate::core::storage::engine::traits::KeyValueStore;
 // HashMap removed
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
-    // handle_insert, handle_delete, and handle_get were removed.
-    // handle_find_by_index is also commented out to enforce SQL-only API
+    // Legacy KV helpers are available as thin adapters
 
-    /* Legacy method - commented out to enforce SQL-only API
     /// Handles finding rows by an index lookup.
     /// It retrieves primary keys from the specified index for the given value,
     /// then fetches the actual row data from the store for those primary keys,
@@ -115,7 +114,6 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         }
         Ok(ExecutionResult::Values(results_vec))
     }
-    */
 
     /// Handles the creation of a new table.
     /// This involves storing the table's schema and creating any necessary indexes

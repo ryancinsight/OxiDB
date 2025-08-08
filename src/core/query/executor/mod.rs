@@ -34,6 +34,7 @@ use std::collections::{HashMap, HashSet}; // Added HashMap and HashSet import
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use uuid;
+use crate::core::transaction::lock_manager::LockType; // Added for handle_get/delete/insert
 
 /// Context for resolving parameter placeholders during execution
 #[derive(Debug)]
@@ -368,7 +369,6 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
     // Legacy handler methods - commented out to enforce SQL-only API
     // These methods are preserved for reference but should not be used
-    /*
     pub(crate) fn handle_insert(
         &mut self,
         key: Vec<u8>,
@@ -623,7 +623,6 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         );
         Ok(ExecutionResult::Deleted(deleted))
     }
-    */
 
     #[allow(unused_variables)] // Remove when implemented
     pub(crate) fn handle_sql_delete(

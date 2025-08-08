@@ -8,7 +8,6 @@
 //! 5. Real-world query scenarios
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🔍 HybridRAG Validation Test");
@@ -57,23 +56,23 @@ fn test_score_calculation() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n🧮 Test 2: Score Calculation");
     
     // Test hybrid scoring logic (based on the actual implementation)
-    let vector_weight = 0.6;
-    let graph_weight = 0.4;
+    let vector_weight: f64 = 0.6;
+    let graph_weight: f64 = 0.4;
     
     // Test case 1: Both scores present
-    let vector_score = Some(0.8);
-    let graph_score = Some(0.7);
+    let vector_score: Option<f64> = Some(0.8);
+    let graph_score: Option<f64> = Some(0.7);
     let expected_hybrid = 0.8 * vector_weight + 0.7 * graph_weight;
     println!("✓ Hybrid score calculation: {:.3} (vector: {:.1}, graph: {:.1})", 
         expected_hybrid, vector_score.unwrap(), graph_score.unwrap());
     
     // Test case 2: Only vector score
-    let vector_only = Some(0.9);
+    let vector_only: Option<f64> = Some(0.9);
     let expected_vector_only = 0.9 * vector_weight;
     println!("✓ Vector-only score: {:.3}", expected_vector_only);
     
     // Test case 3: Only graph score
-    let graph_only = Some(0.6);
+    let graph_only: Option<f64> = Some(0.6);
     let expected_graph_only = 0.6 * graph_weight;
     println!("✓ Graph-only score: {:.3}", expected_graph_only);
     
@@ -104,8 +103,8 @@ fn test_configuration_options() -> Result<(), Box<dyn std::error::Error>> {
         custom_vector_weight, custom_graph_weight);
     
     // Test configuration impact on scoring
-    let test_vector_score = 0.8;
-    let test_graph_score = 0.6;
+    let test_vector_score: f64 = 0.8;
+    let test_graph_score: f64 = 0.6;
     let default_hybrid = test_vector_score * 0.5 + test_graph_score * 0.5;
     let custom_hybrid = test_vector_score * custom_vector_weight + test_graph_score * custom_graph_weight;
     
@@ -245,8 +244,8 @@ mod tests {
     #[test]
     fn test_score_calculations() {
         // Test hybrid score calculation logic
-        let vector_weight = 0.6;
-        let graph_weight = 0.4;
+        let vector_weight: f64 = 0.6;
+        let graph_weight: f64 = 0.4;
         
         let hybrid_score = 0.8 * vector_weight + 0.7 * graph_weight;
         assert!((hybrid_score - 0.76).abs() < 0.001);
