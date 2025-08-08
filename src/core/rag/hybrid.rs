@@ -413,7 +413,7 @@ mod tests {
         let graph_store = crate::core::graph::InMemoryGraphStore::new();
         let embedder = Arc::new(SemanticEmbedder::new(128));
         let config = crate::core::rag::graphrag::GraphRAGConfig::default();
-        let graph_engine = Arc::new(GraphRAGEngineImpl::new(Arc::new(Mutex::new(graph_store)), embedder.clone(), config));
+        let graph_engine = Arc::new(GraphRAGEngineImpl::new(Arc::new(Mutex::new(Box::new(graph_store))), embedder.clone(), config));
         
         let engine = HybridRAGEngine::new(
             vector_retriever,
@@ -432,7 +432,7 @@ mod tests {
         let graph_store = crate::core::graph::InMemoryGraphStore::new();
         let embedder = Arc::new(SemanticEmbedder::new(128));
         let config = crate::core::rag::graphrag::GraphRAGConfig::default();
-        let graph_engine = Arc::new(GraphRAGEngineImpl::new(Arc::new(Mutex::new(graph_store)), embedder.clone(), config));
+        let graph_engine = Arc::new(GraphRAGEngineImpl::new(Arc::new(Mutex::new(Box::new(graph_store))), embedder.clone(), config));
 
         let engine = HybridRAGEngineBuilder::new()
             .with_vector_retriever(vector_retriever)

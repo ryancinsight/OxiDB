@@ -104,31 +104,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create sample nodes for the knowledge graph
     let nodes = vec![
         KnowledgeNode {
-            id: 1, // Changed from string to u64
-            entity_type: "Company".to_string(),
-            name: "TechCorp".to_string(),
-            description: Some("Leading technology company in AI and data solutions".to_string()),
+            id: 1,
+            node_type: "Company".to_string(),
+            content: "TechCorp".to_string(),
             embedding: None,
-            properties: HashMap::new(),
-            confidence_score: 0.9,
+            metadata: HashMap::from([
+                ("description".to_string(), Value::Text("Leading technology company in AI and data solutions".to_string())),
+                ("confidence".to_string(), Value::Float(0.9)),
+            ]),
         },
         KnowledgeNode {
-            id: 2, // Changed from string to u64
-            entity_type: "Product".to_string(),
-            name: "SmartAnalytics".to_string(),
-            description: Some("AI-powered data analysis platform".to_string()),
+            id: 2,
+            node_type: "Product".to_string(),
+            content: "SmartAnalytics".to_string(),
             embedding: None,
-            properties: HashMap::new(),
-            confidence_score: 0.85,
+            metadata: HashMap::from([
+                ("description".to_string(), Value::Text("AI-powered data analysis platform".to_string())),
+                ("confidence".to_string(), Value::Float(0.85)),
+            ]),
         },
         KnowledgeNode {
-            id: 3, // Changed from string to u64
-            entity_type: "Company".to_string(),
-            name: "DataViz Solutions".to_string(),
-            description: Some("Visualization company acquired by TechCorp".to_string()),
+            id: 3,
+            node_type: "Company".to_string(),
+            content: "DataViz Solutions".to_string(),
             embedding: None,
-            properties: HashMap::new(),
-            confidence_score: 0.8,
+            metadata: HashMap::from([
+                ("description".to_string(), Value::Text("Visualization company acquired by TechCorp".to_string())),
+                ("confidence".to_string(), Value::Float(0.8)),
+            ]),
         },
     ];
 
@@ -138,10 +141,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "INSERT INTO nodes (id, entity_type, name, description, confidence) VALUES (?, ?, ?, ?, ?)",
             &[
                 Value::Integer(node.id as i64),
-                Value::Text(node.entity_type.clone()),
-                Value::Text(node.name.clone()),
-                Value::Text(node.description.as_ref().unwrap_or(&String::new()).clone()),
-                Value::Float(node.confidence_score as f64),
+                Value::Text(node.node_type.clone()),
+                Value::Text(node.content.clone()),
+                node.metadata.get("description").cloned().unwrap_or(Value::Text(String::new())),
+                node.metadata.get("confidence").cloned().unwrap_or(Value::Float(0.0)),
             ]
         )?;
     }
@@ -170,8 +173,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Knowledge Graph created with {} nodes", nodes.len());
     println!("\nNodes:");
     for node in &nodes {
-        println!("  - {} ({}): {}", node.name, node.entity_type, 
-                 node.description.as_ref().unwrap_or(&"No description".to_string()));
+        let desc = match node.metadata.get("description") {
+            Some(Value::Text(s)) => s.as_str(),
+            _ => "No description",
+        };
+        println!("  - {} ({}): {}", node.content, node.node_type, desc);
     }
 
     // Query the knowledge graph

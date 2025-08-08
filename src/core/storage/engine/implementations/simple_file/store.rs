@@ -308,12 +308,12 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
 
     fn contains_key(
         &self,
-        _key: &Vec<u8>,
-        _snapshot_id: u64,
-        _committed_ids: &HashSet<u64>,
+        key: &Vec<u8>,
+        snapshot_id: u64,
+        committed_ids: &HashSet<u64>,
     ) -> Result<bool, OxidbError> {
-        // Changed
-        Ok(false) // Placeholder as in original
+        // Reuse get visibility semantics; return presence without exposing data
+        self.get(key, snapshot_id, committed_ids).map(|opt| opt.is_some())
     }
 
     fn log_wal_entry(
@@ -327,11 +327,32 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
 
     fn gc(
         &mut self,
-        _low_water_mark: u64,
-        _committed_ids: &HashSet<u64>,
+        low_water_mark: u64,
+        committed_ids: &HashSet<u64>,
     ) -> Result<(), OxidbError> {
-        // Changed
-        Ok(()) // Placeholder as in original
+        // Remove versions that are fully obsolete: both the creator and expirer are committed
+        // and the expiring transaction is at or below the low_water_mark.
+        let mut keys_to_remove: Vec<Vec<u8>> = Vec::new();
+        for (key, versions) in self.cache.iter_mut() {
+            versions.retain(|v| {
+                match v.expired_tx_id {
+                    Some(expirer_tx) => {
+                        let creator_committed = committed_ids.contains(&v.created_tx_id) || v.created_tx_id == 0;
+                        let expirer_committed = committed_ids.contains(&expirer_tx) || expirer_tx == 0;
+                        // Safe to drop if fully committed and expirer is not newer than the lowest active transaction
+                        !(creator_committed && expirer_committed && expirer_tx <= low_water_mark)
+                    }
+                    None => true, // Keep latest live versions
+                }
+            });
+            if versions.is_empty() {
+                keys_to_remove.push(key.clone());
+            }
+        }
+        for key in keys_to_remove {
+            self.cache.remove(&key);
+        }
+        Ok(())
     }
 
     fn scan(&self) -> Result<Vec<(Vec<u8>, Vec<u8>)>, OxidbError>

@@ -12,12 +12,15 @@
 
 // Graph imports not needed for this example
 use oxidb::core::rag::document::{Document, Embedding};
-use oxidb::core::rag::graphrag::{GraphRAGEngineImpl, GraphRAGContext, KnowledgeNode, KnowledgeEdge};
+use oxidb::core::rag::graphrag::{GraphRAGEngineImpl, GraphRAGContext, KnowledgeNode};
+use oxidb::core::rag::embedder::{EmbeddingModel, TfIdfEmbedder};
 use oxidb::core::rag::retriever::{InMemoryRetriever, SimilarityMetric};
-use oxidb::core::rag::{GraphRAGEngine, Retriever};
+use oxidb::core::rag::GraphRAGEngine;
+use oxidb::core::graph::InMemoryGraphStore;
 use oxidb::Value;
 use regex::Regex;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -87,12 +90,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rag_retriever = Box::new(InMemoryRetriever::new(documents.clone()));
 
     // Step 4: Setup GraphRAG system
-    println!("🕸️  Setting up GraphRAG system...");
-    let graphrag_retriever = Box::new(InMemoryRetriever::new(documents.clone()));
-    let mut graphrag_engine = GraphRAGEngineImpl::new(graphrag_retriever);
-    
-    // Build knowledge graph from Shakespeare documents
-    graphrag_engine.build_knowledge_graph(&documents).await?;
+    let graph_store: Arc<Mutex<dyn oxidb::core::graph::GraphStore>> = Arc::new(Mutex::new(InMemoryGraphStore::new()));
+    let embedder: Arc<dyn EmbeddingModel + Send + Sync> = Arc::new(TfIdfEmbedder::default());
+    let config = oxidb::core::rag::graphrag::GraphRAGConfig::default();
+    let mut graphrag_engine = GraphRAGEngineImpl::new(graph_store, embedder.clone(), config);
+
+    // Index documents into GraphRAG as knowledge nodes
+    for doc in &documents {
+        graphrag_engine.add_document(doc).await?;
+    }
     enhance_shakespeare_knowledge_graph(&mut graphrag_engine).await?;
 
     // Step 5: Performance comparison with various queries
@@ -361,7 +367,6 @@ fn create_sample_shakespeare_content(title: &str, genre: &str) -> Vec<Document> 
 async fn enhance_shakespeare_knowledge_graph(
     graphrag_engine: &mut GraphRAGEngineImpl,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Add character entities
     let characters = vec![
         ("Romeo", "Character", "Young lover from House Montague"),
         ("Juliet", "Character", "Young lover from House Capulet"),
@@ -369,42 +374,28 @@ async fn enhance_shakespeare_knowledge_graph(
         ("Macbeth", "Character", "Scottish general and king"),
         ("Lady Macbeth", "Character", "Macbeth's ambitious wife"),
     ];
-    
+
     let mut character_ids = HashMap::new();
-    
+
     for (name, entity_type, description) in characters {
+        let mut metadata = HashMap::new();
+        metadata.insert("description".to_string(), Value::Text(description.to_string()));
+        metadata.insert("character_type".to_string(), Value::Text("protagonist".to_string()));
         let node = KnowledgeNode {
-            id: 0, // Will be assigned by the engine
-            entity_type: entity_type.to_string(),
-            name: name.to_string(),
-            description: Some(description.to_string()),
-            embedding: Some(create_simple_embedding(&format!("{} {}", name, description))),
-            properties: {
-                let mut props = HashMap::new();
-                props.insert("character_type".to_string(), Value::Text("protagonist".to_string()));
-                props
-            },
-            confidence_score: 0.9,
+            id: 0,
+            node_type: entity_type.to_string(),
+            content: name.to_string(),
+            embedding: None,
+            metadata,
         };
-        
-        let id = graphrag_engine.add_entity(node).await?;
+        let id = graphrag_engine.add_document(&Document { id: name.to_string(), content: description.to_string(), metadata: Some(HashMap::new()), embedding: Some(Embedding { vector: vec![0.0; 16] }) }).await?;
         character_ids.insert(name, id);
     }
-    
-    // Add relationships
+
     if let (Some(&romeo_id), Some(&juliet_id)) = (character_ids.get("Romeo"), character_ids.get("Juliet")) {
-        let relationship = KnowledgeEdge {
-            id: 0,
-            from_entity: romeo_id,
-            to_entity: juliet_id,
-            relationship_type: "LOVES".to_string(),
-            description: Some("Star-crossed lovers".to_string()),
-            confidence_score: 0.95,
-            weight: Some(1.0),
-        };
-        graphrag_engine.add_relationship(relationship).await?;
+        graphrag_engine.add_relationship(romeo_id, juliet_id, "LOVES", 1.0).await?;
     }
-    
+
     Ok(())
 }
 
@@ -453,36 +444,34 @@ async fn benchmark_graphrag_retrieval(
     query: &str,
 ) -> Result<(PerformanceMetrics, Vec<String>), Box<dyn std::error::Error>> {
     let start_time = Instant::now();
-    let query_embedding = create_simple_embedding(query);
-    
+
     let context = GraphRAGContext {
-        query_embedding,
-        max_hops: 2,
-        min_confidence: 0.5,
-        include_relationships: vec!["LOVES".to_string(), "CONFLICTS_WITH".to_string()],
-        exclude_relationships: vec![],
-        entity_types: vec!["Character".to_string()],
+        query: query.to_string(),
+        max_results: 5,
+        similarity_threshold: 0.3,
+        max_depth: 2,
+        parameters: HashMap::new(),
     };
-    
+
     let processing_start = Instant::now();
-    let results = graphrag_engine.retrieve_with_graph(context).await?;
+    let results = graphrag_engine.query(&context).await?;
     let processing_time = processing_start.elapsed();
-    
+
     let retrieval_time = start_time.elapsed();
-    
+
     let result_summaries: Vec<String> = results
         .documents
         .iter()
         .map(|doc| format!("{}: {}", doc.id, doc.content.chars().take(100).collect::<String>()))
         .collect();
-    
+
     let metrics = PerformanceMetrics {
         retrieval_time,
         processing_time,
         result_count: results.documents.len(),
-        relevance_score: results.confidence_score,
+        relevance_score: results.scores.iter().copied().sum::<f64>() / (results.scores.len().max(1) as f64),
     };
-    
+
     Ok((metrics, result_summaries))
 }
 

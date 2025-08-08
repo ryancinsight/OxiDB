@@ -248,13 +248,13 @@ mod tests {
         let vector_weight = 0.6;
         let graph_weight = 0.4;
         
-        let hybrid_score = 0.8 * vector_weight + 0.7 * graph_weight;
-        assert!((hybrid_score - 0.76).abs() < 0.001);
+        let hybrid_score: f64 = 0.8_f64 * vector_weight as f64 + 0.7_f64 * graph_weight as f64;
+        assert!((hybrid_score - 0.76_f64).abs() < 0.001_f64);
         
-        let vector_only = 0.9 * vector_weight;
-        assert!((vector_only - 0.54).abs() < 0.001);
+        let vector_only: f64 = 0.9_f64 * vector_weight as f64;
+        assert!((vector_only - 0.54_f64).abs() < 0.001_f64);
         
-        let graph_only = 0.6 * graph_weight;
-        assert!((graph_only - 0.24).abs() < 0.001);
+        let graph_only: f64 = 0.6_f64 * graph_weight as f64;
+        assert!((graph_only - 0.24_f64).abs() < 0.001_f64);
     }
 }
