@@ -4,7 +4,7 @@
 //! including connection management and query execution.
 
 mod connection;
-mod types;
+pub mod types;
 
 pub use connection::Connection;
 pub use types::{QueryResult, Row};

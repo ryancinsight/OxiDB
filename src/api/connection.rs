@@ -1,4 +1,5 @@
 use crate::api::types::{QueryResult, Row};
+use crate::api::types::DataSet;
 use crate::core::common::types::Value;
 use crate::core::common::OxidbError;
 use crate::core::config::Config;
@@ -156,45 +157,26 @@ impl Connection {
                     })
                     .collect();
                 
-                QueryResult {
-                    columns,
-                    rows: converted_rows,
-                }
+                QueryResult::Data(DataSet::new(columns, converted_rows))
             }
-            ExecutionResult::Updated { count } => QueryResult {
-                columns: vec!["affected_rows".to_string()],
-                rows: vec![Row {
-                    values: vec![Value::Integer(count as i64)],
-                }],
-            },
-            ExecutionResult::Value(Some(dt)) => QueryResult {
-                columns: vec!["value".to_string()],
-                rows: vec![Row {
-                    values: vec![data_type_to_value(dt)],
-                }],
-            },
-            ExecutionResult::Value(None) => QueryResult {
-                columns: vec!["value".to_string()],
-                rows: vec![],
-            },
-            ExecutionResult::Values(dts) => QueryResult {
-                columns: vec!["value".to_string()],
-                rows: dts.into_iter()
-                    .map(|dt| Row {
-                        values: vec![data_type_to_value(dt)],
-                    })
-                    .collect(),
-            },
-            ExecutionResult::Deleted(success) => QueryResult {
-                columns: vec!["deleted".to_string()],
-                rows: vec![Row {
-                    values: vec![Value::Boolean(success)],
-                }],
-            },
-            ExecutionResult::Success => QueryResult {
-                columns: vec![],
-                rows: vec![],
-            },
+            ExecutionResult::Updated { count } => QueryResult::RowsAffected(count as u64),
+            ExecutionResult::Value(Some(dt)) => QueryResult::Data(DataSet::new(
+                vec!["value".to_string()],
+                vec![Row { values: vec![data_type_to_value(dt)] }],
+            )),
+            ExecutionResult::Value(None) => QueryResult::Data(DataSet::new(
+                vec!["value".to_string()],
+                vec![],
+            )),
+            ExecutionResult::Values(dts) => QueryResult::Data(DataSet::new(
+                vec!["value".to_string()],
+                dts.into_iter().map(|dt| Row { values: vec![data_type_to_value(dt)] }).collect(),
+            )),
+            ExecutionResult::Deleted(success) => QueryResult::Data(DataSet::new(
+                vec!["deleted".to_string()],
+                vec![Row { values: vec![Value::Boolean(success)] }],
+            )),
+            ExecutionResult::Success => QueryResult::Success,
             ExecutionResult::RankedResults(results) => {
                 // For ranked results, include distance as a column
                 let columns = vec!["distance".to_string(), "data".to_string()];
@@ -208,10 +190,7 @@ impl Connection {
                     })
                     .collect();
                 
-                QueryResult {
-                    columns,
-                    rows: converted_rows,
-                }
+                QueryResult::Data(DataSet::new(columns, converted_rows))
             },
         };
         
@@ -234,7 +213,7 @@ impl Connection {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn execute(&mut self, sql: &str) -> Result<u64, OxidbError> {
+    pub fn execute(&mut self, sql: &str) -> Result<QueryResult, OxidbError> {
         // Parse SQL to Command
         let command = parse_query(sql)?;
         let result = self.executor.execute_command(command)?;
@@ -242,13 +221,43 @@ impl Connection {
         // Convert ExecutionResult to rows affected count
         use crate::core::query::executor::ExecutionResult;
         
-        match result {
-            ExecutionResult::Updated { count } => Ok(count as u64),
-            ExecutionResult::Deleted(true) => Ok(1),
-            ExecutionResult::Deleted(false) => Ok(0),
-            ExecutionResult::Success => Ok(0),
-            _ => Ok(0),
-        }
+        let mapped = match result {
+            ExecutionResult::Updated { count } => QueryResult::RowsAffected(count as u64),
+            ExecutionResult::Deleted(success) => QueryResult::RowsAffected(if success { 1 } else { 0 }),
+            ExecutionResult::Success => QueryResult::Success,
+            ExecutionResult::Query { columns, rows } => {
+                let converted_rows = rows
+                    .into_iter()
+                    .map(|row_values| Row {
+                        values: row_values.into_iter().map(data_type_to_value).collect(),
+                    })
+                    .collect();
+                QueryResult::Data(DataSet::new(columns, converted_rows))
+            }
+            ExecutionResult::Value(Some(dt)) => QueryResult::Data(DataSet::new(
+                vec!["value".to_string()],
+                vec![Row { values: vec![data_type_to_value(dt)] }],
+            )),
+            ExecutionResult::Value(None) => QueryResult::Data(DataSet::new(vec!["value".to_string()], vec![])),
+            ExecutionResult::Values(dts) => QueryResult::Data(DataSet::new(
+                vec!["value".to_string()],
+                dts.into_iter().map(|dt| Row { values: vec![data_type_to_value(dt)] }).collect(),
+            )),
+            ExecutionResult::RankedResults(results) => {
+                let columns = vec!["distance".to_string(), "data".to_string()];
+                let converted_rows = results
+                    .into_iter()
+                    .map(|(distance, data_values)| Row {
+                        values: vec![
+                            Value::Float(f64::from(distance)),
+                            Value::Text(serde_json::to_string(&data_values).unwrap_or_else(|_| "[]".to_string())),
+                        ],
+                    })
+                    .collect();
+                QueryResult::Data(DataSet::new(columns, converted_rows))
+            }
+        };
+        Ok(mapped)
     }
 
     /// Begin a new transaction.
@@ -445,21 +454,10 @@ impl Connection {
                     })
                     .collect();
                 
-                QueryResult {
-                    columns,
-                    rows: converted_rows,
-                }
+                QueryResult::Data(DataSet::new(columns, converted_rows))
             }
-            ExecutionResult::Updated { count } => QueryResult {
-                columns: vec!["affected_rows".to_string()],
-                rows: vec![Row {
-                    values: vec![Value::Integer(count as i64)],
-                }],
-            },
-            _ => QueryResult {
-                columns: vec![],
-                rows: vec![],
-            },
+            ExecutionResult::Updated { count } => QueryResult::RowsAffected(count as u64),
+            _ => QueryResult::Success,
         };
         
         Ok(query_result)
@@ -482,7 +480,10 @@ impl Connection {
     /// ```
     pub fn query_first(&mut self, sql: &str) -> Result<Option<Row>, OxidbError> {
         let result = self.query(sql)?;
-        Ok(result.rows.into_iter().next())
+        match result {
+            QueryResult::Data(ds) => Ok(ds.rows.into_iter().next()),
+            _ => Ok(None),
+        }
     }
 
     /// Execute a query and return all rows.
@@ -503,7 +504,10 @@ impl Connection {
     /// ```
     pub fn query_all(&mut self, sql: &str) -> Result<Vec<Row>, OxidbError> {
         let result = self.query(sql)?;
-        Ok(result.rows)
+        match result {
+            QueryResult::Data(ds) => Ok(ds.rows),
+            _ => Ok(Vec::new()),
+        }
     }
 
     /// Executes an UPDATE, INSERT, or DELETE statement and returns the number of affected rows.
@@ -515,7 +519,11 @@ impl Connection {
     /// - The statement returns data instead of a row count (e.g., SELECT statements)
     /// - Underlying database operations fail
     pub fn execute_update(&mut self, sql: &str) -> Result<u64, OxidbError> {
-        self.execute(sql)
+        let res = self.execute(sql)?;
+        match res {
+            QueryResult::RowsAffected(count) => Ok(count),
+            _ => Ok(0), // Should not happen for UPDATE/INSERT/DELETE
+        }
     }
 
 
@@ -547,20 +555,24 @@ mod tests {
         let table_name = format!("test_users_{}", std::process::id());
         let create_sql = format!("CREATE TABLE {table_name} (id INTEGER PRIMARY KEY, name TEXT)");
         let result = conn.execute(&create_sql)?;
-        assert_eq!(result, 0);
+        assert_eq!(result.row_count(), 0); // Changed from assert_eq!(result, 0)
 
         // Insert data
         let insert_sql = format!("INSERT INTO {table_name} (id, name) VALUES (1, 'Alice')");
         let result = conn.execute(&insert_sql)?;
-        assert_eq!(result, 1);
+        assert_eq!(result.row_count(), 1); // Changed from assert_eq!(result, 1)
 
         // Query data
         let select_sql = format!("SELECT * FROM {table_name}");
         let result = conn.query(&select_sql)?;
-        assert!(result.rows.is_some());
-        let rows = result.rows.unwrap();
-        assert_eq!(rows.columns.len(), 2);
-        assert_eq!(rows.rows.len(), 1);
+        match result {
+            QueryResult::Data(ds) => {
+                assert!(!ds.rows.is_empty());
+                assert_eq!(ds.columns.len(), 2);
+                assert_eq!(ds.rows.len(), 1);
+            }
+            other => panic!("Unexpected result: {:?}", other),
+        }
 
         Ok(())
     }
@@ -580,14 +592,15 @@ mod tests {
             &insert_sql,
             &[Value::Integer(1), Value::Text("Bob".to_string()), Value::Integer(25)],
         )?;
-        assert_eq!(result.rows_affected, 1);
+        assert_eq!(result.row_count(), 1);
 
         // Test parameterized select
         let select_sql = format!("SELECT * FROM {table_name} WHERE id = ?");
         let result = conn.execute_with_params(&select_sql, &[Value::Integer(1)])?;
-        assert!(result.rows.is_some());
-        let rows = result.rows.unwrap();
-        assert_eq!(rows.rows.len(), 1);
+        match result {
+            QueryResult::Data(ds) => assert_eq!(ds.rows.len(), 1),
+            other => panic!("Unexpected result: {:?}", other),
+        }
 
         Ok(())
     }
@@ -610,8 +623,10 @@ mod tests {
         let select_sql = format!("SELECT * FROM {table_name}");
         let result = conn.query(&select_sql)?;
         // Should have 1 row
-        assert!(result.rows.is_some());
-        assert_eq!(result.rows.unwrap().rows.len(), 1);
+        match result {
+            QueryResult::Data(ds) => assert_eq!(ds.rows.len(), 1),
+            other => panic!("Unexpected result: {:?}", other),
+        }
 
         // Test rollback
         conn.begin_transaction()?;
@@ -621,8 +636,10 @@ mod tests {
 
         let result = conn.query(&select_sql)?;
         // Should still have 1 row (rollback worked)
-        assert!(result.rows.is_some());
-        assert_eq!(result.rows.unwrap().rows.len(), 1);
+        match result {
+            QueryResult::Data(ds) => assert_eq!(ds.rows.len(), 1),
+            other => panic!("Unexpected result: {:?}", other),
+        }
 
         Ok(())
     }
@@ -645,27 +662,32 @@ mod tests {
 
         // Test basic query operations
         let result = conn.query(&format!("SELECT * FROM {} WHERE id = 1", table_name))?;
-        assert!(result.rows.is_some());
-        assert_eq!(result.rows.unwrap().rows.len(), 1);
+        match result {
+            QueryResult::Data(ds) => assert_eq!(ds.rows.len(), 1),
+            other => panic!("Unexpected result: {:?}", other),
+        }
 
         // Test query_all equivalent
         let result = conn.query(&format!("SELECT * FROM {}", table_name))?;
         println!("SELECT * result: {:?}", result);
-        assert!(result.rows.is_some());
-        let rows = result.rows.unwrap();
-        println!("Expected 2 rows, got {} rows", rows.rows.len());
-        for (i, row) in rows.rows.iter().enumerate() {
-            println!("Row {}: {:?}", i, row);
+        match result {
+            QueryResult::Data(ds) => {
+                println!("Expected 2 rows, got {} rows", ds.rows.len());
+                for (i, row) in ds.rows.iter().enumerate() {
+                    println!("Row {}: {:?}", i, row);
+                }
+                assert_eq!(ds.rows.len(), 2);
+            }
+            other => panic!("Unexpected result: {:?}", other),
         }
-        assert_eq!(rows.rows.len(), 2);
 
         // Test execute_update equivalent
         let result =
             conn.execute(&format!("UPDATE {} SET name = 'Charlie' WHERE id = 1", table_name))?;
         // Note: Due to global hash indexes, this may affect rows in multiple tables
         // that have the same values. This is a known limitation of the current system.
-        assert!(result >= 1, "Expected at least 1 row to be affected, got: {}", result);
-        println!("UPDATE affected {} rows (expected >= 1)", result);
+        assert!(result.row_count() >= 1, "Expected at least 1 row to be affected, got: {}", result.row_count());
+        println!("UPDATE affected {} rows (expected >= 1)", result.row_count());
 
         Ok(())
     }

@@ -1,3 +1,4 @@
+#![cfg(feature = "rag_examples")]
 //! Document Search RAG (Retrieval-Augmented Generation) Example
 //! 
 //! This example demonstrates using Oxidb for semantic document search with vector embeddings.

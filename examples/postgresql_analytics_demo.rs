@@ -1,3 +1,4 @@
+#![cfg(feature = "legacy_examples")]
 //! PostgreSQL-Style Analytics & Data Warehousing Demo
 //! 
 //! This example demonstrates Oxidb usage patterns familiar to PostgreSQL developers,

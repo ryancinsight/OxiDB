@@ -50,6 +50,11 @@ approx = "0.5" # For floating point comparisons in tests
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] } # For async tests
 criterion = { version = "0.5", features = ["html_reports"] } # For benchmarking
 
+[features]
+default = []
+rag_examples = []
+legacy_examples = []
+
 [workspace]
 members = [
     "examples/data_type_tests",
@@ -73,14 +78,17 @@ path = "examples/ecommerce_website.rs"
 [[example]]
 name = "document_search_rag"
 path = "examples/document_search_rag.rs"
+required-features = ["rag_examples"]
 
 [[example]]
 name = "knowledge_graph_rag"
 path = "examples/knowledge_graph_rag.rs"
+required-features = ["rag_examples"]
 
 [[example]]
 name = "sql_compatibility_demo"
 path = "examples/sql_compatibility_demo.rs"
+required-features = ["legacy_examples"]
 
 [[example]]
 name = "simple_oxidb_test"
@@ -89,11 +97,49 @@ path = "examples/simple_oxidb_test.rs"
 [[example]]
 name = "hybrid_rag_demo"
 path = "examples/hybrid_rag_demo.rs"
+required-features = ["rag_examples"]
 
 [[example]]
 name = "graphrag_config_demo"
 path = "examples/graphrag_config_demo.rs"
+required-features = ["rag_examples"]
 
 [[example]]
 name = "performance_optimization_demo"
 path = "examples/performance_optimization_demo.rs"
+
+# Additional gated examples
+[[example]]
+name = "generic_rag_comparison"
+path = "examples/generic_rag_comparison.rs"
+required-features = ["rag_examples"]
+
+[[example]]
+name = "shakespeare_rag_comparison"
+path = "examples/shakespeare_rag_comparison.rs"
+required-features = ["rag_examples"]
+
+[[example]]
+name = "shakespeare_rag_comparison_improved"
+path = "examples/shakespeare_rag_comparison_improved.rs"
+required-features = ["rag_examples"]
+
+[[example]]
+name = "simple_hybridrag_validation"
+path = "examples/simple_hybridrag_validation.rs"
+required-features = ["rag_examples"]
+
+[[example]]
+name = "hybridrag_validation_test"
+path = "examples/hybridrag_validation_test.rs"
+required-features = ["rag_examples"]
+
+[[example]]
+name = "postgresql_analytics_demo"
+path = "examples/postgresql_analytics_demo.rs"
+required-features = ["legacy_examples"]
+
+[[example]]
+name = "mysql_style_ecommerce"
+path = "examples/mysql_style_ecommerce.rs"
+required-features = ["legacy_examples"]

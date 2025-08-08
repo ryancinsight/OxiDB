@@ -9,7 +9,7 @@
 //! - Array operations and indexing
 //! - Aggregation pipeline patterns
 
-use oxidb::Oxidb;
+use oxidb::Connection;
 use oxidb::core::common::OxidbError;
 use serde_json::json;
 
@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", "=".repeat(50));
     
     // Initialize database (MongoDB-style connection)
-    let mut db = Oxidb::new("mongodb_style_documents.db")?;
+    let mut db = Connection::open("mongodb_style_documents.db")?;
     
     // Set up document collections (tables)
     setup_document_collections(&mut db)?;
@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn setup_document_collections(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn setup_document_collections(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n📄 Setting up Document Collections...");
     
     // Clean up existing collections
@@ -52,7 +52,7 @@ fn setup_document_collections(db: &mut Oxidb) -> Result<(), OxidbError> {
     ];
     
     for collection in collections {
-        let _ = db.execute_query_str(&format!("DROP TABLE IF EXISTS {}", collection));
+        let _ = db.execute(&format!("DROP TABLE IF EXISTS {}", collection));
     }
     
     // Users collection (document store)
@@ -69,7 +69,7 @@ fn setup_document_collections(db: &mut Oxidb) -> Result<(), OxidbError> {
             INDEX idx_active (is_active)
         )
     "#;
-    db.execute_query_str(create_users)?;
+    db.execute(create_users)?;
     println!("✓ Created users collection");
     
     // Products collection with nested attributes
@@ -89,7 +89,7 @@ fn setup_document_collections(db: &mut Oxidb) -> Result<(), OxidbError> {
             FULLTEXT INDEX idx_tags (tags)
         )
     "#;
-    db.execute_query_str(create_products)?;
+    db.execute(create_products)?;
     println!("✓ Created products collection");
     
     // Orders collection with embedded documents
@@ -107,7 +107,7 @@ fn setup_document_collections(db: &mut Oxidb) -> Result<(), OxidbError> {
             INDEX idx_date (order_date)
         )
     "#;
-    db.execute_query_str(create_orders)?;
+    db.execute(create_orders)?;
     println!("✓ Created orders collection");
     
     // Reviews collection with ratings and text
@@ -125,7 +125,7 @@ fn setup_document_collections(db: &mut Oxidb) -> Result<(), OxidbError> {
             INDEX idx_date (review_date)
         )
     "#;
-    db.execute_query_str(create_reviews)?;
+    db.execute(create_reviews)?;
     println!("✓ Created reviews collection");
     
     // Blog posts collection with rich content
@@ -145,7 +145,7 @@ fn setup_document_collections(db: &mut Oxidb) -> Result<(), OxidbError> {
             FULLTEXT INDEX idx_content (document)
         )
     "#;
-    db.execute_query_str(create_blog_posts)?;
+    db.execute(create_blog_posts)?;
     println!("✓ Created blog_posts collection");
     
     // Locations collection for geospatial queries
@@ -162,14 +162,14 @@ fn setup_document_collections(db: &mut Oxidb) -> Result<(), OxidbError> {
             INDEX idx_coords (latitude, longitude)
         )
     "#;
-    db.execute_query_str(create_locations)?;
+    db.execute(create_locations)?;
     println!("✓ Created locations collection");
     
     println!("✅ Document collections setup completed!");
     Ok(())
 }
 
-fn insert_document_data(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn insert_document_data(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n📝 Inserting Document Data...");
     
     // Insert users with complex profiles
@@ -266,7 +266,7 @@ fn insert_document_data(db: &mut Oxidb) -> Result<(), OxidbError> {
             user["_id"].as_str().unwrap(),
             user.to_string().replace("'", "''")
         );
-        db.execute_query_str(&sql)?;
+        db.execute(&sql)?;
     }
     println!("✓ Inserted {} user documents", 3);
     
@@ -356,7 +356,7 @@ fn insert_document_data(db: &mut Oxidb) -> Result<(), OxidbError> {
             product["_id"].as_str().unwrap(),
             product.to_string().replace("'", "''")
         );
-        db.execute_query_str(&sql)?;
+        db.execute(&sql)?;
     }
     println!("✓ Inserted {} product documents", 3);
     
@@ -450,7 +450,7 @@ fn insert_document_data(db: &mut Oxidb) -> Result<(), OxidbError> {
             order["_id"].as_str().unwrap(),
             order.to_string().replace("'", "''")
         );
-        db.execute_query_str(&sql)?;
+        db.execute(&sql)?;
     }
     println!("✓ Inserted {} order documents", 2);
     
@@ -521,7 +521,7 @@ fn insert_document_data(db: &mut Oxidb) -> Result<(), OxidbError> {
             post["_id"].as_str().unwrap(),
             post.to_string().replace("'", "''")
         );
-        db.execute_query_str(&sql)?;
+        db.execute(&sql)?;
     }
     println!("✓ Inserted {} blog post documents", 2);
     
@@ -529,7 +529,7 @@ fn insert_document_data(db: &mut Oxidb) -> Result<(), OxidbError> {
     Ok(())
 }
 
-fn demonstrate_document_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn demonstrate_document_queries(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n🔍 Document Query Operations (MongoDB-style)");
     println!("{}", "=".repeat(50));
     
@@ -545,7 +545,7 @@ fn demonstrate_document_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
         FROM users
         WHERE JSON_EXTRACT(document, '$.isActive') = true
     "#;
-    let _result = db.execute_query_str(basic_query)?;
+    let _result = db.execute(basic_query)?;
     println!("✓ Found active users");
     
     // Query nested documents
@@ -559,7 +559,7 @@ fn demonstrate_document_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
         FROM users
         WHERE JSON_EXTRACT(document, '$.profile.location.state') = 'CA'
     "#;
-    let _nested_result = db.execute_query_str(nested_query)?;
+    let _nested_result = db.execute(nested_query)?;
     println!("✓ Found users in California");
     
     // Query with multiple conditions
@@ -577,7 +577,7 @@ fn demonstrate_document_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
           AND JSON_EXTRACT(document, '$.reviews.average') >= 4.5
         ORDER BY JSON_EXTRACT(document, '$.price') DESC
     "#;
-    let _complex_result = db.execute_query_str(complex_query)?;
+    let _complex_result = db.execute(complex_query)?;
     println!("✓ Found affordable, in-stock, highly-rated products");
     
     // Query documents by date ranges
@@ -593,13 +593,13 @@ fn demonstrate_document_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
           AND JSON_EXTRACT(document, '$.isPublished') = true
         ORDER BY JSON_EXTRACT(document, '$.stats.viewCount') DESC
     "#;
-    let _date_result = db.execute_query_str(date_query)?;
+    let _date_result = db.execute(date_query)?;
     println!("✓ Found recent published blog posts");
     
     Ok(())
 }
 
-fn demonstrate_nested_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn demonstrate_nested_operations(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n🪆 Nested Document Operations");
     println!("{}", "=".repeat(35));
     
@@ -615,7 +615,7 @@ fn demonstrate_nested_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
         )
         WHERE _id = 'user_002'
     "#;
-    db.execute_query_str(update_nested)?;
+    db.execute(update_nested)?;
     println!("✓ Updated user preferences and login info");
     
     // Query updated nested data
@@ -628,7 +628,7 @@ fn demonstrate_nested_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
         FROM users
         WHERE _id = 'user_002'
     "#;
-    let _verify_result = db.execute_query_str(verify_update)?;
+    let _verify_result = db.execute(verify_update)?;
     println!("✓ Verified nested field updates");
     
     // Add new nested objects
@@ -650,7 +650,7 @@ fn demonstrate_nested_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
         )
         WHERE _id = 'user_001'
     "#;
-    db.execute_query_str(add_nested)?;
+    db.execute(add_nested)?;
     println!("✓ Added avatar and settings objects");
     
     // Query with existence checks
@@ -671,13 +671,13 @@ fn demonstrate_nested_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
         FROM users
         ORDER BY _id
     "#;
-    let _existence_result = db.execute_query_str(existence_query)?;
+    let _existence_result = db.execute(existence_query)?;
     println!("✓ Checked field existence in documents");
     
     Ok(())
 }
 
-fn demonstrate_array_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn demonstrate_array_operations(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n📚 Array Operations (MongoDB-style)");
     println!("{}", "=".repeat(40));
     
@@ -690,7 +690,7 @@ fn demonstrate_array_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
         FROM users
         WHERE JSON_CONTAINS(JSON_EXTRACT(document, '$.roles'), '"admin"')
     "#;
-    let _contains_result = db.execute_query_str(array_contains)?;
+    let _contains_result = db.execute(array_contains)?;
     println!("✓ Found users with admin role");
     
     // Query product tags
@@ -705,7 +705,7 @@ fn demonstrate_array_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
            OR JSON_CONTAINS(JSON_EXTRACT(document, '$.tags'), '"smartphone"')
         ORDER BY JSON_EXTRACT(document, '$.price') DESC
     "#;
-    let _tag_result = db.execute_query_str(tag_query)?;
+    let _tag_result = db.execute(tag_query)?;
     println!("✓ Found products with specific tags");
     
     // Array length queries
@@ -719,7 +719,7 @@ fn demonstrate_array_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
         WHERE JSON_LENGTH(JSON_EXTRACT(document, '$.items')) > 1
         ORDER BY JSON_LENGTH(JSON_EXTRACT(document, '$.items')) DESC
     "#;
-    let _length_result = db.execute_query_str(array_length)?;
+    let _length_result = db.execute(array_length)?;
     println!("✓ Found orders with multiple items");
     
     // Update arrays (add elements)
@@ -732,7 +732,7 @@ fn demonstrate_array_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
         )
         WHERE _id = 'user_001'
     "#;
-    db.execute_query_str(update_array)?;
+    db.execute(update_array)?;
     println!("✓ Added beta_tester role to user");
     
     // Verify array update
@@ -743,13 +743,13 @@ fn demonstrate_array_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
         FROM users
         WHERE _id = 'user_001'
     "#;
-    let _verify_array_result = db.execute_query_str(verify_array)?;
+    let _verify_array_result = db.execute(verify_array)?;
     println!("✓ Verified array update");
     
     Ok(())
 }
 
-fn demonstrate_aggregation_pipeline(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn demonstrate_aggregation_pipeline(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n🔄 Aggregation Pipeline (MongoDB-style)");
     println!("{}", "=".repeat(45));
     
@@ -779,7 +779,7 @@ fn demonstrate_aggregation_pipeline(db: &mut Oxidb) -> Result<(), OxidbError> {
         GROUP BY state, country
         ORDER BY user_count DESC
     "#;
-    let _user_result = db.execute_query_str(user_analytics)?;
+    let _user_result = db.execute(user_analytics)?;
     println!("✓ Generated user analytics by location");
     
     // Product category analysis
@@ -809,7 +809,7 @@ fn demonstrate_aggregation_pipeline(db: &mut Oxidb) -> Result<(), OxidbError> {
         GROUP BY category, subcategory
         ORDER BY avg_price DESC
     "#;
-    let _product_result = db.execute_query_str(product_analytics)?;
+    let _product_result = db.execute(product_analytics)?;
     println!("✓ Generated product analytics by category");
     
     // Order analysis with item details
@@ -839,7 +839,7 @@ fn demonstrate_aggregation_pipeline(db: &mut Oxidb) -> Result<(), OxidbError> {
         GROUP BY status, shipping_method
         ORDER BY total_revenue DESC
     "#;
-    let _order_result = db.execute_query_str(order_analytics)?;
+    let _order_result = db.execute(order_analytics)?;
     println!("✓ Generated order analytics by status and shipping");
     
     // Blog post engagement metrics
@@ -876,13 +876,13 @@ fn demonstrate_aggregation_pipeline(db: &mut Oxidb) -> Result<(), OxidbError> {
         GROUP BY author, difficulty
         ORDER BY total_views DESC
     "#;
-    let _content_result = db.execute_query_str(content_analytics)?;
+    let _content_result = db.execute(content_analytics)?;
     println!("✓ Generated content engagement analytics");
     
     Ok(())
 }
 
-fn demonstrate_text_search(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn demonstrate_text_search(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n🔎 Text Search Operations");
     println!("{}", "=".repeat(30));
     
@@ -900,7 +900,7 @@ fn demonstrate_text_search(db: &mut Oxidb) -> Result<(), OxidbError> {
            OR JSON_EXTRACT(document, '$.excerpt') LIKE '%flexible%'
         ORDER BY JSON_EXTRACT(document, '$.stats.viewCount') DESC
     "#;
-    let _search_result = db.execute_query_str(text_search)?;
+    let _search_result = db.execute(text_search)?;
     println!("✓ Performed text search in blog posts");
     
     // Product search with multiple criteria
@@ -917,7 +917,7 @@ fn demonstrate_text_search(db: &mut Oxidb) -> Result<(), OxidbError> {
           AND JSON_EXTRACT(document, '$.inStock') = true
         ORDER BY JSON_EXTRACT(document, '$.reviews.average') DESC
     "#;
-    let _product_search_result = db.execute_query_str(product_search)?;
+    let _product_search_result = db.execute(product_search)?;
     println!("✓ Performed product search with filters");
     
     // User search by profile data
@@ -935,13 +935,13 @@ fn demonstrate_text_search(db: &mut Oxidb) -> Result<(), OxidbError> {
            OR JSON_CONTAINS(JSON_EXTRACT(document, '$.roles'), '"admin"')
         ORDER BY JSON_EXTRACT(document, '$.loginCount') DESC
     "#;
-    let _user_search_result = db.execute_query_str(user_search)?;
+    let _user_search_result = db.execute(user_search)?;
     println!("✓ Performed user profile search");
     
     Ok(())
 }
 
-fn demonstrate_geospatial_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
+fn demonstrate_geospatial_queries(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n🌍 Geospatial Operations");
     println!("{}", "=".repeat(25));
     
@@ -1004,7 +1004,7 @@ fn demonstrate_geospatial_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
             location["_id"].as_str().unwrap(),
             location.to_string().replace("'", "''")
         );
-        db.execute_query_str(&sql)?;
+        db.execute(&sql)?;
     }
     println!("✓ Inserted {} location documents", 3);
     
@@ -1034,7 +1034,7 @@ fn demonstrate_geospatial_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
         FROM location_data
         ORDER BY distance_from_times_square ASC
     "#;
-    let _distance_result = db.execute_query_str(distance_query)?;
+    let _distance_result = db.execute(distance_query)?;
     println!("✓ Calculated distances from Times Square");
     
     // Location queries by type and rating
@@ -1051,7 +1051,7 @@ fn demonstrate_geospatial_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
           AND CAST(JSON_EXTRACT(document, '$.rating') AS DECIMAL) >= 4.5
         ORDER BY CAST(JSON_EXTRACT(document, '$.rating') AS DECIMAL) DESC
     "#;
-    let _filter_result = db.execute_query_str(location_filter)?;
+    let _filter_result = db.execute(location_filter)?;
     println!("✓ Found high-rated landmarks");
     
     // Amenity-based search
@@ -1067,7 +1067,7 @@ fn demonstrate_geospatial_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
            OR JSON_CONTAINS(JSON_EXTRACT(document, '$.amenities'), '"shopping"')
         ORDER BY JSON_EXTRACT(document, '$.rating') DESC
     "#;
-    let _amenity_result = db.execute_query_str(amenity_search)?;
+    let _amenity_result = db.execute(amenity_search)?;
     println!("✓ Found locations with specific amenities");
     
     println!("\n🎯 Document Database Summary:");

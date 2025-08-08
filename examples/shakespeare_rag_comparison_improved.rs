@@ -1,3 +1,4 @@
+#![cfg(feature = "rag_examples")]
 //! Improved Shakespeare RAG vs GraphRAG Comparison Demo
 //!
 //! This example demonstrates enhanced RAG and GraphRAG implementations with:

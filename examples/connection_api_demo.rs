@@ -42,7 +42,7 @@ fn main() -> Result<(), OxidbError> {
     match result {
         QueryResult::Data(data) => {
             println!("\nQuery Results:");
-            println!("Columns: {:?}", data.columns());
+            println!("Columns: {:?}", data.columns);
             println!("Row count: {}", data.row_count());
 
             for (i, row) in data.rows().enumerate() {

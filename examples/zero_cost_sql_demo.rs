@@ -11,8 +11,8 @@ use oxidb::core::zero_cost::{
 };
 use oxidb::core::zero_cost::borrowed::BorrowedPredicate;
 use oxidb::core::zero_cost::iterators::RowRefIterator;
-use oxidb::core::query::executor::zero_cost::{QueryResult, Row, QueryMetadata, WindowIterator, WindowRefIterator};
-use oxidb::api::types::Row as ApiRow;
+use oxidb::core::query::executor::zero_cost::{QueryResult, Row as ExecRow, QueryMetadata, WindowIterator, WindowRefIterator};
+use oxidb::core::common::types::Row as CoreRow;
 use oxidb::core::common::types::Value;
 use oxidb::core::types::DataType;
 use std::borrow::Cow;
@@ -38,27 +38,27 @@ fn demonstrate_zero_copy_views() -> Result<(), Box<dyn std::error::Error>> {
     
     // Sample employee data using new API
     let employees = vec![
-        ApiRow::new(vec![
+        CoreRow::new(vec![
             Value::Text("Alice".to_string()),
             Value::Integer(120000),
             Value::Text("Engineering".to_string()),
         ]),
-        ApiRow::new(vec![
+        CoreRow::new(vec![
             Value::Text("Bob".to_string()),
             Value::Integer(80000),
             Value::Text("Sales".to_string()),
         ]),
-        ApiRow::new(vec![
+        CoreRow::new(vec![
             Value::Text("Charlie".to_string()),
             Value::Integer(150000),
             Value::Text("Management".to_string()),
         ]),
-        ApiRow::new(vec![
+        CoreRow::new(vec![
             Value::Text("David".to_string()),
             Value::Integer(95000),
             Value::Text("Engineering".to_string()),
         ]),
-        ApiRow::new(vec![
+        CoreRow::new(vec![
             Value::Text("Eve".to_string()),
             Value::Integer(110000),
             Value::Text("Sales".to_string()),
@@ -66,11 +66,12 @@ fn demonstrate_zero_copy_views() -> Result<(), Box<dyn std::error::Error>> {
     ];
     
     // Create zero-copy table view
-    let table_view = TableView::new(&employees);
+    let columns: std::borrow::Cow<'_, [String]> = std::borrow::Cow::Owned(vec!["name".into(), "salary".into(), "department".into()]);
+    let table_view = TableView::new(&employees, columns);
     
     // Demonstrate zero-copy filtering
     println!("Employees in Engineering (zero-copy filter):");
-    for row in table_view.iter() {
+    for row in table_view.rows() {
         if let Some(Value::Text(dept)) = row.get(2) {
             if dept == "Engineering" {
                 if let Some(Value::Text(name)) = row.get(0) {
@@ -89,27 +90,27 @@ fn demonstrate_efficient_iterators() {
     
     // Sample employee data using new API
     let employees = vec![
-        ApiRow::new(vec![
+        CoreRow::new(vec![
             Value::Text("Alice".to_string()),
             Value::Integer(120000),
             Value::Text("Engineering".to_string()),
         ]),
-        ApiRow::new(vec![
+        CoreRow::new(vec![
             Value::Text("Bob".to_string()),
             Value::Integer(80000),
             Value::Text("Sales".to_string()),
         ]),
-        ApiRow::new(vec![
+        CoreRow::new(vec![
             Value::Text("Charlie".to_string()),
             Value::Integer(150000),
             Value::Text("Management".to_string()),
         ]),
-        ApiRow::new(vec![
+        CoreRow::new(vec![
             Value::Text("David".to_string()),
             Value::Integer(95000),
             Value::Text("Engineering".to_string()),
         ]),
-        ApiRow::new(vec![
+        CoreRow::new(vec![
             Value::Text("Eve".to_string()),
             Value::Integer(110000),
             Value::Text("Sales".to_string()),
@@ -191,7 +192,7 @@ fn demonstrate_borrowed_structures() -> Result<(), Box<dyn std::error::Error>> {
     }
     
     // Create an ApiRow for predicate evaluation
-    let test_row = ApiRow::new(vec![
+    let test_row = CoreRow::new(vec![
         Value::Integer(100),
         Value::Text("Test".to_string()),
         Value::Boolean(true),
@@ -248,8 +249,8 @@ fn demonstrate_window_functions() -> Result<(), Box<dyn std::error::Error>> {
     
     // 2. Streaming window (for data from iterators)
     println!("\n2. Streaming Window Analysis:");
-    let streaming_data = time_series.clone().into_iter();
-    let mut stream_window = WindowIterator::new(streaming_data, 3);
+    let streaming_data_iter = time_series.clone().into_iter();
+    let mut stream_window = WindowIterator::new(streaming_data_iter, 3);
     
     let mut period = 1;
     while let Some(window) = stream_window.next() {
@@ -287,7 +288,7 @@ fn demonstrate_query_result_handling() -> Result<(), Box<dyn std::error::Error>>
     // Create zero-cost query result
     let query_result = QueryResult {
         columns: Cow::Owned(column_names.clone()),
-        rows: Box::new(result_data.iter().map(|row| Row::from_borrowed(row.as_slice()))),
+        rows: Box::new(result_data.iter().map(|row| ExecRow::from_borrowed(row.as_slice()))),
         metadata: QueryMetadata {
             rows_affected: 0,
             execution_time_us: 150,

@@ -132,12 +132,12 @@ fn register_user(db: &mut Connection, username: &str, password: &str) -> Result<
         USERS_TABLE, escaped_username, escaped_hashed_password
     );
 
-    match db.execute(&query)? {
-        QueryResult::RowsAffected(n) if n > 0 => {
-            println!("User '{}' registered successfully.", username);
-            Ok(())
-        }
-        other => Err(anyhow::anyhow!("Failed to register user '{}': {:?}", username, other)),
+    let res = db.execute(&query)?;
+    if res.row_count() > 0 {
+        println!("User '{}' registered successfully.", username);
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("Failed to register user '{}'", username))
     }
 }
 
@@ -151,12 +151,11 @@ fn login_user(db: &mut Connection, username: &str, password: &str) -> Result<Opt
 
     match db.execute(&query)? {
         QueryResult::Data(data) => {
-            if data.rows.is_empty() {
+            let mut it = data.rows();
+            let Some(row) = it.next() else {
                 println!("Login failed: User '{}' not found.", username);
                 return Ok(None);
-            }
-            
-            let row = &data.rows[0];
+            };
             // Assuming columns are: id, username, password_hash
             if let (Some(id_val), Some(username_val), Some(password_hash_val)) = 
                 (row.get(0), row.get(1), row.get(2)) {
@@ -210,12 +209,12 @@ fn add_file(db: &mut Connection, user_id: u64, file_name: &str, content: &str) -
         USER_FILES_TABLE, user_id, escaped_file_name, hex_content
     );
 
-    match db.execute(&query)? {
-        QueryResult::RowsAffected(n) if n > 0 => {
-            println!("File '{}' added successfully for user ID {}.", file_name, user_id);
-            Ok(())
-        }
-        other => Err(anyhow::anyhow!("Failed to add file '{}': {:?}", file_name, other)),
+    let res = db.execute(&query)?;
+    if res.row_count() > 0 {
+        println!("File '{}' added successfully for user ID {}.", file_name, user_id);
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!("Failed to add file '{}'", file_name))
     }
 }
 
@@ -226,14 +225,15 @@ fn list_files(db: &mut Connection, user_id: u64) -> Result<()> {
         USER_FILES_TABLE, user_id
     );
 
-    match db.execute(&query)? {
-        QueryResult::Data(data) => {
-            if data.rows.is_empty() {
+    let data = db.execute(&query)?;
+    {
+            let rows: Vec<_> = match data { oxidb::QueryResult::Data(ds) => ds.rows, _ => Vec::new() };
+            if rows.is_empty() {
                 println!("No files found for user ID {}.", user_id);
                 return Ok(());
             }
             println!("Files for user ID {}:", user_id);
-            for row in &data.rows {
+            for row in &rows {
                 // Columns: id, user_id, file_name, file_content
                 if let (Some(id_val), Some(_user_id_val), Some(name_val), Some(content_val)) = 
                     (row.get(0), row.get(1), row.get(2), row.get(3)) {
@@ -264,10 +264,6 @@ fn list_files(db: &mut Connection, user_id: u64) -> Result<()> {
                     );
                 }
             }
-        }
-        other => {
-            eprintln!("Unexpected result when listing files for user ID {}: {:?}", user_id, other)
-        }
     }
     Ok(())
 }
@@ -278,49 +274,28 @@ fn get_file(db: &mut Connection, user_id: u64, file_id: u64) -> Result<Option<Us
         "SELECT id, user_id, file_name, file_content FROM {} WHERE id = {} AND user_id = {}",
         USER_FILES_TABLE, file_id, user_id
     );
-
-    match db.execute(&query)? {
-        QueryResult::Data(data) => {
-            if data.rows.is_empty() {
-                return Ok(None); // File not found or not owned by user
-            }
-            let row = &data.rows[0];
-            // Columns: id, user_id, file_name, file_content
-            if let (Some(id_val), Some(user_id_val), Some(name_val), Some(content_val)) = 
-                (row.get(0), row.get(1), row.get(2), row.get(3)) {
-                
-                use oxidb::Value;
-                let id = match id_val {
-                    Value::Integer(i) => *i as u64,
-                    _ => return Err(anyhow::anyhow!("Invalid file id type")),
-                };
-                
-                let user_id = match user_id_val {
-                    Value::Integer(i) => *i as u64,
-                    _ => return Err(anyhow::anyhow!("Invalid user_id type")),
-                };
-                
-                let file_name = match name_val {
-                    Value::Text(s) => s.clone(),
-                    _ => return Err(anyhow::anyhow!("Invalid file_name type")),
-                };
-                
-                let content = match content_val {
-                    Value::Blob(b) => b.clone(),
-                    _ => return Err(anyhow::anyhow!("Invalid file_content type")),
-                };
-                
-                Ok(Some(UserFile {
-                    id,
-                    user_id,
-                    file_name,
-                    content,
-                }))
-            } else {
-                Err(anyhow::anyhow!("Missing data for file ID {}", file_id))
-            }
-        }
-        other => Err(anyhow::anyhow!("Failed to get file ID {}: {:?}", file_id, other)),
+ 
+    let result = db.execute(&query)?;
+    let ds = match result {
+        oxidb::QueryResult::Data(ds) => ds,
+        _ => return Ok(None),
+    };
+    if ds.rows.is_empty() {
+        return Ok(None);
+    }
+    let row = &ds.rows[0];
+    // Columns: id, user_id, file_name, file_content
+    if let (Some(id_val), Some(user_id_val), Some(name_val), Some(content_val)) =
+        (row.get(0), row.get(1), row.get(2), row.get(3))
+    {
+        use oxidb::Value;
+        let id = match id_val { Value::Integer(i) => *i as u64, _ => return Err(anyhow::anyhow!("Invalid file id type")) };
+        let user_id = match user_id_val { Value::Integer(i) => *i as u64, _ => return Err(anyhow::anyhow!("Invalid user_id type")) };
+        let file_name = match name_val { Value::Text(s) => s.clone(), _ => return Err(anyhow::anyhow!("Invalid file_name type")) };
+        let content = match content_val { Value::Blob(b) => b.clone(), _ => return Err(anyhow::anyhow!("Invalid file_content type")) };
+        Ok(Some(UserFile { id, user_id, file_name, content }))
+    } else {
+        Err(anyhow::anyhow!("Missing data for file ID {}", file_id))
     }
 }
 

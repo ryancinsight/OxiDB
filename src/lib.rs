@@ -195,10 +195,13 @@ mod tests {
         // Test query
         let result = conn.query("SELECT * FROM test WHERE id = 1")
             .expect("Failed to query data");
-        
-        assert!(result.rows.is_some());
-        let rows = result.rows.unwrap();
-        assert_eq!(rows.rows.len(), 1);
+        match result {
+            crate::QueryResult::Data(ds) => {
+                assert!(!ds.rows.is_empty());
+                assert_eq!(ds.rows.len(), 1);
+            }
+            other => panic!("Unexpected result: {:?}", other),
+        }
     }
 
     #[test]
@@ -224,9 +227,12 @@ mod tests {
         // Verify data was not persisted
         let result = conn.query("SELECT * FROM test")
             .expect("Failed to query data");
-        
-        assert!(result.rows.is_some());
-        let rows = result.rows.unwrap();
-        assert_eq!(rows.rows.len(), 0);
+        match result {
+            crate::QueryResult::Data(ds) => {
+                assert!(ds.rows.is_empty());
+                assert_eq!(ds.rows.len(), 0);
+            }
+            other => panic!("Unexpected result: {:?}", other),
+        }
     }
 }

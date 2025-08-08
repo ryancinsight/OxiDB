@@ -1,3 +1,4 @@
+#![cfg(feature = "rag_examples")]
 //! Hybrid RAG Demo
 //! 
 //! This example demonstrates how to use both traditional retrieval and graph-based

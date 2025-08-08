@@ -1,3 +1,4 @@
+#![cfg(feature = "rag_examples")]
 // examples/graphrag_config_demo.rs
 //! Demonstrates configurable embedding dimensions in GraphRAG
 

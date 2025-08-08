@@ -5,7 +5,7 @@
 
 use crate::core::common::{OxidbError, ResultExt};
 use std::collections::VecDeque;
-use std::sync::{Arc, Condvar, Mutex, Weak};
+use std::sync::{Arc, Condvar, Mutex, Weak, atomic::{AtomicBool, Ordering}};
 use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
@@ -166,7 +166,9 @@ pub struct ConnectionPool<T: PoolableConnection> {
     /// Condition variable for waiting on available connections
     connection_available: Arc<Condvar>,
     /// Handle to the cleanup thread
-    _cleanup_handle: thread::JoinHandle<()>,
+    cleanup_handle: Option<thread::JoinHandle<()>>,
+    /// Shutdown flag to stop background thread promptly
+    shutdown: Arc<AtomicBool>,
 }
 
 impl<T: PoolableConnection + 'static> ConnectionPool<T> {
@@ -176,24 +178,41 @@ impl<T: PoolableConnection + 'static> ConnectionPool<T> {
         let inner = Arc::new(Mutex::new(PoolInner::new(config.clone())));
         let connection_available = Arc::new(Condvar::new());
         let cleanup_inner = Arc::downgrade(&inner);
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let shutdown_weak = Arc::downgrade(&shutdown);
 
         // Start cleanup thread
         let cleanup_handle = thread::spawn(move || {
+            // Use small sleep quanta to be responsive to shutdown
+            let quantum = std::cmp::max(config.cleanup_interval / 20, Duration::from_millis(5));
+            let mut elapsed = Duration::from_millis(0);
             loop {
-                thread::sleep(config.cleanup_interval);
-
-                if let Some(pool) = cleanup_inner.upgrade() {
-                    if let Ok(mut inner) = pool.lock() {
-                        inner.cleanup_idle_connections();
+                if let Some(sh) = shutdown_weak.upgrade() {
+                    if sh.load(Ordering::SeqCst) {
+                        break;
                     }
                 } else {
-                    // Pool has been dropped, exit cleanup thread
                     break;
                 }
+
+                if elapsed >= config.cleanup_interval {
+                    if let Some(pool) = cleanup_inner.upgrade() {
+                        if let Ok(mut inner) = pool.lock() {
+                            inner.cleanup_idle_connections();
+                        }
+                    } else {
+                        // Pool has been dropped, exit cleanup thread
+                        break;
+                    }
+                    elapsed = Duration::from_millis(0);
+                }
+
+                thread::sleep(quantum);
+                elapsed = elapsed.saturating_add(quantum);
             }
         });
 
-        Self { inner, connection_available, _cleanup_handle: cleanup_handle }
+        Self { inner, connection_available, cleanup_handle: Some(cleanup_handle), shutdown }
     }
 
     /// Get a connection from the pool
@@ -277,6 +296,17 @@ impl<T: PoolableConnection + 'static> ConnectionPool<T> {
             Ok(())
         } else {
             Err(OxidbError::Other("Pool is at maximum capacity".to_string()))
+        }
+    }
+}
+
+impl<T: PoolableConnection> Drop for ConnectionPool<T> {
+    fn drop(&mut self) {
+        // Signal shutdown and join the background thread promptly
+        self.shutdown.store(true, Ordering::SeqCst);
+        if let Some(handle) = self.cleanup_handle.take() {
+            // Join with a best-effort; if join panics, ignore to avoid test hangs
+            let _ = handle.join();
         }
     }
 }
