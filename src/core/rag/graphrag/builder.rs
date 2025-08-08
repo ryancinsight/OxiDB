@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 /// Builder for GraphRAG engines
 pub struct GraphRAGEngineBuilder {
-    graph_store: Option<Arc<Mutex<dyn GraphStore>>>,
+    graph_store: Option<Arc<Mutex<Box<dyn GraphStore>>>>,
     embedder: Option<Arc<dyn crate::core::rag::embedder::EmbeddingModel + Send + Sync>>,
     config: GraphRAGConfig,
 }
@@ -37,7 +37,7 @@ impl GraphRAGEngineBuilder {
         store: T,
     ) -> Self {
         // Wrap the store in a Mutex for thread-safe access
-        self.graph_store = Some(Arc::new(Mutex::new(store)));
+        self.graph_store = Some(Arc::new(Mutex::new(Box::new(store))));
         self
     }
 

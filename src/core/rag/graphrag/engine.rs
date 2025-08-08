@@ -48,7 +48,7 @@ pub trait GraphRAGEngine: Send + Sync {
 
 /// Implementation of the GraphRAG engine
 pub struct GraphRAGEngineImpl {
-    graph_store: Arc<Mutex<dyn GraphStore>>,
+    graph_store: Arc<Mutex<Box<dyn GraphStore>>>,
     embedder: Arc<dyn crate::core::rag::embedder::EmbeddingModel + Send + Sync>,
     #[allow(dead_code)]
     config: GraphRAGConfig,
@@ -61,7 +61,7 @@ pub struct GraphRAGEngineImpl {
 impl GraphRAGEngineImpl {
     /// Create a new GraphRAG engine
     pub fn new(
-        graph_store: Arc<Mutex<dyn GraphStore>>,
+        graph_store: Arc<Mutex<Box<dyn GraphStore>>>,
         embedder: Arc<dyn crate::core::rag::embedder::EmbeddingModel + Send + Sync>,
         config: GraphRAGConfig,
     ) -> Self {
@@ -180,11 +180,12 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
         let edge_data = Some(crate::core::graph::GraphData::new(relationship_type.to_string())
             .with_property("weight".to_string(), crate::core::common::types::Value::Float(weight)));
         
-        let edge_id = self.graph_store.lock().expect("Failed to acquire graph_store lock (possibly poisoned)").add_edge(source, target, relationship, edge_data)?;
+        let mut store = self.graph_store.lock().map_err(|_| OxidbError::Internal("Failed to acquire graph_store lock (possibly poisoned)".to_string()))?;
+        let _edge_id = store.add_edge(source, target, relationship, edge_data)?;
         
         // Store knowledge edge
         let edge = KnowledgeEdge {
-            id: edge_id,
+            id: 0,
             source,
             target,
             relationship_type: relationship_type.to_string(),
@@ -221,7 +222,6 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
         // Clear local state
         self.entities.clear();
         self.relationships.clear();
-        // Graph store clearing would be done through specific methods
         Ok(())
     }
 }

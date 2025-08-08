@@ -6,7 +6,6 @@ pub mod ddl_handlers;
 pub mod planner; // Added planner module
 pub mod processors;
 pub mod select_execution;
-pub mod zero_cost;
 #[cfg(test)]
 pub mod tests;
 pub mod transaction_handlers;
