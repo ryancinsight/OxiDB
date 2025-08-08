@@ -519,10 +519,8 @@ impl Connection {
     /// - The statement returns data instead of a row count (e.g., SELECT statements)
     /// - Underlying database operations fail
     pub fn execute_update(&mut self, sql: &str) -> Result<u64, OxidbError> {
-        self.execute(sql)?;
-        // The execute method now returns QueryResult, so we need to extract the count
-        // from the result.
-        match self.execute(sql)? {
+        let res = self.execute(sql)?;
+        match res {
             QueryResult::RowsAffected(count) => Ok(count),
             _ => Ok(0), // Should not happen for UPDATE/INSERT/DELETE
         }

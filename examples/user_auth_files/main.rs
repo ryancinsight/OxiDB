@@ -151,12 +151,11 @@ fn login_user(db: &mut Connection, username: &str, password: &str) -> Result<Opt
 
     match db.execute(&query)? {
         QueryResult::Data(data) => {
-            if data.rows().count() == 0 {
+            let mut it = data.rows();
+            let Some(row) = it.next() else {
                 println!("Login failed: User '{}' not found.", username);
                 return Ok(None);
-            }
-            let rows: Vec<_> = data.rows().collect();
-            let row = rows[0];
+            };
             // Assuming columns are: id, username, password_hash
             if let (Some(id_val), Some(username_val), Some(password_hash_val)) = 
                 (row.get(0), row.get(1), row.get(2)) {
