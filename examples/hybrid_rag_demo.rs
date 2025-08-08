@@ -149,23 +149,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     println!("Products developed by TechCorp:");
-    let rows = oxidb::Connection::query_first; // placeholder to avoid unused import warning
-    let _ = rows;
-    match result {
-        oxidb::QueryResult { columns: _, rows } if !rows.is_empty() => {
-            for row in &rows {
-                let name = match row.get(0).unwrap_or(&Value::Null) {
-                    Value::Text(s) => s.clone(),
-                    _ => "Unknown".to_string(),
-                };
-                let node_type = match row.get(1).unwrap_or(&Value::Null) {
-                    Value::Text(s) => s.clone(),
-                    _ => "Unknown".to_string(),
-                };
-                println!("  - {} ({})", name, node_type);
-            }
+    if result.rows.is_empty() {
+        println!("  No products found");
+    } else {
+        for row in &result.rows {
+            let name = match row.get(0).unwrap_or(&Value::Null) {
+                Value::Text(s) => s.clone(),
+                _ => "Unknown".to_string(),
+            };
+            let node_type = match row.get(1).unwrap_or(&Value::Null) {
+                Value::Text(s) => s.clone(),
+                _ => "Unknown".to_string(),
+            };
+            println!("  - {} ({})", name, node_type);
         }
-        _ => println!("  No products found"),
     }
 
     // Find all acquisitions
@@ -179,21 +176,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     println!("\nAcquisitions:");
-    match result {
-        oxidb::QueryResult { columns: _, rows } if !rows.is_empty() => {
-            for row in &rows {
-                let acquirer = match row.get(0).unwrap_or(&Value::Null) {
-                    Value::Text(s) => s.clone(),
-                    _ => "Unknown".to_string(),
-                };
-                let acquired = match row.get(1).unwrap_or(&Value::Null) {
-                    Value::Text(s) => s.clone(),
-                    _ => "Unknown".to_string(),
-                };
-                println!("  - {} acquired {}", acquirer, acquired);
-            }
+    if result.rows.is_empty() {
+        println!("  No acquisitions found");
+    } else {
+        for row in &result.rows {
+            let acquirer = match row.get(0).unwrap_or(&Value::Null) {
+                Value::Text(s) => s.clone(),
+                _ => "Unknown".to_string(),
+            };
+            let acquired = match row.get(1).unwrap_or(&Value::Null) {
+                Value::Text(s) => s.clone(),
+                _ => "Unknown".to_string(),
+            };
+            println!("  - {} acquired {}", acquirer, acquired);
         }
-        _ => println!("  No acquisitions found"),
     }
 
     println!("\n✅ GraphRAG demo completed successfully!");
