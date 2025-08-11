@@ -202,20 +202,20 @@ async fn upload_file(
         let query = "INSERT INTO files (id, user_id, filename, original_name, mime_type, size, path, uploaded_at, is_public) \
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)";
         let mime_type_value = match &content_type {
-            Some(ct) => Value::String(ct.clone()),
-            None => Value::Null,
+            Some(ct) => oxidb::Value::Text(ct.clone()),
+            None => oxidb::Value::Null,
         };
         let params = vec![
-            Value::String(file_id.clone()),
-            Value::String(auth_user.user_id.clone()),
-            Value::String(stored_filename.clone()),
-            Value::String(filename.clone()),
+            oxidb::Value::Text(file_id.clone()),
+            oxidb::Value::Text(auth_user.user_id.clone()),
+            oxidb::Value::Text(stored_filename.clone()),
+            oxidb::Value::Text(filename.clone()),
             mime_type_value,
-            Value::Int(size as i64),
-            Value::String(file_path.clone()),
-            Value::String(now.to_rfc3339()),
+            oxidb::Value::Integer(size as i64),
+            oxidb::Value::Text(file_path.clone()),
+            oxidb::Value::Text(now.to_rfc3339()),
         ];
-        conn.execute(query, &params)?;
+        conn.execute_with_params(query, &params)?;
         
         let file = File {
             id: file_id,

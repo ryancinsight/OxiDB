@@ -1,77 +1,51 @@
 #![cfg(feature = "rag_examples")]
 // examples/graphrag_config_demo.rs
-//! Demonstrates configurable embedding dimensions in GraphRAG
+//! Demonstrates configurable GraphRAG engine setup
 
-use oxidb::core::rag::{
-    Document, GraphRAGConfig, GraphRAGEngineBuilder, GraphRAGEngineImpl,
-    SemanticEmbedder, TfIdfEmbedder,
-};
-use oxidb::core::rag::retriever::InMemoryRetriever;
+use oxidb::core::rag::{Document};
+use oxidb::core::rag::graphrag::{GraphRAGConfig, GraphRAGEngineImpl};
+use oxidb::core::rag::embedder::{EmbeddingModel, TfIdfEmbedder, SemanticEmbedder};
+use oxidb::core::graph::{GraphFactory, GraphStore};
+use std::sync::{Arc, Mutex};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== GraphRAG Configurable Embedding Dimension Demo ===\n");
+    println!("=== GraphRAG Configuration Demo ===\n");
 
-    // Example 1: Using default configuration (384 dimensions)
+    // Create an in-memory graph store
+    let graph_store: Arc<Mutex<Box<dyn GraphStore>>> = Arc::new(Mutex::new(GraphFactory::create_memory_graph()?));
+
+    // Example 1: Using default configuration
     println!("1. Default Configuration:");
-    let retriever1 = Box::new(InMemoryRetriever::new(vec![]));
-    let engine1 = GraphRAGEngineImpl::new(retriever1);
-    println!("   Default embedding dimension: 384");
+    let default_embedder: Arc<dyn EmbeddingModel + Send + Sync> = Arc::new(SemanticEmbedder::new(384));
+    let _engine1 = GraphRAGEngineImpl::new(graph_store.clone(), default_embedder.clone(), GraphRAGConfig::default());
+    println!("   Default similarity threshold: {}", GraphRAGConfig::default().default_similarity_threshold);
 
-    // Example 2: Using custom configuration with different dimension
+    // Example 2: Custom configuration
     println!("\n2. Custom Configuration:");
-    let config = GraphRAGConfig {
-        default_embedding_dimension: 512,
-        confidence_threshold: 0.7,
-    };
-    let retriever2 = Box::new(InMemoryRetriever::new(vec![]));
-    let engine2 = GraphRAGEngineImpl::with_config(retriever2, config);
-    println!("   Custom embedding dimension: 512");
-    println!("   Custom confidence threshold: 0.7");
+    let config = GraphRAGConfig { default_similarity_threshold: 0.8, max_traversal_depth: 4, enable_caching: true };
+    let _engine2 = GraphRAGEngineImpl::new(graph_store.clone(), default_embedder.clone(), config.clone());
+    println!("   Custom similarity threshold: {}", config.default_similarity_threshold);
+    println!("   Max traversal depth: {}", config.max_traversal_depth);
 
-    // Example 3: Using builder pattern with specific dimension
-    println!("\n3. Builder Pattern with 768 dimensions:");
-    let retriever3 = Box::new(InMemoryRetriever::new(vec![]));
-    let engine3 = GraphRAGEngineBuilder::new()
-        .with_document_retriever(retriever3)
-        .with_embedding_dimension(768)
-        .with_confidence_threshold(0.6)
-        .build()?;
-    println!("   Embedding dimension: 768");
-    println!("   Confidence threshold: 0.6");
-
-    // Example 4: Using custom embedding model with its own dimension
-    println!("\n4. Custom Embedding Model:");
+    // Example 3: Using TF-IDF embedder
+    println!("\n3. Using TF-IDF Embedder:");
     let documents = vec![
         Document::new("doc1".to_string(), "Sample document for TF-IDF".to_string()),
         Document::new("doc2".to_string(), "Another document with different content".to_string()),
     ];
-    let tfidf_embedder = Box::new(TfIdfEmbedder::new(&documents));
-    let tfidf_dimension = tfidf_embedder.embedding_dimension();
-    println!("   TF-IDF embedding dimension: {}", tfidf_dimension);
-    
-    let retriever4 = Box::new(InMemoryRetriever::new(vec![]));
-    let engine4 = GraphRAGEngineBuilder::new()
-        .with_document_retriever(retriever4)
-        .with_embedding_model(tfidf_embedder)
-        .build()?;
+    let tfidf_embedder: Arc<dyn EmbeddingModel + Send + Sync> = Arc::new(TfIdfEmbedder::new(&documents));
+    let _engine3 = GraphRAGEngineImpl::new(graph_store.clone(), tfidf_embedder, GraphRAGConfig::default());
     println!("   Engine configured with TF-IDF embedder");
 
-    // Example 5: Using builder with custom SemanticEmbedder
-    println!("\n5. Custom SemanticEmbedder with 1024 dimensions:");
-    let semantic_embedder = Box::new(SemanticEmbedder::new(1024));
-    let retriever5 = Box::new(InMemoryRetriever::new(vec![]));
-    let engine5 = GraphRAGEngineBuilder::new()
-        .with_document_retriever(retriever5)
-        .with_embedding_model(semantic_embedder)
-        .build()?;
-    println!("   Semantic embedding dimension: 1024");
+    // Example 4: Using SemanticEmbedder with 1024 dimensions
+    println!("\n4. SemanticEmbedder with 1024 dimensions:");
+    let semantic_embedder: Arc<dyn EmbeddingModel + Send + Sync> = Arc::new(SemanticEmbedder::new(1024));
+    let _engine4 = GraphRAGEngineImpl::new(graph_store, semantic_embedder, GraphRAGConfig::default());
+    println!("   SemanticEmbedder configured with 1024 dims");
 
-    println!("\n=== Benefits of Configurable Dimensions ===");
-    println!("- Match dimensions to your specific embedding model");
-    println!("- Avoid hardcoded values that can cause inconsistencies");
-    println!("- Support different models with different dimensions");
-    println!("- Easy to experiment with different embedding sizes");
-    println!("- Maintain consistency between embedding model and storage");
+    println!("\n=== Notes ===");
+    println!("- GraphRAGEngineImpl::new accepts a graph store, an embedder, and a config");
+    println!("- Configure similarity threshold and traversal depth via GraphRAGConfig");
 
     Ok(())
 }

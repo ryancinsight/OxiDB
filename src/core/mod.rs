@@ -10,7 +10,6 @@ pub mod query;
 pub mod rag; // Added RAG module
 pub mod recovery; // Added recovery module
 pub mod scheduler; // Added scheduler module
-pub mod sql; // Added advanced SQL module
 pub mod storage;
 pub mod transaction;
 pub mod types;

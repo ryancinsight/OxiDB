@@ -5,7 +5,7 @@
 //! It simulates a knowledge base system where documents are stored with embeddings
 //! and can be searched using natural language queries.
 
-use oxidb::{Connection, Value, OxidbError};
+use oxidb::{Connection, OxidbError};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};
@@ -88,11 +88,11 @@ impl DocumentSearchDB {
         self.conn.execute_with_params(
             sql,
             &[
-                Value::Text(doc.id),
-                Value::Text(doc.title),
-                Value::Text(doc.content),
-                Value::Vector(embedding),
-                Value::Text(serde_json::to_string(&doc.metadata).unwrap_or_default()),
+                oxidb::Value::Text(doc.id),
+                oxidb::Value::Text(doc.title),
+                oxidb::Value::Text(doc.content),
+                oxidb::Value::Vector(embedding),
+                oxidb::Value::Text(serde_json::to_string(&doc.metadata).unwrap_or_default()),
             ]
         )?;
         
@@ -105,9 +105,9 @@ impl DocumentSearchDB {
         self.conn.execute_with_params(
             sql,
             &[
-                Value::Vector(embedding.to_vec()),
-                Value::Text(Utc::now().to_rfc3339()),
-                Value::Text(doc_id.to_string()),
+                oxidb::Value::Vector(embedding.to_vec()),
+                oxidb::Value::Text(Utc::now().to_rfc3339()),
+                oxidb::Value::Text(doc_id.to_string()),
             ]
         )?;
         
@@ -125,9 +125,9 @@ impl DocumentSearchDB {
                  ORDER BY distance ASC 
                  LIMIT ?",
                 vec![
-                    Value::Vector(query.embedding.clone()),
-                    Value::Text(category.clone()),
-                    Value::Integer(query.limit as i64),
+                    oxidb::Value::Vector(query.embedding.clone()),
+                    oxidb::Value::Text(category.clone()),
+                    oxidb::Value::Integer(query.limit as i64),
                 ]
             )
         } else {
@@ -137,8 +137,8 @@ impl DocumentSearchDB {
                  ORDER BY distance ASC 
                  LIMIT ?",
                 vec![
-                    Value::Vector(query.embedding.clone()),
-                    Value::Integer(query.limit as i64),
+                    oxidb::Value::Vector(query.embedding.clone()),
+                    oxidb::Value::Integer(query.limit as i64),
                 ]
             )
         };
@@ -187,8 +187,8 @@ impl DocumentSearchDB {
         for keyword in &keywords {
             conditions.push("(LOWER(title) LIKE ? OR LOWER(content) LIKE ?)");
             let pattern = format!("%{}%", keyword);
-            params.push(Value::Text(pattern.clone()));
-            params.push(Value::Text(pattern));
+            params.push(oxidb::Value::Text(pattern.clone()));
+            params.push(oxidb::Value::Text(pattern));
         }
         
         let (sql, final_params) = if let Some(category) = &query.category_filter {
@@ -196,7 +196,7 @@ impl DocumentSearchDB {
                 "SELECT * FROM documents WHERE ({}) AND category = ?",
                 conditions.join(" OR ")
             );
-            params.push(Value::Text(category.clone()));
+            params.push(oxidb::Value::Text(category.clone()));
             (sql, params)
         } else {
             let sql = format!(
@@ -252,7 +252,7 @@ impl DocumentSearchDB {
     // Get documents by category
     fn get_documents_by_category(&mut self, category: &str) -> Result<Vec<Document>, OxidbError> {
         let sql = "SELECT * FROM documents WHERE category = ?";
-        let result = self.conn.execute_with_params(sql, &[Value::Text(category.to_string())])?;
+        let result = self.conn.execute_with_params(sql, &[oxidb::Value::Text(category.to_string())])?;
         
         match result {
             oxidb::QueryResult::Data(data) => {
@@ -344,7 +344,10 @@ impl DocumentSearchDB {
     
     // Helper method to safely extract a text value from a row by column name
     fn get_text_column(row: &oxidb::Row, columns: &[String], column_name: &str) -> Result<String, OxidbError> {
-        match row.get_by_name(columns, column_name) {
+        match {
+            let idx = columns.iter().position(|c| c == column_name);
+            idx.and_then(|i| row.get(i))
+        } {
             Some(Value::Text(s)) => Ok(s.clone()),
             Some(Value::Null) => Ok(String::new()),
             Some(_) => Err(OxidbError::TypeMismatch {
@@ -357,7 +360,10 @@ impl DocumentSearchDB {
     
     // Helper method to safely extract a vector value from a row by column name
     fn get_vector_column(row: &oxidb::Row, columns: &[String], column_name: &str) -> Result<Vec<f32>, OxidbError> {
-        match row.get_by_name(columns, column_name) {
+        match {
+            let idx = columns.iter().position(|c| c == column_name);
+            idx.and_then(|i| row.get(i))
+        } {
             Some(Value::Vector(v)) => Ok(v.clone()),
             Some(Value::Null) => Ok(vec![]),
             Some(_) => Err(OxidbError::TypeMismatch {
@@ -370,7 +376,10 @@ impl DocumentSearchDB {
     
     // Helper method to safely extract a float value from a row by column name
     fn get_float_column(row: &oxidb::Row, columns: &[String], column_name: &str) -> Result<f32, OxidbError> {
-        match row.get_by_name(columns, column_name) {
+        match {
+            let idx = columns.iter().position(|c| c == column_name);
+            idx.and_then(|i| row.get(i))
+        } {
             Some(Value::Float(f)) => Ok(*f as f32),
             Some(Value::Integer(i)) => Ok(*i as f32),
             Some(Value::Null) => Ok(0.0),
