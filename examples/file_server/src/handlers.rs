@@ -215,7 +215,7 @@ async fn upload_file(
             oxidb::Value::Text(file_path.clone()),
             oxidb::Value::Text(now.to_rfc3339()),
         ];
-        conn.execute(query)?;
+        conn.execute_with_params(query, &params)?;
         
         let file = File {
             id: file_id,
