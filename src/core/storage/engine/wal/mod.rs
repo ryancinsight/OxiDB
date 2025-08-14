@@ -161,7 +161,9 @@ impl WalWriter {
     /// by appending ".wal" to its extension (e.g., "data.db" -> "data.db.wal")
     /// or by setting the extension to "wal" if the DB file has no extension.
     pub fn new(db_file_path: &Path) -> Self {
-        eprintln!("[engine::wal::WalWriter::new] Received db_file_path: {db_file_path:?}");
+        if cfg!(debug_assertions) {
+            eprintln!("[engine::wal::WalWriter::new] Received db_file_path: {db_file_path:?}");
+        }
         let mut wal_file_path_buf = db_file_path.to_path_buf();
         let original_extension = wal_file_path_buf.extension().and_then(std::ffi::OsStr::to_str);
 
@@ -170,7 +172,9 @@ impl WalWriter {
         } else {
             wal_file_path_buf.set_extension("wal");
         }
-        eprintln!("[engine::wal::WalWriter::new] Derived wal_file_path: {wal_file_path_buf:?}");
+        if cfg!(debug_assertions) {
+            eprintln!("[engine::wal::WalWriter::new] Derived wal_file_path: {wal_file_path_buf:?}");
+        }
         Self { wal_file_path: wal_file_path_buf }
     }
 
@@ -178,24 +182,30 @@ impl WalWriter {
     /// This involves serializing the entry and appending it to the file.
     /// The write is flushed and synced to disk to ensure durability.
     pub fn log_entry(&self, entry: &WalEntry) -> Result<(), OxidbError> {
-        eprintln!("[engine::wal::WalWriter::log_entry] Method entered. Attempting to log to: {:?}, entry: {:?}", &self.wal_file_path, entry); // ADDED THIS LINE
-                                                                                                                                              // Changed
-                                                                                                                                              // eprintln!( // This line is redundant due to the one above.
-                                                                                                                                              //     "[engine::wal::WalWriter::log_entry] Attempting to log to: {:?}, entry: {:?}",
-                                                                                                                                              //     &self.wal_file_path, entry
-                                                                                                                                              // );
+        if cfg!(debug_assertions) {
+            eprintln!("[engine::wal::WalWriter::log_entry] Method entered. Attempting to log to: {:?}, entry: {:?}", &self.wal_file_path, entry);
+        }
+                                                                                                                                                // Changed
+                                                                                                                                                // eprintln!( // This line is redundant due to the one above.
+                                                                                                                                                //     "[engine::wal::WalWriter::log_entry] Attempting to log to: {:?}, entry: {:?}",
+                                                                                                                                                //     &self.wal_file_path, entry
+                                                                                                                                                // );
         let file_result = OpenOptions::new().create(true).append(true).open(&self.wal_file_path);
 
         if let Err(e) = &file_result {
-            eprintln!(
-                "[engine::wal::WalWriter::log_entry] Error opening file {:?}: {}",
-                &self.wal_file_path, e
-            );
+            if cfg!(debug_assertions) {
+                eprintln!(
+                    "[engine::wal::WalWriter::log_entry] Error opening file {:?}: {}",
+                    &self.wal_file_path, e
+                );
+            }
         } else {
-            eprintln!(
-                "[engine::wal::WalWriter::log_entry] Successfully opened/created file: {:?}",
-                &self.wal_file_path
-            );
+            if cfg!(debug_assertions) {
+                eprintln!(
+                    "[engine::wal::WalWriter::log_entry] Successfully opened/created file: {:?}",
+                    &self.wal_file_path
+                );
+            }
         }
         let file = file_result.map_err(OxidbError::Io)?;
 

@@ -502,29 +502,35 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             self.store.read().unwrap().get(&key, snapshot_id.0, &committed_ids_set)?;
 
         if let Some(bytes) = result_bytes_opt {
-            println!(
-                "[QE::handle_get] Bytes before deserializing for key '{:?}': {:?}",
-                String::from_utf8_lossy(&key),
-                bytes
-            );
-            println!(
-                "[QE::handle_get] Bytes as string for key '{:?}': '{}'",
-                String::from_utf8_lossy(&key),
-                String::from_utf8_lossy(&bytes)
-            );
+            if cfg!(debug_assertions) {
+                println!(
+                    "[QE::handle_get] Bytes before deserializing for key '{:?}': {:?}",
+                    String::from_utf8_lossy(&key),
+                    bytes
+                );
+                println!(
+                    "[QE::handle_get] Bytes as string for key '{:?}': '{}'",
+                    String::from_utf8_lossy(&key),
+                    String::from_utf8_lossy(&bytes)
+                );
+            }
             // Deserialize using the project's standard deserialization
             let value_dt = crate::core::common::serialization::deserialize_data_type(&bytes)?;
-            println!(
-                "[QE::handle_get] Deserialized DataType for key '{:?}': {:?}",
-                String::from_utf8_lossy(&key),
-                value_dt
-            );
+            if cfg!(debug_assertions) {
+                println!(
+                    "[QE::handle_get] Deserialized DataType for key '{:?}': {:?}",
+                    String::from_utf8_lossy(&key),
+                    value_dt
+                );
+            }
             Ok(ExecutionResult::Value(Some(value_dt)))
         } else {
-            println!(
-                "[QE::handle_get] Key '{:?}' not found in store.",
-                String::from_utf8_lossy(&key)
-            ); // Debug print
+            if cfg!(debug_assertions) {
+                println!(
+                    "[QE::handle_get] Key '{:?}' not found in store.",
+                    String::from_utf8_lossy(&key)
+                );
+            }
             Ok(ExecutionResult::Value(None))
         }
     }
@@ -562,27 +568,35 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         // KeyValueStore::get expects snapshot_id as u64
         let value_to_delete_opt =
             self.store.read().unwrap().get(&key, current_op_tx_id.0, &committed_ids_set)?;
-        eprintln!(
-            "[QE::handle_delete] Key: '{}', OpTxID: {}. value_to_delete_opt.is_some(): {}",
-            String::from_utf8_lossy(&key),
-            current_op_tx_id.0,
-            value_to_delete_opt.is_some()
-        );
+        if cfg!(debug_assertions) {
+            eprintln!(
+                "[QE::handle_delete] Key: '{}', OpTxID: {}. value_to_delete_opt.is_some(): {}",
+                String::from_utf8_lossy(&key),
+                current_op_tx_id.0,
+                value_to_delete_opt.is_some()
+            );
+        }
 
         // Pass committed_ids_set to the delete operation
         let deleted =
             self.store.write().unwrap().delete(&key, &tx_for_store, new_lsn, &committed_ids_set)?;
-        eprintln!(
-            "[QE::handle_delete] Key: '{}', OpTxID: {}. Boolean from store.delete(): {}",
-            String::from_utf8_lossy(&key),
-            current_op_tx_id.0,
-            deleted
-        );
+        if cfg!(debug_assertions) {
+            eprintln!(
+                "[QE::handle_delete] Key: '{}', OpTxID: {}. Boolean from store.delete(): {}",
+                String::from_utf8_lossy(&key),
+                current_op_tx_id.0,
+                deleted
+            );
+        }
 
         if deleted {
-            eprintln!("[QE::handle_delete] Key: '{}', OpTxID: {}. 'if deleted' block entered (store reported true).", String::from_utf8_lossy(&key), current_op_tx_id.0);
+            if cfg!(debug_assertions) {
+                eprintln!("[QE::handle_delete] Key: '{}', OpTxID: {}. 'if deleted' block entered (store reported true).", String::from_utf8_lossy(&key), current_op_tx_id.0);
+            }
             if let Some(value_bytes) = value_to_delete_opt {
-                eprintln!("[QE::handle_delete] Key: '{}', OpTxID: {}. 'if let Some(value_bytes)' block entered for index/undo.", String::from_utf8_lossy(&key), current_op_tx_id.0);
+                if cfg!(debug_assertions) {
+                    eprintln!("[QE::handle_delete] Key: '{}', OpTxID: {}. 'if let Some(value_bytes)' block entered for index/undo.", String::from_utf8_lossy(&key), current_op_tx_id.0);
+                }
                 // Indexing: Use on_delete_data
                 let mut indexed_values_map = std::collections::HashMap::new();
                 // Assuming the "default_value_index" indexed the serialized version of the DataType
@@ -613,13 +627,17 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 }
             }
         } else {
-            eprintln!("[QE::handle_delete] Key: '{}', OpTxID: {}. 'if deleted' block NOT entered (store reported false).", String::from_utf8_lossy(&key), current_op_tx_id.0);
+            if cfg!(debug_assertions) {
+                eprintln!("[QE::handle_delete] Key: '{}', OpTxID: {}. 'if deleted' block NOT entered (store reported false).", String::from_utf8_lossy(&key), current_op_tx_id.0);
+            }
         }
         // key variable might have been moved, so not logging it here.
-        eprintln!(
-            "[QE::handle_delete] OpTxID: {}. About to return ExecutionResult::Deleted({})",
-            current_op_tx_id.0, deleted
-        );
+        if cfg!(debug_assertions) {
+            eprintln!(
+                "[QE::handle_delete] OpTxID: {}. About to return ExecutionResult::Deleted({})",
+                current_op_tx_id.0, deleted
+            );
+        }
         Ok(ExecutionResult::Deleted(deleted))
     }
     */
@@ -739,7 +757,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                     // We can only work with `bytes` if it represents the primary key or a known value.
                     // For now, let's log a warning and skip complex indexing for this row.
                     // The `default_value_index` might still be usable.
-                    eprintln!("[handle_sql_delete] Warning: Deleted row data was not a map, possibly due to placeholder serialization. Full per-column de-indexing might be skipped.");
+                    if cfg!(debug_assertions) {
+                        eprintln!("[handle_sql_delete] Warning: Deleted row data was not a map, possibly due to placeholder serialization. Full per-column de-indexing might be skipped.");
+                    }
                     // Create a dummy map, or handle based on what `bytes` represents.
                     // If `bytes` is the PK, we might not need the map for some operations.
                     // For now, let's use an empty map to avoid crashing, but this is not correct.
@@ -858,7 +878,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
         // Persist the auto-increment state to disk
         if let Err(e) = self.save_auto_increment_value(table_name, column_name, next_value) {
-            eprintln!("[QueryExecutor] Failed to persist auto-increment value: {e}");
+            if cfg!(debug_assertions) {
+                eprintln!("[QueryExecutor] Failed to persist auto-increment value: {e}");
+            }
         }
 
         next_value

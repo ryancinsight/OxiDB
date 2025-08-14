@@ -75,10 +75,12 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for FileKvStore {
 		transaction: &Transaction,
 		lsn: Lsn,
 	) -> Result<(), OxidbError> {
-		eprintln!(
-			"[FileKvStore::put] Method entered for key: {:?}",
-			String::from_utf8_lossy(&key)
-		);
+		if cfg!(debug_assertions) {
+			eprintln!(
+				"[FileKvStore::put] Method entered for key: {:?}",
+				String::from_utf8_lossy(&key)
+			);
+		}
 
 		let wal_entry = crate::core::storage::engine::wal::WalEntry::Put {
 			lsn,
@@ -106,11 +108,13 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for FileKvStore {
 		snapshot_id: u64,
 		committed_ids: &HashSet<u64>,
 	) -> Result<Option<Vec<u8>>, OxidbError> {
-		eprintln!(
-			"[FileKvStore::get] Attempting to get key: '{}', snapshot_id: {}",
-			String::from_utf8_lossy(key),
-			snapshot_id
-		);
+		if cfg!(debug_assertions) {
+			eprintln!(
+				"[FileKvStore::get] Attempting to get key: '{}', snapshot_id: {}",
+				String::from_utf8_lossy(key),
+				snapshot_id
+			);
+		}
 
 		if snapshot_id == 0 {
 			if let Some(versions) = self.cache.get(key) {
@@ -164,10 +168,12 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for FileKvStore {
 		lsn: Lsn,
 		committed_ids: &HashSet<u64>,
 	) -> Result<bool, OxidbError> {
-		eprintln!(
-			"[FileKvStore::delete] Attempting to delete key: '{}'",
-			String::from_utf8_lossy(key)
-		);
+		if cfg!(debug_assertions) {
+			eprintln!(
+				"[FileKvStore::delete] Attempting to delete key: '{}'",
+				String::from_utf8_lossy(key)
+			);
+		}
 
 		let wal_entry = crate::core::storage::engine::wal::WalEntry::Delete { lsn, transaction_id: transaction.id.0, key: key.clone() };
 		self.wal_writer.log_entry(&wal_entry)?;

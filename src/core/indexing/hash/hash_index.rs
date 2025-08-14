@@ -56,13 +56,17 @@ impl Index for HashIndex {
 
     fn insert(&mut self, value: &Value, primary_key: &PrimaryKey) -> Result<(), OxidbError> {
         // Changed
-        eprintln!("[HashIndex::insert] Top: value: {value:?}, pk: {primary_key:?}");
-        eprintln!("[HashIndex::insert] Store BEFORE: {:?}", self.store);
+        if cfg!(debug_assertions) {
+            eprintln!("[HashIndex::insert] Top: value: {value:?}, pk: {primary_key:?}");
+            eprintln!("[HashIndex::insert] Store BEFORE: {:?}", self.store);
+        }
         let primary_keys = self.store.entry(value.clone()).or_default();
         if !primary_keys.contains(primary_key) {
             primary_keys.push(primary_key.clone());
         }
-        eprintln!("[HashIndex::insert] Store AFTER: {:?}", self.store);
+        if cfg!(debug_assertions) {
+            eprintln!("[HashIndex::insert] Store AFTER: {:?}", self.store);
+        }
         // For now, persistence on every insert might be too slow.
         // Consider batching or explicit save calls.
         // self.save()
@@ -93,7 +97,9 @@ impl Index for HashIndex {
     fn find(&self, value: &Value) -> Result<Option<Vec<PrimaryKey>>, OxidbError> {
         // Changed
         let result = self.store.get(value).cloned();
-        eprintln!("[HashIndex::find] value: {value:?}, found_pks: {result:?}");
+        if cfg!(debug_assertions) {
+            eprintln!("[HashIndex::find] value: {value:?}, found_pks: {result:?}");
+        }
         Ok(result)
     }
 
