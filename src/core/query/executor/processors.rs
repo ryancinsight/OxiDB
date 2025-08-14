@@ -231,6 +231,26 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
 
                     // Use helper method for storage operation (DRY principle)
                     executor.store_row_data(kv_key.clone(), &row_data_type)?;
+
+                    // Add undo operations for main row and default_value_index
+                    if current_op_tx_id.0 != 0 {
+                        if let Some(active_tx_mut) = executor.transaction_manager.get_active_transaction_mut() {
+                            // Revert the inserted row on rollback
+                            active_tx_mut.add_undo_operation(
+                                crate::core::transaction::UndoOperation::RevertInsert { key: kv_key.clone() },
+                            );
+
+                            // Also revert the default_value_index entry
+                            let serialized_full_row = crate::core::common::serialization::serialize_data_type(&row_data_type)?;
+                            active_tx_mut.add_undo_operation(
+                                crate::core::transaction::UndoOperation::IndexRevertInsert {
+                                    index_name: "default_value_index".to_string(),
+                                    key: kv_key.clone(),
+                                    value_for_index: serialized_full_row,
+                                },
+                            );
+                        }
+                    }
                 }
                 Ok(ExecutionResult::Updated { count: values.len() }) // Return rows affected
             }
