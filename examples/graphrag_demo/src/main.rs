@@ -1,9 +1,10 @@
 use oxidb::core::graph::{GraphData, GraphFactory, Relationship};
 use oxidb::core::rag::graphrag::GraphRAGEngineImpl;
 use oxidb::core::rag::retriever::InMemoryRetriever;
-use oxidb::core::rag::{Document, GraphRAGContext, GraphRAGEngine, KnowledgeEdge, KnowledgeNode};
+use oxidb::core::rag::{Document, EmbeddingModel, GraphRAGContext, GraphRAGEngine, KnowledgeEdge, KnowledgeNode, SemanticEmbedder};
 use oxidb::Value;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,8 +17,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 2: Set up GraphRAG engine
     println!("\n🧠 Setting up GraphRAG engine...");
-    let retriever = Box::new(InMemoryRetriever::new(documents.clone()));
-    let mut graphrag_engine = GraphRAGEngineImpl::new(retriever);
+    let graph_store = oxidb::core::graph::InMemoryGraphStore::new();
+    let embedder: Arc<dyn EmbeddingModel + Send + Sync> = Arc::new(SemanticEmbedder::new(384));
+    let config = oxidb::core::rag::graphrag::GraphRAGConfig::default();
+    let mut graphrag_engine = GraphRAGEngineImpl::new(Arc::new(Mutex::new(Box::new(graph_store))), embedder, config);
 
     // Step 3: Build knowledge graph from documents
     println!("\n🕸️  Building knowledge graph...");

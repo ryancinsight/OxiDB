@@ -4,6 +4,7 @@
 //! Following SOLID principles with clear separation of concerns and ACID compliance.
 
 use super::types::{Edge, EdgeId, GraphData, Node, NodeId, Relationship};
+use crate::core::graph::RelationshipDirection;
 use super::{GraphOperations, GraphQuery, GraphTransaction, TraversalDirection};
 use crate::core::common::types::Value;
 use crate::core::common::OxidbError;
@@ -396,6 +397,25 @@ impl GraphQuery for InMemoryGraphStore {
 
         Ok(counted_nodes.len())
     }
+
+    fn find_edge_between(&self, from: NodeId, to: NodeId) -> Result<Option<EdgeId>, OxidbError> {
+        // Prefer direct lookup via node_edges for efficiency
+        if let Some(edge_ids) = self.node_edges.get(&from) {
+            for &edge_id in edge_ids {
+                if let Some(edge) = self.edges.get(&edge_id) {
+                    if edge.from_node == from && edge.to_node == to {
+                        return Ok(Some(edge.id));
+                    }
+                    if edge.relationship.direction == RelationshipDirection::Bidirectional
+                        && edge.from_node == to && edge.to_node == from
+                    {
+                        return Ok(Some(edge.id));
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
 }
 
 impl GraphTransaction for InMemoryGraphStore {
@@ -663,6 +683,10 @@ impl GraphQuery for PersistentGraphStore {
         direction: TraversalDirection,
     ) -> Result<usize, OxidbError> {
         self.memory_store.count_nodes_with_relationship(relationship, direction)
+    }
+
+    fn find_edge_between(&self, from: NodeId, to: NodeId) -> Result<Option<EdgeId>, OxidbError> {
+        self.memory_store.find_edge_between(from, to)
     }
 }
 

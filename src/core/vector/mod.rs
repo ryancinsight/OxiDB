@@ -86,7 +86,7 @@ impl VectorOperations for VectorData {
     }
 }
 
-/// Factory for creating optimized vector operations following the Factory pattern
+/// Factory for creating vector operations following the Factory pattern
 pub struct VectorFactory;
 
 impl VectorFactory {

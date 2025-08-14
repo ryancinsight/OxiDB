@@ -8,7 +8,7 @@ mod tests {
     use crate::core::query::commands::{Command, SqlAssignment};
     use crate::core::query::executor::*;
     use crate::core::storage::engine::wal::WalEntry;
-    use crate::core::storage::engine::{traits::KeyValueStore, InMemoryKvStore, SimpleFileKvStore};
+    use crate::core::storage::engine::{traits::KeyValueStore, InMemoryKvStore, FileKvStore};
     use crate::core::transaction::TransactionState; // Used by QueryExecutor indirectly via TransactionManager
     use crate::core::types::DataType;
     use serde_json::json;
@@ -33,7 +33,7 @@ mod tests {
         let index_path = temp_dir.path().to_path_buf();
         let temp_store_file = NamedTempFile::new().expect("Failed to create temp db file");
         let store_path = temp_store_file.path().to_path_buf();
-        let temp_store = SimpleFileKvStore::new(&store_path)?;
+        let temp_store = FileKvStore::new(&store_path)?;
         let wal_config = crate::core::wal::writer::WalWriterConfig::default();
         let wal_writer = WalWriter::new(store_path.with_extension("tx_wal"), wal_config);
         let log_manager = Arc::new(crate::core::wal::log_manager::LogManager::new());

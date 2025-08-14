@@ -14,7 +14,7 @@
 use oxidb::core::rag::document::{Document, Embedding};
 use oxidb::core::rag::graphrag::{GraphRAGEngineImpl, GraphRAGContext, KnowledgeNode};
 use oxidb::core::rag::embedder::{EmbeddingModel, TfIdfEmbedder};
-use oxidb::core::rag::retriever::{InMemoryRetriever, SimilarityMetric};
+use oxidb::core::rag::retriever::{InMemoryRetriever, SimilarityMetric, Retriever};
 use oxidb::core::rag::GraphRAGEngine;
 use oxidb::core::graph::InMemoryGraphStore;
 use oxidb::Value;
@@ -90,8 +90,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let rag_retriever = Box::new(InMemoryRetriever::new(documents.clone()));
 
     // Step 4: Setup GraphRAG system
-    let graph_store: Arc<Mutex<dyn oxidb::core::graph::GraphStore>> = Arc::new(Mutex::new(InMemoryGraphStore::new()));
-    let embedder: Arc<dyn EmbeddingModel + Send + Sync> = Arc::new(TfIdfEmbedder::default());
+    let graph_store: Arc<Mutex<Box<dyn oxidb::core::graph::GraphStore>>> = Arc::new(Mutex::new(Box::new(InMemoryGraphStore::new())));
+    let embedder_impl = TfIdfEmbedder::new(&documents);
+    let embedder: Arc<dyn EmbeddingModel + Send + Sync> = Arc::new(embedder_impl);
     let config = oxidb::core::rag::graphrag::GraphRAGConfig::default();
     let mut graphrag_engine = GraphRAGEngineImpl::new(graph_store, embedder.clone(), config);
 

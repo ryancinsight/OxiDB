@@ -83,17 +83,29 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
         let results_iter = execution_tree_root.execute()?;
         let mut rows: Vec<Vec<DataType>> = Vec::new();
-
         for tuple_result in results_iter {
             let tuple = tuple_result?;
             rows.push(tuple);
         }
 
-        // Convert to RankedResults format with distance 0.0 for all rows
-        let ranked_results: Vec<(f32, Vec<DataType>)> =
-            rows.into_iter().map(|row| (0.0, row)).collect();
+        // Derive column names: try schema first
+        let columns: Vec<String> = if let Ok(Some(schema_arc)) = self.get_table_schema(&match &ast_statement {
+            AstStatement::Select(sel) => sel.from_clause.name.clone(),
+            _ => String::new(),
+        }) {
+            let schema = schema_arc.as_ref();
+            if schema.columns.is_empty() && !rows.is_empty() {
+                (0..rows[0].len()).map(|i| format!("col{}", i)).collect()
+            } else {
+                schema.columns.iter().map(|c| c.name.clone()).collect()
+            }
+        } else if !rows.is_empty() {
+            (0..rows[0].len()).map(|i| format!("col{}", i)).collect()
+        } else {
+            Vec::new()
+        };
 
-        Ok(ExecutionResult::RankedResults(ranked_results))
+        Ok(ExecutionResult::Query { columns, rows })
     }
 }
 

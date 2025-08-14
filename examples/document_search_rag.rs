@@ -5,7 +5,7 @@
 //! It simulates a knowledge base system where documents are stored with embeddings
 //! and can be searched using natural language queries.
 
-use oxidb::{Connection, OxidbError};
+use oxidb::{Connection, OxidbError, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};

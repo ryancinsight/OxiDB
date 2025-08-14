@@ -35,7 +35,7 @@ impl GraphRAGFactory {
         GraphRAGEngineImpl::new(Arc::new(Mutex::new(Box::new(graph_store))), embedder, config)
     }
     
-    /// Create a fast GraphRAG engine for real-time queries
+    /// Create a low-latency GraphRAG engine for real-time queries
     pub fn create_fast<T: GraphStore + 'static>(graph_store: T) -> GraphRAGEngineImpl {
         let config = GraphRAGConfig {
             default_similarity_threshold: 0.6,

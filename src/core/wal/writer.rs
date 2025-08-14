@@ -84,9 +84,11 @@ impl WalWriter {
                 "Unknown"
             };
 
-            eprintln!(
-                "[core::wal::writer::WalWriter::add_record] Triggering flush: {flush_reason}"
-            );
+            if cfg!(debug_assertions) {
+                eprintln!(
+                    "[core::wal::writer::WalWriter::add_record] Triggering flush: {flush_reason}"
+                );
+            }
             self.flush()?;
         }
 
@@ -113,7 +115,9 @@ impl WalWriter {
         let mut file = if self.wal_file_path.exists() {
             OpenOptions::new().create(true).append(true).open(&self.wal_file_path).map_err(|e| {
                 let error_msg = format!("Failed to open existing WAL file: {e}");
-                eprintln!("[core::wal::writer::WalWriter::flush] {error_msg}");
+                if cfg!(debug_assertions) {
+                    eprintln!("[core::wal::writer::WalWriter::flush] {error_msg}");
+                }
                 IoError::new(IoErrorKind::Other, error_msg)
             })?
         } else {
@@ -121,14 +125,18 @@ impl WalWriter {
             if let Some(parent) = self.wal_file_path.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| {
                     let error_msg = format!("Failed to create WAL parent directory: {e}");
-                    eprintln!("[core::wal::writer::WalWriter::flush] {error_msg}");
+                    if cfg!(debug_assertions) {
+                        eprintln!("[core::wal::writer::WalWriter::flush] {error_msg}");
+                    }
                     IoError::new(IoErrorKind::Other, error_msg)
                 })?;
             }
 
             std::fs::File::create(&self.wal_file_path).map_err(|e| {
                 let error_msg = format!("Failed to create WAL file: {e}");
-                eprintln!("[core::wal::writer::WalWriter::flush] {error_msg}");
+                if cfg!(debug_assertions) {
+                    eprintln!("[core::wal::writer::WalWriter::flush] {error_msg}");
+                }
                 IoError::new(IoErrorKind::Other, error_msg)
             })?
         };

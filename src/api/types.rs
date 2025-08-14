@@ -44,6 +44,7 @@ impl QueryResult {
     pub fn row_count(&self) -> usize {
         match self {
             Self::Data(ds) => ds.rows.len(),
+            Self::RowsAffected(count) => *count as usize,
             _ => 0,
         }
     }

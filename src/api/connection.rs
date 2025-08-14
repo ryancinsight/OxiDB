@@ -9,7 +9,7 @@ use crate::core::query::parser::parse_query;
 use crate::core::query::sql::parser::SqlParser;
 use crate::core::query::sql::tokenizer::Tokenizer;
 
-use crate::core::storage::engine::SimpleFileKvStore;
+use crate::core::storage::engine::FileKvStore;
 use crate::core::wal::log_manager::LogManager;
 use crate::core::wal::writer::WalWriter;
 use std::path::Path;
@@ -25,7 +25,7 @@ use std::path::PathBuf;
 #[derive(Debug)]
 pub struct Connection {
     /// The underlying query executor
-    executor: QueryExecutor<SimpleFileKvStore>,
+    executor: QueryExecutor<FileKvStore>,
     /// Performance monitoring context
     performance: PerformanceContext,
 }
@@ -98,7 +98,7 @@ impl Connection {
     /// Creates a connection with a specific config (internal helper)
     fn new_with_config(config: &Config) -> Result<Self, OxidbError> {
         let store_path = config.database_path();
-        let store = SimpleFileKvStore::new(store_path)?;
+        let store = FileKvStore::new(store_path)?;
 
         let wal_writer_config = crate::core::wal::writer::WalWriterConfig::default();
         let tm_wal_path = config.wal_path();

@@ -27,20 +27,29 @@ use crate::core::query::sql::translator::translate_ast_to_command;
 /// - SQL tokenization fails
 /// - SQL parsing fails due to invalid syntax
 pub fn parse_query(query_str: &str) -> Result<Command, OxidbError> {
-    // Tokenize the query
-    let mut tokenizer = Tokenizer::new(query_str);
-    let tokens = tokenizer.tokenize().map_err(|e| {
-        OxidbError::SqlParsing(format!("SQL tokenizer error: {e}"))
-    })?;
+	// Fast-path for transaction control statements
+	let normalized = query_str.trim().trim_end_matches(';').to_uppercase();
+	match normalized.as_str() {
+		"BEGIN" | "BEGIN TRANSACTION" => return Ok(Command::BeginTransaction),
+		"COMMIT" | "END" => return Ok(Command::CommitTransaction),
+		"ROLLBACK" => return Ok(Command::RollbackTransaction),
+		_ => {}
+	}
 
-    // Parse SQL
-    let mut parser = SqlParser::new(tokens);
-    let statement = parser.parse().map_err(|e| {
-        OxidbError::SqlParsing(format!("SQL parse error: {e}"))
-    })?;
+	// Tokenize the query
+	let mut tokenizer = Tokenizer::new(query_str);
+	let tokens = tokenizer.tokenize().map_err(|e| {
+		OxidbError::SqlParsing(format!("SQL tokenizer error: {e}"))
+	})?;
 
-    // Translate AST to Command
-    translate_ast_to_command(statement)
+	// Parse SQL
+	let mut parser = SqlParser::new(tokens);
+	let statement = parser.parse().map_err(|e| {
+		OxidbError::SqlParsing(format!("SQL parse error: {e}"))
+	})?;
+
+	// Translate AST to Command
+	translate_ast_to_command(statement)
 }
 
 #[cfg(test)]
@@ -131,7 +140,7 @@ mod tests {
 
     #[test]
     fn test_parse_transaction_commands() {
-        // Transaction commands are now handled through SQL
+        // Transaction commands are now handled directly
         let result = parse_query("BEGIN");
         assert!(matches!(result, Ok(Command::BeginTransaction)));
 

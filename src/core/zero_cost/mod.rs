@@ -1,7 +1,7 @@
 // src/core/zero_cost/mod.rs
 //! Zero-cost abstractions and zero-copy operations for OxiDB
 //! 
-//! This module provides efficient, compile-time optimized abstractions that minimize
+//! This module provides compile-time abstractions that minimize
 //! runtime overhead while maximizing performance and safety.
 
 use std::borrow::Cow;
