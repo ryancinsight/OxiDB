@@ -4,6 +4,7 @@
 //! Following SOLID principles with clear separation of concerns and ACID compliance.
 
 use super::types::{Edge, EdgeId, GraphData, Node, NodeId, Relationship};
+use crate::core::graph::RelationshipDirection;
 use super::{GraphOperations, GraphQuery, GraphTransaction, TraversalDirection};
 use crate::core::common::types::Value;
 use crate::core::common::OxidbError;
