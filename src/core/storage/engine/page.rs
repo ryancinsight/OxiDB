@@ -172,7 +172,7 @@ impl Page {
     }
 
     /// Apply an update operation to the page
-    /// This is a simplified implementation for recovery purposes
+    /// This is a minimal implementation for recovery purposes
     pub fn apply_update(&mut self, after_image: &[u8]) -> Result<(), OxidbError> {
         if after_image.len() > self.data.len() {
             return Err(OxidbError::InvalidInput {
@@ -189,7 +189,7 @@ impl Page {
     }
 
     /// Apply an insert operation to the page
-    /// This is a simplified implementation for recovery purposes
+    /// This is a minimal implementation for recovery purposes
     pub fn apply_insert(&mut self, data: &[u8]) -> Result<(), OxidbError> {
         if data.len() > self.data.len() {
             return Err(OxidbError::InvalidInput {
@@ -215,7 +215,7 @@ impl Page {
     }
 
     /// Apply a delete operation to the page
-    /// This is a simplified implementation for recovery purposes
+    /// This is a minimal implementation for recovery purposes
     pub fn apply_delete(&mut self) -> Result<(), OxidbError> {
         // For simplicity, we'll zero out the first non-zero data
         // In a real implementation, this would involve proper slot management

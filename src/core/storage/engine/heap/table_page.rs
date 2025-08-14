@@ -363,7 +363,7 @@ impl TablePage {
 
         // Note: Free space pointer is not updated here, nor is num_records decremented.
         // Decrementing num_records could be complex if it's not the last slot.
-        // For simplicity, num_records reflects the "high water mark" of slots used.
+        // num_records reflects the "high water mark" of slots used.
         // True compaction would change this.
         // TODO: Consider if num_records should be managed differently, e.g. count of occupied slots.
         // For now, get_num_records is more like "max_slot_id_used + 1".

@@ -21,7 +21,7 @@ use crate::core::indexing::manager::IndexManager;
 use crate::core::optimizer::Optimizer;
 use crate::core::query::sql::ast::AstLiteralValue;
 use crate::core::storage::engine::traits::KeyValueStore;
-use crate::core::storage::engine::SimpleFileKvStore;
+use crate::core::storage::engine::FileKvStore;
 use crate::core::transaction::lock_manager::LockManager;
 use crate::core::transaction::manager::TransactionManager;
 use crate::core::transaction::Transaction;
@@ -203,7 +203,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 }
 
 // Methods specific to QueryExecutor when the store is SimpleFileKvStore
-impl QueryExecutor<SimpleFileKvStore> {
+impl QueryExecutor<FileKvStore> {
     /// Persists all current data to disk
     ///
     /// This method saves both the store data and index data to disk,

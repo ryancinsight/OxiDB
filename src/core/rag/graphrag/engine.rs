@@ -209,13 +209,41 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
 
     async fn get_reasoning_paths(
         &self,
-        _start: NodeId,
-        _end: NodeId,
-        _max_depth: usize,
+        start: NodeId,
+        end: NodeId,
+        max_depth: usize,
     ) -> Result<Vec<ReasoningPath>, OxidbError> {
-        // TODO: Implement path finding algorithm
-        // For now, return empty paths
-        Ok(Vec::new())
+        let graph = self.graph_store.lock().map_err(|_| OxidbError::Internal("Failed to acquire graph_store lock".to_string()))?;
+        // Use built-in shortest path if available, bounded by max_depth by truncating traversal
+        let maybe_path = graph.find_shortest_path(start, end)?;
+        if let Some(path_nodes) = maybe_path {
+            // If path exceeds max_depth, truncate by limiting hops (nodes = hops+1)
+            let limited_nodes = if path_nodes.len() > max_depth.saturating_add(1) {
+                path_nodes.into_iter().take(max_depth + 1).collect::<Vec<_>>()
+            } else {
+                path_nodes
+            };
+
+            // Collect edge IDs between consecutive nodes where possible
+            let mut edges: Vec<NodeId> = Vec::new();
+            for pair in limited_nodes.windows(2) {
+                if let [from, to] = pair {
+                    if let Some(edge_id) = graph.find_edge_between(*from, *to)? {
+                        edges.push(edge_id);
+                    }
+                }
+            }
+
+            let reasoning = ReasoningPath {
+                nodes: limited_nodes,
+                edges,
+                score: 1.0,
+                description: "Shortest path".to_string(),
+            };
+            Ok(vec![reasoning])
+        } else {
+            Ok(Vec::new())
+        }
     }
 
     async fn clear(&mut self) -> Result<(), OxidbError> {

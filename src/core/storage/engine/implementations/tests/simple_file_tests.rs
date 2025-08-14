@@ -15,7 +15,7 @@ use crate::core::transaction::Transaction;
 use tempfile::{Builder, NamedTempFile};
 
 // Import the struct being tested
-use crate::core::storage::engine::implementations::simple_file::SimpleFileKvStore;
+use crate::core::storage::engine::implementations::file::FileKvStore;
 
 // Helper to create a main DB file with specific key-value data
 fn create_db_file_with_kv_data(path: &Path, data: &[(Vec<u8>, Vec<u8>)]) -> Result<(), OxidbError> {
@@ -77,10 +77,10 @@ fn test_new_store_empty_and_reload() {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path();
     {
-        let store = SimpleFileKvStore::new(path).unwrap();
+        let store = FileKvStore::new(path).unwrap();
         assert!(store.get_cache_for_test().is_empty());
     }
-    let reloaded_store = SimpleFileKvStore::new(path).unwrap();
+    let reloaded_store = FileKvStore::new(path).unwrap();
     assert!(reloaded_store.get_cache_for_test().is_empty());
 }
 
@@ -88,14 +88,14 @@ fn test_new_store_empty_and_reload() {
 fn test_load_from_empty_file() {
     let temp_file = NamedTempFile::new().unwrap();
     File::create(temp_file.path()).unwrap();
-    let store = SimpleFileKvStore::new(temp_file.path()).unwrap();
+    let store = FileKvStore::new(temp_file.path()).unwrap();
     assert!(store.get_cache_for_test().is_empty());
 }
 
 #[test]
 fn test_put_and_get() {
     let temp_file = NamedTempFile::new().unwrap();
-    let mut store = SimpleFileKvStore::new(temp_file.path()).unwrap();
+    let mut store = FileKvStore::new(temp_file.path()).unwrap();
     let dummy_transaction = Transaction::new(TransactionId(0));
     let _snapshot_id = 0;
     let _committed_ids: HashSet<u64> = HashSet::new();
@@ -115,7 +115,7 @@ fn test_put_and_get() {
 #[test]
 fn test_put_update() {
     let temp_file = NamedTempFile::new().unwrap();
-    let mut store = SimpleFileKvStore::new(temp_file.path()).unwrap();
+    let mut store = FileKvStore::new(temp_file.path()).unwrap();
     let dummy_transaction = Transaction::new(TransactionId(0));
     let _snapshot_id = 0;
     let _committed_ids: HashSet<u64> = HashSet::new();
@@ -134,7 +134,7 @@ fn test_put_update() {
 #[test]
 fn test_get_non_existent() {
     let temp_file = NamedTempFile::new().unwrap();
-    let store = SimpleFileKvStore::new(temp_file.path()).unwrap();
+    let store = FileKvStore::new(temp_file.path()).unwrap();
     let snapshot_id = 0;
     let committed_ids: HashSet<u64> = HashSet::new();
     assert_eq!(
@@ -146,7 +146,7 @@ fn test_get_non_existent() {
 #[test]
 fn test_delete() {
     let temp_file = NamedTempFile::new().unwrap();
-    let mut store = SimpleFileKvStore::new(temp_file.path()).unwrap();
+    let mut store = FileKvStore::new(temp_file.path()).unwrap();
     let dummy_transaction = Transaction::new(TransactionId(0));
     let snapshot_id = 0;
     let committed_ids: HashSet<u64> = HashSet::new();
@@ -165,7 +165,7 @@ fn test_delete() {
 #[test]
 fn test_delete_non_existent() {
     let temp_file = NamedTempFile::new().unwrap();
-    let mut store = SimpleFileKvStore::new(temp_file.path()).unwrap();
+    let mut store = FileKvStore::new(temp_file.path()).unwrap();
     let dummy_transaction = Transaction::new(TransactionId(0));
     let dummy_lsn = 0;
     let mut delete_committed_ids = HashSet::new();
@@ -178,7 +178,7 @@ fn test_delete_non_existent() {
 #[test]
 fn test_contains_key() {
     let temp_file = NamedTempFile::new().unwrap();
-    let mut store = SimpleFileKvStore::new(temp_file.path()).unwrap();
+    let mut store = FileKvStore::new(temp_file.path()).unwrap();
     let dummy_transaction = Transaction::new(TransactionId(0));
     let snapshot_id = 0;
     let committed_ids: HashSet<u64> = [TransactionId(0).0].iter().cloned().collect();
@@ -202,10 +202,10 @@ fn test_persistence() {
     let value1 = b"persist_value".to_vec();
     let dummy_lsn = 0;
     {
-        let mut store = SimpleFileKvStore::new(&path).unwrap();
+        let mut store = FileKvStore::new(&path).unwrap();
         store.put(key1.clone(), value1.clone(), &dummy_transaction, dummy_lsn).unwrap();
     }
-    let reloaded_store = SimpleFileKvStore::new(&path).unwrap();
+    let reloaded_store = FileKvStore::new(&path).unwrap();
     assert_eq!(reloaded_store.get_cache_for_test().len(), 1);
 }
 
@@ -215,7 +215,7 @@ fn test_save_to_disk_atomic_success() {
     let db_path = db_file.path().to_path_buf();
     let temp_db_path = db_path.with_extension("tmp");
 
-    let mut store = SimpleFileKvStore::new(&db_path).unwrap();
+    let mut store = FileKvStore::new(&db_path).unwrap();
     let dummy_transaction = Transaction::new(TransactionId(0));
 
     let key1 = b"key1".to_vec();
@@ -224,7 +224,7 @@ fn test_save_to_disk_atomic_success() {
     store.put(key1.clone(), value1.clone(), &dummy_transaction, dummy_lsn).unwrap();
     store.persist().unwrap();
 
-    let reloaded_store = SimpleFileKvStore::new(&db_path).unwrap();
+    let reloaded_store = FileKvStore::new(&db_path).unwrap();
     assert_eq!(reloaded_store.get_cache_for_test().len(), 1);
     assert!(!temp_db_path.exists(), "Temporary file should not exist after successful save.");
 }
@@ -242,10 +242,10 @@ fn test_load_from_disk_prefers_valid_temp_file() {
         vec![(b"key1".to_vec(), b"value_new".to_vec()), (b"key2".to_vec(), b"value2".to_vec())];
     create_db_file_with_kv_data(&temp_db_path, &temp_data).unwrap();
 
-    let store = SimpleFileKvStore::new(&main_db_path).unwrap();
+    let store = FileKvStore::new(&main_db_path).unwrap();
     assert_eq!(store.get_cache_for_test().len(), 2, "Cache should contain 2 items from temp file");
 
-    let main_file_content_check_store = SimpleFileKvStore::new(&main_db_path).unwrap();
+    let main_file_content_check_store = FileKvStore::new(&main_db_path).unwrap();
     assert_eq!(main_file_content_check_store.get_cache_for_test().len(), 2);
 
     assert!(!temp_db_path.exists(), "Temporary file should be removed after successful recovery.");
@@ -261,7 +261,7 @@ fn test_load_from_disk_handles_corrupted_temp_file_and_uses_main_file() {
     create_db_file_with_kv_data(&main_db_path, &main_data).unwrap();
     write(&temp_db_path, b"this is corrupted data").unwrap();
 
-    let store = SimpleFileKvStore::new(&main_db_path).unwrap();
+    let store = FileKvStore::new(&main_db_path).unwrap();
     assert_eq!(store.get_cache_for_test().len(), 1, "Cache should contain 1 item from main file");
     assert!(!temp_db_path.exists(), "Corrupted temporary file should be deleted.");
 
@@ -293,12 +293,12 @@ fn test_load_from_disk_handles_temp_file_and_no_main_file() {
     create_db_file_with_kv_data(&temp_db_path, &temp_data).unwrap();
     assert!(temp_db_path.exists());
 
-    let store = SimpleFileKvStore::new(&main_db_path).unwrap();
+    let store = FileKvStore::new(&main_db_path).unwrap();
     assert_eq!(store.get_cache_for_test().len(), 1, "Cache should contain 1 item from temp file");
     assert!(main_db_path.exists(), "Main DB file should have been created from temp file.");
     assert!(!temp_db_path.exists(), "Temporary file should be deleted after successful recovery.");
 
-    let _reloaded_store = SimpleFileKvStore::new(&main_db_path).unwrap();
+    let _reloaded_store = FileKvStore::new(&main_db_path).unwrap();
 }
 
 #[test]
@@ -316,7 +316,7 @@ fn test_load_from_disk_handles_corrupted_temp_file_and_no_main_file() {
     write(&temp_db_path, b"corrupted data").unwrap();
     assert!(temp_db_path.exists());
 
-    let store = SimpleFileKvStore::new(&main_db_path).unwrap();
+    let store = FileKvStore::new(&main_db_path).unwrap();
     assert!(store.get_cache_for_test().is_empty(), "Cache should be empty");
     assert!(!temp_db_path.exists(), "Corrupted temporary file should be deleted.");
     assert!(!main_db_path.exists(), "Main DB file should still not exist.");
@@ -332,7 +332,7 @@ fn test_state_after_simulated_failed_save_preserves_original() {
     let value_orig = b"value_orig".to_vec();
     let dummy_lsn = 0;
     {
-        let mut store = SimpleFileKvStore::new(&db_path).unwrap();
+        let mut store = FileKvStore::new(&db_path).unwrap();
         let dummy_transaction = Transaction::new(TransactionId(0));
         store.put(key_orig.clone(), value_orig.clone(), &dummy_transaction, dummy_lsn).unwrap();
     }
@@ -342,12 +342,12 @@ fn test_state_after_simulated_failed_save_preserves_original() {
     let key_new = b"key_new".to_vec();
     let value_new = b"value_new".to_vec();
     {
-        let mut store = SimpleFileKvStore::new(&db_path).unwrap();
+        let mut store = FileKvStore::new(&db_path).unwrap();
         let dummy_transaction = Transaction::new(TransactionId(0));
         store.put(key_new.clone(), value_new.clone(), &dummy_transaction, dummy_lsn).unwrap();
     }
 
-    let store = SimpleFileKvStore::new(&db_path).unwrap();
+    let store = FileKvStore::new(&db_path).unwrap();
     assert_eq!(store.get_cache_for_test().len(), 2);
     assert!(!temp_db_path.exists(), "Temp file should not exist after a successful save.");
 }
@@ -361,7 +361,7 @@ fn test_load_from_malformed_file_key_eof() {
     file_content.extend_from_slice(b"abc");
     std::fs::write(path, file_content).unwrap();
 
-    let result = SimpleFileKvStore::new(path);
+    let result = FileKvStore::new(path);
     assert!(result.is_err());
     match result.unwrap_err() {
         OxidbError::Storage(msg) => {
@@ -388,7 +388,7 @@ fn test_load_from_malformed_file_value_eof() {
     file_content.extend_from_slice(b"short");
     std::fs::write(path, file_content).unwrap();
 
-    let result = SimpleFileKvStore::new(path);
+    let result = FileKvStore::new(path);
     assert!(result.is_err());
     match result.unwrap_err() {
         OxidbError::Storage(msg) => {
@@ -410,7 +410,7 @@ fn test_put_writes_to_wal_and_cache() {
     let dummy_transaction = Transaction::new(TransactionId(0));
     let dummy_lsn = 0;
 
-    let mut store = SimpleFileKvStore::new(db_path).unwrap();
+    let mut store = FileKvStore::new(db_path).unwrap();
     let key = b"wal_key1".to_vec();
     let value = b"wal_value1".to_vec();
     store.put(key.clone(), value.clone(), &dummy_transaction, dummy_lsn).unwrap();
@@ -445,7 +445,7 @@ fn test_delete_writes_to_wal_and_cache() {
     let dummy_lsn_put = 0;
     let dummy_lsn_delete = 1;
 
-    let mut store = SimpleFileKvStore::new(db_path).unwrap();
+    let mut store = FileKvStore::new(db_path).unwrap();
     let key = b"wal_del_key".to_vec();
     let value = b"wal_del_value".to_vec();
 
@@ -497,14 +497,14 @@ fn test_load_from_disk_no_wal() {
     let dummy_lsn = 0;
 
     {
-        let mut store = SimpleFileKvStore::new(db_path).unwrap();
+        let mut store = FileKvStore::new(db_path).unwrap();
         store.put(key.clone(), value.clone(), &dummy_transaction, dummy_lsn).unwrap();
         store.persist().unwrap();
     }
 
     assert!(!wal_path.exists(), "WAL file should not exist after save_to_disk");
 
-    let store = SimpleFileKvStore::new(db_path).unwrap();
+    let store = FileKvStore::new(db_path).unwrap();
     assert_eq!(
         store.get_cache_entry_for_test(&key).and_then(|v| v.last().map(|vv| vv.value.clone())),
         Some(value)
@@ -597,7 +597,7 @@ fn test_load_from_disk_with_wal_replay() {
         .unwrap();
     drop(wal_writer);
 
-    let store = SimpleFileKvStore::new(db_path).unwrap();
+    let store = FileKvStore::new(db_path).unwrap();
 
     let cache_key0_versions = store.get_cache_entry_for_test(&key0).unwrap();
     // The original version from disk is marked as expired, no new version is added for delete.
@@ -633,7 +633,7 @@ fn test_wal_recovery_after_simulated_crash() {
     let dummy_lsn = 0;
 
     {
-        let mut store = SimpleFileKvStore::new(db_path).unwrap();
+        let mut store = FileKvStore::new(db_path).unwrap();
         store
             .put(key_a.clone(), val_a.clone(), &Transaction::new(TransactionId(100)), dummy_lsn)
             .unwrap();
@@ -644,7 +644,7 @@ fn test_wal_recovery_after_simulated_crash() {
     }
     assert!(wal_path.exists());
 
-    let store_after_crash = SimpleFileKvStore::new(db_path).unwrap();
+    let store_after_crash = FileKvStore::new(db_path).unwrap();
     assert!(store_after_crash.get_cache_entry_for_test(&key_a).is_none());
     assert!(store_after_crash.get_cache_entry_for_test(&key_b).is_none());
 }
@@ -677,7 +677,7 @@ fn test_wal_recovery_commit_then_rollback_same_tx() {
         .unwrap();
     drop(wal_writer);
 
-    let store = SimpleFileKvStore::new(db_path).unwrap();
+    let store = FileKvStore::new(db_path).unwrap();
     assert!(store.get_cache_entry_for_test(&b"key_cr".to_vec()).is_none());
 }
 
@@ -740,7 +740,7 @@ fn test_wal_recovery_multiple_interleaved_transactions() {
         .unwrap();
     drop(wal_writer);
 
-    let store = SimpleFileKvStore::new(db_path).unwrap();
+    let store = FileKvStore::new(db_path).unwrap();
 
     let get_latest_value = |cache: &HashMap<Vec<u8>, Vec<VersionedValue<Vec<u8>>>>,
                             key: &Vec<u8>|
@@ -771,7 +771,7 @@ fn test_wal_truncation_after_save_to_disk() {
     let dummy_lsn = 0;
 
     {
-        let mut store = SimpleFileKvStore::new(db_path).unwrap();
+        let mut store = FileKvStore::new(db_path).unwrap();
         store
             .put(b"trunc_key".to_vec(), b"trunc_val".to_vec(), &dummy_transaction, dummy_lsn)
             .unwrap();
@@ -780,11 +780,11 @@ fn test_wal_truncation_after_save_to_disk() {
     }
 
     // The WAL file should be truncated (or removed) by the persist operation.
-    let _store = SimpleFileKvStore::new(db_path).unwrap(); // Re-open to ensure no WAL replay errors from a leftover WAL
+    let _store = FileKvStore::new(db_path).unwrap(); // Re-open to ensure no WAL replay errors from a leftover WAL
     assert!(!wal_path.exists(), "WAL file should NOT exist after persist and re-opening store.");
 
     // Verify data is still present by opening again
-    let store_after_persist = SimpleFileKvStore::new(db_path).unwrap();
+    let store_after_persist = FileKvStore::new(db_path).unwrap();
     assert_eq!(
         store_after_persist
             .get_cache_entry_for_test(&b"trunc_key".to_vec())
@@ -853,7 +853,7 @@ fn test_wal_replay_stops_on_corruption() {
         writer.flush().unwrap();
     }
 
-    let store = SimpleFileKvStore::new(db_path).unwrap();
+    let store = FileKvStore::new(db_path).unwrap();
 
     let get_latest_value = |cache: &HashMap<Vec<u8>, Vec<VersionedValue<Vec<u8>>>>,
                             key: &Vec<u8>|
@@ -874,11 +874,11 @@ fn test_drop_persists_data() {
     let dummy_lsn = 0;
 
     {
-        let mut store = SimpleFileKvStore::new(&path).unwrap();
+        let mut store = FileKvStore::new(&path).unwrap();
         store.put(key1.clone(), value1.clone(), &dummy_transaction, dummy_lsn).unwrap();
     }
 
-    let reloaded_store = SimpleFileKvStore::new(&path).unwrap();
+    let reloaded_store = FileKvStore::new(&path).unwrap();
     assert_eq!(
         reloaded_store
             .get_cache_entry_for_test(&key1)
@@ -901,7 +901,7 @@ fn test_put_atomicity_wal_failure() {
     std::fs::create_dir_all(&wal_path).unwrap();
     assert!(wal_path.is_dir());
 
-    let mut store = SimpleFileKvStore::new(&db_path).unwrap();
+    let mut store = FileKvStore::new(&db_path).unwrap();
 
     let key = b"atomic_put_key".to_vec();
     let value = b"atomic_put_value".to_vec();
@@ -936,7 +936,7 @@ fn test_delete_atomicity_wal_failure() {
     let dummy_lsn = 0;
 
     {
-        let mut store = SimpleFileKvStore::new(&db_path).unwrap();
+        let mut store = FileKvStore::new(&db_path).unwrap();
         store.put(key.clone(), value.clone(), &dummy_transaction, dummy_lsn).unwrap();
         store.persist().unwrap();
     }
@@ -952,7 +952,7 @@ fn test_delete_atomicity_wal_failure() {
     assert!(wal_path.is_file());
 
     {
-        let mut store = SimpleFileKvStore::new(&db_path).unwrap();
+        let mut store = FileKvStore::new(&db_path).unwrap();
         assert!(store.get_cache_entry_for_test(&key).is_some());
 
         let mut delete_committed_ids = HashSet::new();
@@ -986,7 +986,7 @@ fn test_delete_atomicity_wal_failure() {
 fn test_scan_operation() -> Result<(), OxidbError> {
     let temp_dir = tempdir().unwrap(); // Corrected: use tempdir for proper directory management
     let db_path = temp_dir.path().join("scan_test.db");
-    let mut store = SimpleFileKvStore::new(&db_path)?;
+    let mut store = FileKvStore::new(&db_path)?;
 
     // Using tx0 for operations that should be visible to a simple scan
     // (simulating auto-committed or committed data).
@@ -1066,7 +1066,7 @@ fn test_scan_operation() -> Result<(), OxidbError> {
 
     // Test 4: Scan after persisting and reloading (data loaded from file)
     store.persist()?; // This saves only latest, non-expired versions
-    let store_reloaded = SimpleFileKvStore::new(&db_path)?;
+    let store_reloaded = FileKvStore::new(&db_path)?;
     let mut results_reloaded = store_reloaded.scan()?;
     results_reloaded.sort_by(|a, b| a.0.cmp(&b.0));
 
@@ -1092,7 +1092,7 @@ fn test_scan_operation() -> Result<(), OxidbError> {
     // Test 5: Scan a store with one item
     let temp_dir_single = tempdir().unwrap(); // Corrected: use tempdir
     let db_path_single = temp_dir_single.path().join("single_item_scan.db");
-    let mut store_single = SimpleFileKvStore::new(&db_path_single)?;
+    let mut store_single = FileKvStore::new(&db_path_single)?;
     store_single.put(key1.clone(), val1_v1.clone(), &tx0, lsn_base + 6)?;
     let mut results_single = store_single.scan()?;
     results_single.sort_by(|a, b| a.0.cmp(&b.0));

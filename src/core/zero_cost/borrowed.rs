@@ -361,7 +361,7 @@ impl<'a> BorrowedQueryPlan<'a> {
         &self.root
     }
     
-    /// Estimate the cost of this plan (simplified)
+    /// Estimate the cost of this plan
     pub fn estimate_cost(&self) -> u64 {
         self.estimate_node_cost(&self.root)
     }

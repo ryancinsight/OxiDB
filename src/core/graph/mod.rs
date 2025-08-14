@@ -93,6 +93,13 @@ pub trait GraphQuery {
         relationship: &Relationship,
         direction: TraversalDirection,
     ) -> Result<usize, OxidbError>;
+
+    /// Find a direct edge between two nodes if it exists
+    fn find_edge_between(
+        &self,
+        from: NodeId,
+        to: NodeId,
+    ) -> Result<Option<EdgeId>, OxidbError>;
 }
 
 /// Graph transaction interface for ACID compliance
