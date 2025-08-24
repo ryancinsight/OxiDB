@@ -91,8 +91,8 @@ path = "examples/sql_compatibility_demo.rs"
 required-features = ["legacy_examples"]
 
 [[example]]
-name = "simple_oxidb_test"
-path = "examples/simple_oxidb_test.rs"
+name = "basic_functionality_test"
+path = "examples/basic_functionality_test.rs"
 
 [[example]]
 name = "hybrid_rag_demo"
@@ -117,8 +117,8 @@ required-features = ["rag_examples"]
 
 
 [[example]]
-name = "simple_hybridrag_validation"
-path = "examples/simple_hybridrag_validation.rs"
+name = "hybridrag_validation"
+path = "examples/hybridrag_validation.rs"
 required-features = ["rag_examples"]
 
 

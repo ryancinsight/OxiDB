@@ -15,7 +15,7 @@ use crate::core::transaction::Transaction;
 use tempfile::{Builder, NamedTempFile};
 
 // Import the struct being tested
-use crate::core::storage::engine::implementations::simple_file::SimpleFileKvStore;
+use crate::core::storage::engine::implementations::file_storage::SimpleFileKvStore;
 
 // Helper to create a main DB file with specific key-value data
 fn create_db_file_with_kv_data(path: &Path, data: &[(Vec<u8>, Vec<u8>)]) -> Result<(), OxidbError> {

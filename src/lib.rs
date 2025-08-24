@@ -19,8 +19,7 @@
     clippy::unreachable,
     clippy::missing_safety_doc,
     clippy::missing_errors_doc,
-    clippy::missing_panics_doc,
-    clippy::missing_docs
+    clippy::missing_panics_doc
 )]
 #![allow(
     clippy::module_name_repetitions,

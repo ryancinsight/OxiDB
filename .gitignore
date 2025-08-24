@@ -31,3 +31,8 @@ target/
 *.db.wal
 *.wal
 *.idx
+oxidb_indexes/
+todo_app.db
+user_auth_files.db
+test_*.db
+simple_*.db
