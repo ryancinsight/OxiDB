@@ -5,7 +5,10 @@
 
 use crate::core::common::{OxidbError, ResultExt};
 use std::collections::VecDeque;
-use std::sync::{Arc, Condvar, Mutex, Weak, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Condvar, Mutex, Weak,
+};
 use std::thread;
 use std::time::{Duration, Instant};
 use uuid::Uuid;

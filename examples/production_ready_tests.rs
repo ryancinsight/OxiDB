@@ -1,9 +1,9 @@
 use oxidb::{Connection, OxidbError};
-use std::time::Instant;
 use std::fs;
+use std::time::Instant;
 
 /// Production-Ready Test Suite for Oxidb
-/// 
+///
 /// This example demonstrates:
 /// - SOLID Principles: Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion
 /// - GRASP Principles: Information Expert, Creator, Controller, Low Coupling, High Cohesion
@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Run comprehensive test suite with proper error handling
     let test_results = run_comprehensive_tests()?;
-    
+
     // Display results summary
     display_test_summary(&test_results);
 
@@ -49,10 +49,7 @@ struct TestSuite {
 
 impl TestSuite {
     fn new(db_path: &str) -> Self {
-        Self {
-            database_path: db_path.to_string(),
-            test_data_size: 1000,
-        }
+        Self { database_path: db_path.to_string(), test_data_size: 1000 }
     }
 
     /// Run ACID compliance tests (SOLID: Single Responsibility)
@@ -62,13 +59,13 @@ impl TestSuite {
 
         // Atomicity Test
         self.test_atomicity(&mut conn)?;
-        
+
         // Consistency Test
         self.test_consistency(&mut conn)?;
-        
+
         // Isolation Test (simulated)
         self.test_isolation(&mut conn)?;
-        
+
         // Durability Test
         self.test_durability(&mut conn)?;
 
@@ -134,7 +131,7 @@ impl TestSuite {
 
         // Simulate isolation by testing read consistency
         conn.execute("INSERT INTO isolation_test VALUES (1, 'original')")?;
-        
+
         // In a real scenario, this would test concurrent access
         // For now, we test that reads are consistent within a transaction
         conn.execute("BEGIN TRANSACTION")?;
@@ -169,13 +166,13 @@ impl TestSuite {
 
         // Test empty values
         self.test_empty_and_null_values(&mut conn)?;
-        
+
         // Test large data
         self.test_large_data_handling(&mut conn)?;
-        
+
         // Test special characters
         self.test_special_characters(&mut conn)?;
-        
+
         // Test numeric boundaries
         self.test_numeric_boundaries(&mut conn)?;
 
@@ -194,7 +191,7 @@ impl TestSuite {
         // Test empty strings and null handling
         conn.execute("INSERT INTO null_test VALUES (1, '', 'empty_name')")?;
         conn.execute("INSERT INTO null_test VALUES (2, 'test', '')")?;
-        
+
         let _result = conn.execute("SELECT * FROM null_test")?;
         println!("    ✓ Empty and null values handled correctly");
         Ok(())
@@ -207,7 +204,7 @@ impl TestSuite {
         // Test with reasonably large string
         let large_string = "A".repeat(1000);
         conn.execute(&format!("INSERT INTO large_data_test VALUES (1, '{}')", large_string))?;
-        
+
         let _result = conn.execute("SELECT * FROM large_data_test WHERE id = 1")?;
         println!("    ✓ Large data handled efficiently");
         Ok(())
@@ -227,7 +224,11 @@ impl TestSuite {
 
         for (i, test_case) in test_cases.iter().enumerate() {
             // Use parameterized queries to avoid SQL injection
-            conn.execute(&format!("INSERT INTO special_char_test VALUES ({}, '{}')", i + 1, test_case.replace("'", "''")))?;
+            conn.execute(&format!(
+                "INSERT INTO special_char_test VALUES ({}, '{}')",
+                i + 1,
+                test_case.replace("'", "''")
+            ))?;
         }
 
         let _result = conn.execute("SELECT * FROM special_char_test")?;
@@ -241,7 +242,7 @@ impl TestSuite {
 
         // Test various numeric values
         let test_values = vec![0, 1, -1, 999999, -999999];
-        
+
         for (i, value) in test_values.iter().enumerate() {
             conn.execute(&format!("INSERT INTO numeric_test VALUES ({}, {})", i + 1, value))?;
         }
@@ -258,7 +259,7 @@ impl TestSuite {
 
         // Test bulk insert performance
         self.test_bulk_operations(&mut conn)?;
-        
+
         // Test query performance
         self.test_query_performance(&mut conn)?;
 
@@ -275,9 +276,10 @@ impl TestSuite {
         conn.execute("CREATE TABLE bulk_test (id INTEGER, data TEXT)")?;
 
         let start = Instant::now();
-        
+
         // Insert test data in batches
-        for i in 0..100 {  // Reduced size for faster testing
+        for i in 0..100 {
+            // Reduced size for faster testing
             conn.execute(&format!("INSERT INTO bulk_test VALUES ({}, 'data_{}')", i, i))?;
         }
 
@@ -288,7 +290,7 @@ impl TestSuite {
 
     fn test_query_performance(&self, conn: &mut Connection) -> Result<(), OxidbError> {
         let start = Instant::now();
-        
+
         // Test various query patterns
         let _result1 = conn.execute("SELECT COUNT(*) FROM bulk_test")?;
         let _result2 = conn.execute("SELECT * FROM bulk_test WHERE id < 50")?;
@@ -362,28 +364,30 @@ fn run_comprehensive_tests() -> Result<Vec<TestResult>, Box<dyn std::error::Erro
 /// Display comprehensive test summary (CLEAN: Clear reporting)
 fn display_test_summary(results: &[TestResult]) {
     println!("\n=== Test Summary ===");
-    
+
     let total_tests = results.len();
     let passed_tests = results.iter().filter(|r| r.success).count();
     let failed_tests = total_tests - passed_tests;
-    
+
     println!("Total Tests: {}", total_tests);
     println!("Passed: {} ✅", passed_tests);
     println!("Failed: {} ❌", failed_tests);
-    
+
     let total_duration: std::time::Duration = results.iter().map(|r| r.duration).sum();
     println!("Total Duration: {:?}", total_duration);
-    
+
     println!("\nDetailed Results:");
     for result in results {
         let status = if result.success { "✅" } else { "❌" };
         println!("  {} {} ({:?}) - {}", status, result.test_name, result.duration, result.details);
     }
-    
+
     if failed_tests == 0 {
         println!("\n🎉 All tests passed! Database is production-ready.");
     } else {
-        println!("\n⚠️  Some tests failed. Please review and fix issues before production deployment.");
+        println!(
+            "\n⚠️  Some tests failed. Please review and fix issues before production deployment."
+        );
     }
 }
 
@@ -397,12 +401,12 @@ fn cleanup_test_databases() -> Result<(), Box<dyn std::error::Error>> {
         "production_test_perf.db",
         "production_test_perf.db.wal",
     ];
-    
+
     for file in test_files {
         if let Err(_) = fs::remove_file(file) {
             // File doesn't exist or can't be removed - that's okay
         }
     }
-    
+
     Ok(())
 }

@@ -25,7 +25,9 @@ impl std::fmt::Display for HnswError {
             }
             Self::GraphError(msg) => write!(f, "Graph error: {msg}"),
             Self::Generic(msg) => write!(f, "HNSW error: {msg}"),
-            Self::LayerIndexOutOfBounds { index } => write!(f, "Layer index out of bounds: {index}"),
+            Self::LayerIndexOutOfBounds { index } => {
+                write!(f, "Layer index out of bounds: {index}")
+            }
             Self::MaxConnectionsExceeded { current, max } => {
                 write!(f, "Maximum connections exceeded: {current}/{max}")
             }

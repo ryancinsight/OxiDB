@@ -87,9 +87,9 @@ pub enum DataType {
     Integer(i64),
     String(String),
     Boolean(bool),
-    Float(OrderedFloat),       // Added Float variant with ordering
-    Null,             // Added Null variant
-    Map(JsonSafeMap), // Changed to use JsonSafeMap
+    Float(OrderedFloat), // Added Float variant with ordering
+    Null,                // Added Null variant
+    Map(JsonSafeMap),    // Changed to use JsonSafeMap
     JsonBlob(JsonValue),
     RawBytes(Vec<u8>), // Added RawBytes variant
     Vector(HashableVectorData), // Added Vector variant
@@ -115,7 +115,7 @@ impl std::fmt::Display for OrderedFloat {
 }
 
 /// Implements `Hash` for `OrderedFloat`.
-/// 
+///
 /// This implementation uses the bit representation of the floating-point value
 /// to compute the hash. As a result, `NaN` values are treated as equal if they
 /// have the same bit representation. This behavior is consistent with the IEEE 754
@@ -153,16 +153,21 @@ impl Ord for JsonValue {
 
 impl JsonValue {
     /// Compare JsonValues with recursion depth tracking
-    fn cmp_with_depth(&self, other: &Self, current_depth: usize, max_depth: usize) -> std::cmp::Ordering {
+    fn cmp_with_depth(
+        &self,
+        other: &Self,
+        current_depth: usize,
+        max_depth: usize,
+    ) -> std::cmp::Ordering {
         use serde_json::Value;
-        
+
         // Prevent stack overflow by limiting recursion depth
         if current_depth >= max_depth {
             // Fall back to hash-based comparison for deeply nested structures
             // This is much more efficient than string conversion
             return self.hash_based_comparison(other);
         }
-        
+
         match (&self.0, &other.0) {
             (Value::Null, Value::Null) => std::cmp::Ordering::Equal,
             (Value::Null, _) => std::cmp::Ordering::Less,
@@ -170,7 +175,9 @@ impl JsonValue {
             (Value::Bool(a), Value::Bool(b)) => a.cmp(b),
             (Value::Bool(_), _) => std::cmp::Ordering::Less,
             (_, Value::Bool(_)) => std::cmp::Ordering::Greater,
-            (Value::Number(a), Value::Number(b)) => a.as_f64().partial_cmp(&b.as_f64()).unwrap_or(std::cmp::Ordering::Equal),
+            (Value::Number(a), Value::Number(b)) => {
+                a.as_f64().partial_cmp(&b.as_f64()).unwrap_or(std::cmp::Ordering::Equal)
+            }
             (Value::Number(_), _) => std::cmp::Ordering::Less,
             (_, Value::Number(_)) => std::cmp::Ordering::Greater,
             (Value::String(a), Value::String(b)) => a.cmp(b),
@@ -179,7 +186,7 @@ impl JsonValue {
             (Value::Array(a), Value::Array(b)) => {
                 // Use iterator combinators for efficient array comparison
                 self.compare_arrays_with_iterators(a, b, current_depth, max_depth)
-            },
+            }
             (Value::Array(_), _) => std::cmp::Ordering::Less,
             (_, Value::Array(_)) => std::cmp::Ordering::Greater,
             (Value::Object(a), Value::Object(b)) => {
@@ -191,11 +198,11 @@ impl JsonValue {
 
     /// Compare arrays using advanced iterator patterns
     fn compare_arrays_with_iterators(
-        &self, 
-        a: &[serde_json::Value], 
-        b: &[serde_json::Value], 
-        current_depth: usize, 
-        max_depth: usize
+        &self,
+        a: &[serde_json::Value],
+        b: &[serde_json::Value],
+        current_depth: usize,
+        max_depth: usize,
     ) -> std::cmp::Ordering {
         // First compare lengths for early termination
         match a.len().cmp(&b.len()) {
@@ -205,9 +212,9 @@ impl JsonValue {
                     .zip(b.iter())
                     .map(|(a_item, b_item)| {
                         JsonValue(a_item.clone()).cmp_with_depth(
-                            &JsonValue(b_item.clone()), 
-                            current_depth + 1, 
-                            max_depth
+                            &JsonValue(b_item.clone()),
+                            current_depth + 1,
+                            max_depth,
                         )
                     })
                     .find(|&ord| ord != std::cmp::Ordering::Equal)
@@ -219,11 +226,11 @@ impl JsonValue {
 
     /// Compare objects using advanced iterator patterns and sorting
     fn compare_objects_with_iterators(
-        &self, 
-        a: &serde_json::Map<String, serde_json::Value>, 
-        b: &serde_json::Map<String, serde_json::Value>, 
-        current_depth: usize, 
-        max_depth: usize
+        &self,
+        a: &serde_json::Map<String, serde_json::Value>,
+        b: &serde_json::Map<String, serde_json::Value>,
+        current_depth: usize,
+        max_depth: usize,
     ) -> std::cmp::Ordering {
         // First compare lengths for early termination
         match a.len().cmp(&b.len()) {
@@ -231,7 +238,7 @@ impl JsonValue {
                 // Use iterator combinators to create sorted key-value pairs efficiently
                 let a_sorted = self.create_sorted_pairs(a);
                 let b_sorted = self.create_sorted_pairs(b);
-                
+
                 // Use iterator combinators to compare sorted pairs
                 a_sorted
                     .iter()
@@ -242,9 +249,9 @@ impl JsonValue {
                             std::cmp::Ordering::Equal => {
                                 // If keys are equal, compare values recursively
                                 JsonValue((*v1).clone()).cmp_with_depth(
-                                    &JsonValue((*v2).clone()), 
-                                    current_depth + 1, 
-                                    max_depth
+                                    &JsonValue((*v2).clone()),
+                                    current_depth + 1,
+                                    max_depth,
                                 )
                             }
                             key_ord => key_ord,
@@ -259,8 +266,8 @@ impl JsonValue {
 
     /// Create sorted key-value pairs using iterator combinators
     fn create_sorted_pairs<'a>(
-        &self, 
-        map: &'a serde_json::Map<String, serde_json::Value>
+        &self,
+        map: &'a serde_json::Map<String, serde_json::Value>,
     ) -> Vec<(&'a String, &'a serde_json::Value)> {
         // Use iterator combinators to collect and sort in one efficient operation
         let mut pairs: Vec<_> = map.iter().collect();
@@ -281,7 +288,7 @@ impl JsonValue {
     /// Calculate nesting depth using iterator-based approach
     fn calculate_depth(&self, value: &serde_json::Value, current_depth: usize) -> usize {
         use serde_json::Value;
-        
+
         match value {
             Value::Array(arr) => {
                 if arr.is_empty() {
@@ -315,13 +322,18 @@ impl JsonValue {
     }
 
     /// Early-terminating depth check using iterators
-    fn check_depth_threshold(&self, value: &serde_json::Value, current_depth: usize, threshold: usize) -> bool {
+    fn check_depth_threshold(
+        &self,
+        value: &serde_json::Value,
+        current_depth: usize,
+        threshold: usize,
+    ) -> bool {
         use serde_json::Value;
-        
+
         if current_depth >= threshold {
             return true;
         }
-        
+
         match value {
             Value::Array(arr) => {
                 // Use iterator combinators with early termination
@@ -352,18 +364,18 @@ impl JsonValue {
     fn hash_based_comparison(&self, other: &Self) -> std::cmp::Ordering {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        
+
         // First try a fast hash comparison
         let mut hasher1 = DefaultHasher::new();
         let mut hasher2 = DefaultHasher::new();
-        
+
         // Use the existing Hash implementation for JsonValue
         self.hash(&mut hasher1);
         other.hash(&mut hasher2);
-        
+
         let hash1 = hasher1.finish();
         let hash2 = hasher2.finish();
-        
+
         match hash1.cmp(&hash2) {
             std::cmp::Ordering::Equal => {
                 // Hash collision or truly equal - fall back to size-limited string comparison
@@ -377,17 +389,17 @@ impl JsonValue {
     /// Limits the string representation to prevent excessive memory usage
     fn size_limited_string_comparison(&self, other: &Self) -> std::cmp::Ordering {
         const MAX_STRING_SIZE: usize = 10_000; // 10KB limit
-        
+
         let self_str = self.to_limited_string(MAX_STRING_SIZE);
         let other_str = other.to_limited_string(MAX_STRING_SIZE);
-        
+
         self_str.cmp(&other_str)
     }
 
     /// Convert JsonValue to a size-limited string representation
     fn to_limited_string(&self, max_size: usize) -> String {
         let full_string = self.0.to_string();
-        
+
         if full_string.len() <= max_size {
             full_string
         } else {
@@ -403,11 +415,11 @@ impl JsonValue {
     #[allow(dead_code)]
     fn structural_comparison(&self, other: &Self) -> std::cmp::Ordering {
         use serde_json::Value;
-        
+
         // First compare by JSON value type (same ordering as main cmp)
         let self_type_priority = self.get_type_priority();
         let other_type_priority = other.get_type_priority();
-        
+
         match self_type_priority.cmp(&other_type_priority) {
             std::cmp::Ordering::Equal => {
                 // Same type, compare by structural size/complexity
@@ -455,9 +467,7 @@ pub struct JsonLeafIterator<'a> {
 
 impl<'a> JsonLeafIterator<'a> {
     fn new(value: &'a serde_json::Value) -> Self {
-        Self {
-            stack: vec![value],
-        }
+        Self { stack: vec![value] }
     }
 }
 
@@ -466,7 +476,7 @@ impl<'a> Iterator for JsonLeafIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         use serde_json::Value;
-        
+
         while let Some(current) = self.stack.pop() {
             match current {
                 Value::Array(arr) => {
@@ -491,39 +501,31 @@ pub struct JsonPathIterator<'a> {
 
 impl<'a> JsonPathIterator<'a> {
     fn new(value: &'a serde_json::Value) -> Self {
-        Self {
-            stack: vec![(value, String::new())],
-        }
+        Self { stack: vec![(value, String::new())] }
     }
 }
 
-impl<'a> Iterator for JsonPathIterator<'a> {
+impl Iterator for JsonPathIterator<'_> {
     type Item = String;
 
     fn next(&mut self) -> Option<Self::Item> {
         use serde_json::Value;
-        
+
         while let Some((current, path)) = self.stack.pop() {
             match current {
                 Value::Array(arr) => {
                     // Add array elements with indexed paths
                     for (i, item) in arr.iter().enumerate().rev() {
-                        let new_path = if path.is_empty() {
-                            format!("[{}]", i)
-                        } else {
-                            format!("{}[{}]", path, i)
-                        };
+                        let new_path =
+                            if path.is_empty() { format!("[{i}]") } else { format!("{path}[{i}]") };
                         self.stack.push((item, new_path));
                     }
                 }
                 Value::Object(obj) => {
                     // Add object values with key paths
                     for (key, value) in obj.iter().rev() {
-                        let new_path = if path.is_empty() {
-                            key.clone()
-                        } else {
-                            format!("{}.{}", path, key)
-                        };
+                        let new_path =
+                            if path.is_empty() { key.clone() } else { format!("{path}.{key}") };
                         self.stack.push((value, new_path));
                     }
                 }
@@ -566,7 +568,7 @@ impl Ord for HashableVectorData {
                 // Compare data vectors element by element
                 for (a, b) in self.0.data.iter().zip(other.0.data.iter()) {
                     match a.partial_cmp(b) {
-                        Some(std::cmp::Ordering::Equal) => continue,
+                        Some(std::cmp::Ordering::Equal) => {}
                         Some(ord) => return ord,
                         None => return std::cmp::Ordering::Equal, // Handle NaN
                     }
@@ -645,10 +647,7 @@ impl VectorData {
     /// Calculates the magnitude (L2 norm) of the vector
     #[must_use]
     pub fn magnitude(&self) -> f64 {
-        self.data.iter()
-            .map(|&x| (x as f64) * (x as f64))
-            .sum::<f64>()
-            .sqrt()
+        self.data.iter().map(|&x| f64::from(x) * f64::from(x)).sum::<f64>().sqrt()
     }
 
     /// Calculates the L2 norm of the vector (alias for magnitude)
@@ -773,15 +772,14 @@ mod json_value_tests {
         }));
 
         let leaves: Vec<_> = json.leaf_values().collect();
-        
+
         // Should contain all leaf values (strings and numbers)
         assert_eq!(leaves.len(), 6); // "Alice", 30, "reading", "swimming", "123 Main St", "Anytown"
-        
+
         // Check that we have the expected leaf values (order may vary)
-        let leaf_strings: Vec<String> = leaves.iter()
-            .map(|v| v.to_string().trim_matches('"').to_string())
-            .collect();
-        
+        let leaf_strings: Vec<String> =
+            leaves.iter().map(|v| v.to_string().trim_matches('"').to_string()).collect();
+
         assert!(leaf_strings.contains(&"Alice".to_string()));
         assert!(leaf_strings.contains(&"30".to_string()));
         assert!(leaf_strings.contains(&"reading".to_string()));
@@ -803,7 +801,7 @@ mod json_value_tests {
         }));
 
         let paths: Vec<_> = json.key_paths().collect();
-        
+
         // Should contain paths to all leaf values
         assert!(paths.contains(&"user.name".to_string()));
         assert!(paths.contains(&"user.contacts.email".to_string()));
@@ -855,7 +853,7 @@ mod json_value_tests {
                         "value": i * 2,
                         "description": format!("Item {}", i)
                     }
-                })
+                }),
             );
         }
 
@@ -965,7 +963,7 @@ mod json_value_benchmarks {
                         "created": format!("2023-{:02}-{:02}", (i % 12) + 1, (i % 28) + 1),
                         "updated": format!("2024-{:02}-{:02}", (i % 12) + 1, (i % 28) + 1)
                     }
-                })
+                }),
             );
         }
         serde_json::Value::Object(object)
@@ -975,7 +973,7 @@ mod json_value_benchmarks {
     #[ignore] // Ignore by default to avoid slow tests in CI
     fn benchmark_deep_json_comparison() {
         println!("\n=== Deep JSON Comparison Benchmark ===");
-        
+
         for depth in [100, 500, 1000, 1500] {
             let json_data = create_deep_json(depth);
             let json1 = JsonValue(json_data.clone());
@@ -994,7 +992,7 @@ mod json_value_benchmarks {
     #[ignore] // Ignore by default to avoid slow tests in CI
     fn benchmark_wide_json_comparison() {
         println!("\n=== Wide JSON Comparison Benchmark ===");
-        
+
         for width in [100, 500, 1000, 2000] {
             let json_data = create_wide_json(width);
             let json1 = JsonValue(json_data.clone());
@@ -1013,7 +1011,7 @@ mod json_value_benchmarks {
     #[ignore] // Ignore by default to avoid slow tests in CI
     fn benchmark_iterator_methods() {
         println!("\n=== Iterator Methods Benchmark ===");
-        
+
         let complex_json = JsonValue(json!({
             "users": (0..100).map(|i| json!({
                 "id": i,
@@ -1067,11 +1065,11 @@ mod json_value_benchmarks {
     #[ignore] // Ignore by default to avoid slow tests in CI
     fn benchmark_comparison_early_termination() {
         println!("\n=== Early Termination Benchmark ===");
-        
+
         // Create two large arrays that differ only in the first element
         let arr1: Vec<_> = (0..10000).collect();
         let arr2: Vec<_> = std::iter::once(1).chain(1..10000).collect();
-        
+
         let json1 = JsonValue(json!(arr1));
         let json2 = JsonValue(json!(arr2));
 
@@ -1081,7 +1079,7 @@ mod json_value_benchmarks {
 
         println!("Large array early termination: {:?} in {:?}", result, duration);
         assert_eq!(result, std::cmp::Ordering::Less);
-        
+
         // Should be very fast due to early termination
         assert!(duration.as_millis() < 10, "Early termination should be very fast");
     }
@@ -1089,7 +1087,7 @@ mod json_value_benchmarks {
     #[test]
     fn demonstrate_iterator_patterns() {
         println!("\n=== Iterator Patterns Demonstration ===");
-        
+
         let json = JsonValue(json!({
             "analytics": {
                 "users": [
@@ -1105,36 +1103,30 @@ mod json_value_benchmarks {
 
         // Demonstrate leaf values iterator
         println!("Leaf values:");
-        json.leaf_values()
-            .take(5)
-            .for_each(|leaf| println!("  {}", leaf));
+        json.leaf_values().take(5).for_each(|leaf| println!("  {}", leaf));
 
         // Demonstrate key paths iterator
         println!("Key paths:");
-        json.key_paths()
-            .take(8)
-            .for_each(|path| println!("  {}", path));
+        json.key_paths().take(8).for_each(|path| println!("  {}", path));
 
         // Demonstrate iterator combinators for analysis
-        let numeric_leaves: Vec<_> = json.leaf_values()
-            .filter(|v| v.is_number())
-            .filter_map(|v| v.as_f64())
-            .collect();
-        
+        let numeric_leaves: Vec<_> =
+            json.leaf_values().filter(|v| v.is_number()).filter_map(|v| v.as_f64()).collect();
+
         println!("Numeric values: {:?}", numeric_leaves);
 
         // Use iterator combinators for statistics
         let sum: f64 = numeric_leaves.iter().sum();
         let count = numeric_leaves.len();
         let average = if count > 0 { sum / count as f64 } else { 0.0 };
-        
+
         println!("Statistics - Sum: {}, Count: {}, Average: {:.2}", sum, count, average);
     }
 
     #[test]
     fn demonstrate_advanced_iterator_usage() {
         println!("\n=== Advanced Iterator Usage ===");
-        
+
         let json = JsonValue(json!({
             "products": [
                 {"name": "Laptop", "price": 999.99, "category": "Electronics"},
@@ -1144,35 +1136,26 @@ mod json_value_benchmarks {
         }));
 
         // Use windows iterator pattern for comparing adjacent elements
-        let prices: Vec<f64> = json.leaf_values()
-            .filter_map(|v| v.as_f64())
-            .collect();
+        let prices: Vec<f64> = json.leaf_values().filter_map(|v| v.as_f64()).collect();
 
         if prices.len() >= 2 {
-            let price_differences: Vec<f64> = prices
-                .windows(2)
-                .map(|window| (window[1] - window[0]).abs())
-                .collect();
-            
+            let price_differences: Vec<f64> =
+                prices.windows(2).map(|window| (window[1] - window[0]).abs()).collect();
+
             println!("Price differences: {:?}", price_differences);
         }
 
         // Use iterator combinators for grouping and analysis
         let paths: Vec<String> = json.key_paths().collect();
-        let category_paths: Vec<_> = paths
-            .iter()
-            .filter(|path| path.contains("category"))
-            .collect();
-        
+        let category_paths: Vec<_> =
+            paths.iter().filter(|path| path.contains("category")).collect();
+
         println!("Category paths: {:?}", category_paths);
 
         // Demonstrate chunking patterns
         let all_leaves: Vec<_> = json.leaf_values().collect();
-        let chunked: Vec<_> = all_leaves
-            .chunks(3)
-            .map(|chunk| chunk.len())
-            .collect();
-        
+        let chunked: Vec<_> = all_leaves.chunks(3).map(|chunk| chunk.len()).collect();
+
         println!("Chunk sizes: {:?}", chunked);
     }
 }

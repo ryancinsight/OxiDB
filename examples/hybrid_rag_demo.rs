@@ -1,36 +1,36 @@
 #![cfg(feature = "rag_examples")]
 //! Hybrid RAG Demo
-//! 
+//!
 //! This example demonstrates how to use both traditional retrieval and graph-based
 //! knowledge retrieval in a hybrid approach.
 
-use oxidb::Connection;
-use oxidb::core::rag::{Document, KnowledgeNode};
 use oxidb::core::rag::retriever::InMemoryRetriever;
+use oxidb::core::rag::{Document, KnowledgeNode};
+use oxidb::Connection;
+use oxidb::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use oxidb::Value;
 
 // Simple synchronous embedding function for the example
 fn generate_embedding(text: &str, dimension: usize) -> Vec<f32> {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    
+
     let mut embedding = vec![0.0; dimension];
     let words: Vec<&str> = text.split_whitespace().collect();
-    
+
     for (i, word) in words.iter().enumerate() {
         let mut hasher = DefaultHasher::new();
         word.hash(&mut hasher);
         let hash = hasher.finish();
-        
+
         // Distribute word influence across embedding dimensions
         for j in 0..dimension {
             let idx = (i + j) % dimension;
             embedding[idx] += ((hash >> j) & 0xFF) as f32 / 255.0;
         }
     }
-    
+
     // Normalize the embedding
     let magnitude: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
     if magnitude > 0.0 {
@@ -38,7 +38,7 @@ fn generate_embedding(text: &str, dimension: usize) -> Vec<f32> {
             *value /= magnitude;
         }
     }
-    
+
     embedding
 }
 
@@ -48,17 +48,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize database
     let mut conn = Connection::open_in_memory()?;
-    
+
     // Create tables for storing knowledge graph
-    conn.execute("CREATE TABLE IF NOT EXISTS nodes (
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS nodes (
         id INTEGER PRIMARY KEY,
         entity_type TEXT NOT NULL,
         name TEXT NOT NULL,
         description TEXT,
         confidence REAL
-    )")?;
-    
-    conn.execute("CREATE TABLE IF NOT EXISTS edges (
+    )",
+    )?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS edges (
         id INTEGER PRIMARY KEY,
         source_id INTEGER NOT NULL,
         target_id INTEGER NOT NULL,
@@ -66,7 +69,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         confidence REAL,
         FOREIGN KEY (source_id) REFERENCES nodes(id),
         FOREIGN KEY (target_id) REFERENCES nodes(id)
-    )")?;
+    )",
+    )?;
 
     // Create sample documents
     let documents = vec![
@@ -87,7 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "TechCorp acquires DataViz Solutions to expand visualization capabilities".to_string(),
         ).with_metadata(HashMap::from([("category".to_string(), Value::Text("acquisition".to_string()))])),
     ];
-    
+
     // Add documents with embeddings
     let mut embedded_docs = Vec::new();
     for doc in documents {
@@ -109,7 +113,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             content: "TechCorp".to_string(),
             embedding: None,
             metadata: HashMap::from([
-                ("description".to_string(), Value::Text("Leading technology company in AI and data solutions".to_string())),
+                (
+                    "description".to_string(),
+                    Value::Text("Leading technology company in AI and data solutions".to_string()),
+                ),
                 ("confidence".to_string(), Value::Float(0.9)),
             ]),
         },
@@ -119,7 +126,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             content: "SmartAnalytics".to_string(),
             embedding: None,
             metadata: HashMap::from([
-                ("description".to_string(), Value::Text("AI-powered data analysis platform".to_string())),
+                (
+                    "description".to_string(),
+                    Value::Text("AI-powered data analysis platform".to_string()),
+                ),
                 ("confidence".to_string(), Value::Float(0.85)),
             ]),
         },
@@ -129,7 +139,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             content: "DataViz Solutions".to_string(),
             embedding: None,
             metadata: HashMap::from([
-                ("description".to_string(), Value::Text("Visualization company acquired by TechCorp".to_string())),
+                (
+                    "description".to_string(),
+                    Value::Text("Visualization company acquired by TechCorp".to_string()),
+                ),
                 ("confidence".to_string(), Value::Float(0.8)),
             ]),
         },
@@ -159,7 +172,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Value::Float(0.9),
         ]
     )?;
-    
+
     conn.execute_with_params(
         "INSERT INTO edges (source_id, target_id, relationship_type, confidence) VALUES (?, ?, ?, ?)",
         &[
@@ -191,10 +204,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
          JOIN edges e ON n1.id = e.source_id 
          JOIN nodes n2 ON e.target_id = n2.id 
          WHERE n1.name = ? AND e.relationship_type = ?",
-        &[
-            Value::Text("TechCorp".to_string()),
-            Value::Text("develops".to_string()),
-        ]
+        &[Value::Text("TechCorp".to_string()), Value::Text("develops".to_string())],
     )?;
 
     println!("Products developed by TechCorp:");
@@ -222,7 +232,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
          JOIN edges e ON n1.id = e.source_id 
          JOIN nodes n2 ON e.target_id = n2.id 
          WHERE e.relationship_type = ?",
-        &[Value::Text("acquired".to_string())]
+        &[Value::Text("acquired".to_string())],
     )?;
 
     println!("\nAcquisitions:");

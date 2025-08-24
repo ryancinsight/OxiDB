@@ -5,7 +5,7 @@ use wasm_bindgen::prelude::*;
 use crate::api::{Connection, QueryResult};
 
 #[cfg(target_arch = "wasm32")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[cfg(target_arch = "wasm32")]
 #[derive(Serialize, Deserialize)]
@@ -29,15 +29,13 @@ impl WasmDatabase {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Result<WasmDatabase, JsValue> {
         // Initialize with in-memory database for WASM
-        let conn = Connection::open_in_memory()
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        let conn = Connection::open_in_memory().map_err(|e| JsValue::from_str(&e.to_string()))?;
         Ok(WasmDatabase { conn })
     }
 
     pub fn execute(&mut self, sql: &str) -> Result<String, JsValue> {
-        let result = self.conn.execute(sql)
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
-        
+        let result = self.conn.execute(sql).map_err(|e| JsValue::from_str(&e.to_string()))?;
+
         // Convert QueryResult to our JSON-friendly format
         let json_result = match result {
             QueryResult::Success => JsonQueryResult {
@@ -59,35 +57,53 @@ impl WasmDatabase {
                 for row in &data.rows {
                     let mut json_row = Vec::new();
                     for i in 0..data.columns.len() {
-                        let value = row.get(i).map(|v| {
-                            // Convert Value to serde_json::Value
-                            match v {
-                                crate::core::common::types::Value::Null => serde_json::Value::Null,
-                                crate::core::common::types::Value::Boolean(b) => serde_json::Value::Bool(*b),
-                                crate::core::common::types::Value::Integer(i) => serde_json::Value::Number(serde_json::Number::from(*i)),
-                                crate::core::common::types::Value::Float(f) => {
-                                    serde_json::Number::from_f64(*f)
-                                        .map(serde_json::Value::Number)
-                                        .unwrap_or(serde_json::Value::Null)
-                                },
-                                crate::core::common::types::Value::Text(s) => serde_json::Value::String(s.clone()),
-                                crate::core::common::types::Value::Blob(b) => serde_json::Value::String(crate::core::common::hex::encode(b)),
-                                crate::core::common::types::Value::Vector(v) => {
-                                    // Convert vector to array of numbers
-                                    let vec_values: Vec<serde_json::Value> = v.iter()
-                                        .map(|f| serde_json::Number::from_f64(*f as f64)
+                        let value = row
+                            .get(i)
+                            .map(|v| {
+                                // Convert Value to serde_json::Value
+                                match v {
+                                    crate::core::common::types::Value::Null => {
+                                        serde_json::Value::Null
+                                    }
+                                    crate::core::common::types::Value::Boolean(b) => {
+                                        serde_json::Value::Bool(*b)
+                                    }
+                                    crate::core::common::types::Value::Integer(i) => {
+                                        serde_json::Value::Number(serde_json::Number::from(*i))
+                                    }
+                                    crate::core::common::types::Value::Float(f) => {
+                                        serde_json::Number::from_f64(*f)
                                             .map(serde_json::Value::Number)
-                                            .unwrap_or(serde_json::Value::Null))
-                                        .collect();
-                                    serde_json::Value::Array(vec_values)
-                                },
-                            }
-                        }).unwrap_or(serde_json::Value::Null);
+                                            .unwrap_or(serde_json::Value::Null)
+                                    }
+                                    crate::core::common::types::Value::Text(s) => {
+                                        serde_json::Value::String(s.clone())
+                                    }
+                                    crate::core::common::types::Value::Blob(b) => {
+                                        serde_json::Value::String(crate::core::common::hex::encode(
+                                            b,
+                                        ))
+                                    }
+                                    crate::core::common::types::Value::Vector(v) => {
+                                        // Convert vector to array of numbers
+                                        let vec_values: Vec<serde_json::Value> = v
+                                            .iter()
+                                            .map(|f| {
+                                                serde_json::Number::from_f64(*f as f64)
+                                                    .map(serde_json::Value::Number)
+                                                    .unwrap_or(serde_json::Value::Null)
+                                            })
+                                            .collect();
+                                        serde_json::Value::Array(vec_values)
+                                    }
+                                }
+                            })
+                            .unwrap_or(serde_json::Value::Null);
                         json_row.push(value);
                     }
                     json_rows.push(json_row);
                 }
-                
+
                 JsonQueryResult {
                     success: true,
                     message: format!("{} rows returned", json_rows.len()),
@@ -97,11 +113,11 @@ impl WasmDatabase {
                 }
             }
         };
-        
+
         // Convert to JSON string
-        let json_string = serde_json::to_string(&json_result)
-            .map_err(|e| JsValue::from_str(&e.to_string()))?;
-        
+        let json_string =
+            serde_json::to_string(&json_result).map_err(|e| JsValue::from_str(&e.to_string()))?;
+
         Ok(json_string)
     }
 

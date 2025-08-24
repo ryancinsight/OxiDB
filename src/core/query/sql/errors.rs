@@ -11,10 +11,14 @@ pub enum SqlTokenizerError {
 impl fmt::Display for SqlTokenizerError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::UnterminatedString(pos) => write!(f, "Unterminated string literal starting at position {}", pos),
-            Self::InvalidCharacter(ch, pos) => write!(f, "Invalid character '{}' at position {}", ch, pos),
-            Self::InvalidNumber(pos) => write!(f, "Could not parse number at position {}", pos),
-            Self::UnexpectedEOF(pos) => write!(f, "Unexpected end of input at position {}", pos),
+            Self::UnterminatedString(pos) => {
+                write!(f, "Unterminated string literal starting at position {pos}")
+            }
+            Self::InvalidCharacter(ch, pos) => {
+                write!(f, "Invalid character '{ch}' at position {pos}")
+            }
+            Self::InvalidNumber(pos) => write!(f, "Could not parse number at position {pos}"),
+            Self::UnexpectedEOF(pos) => write!(f, "Unexpected end of input at position {pos}"),
         }
     }
 }
@@ -23,7 +27,11 @@ impl std::error::Error for SqlTokenizerError {}
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SqlParseError {
-    UnexpectedToken { expected: String, found: String, position: usize },
+    UnexpectedToken {
+        expected: String,
+        found: String,
+        position: usize,
+    },
     UnexpectedEOF,
     InvalidExpression(usize, String),
     TokenizerError(SqlTokenizerError),
@@ -41,16 +49,24 @@ impl fmt::Display for SqlParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnexpectedToken { expected, found, position } => {
-                write!(f, "Unexpected token: expected {}, found {} at position {}", expected, found, position)
+                write!(
+                    f,
+                    "Unexpected token: expected {expected}, found {found} at position {position}"
+                )
             }
             Self::UnexpectedEOF => write!(f, "Unexpected end of input"),
-            Self::InvalidExpression(pos, msg) => write!(f, "Invalid expression at position {}: {}", pos, msg),
-            Self::TokenizerError(e) => write!(f, "Tokenizer error: {}", e),
-            Self::UnknownStatementType(pos) => write!(f, "Unknown statement type at position {}", pos),
-            Self::UnknownDataType(name, pos) => write!(f, "Unknown data type '{}' at position {}", name, pos),
+            Self::InvalidExpression(pos, msg) => {
+                write!(f, "Invalid expression at position {pos}: {msg}")
+            }
+            Self::TokenizerError(e) => write!(f, "Tokenizer error: {e}"),
+            Self::UnknownStatementType(pos) => {
+                write!(f, "Unknown statement type at position {pos}")
+            }
+            Self::UnknownDataType(name, pos) => {
+                write!(f, "Unknown data type '{name}' at position {pos}")
+            }
             Self::InvalidDataTypeParameter { type_name, parameter, position, reason } => {
-                write!(f, "Invalid parameter for data type '{}' at position {}: parameter '{}', reason: {}", 
-                    type_name, position, parameter, reason)
+                write!(f, "Invalid parameter for data type '{type_name}' at position {position}: parameter '{parameter}', reason: {reason}")
             }
         }
     }

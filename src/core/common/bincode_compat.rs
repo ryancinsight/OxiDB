@@ -1,34 +1,37 @@
 //! Pure Rust binary serialization compatible with bincode format
-//! 
+//!
 //! This module provides binary serialization that replaces the external
 //! bincode dependency, following the YAGNI principle by implementing
 //! only what we need for WAL log records.
 
-use crate::core::common::{OxidbError, io_utils::{ReadExt, WriteExt}};
+use crate::core::common::{
+    io_utils::{ReadExt, WriteExt},
+    OxidbError,
+};
 use std::io::{Read, Write};
 
 /// Serialize a value to a writer in bincode-compatible format
-/// 
+///
 /// # Errors
-/// 
+///
 /// Returns an error if the serialization fails or if writing to the writer fails
 pub fn serialize<W: Write, T: Serialize>(value: &T, writer: &mut W) -> Result<(), OxidbError> {
     value.serialize(writer)
 }
 
 /// Deserialize a value from a reader in bincode-compatible format
-/// 
+///
 /// # Errors
-/// 
+///
 /// Returns an error if the deserialization fails or if reading from the reader fails
 pub fn deserialize<R: Read, T: Deserialize>(reader: &mut R) -> Result<T, OxidbError> {
     T::deserialize(reader)
 }
 
 /// Serialize a value to a byte vector
-/// 
+///
 /// # Errors
-/// 
+///
 /// Returns an error if the serialization fails
 pub fn serialize_to_vec<T: Serialize>(value: &T) -> Result<Vec<u8>, OxidbError> {
     let mut buffer = Vec::new();
@@ -39,9 +42,9 @@ pub fn serialize_to_vec<T: Serialize>(value: &T) -> Result<Vec<u8>, OxidbError> 
 /// Trait for types that can be serialized
 pub trait Serialize {
     /// Serialize self to a writer
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if serialization fails or if writing to the writer fails
     fn serialize<W: Write>(&self, writer: &mut W) -> Result<(), OxidbError>;
 }
@@ -49,9 +52,9 @@ pub trait Serialize {
 /// Trait for types that can be deserialized
 pub trait Deserialize: Sized {
     /// Deserialize from a reader
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if deserialization fails or if reading from the reader fails
     fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError>;
 }
@@ -146,7 +149,7 @@ impl Deserialize for String {
     fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
         let bytes = Vec::<u8>::deserialize(reader)?;
         String::from_utf8(bytes)
-            .map_err(|e| OxidbError::Deserialization(format!("Invalid UTF-8: {}", e)))
+            .map_err(|e| OxidbError::Deserialization(format!("Invalid UTF-8: {e}")))
     }
 }
 
@@ -169,7 +172,7 @@ impl<T: Deserialize> Deserialize for Option<T> {
         match tag {
             0 => Ok(None),
             1 => Ok(Some(T::deserialize(reader)?)),
-            _ => Err(OxidbError::Deserialization(format!("Invalid Option tag: {}", tag)))
+            _ => Err(OxidbError::Deserialization(format!("Invalid Option tag: {tag}"))),
         }
     }
 }
@@ -196,7 +199,7 @@ impl Deserialize for Vec<ActiveTransactionInfo> {
         let len = u64::deserialize(reader)?;
         if len > usize::MAX as u64 {
             return Err(OxidbError::Deserialization(
-                "Vector length exceeds maximum size".to_string()
+                "Vector length exceeds maximum size".to_string(),
             ));
         }
         let len = len as usize;
@@ -224,7 +227,7 @@ impl Deserialize for Vec<DirtyPageInfo> {
         let len = u64::deserialize(reader)?;
         if len > usize::MAX as u64 {
             return Err(OxidbError::Deserialization(
-                "Vector length exceeds maximum size".to_string()
+                "Vector length exceeds maximum size".to_string(),
             ));
         }
         let len = len as usize;
@@ -274,15 +277,15 @@ impl Deserialize for Vec<f32> {
         let len = u64::deserialize(reader)?;
         if len > usize::MAX as u64 {
             return Err(OxidbError::Deserialization(
-                "Vector length exceeds maximum size".to_string()
+                "Vector length exceeds maximum size".to_string(),
             ));
         }
         // Additional safety check: prevent excessive allocations (1GB limit for f32 vec)
         const MAX_ELEMENTS: u64 = 256 * 1024 * 1024; // 256M elements = 1GB for f32
         if len > MAX_ELEMENTS {
-            return Err(OxidbError::Deserialization(
-                format!("Vector length {} exceeds maximum allowed elements {}", len, MAX_ELEMENTS)
-            ));
+            return Err(OxidbError::Deserialization(format!(
+                "Vector length {len} exceeds maximum allowed elements {MAX_ELEMENTS}"
+            )));
         }
         let len = len as usize;
         let mut vec = Vec::with_capacity(len);
@@ -294,7 +297,7 @@ impl Deserialize for Vec<f32> {
 }
 
 // Implementations for ID types
-use crate::core::common::types::ids::{PageId, TransactionId, SlotId};
+use crate::core::common::types::ids::{PageId, SlotId, TransactionId};
 
 // Implementations for Row and Value types
 use crate::core::common::types::row::Row;
@@ -308,9 +311,7 @@ impl Serialize for Row {
 
 impl Deserialize for Row {
     fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
-        Ok(Row {
-            values: Vec::<Value>::deserialize(reader)?,
-        })
+        Ok(Row { values: Vec::<Value>::deserialize(reader)? })
     }
 }
 
@@ -330,7 +331,7 @@ impl Deserialize for Vec<Value> {
         let len = u64::deserialize(reader)?;
         if len > usize::MAX as u64 {
             return Err(OxidbError::Deserialization(
-                "Vector length exceeds maximum size".to_string()
+                "Vector length exceeds maximum size".to_string(),
             ));
         }
         let len = len as usize;
@@ -387,7 +388,7 @@ impl Deserialize for Value {
             4 => Ok(Value::Blob(Vec::<u8>::deserialize(reader)?)),
             5 => Ok(Value::Vector(Vec::<f32>::deserialize(reader)?)),
             6 => Ok(Value::Null),
-            n => Err(OxidbError::Deserialization(format!("Invalid Value variant: {}", n))),
+            n => Err(OxidbError::Deserialization(format!("Invalid Value variant: {n}"))),
         }
     }
 }
@@ -476,7 +477,7 @@ impl Deserialize for f64 {
 // Implementation for bool
 impl Serialize for bool {
     fn serialize<W: Write>(&self, writer: &mut W) -> Result<(), OxidbError> {
-        (*self as u8).serialize(writer)
+        u8::from(*self).serialize(writer)
     }
 }
 
@@ -504,43 +505,43 @@ impl Deserialize for f32 {
 // Implementation for HashMap
 use std::collections::HashMap;
 
-impl<K, V> Serialize for HashMap<K, V> 
-where 
+impl<K, V> Serialize for HashMap<K, V>
+where
     K: Serialize,
     V: Serialize,
 {
     fn serialize<W: Write>(&self, writer: &mut W) -> Result<(), OxidbError> {
         // Write the number of entries
         (self.len() as u64).serialize(writer)?;
-        
+
         // Write each key-value pair
         for (key, value) in self {
             key.serialize(writer)?;
             value.serialize(writer)?;
         }
-        
+
         Ok(())
     }
 }
 
-impl<K, V> Deserialize for HashMap<K, V> 
-where 
+impl<K, V> Deserialize for HashMap<K, V>
+where
     K: Deserialize + Eq + std::hash::Hash,
     V: Deserialize,
 {
     fn deserialize<R: Read>(reader: &mut R) -> Result<Self, OxidbError> {
         // Read the number of entries
         let len = u64::deserialize(reader)? as usize;
-        
+
         let mut map = HashMap::with_capacity(len);
-        
+
         // Read each key-value pair
         for _ in 0..len {
             let key = K::deserialize(reader)?;
             let value = V::deserialize(reader)?;
             map.insert(key, value);
         }
-        
+
         Ok(map)
     }
 }
@@ -548,7 +549,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_u8_roundtrip() {
         let value = 42u8;
@@ -556,7 +557,7 @@ mod tests {
         let deserialized: u8 = deserialize(&mut &serialized[..]).unwrap();
         assert_eq!(value, deserialized);
     }
-    
+
     #[test]
     fn test_u64_roundtrip() {
         let value = 0x1234_5678_9ABC_DEF0u64;
@@ -564,7 +565,7 @@ mod tests {
         let deserialized: u64 = deserialize(&mut &serialized[..]).unwrap();
         assert_eq!(value, deserialized);
     }
-    
+
     #[test]
     fn test_vec_roundtrip() {
         let value = vec![1, 2, 3, 4, 5];
@@ -572,7 +573,7 @@ mod tests {
         let deserialized: Vec<u8> = deserialize(&mut &serialized[..]).unwrap();
         assert_eq!(value, deserialized);
     }
-    
+
     #[test]
     fn test_string_roundtrip() {
         let value = "Hello, World!".to_string();
@@ -580,14 +581,14 @@ mod tests {
         let deserialized: String = deserialize(&mut &serialized[..]).unwrap();
         assert_eq!(value, deserialized);
     }
-    
+
     #[test]
     fn test_option_roundtrip() {
         let value1: Option<u64> = Some(42);
         let serialized1 = serialize_to_vec(&value1).unwrap();
         let deserialized1: Option<u64> = deserialize(&mut &serialized1[..]).unwrap();
         assert_eq!(value1, deserialized1);
-        
+
         let value2: Option<u64> = None;
         let serialized2 = serialize_to_vec(&value2).unwrap();
         let deserialized2: Option<u64> = deserialize(&mut &serialized2[..]).unwrap();

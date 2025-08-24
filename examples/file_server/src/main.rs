@@ -2,11 +2,11 @@ mod auth;
 mod db;
 mod handlers;
 // mod handlers_v2; // Commented out due to compilation issues
+mod api;
+mod minimal;
 mod models;
 mod test;
-mod minimal;
 mod working;
-mod api;
 
 use anyhow::Result;
 use axum::Router;
@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
     // Run the server
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("File server running on http://{}", addr);
-    
+
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
 

@@ -2,6 +2,11 @@
 name = "file_server"
 version = "0.1.0"
 edition = "2021"
+description = "File server application example using OxiDB"
+license = "MIT"
+repository = "https://github.com/ryancinsight/OxiDB"
+keywords = ["database", "server", "files", "example"]
+categories = ["database-implementations"]
 
 [dependencies]
 oxidb = { path = "../.." }

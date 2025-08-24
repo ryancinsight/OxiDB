@@ -16,4 +16,3 @@ pub use crate::core::config::Config;
 
 // Compatibility layer for legacy examples
 pub use connection::Oxidb;
-

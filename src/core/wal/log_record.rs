@@ -1,6 +1,6 @@
+use crate::core::common::bincode_compat::{Deserialize, Serialize};
 use crate::core::common::types::ids::{PageId, SlotId};
 use crate::core::common::types::{Lsn, TransactionId};
-use crate::core::common::bincode_compat::{Serialize, Deserialize};
 use crate::core::common::OxidbError;
 use std::io::{Read, Write};
 
@@ -98,8 +98,8 @@ pub enum LogRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::common::types::ids::{PageId, SlotId};
     use crate::core::common::bincode_compat as bincode;
+    use crate::core::common::types::ids::{PageId, SlotId};
 
     // Note: Existing tests will fail due to the added 'lsn' field.
     // These tests need to be updated to include the 'lsn' field in their assertions.
@@ -271,7 +271,7 @@ impl Deserialize for PageType {
             0 => Ok(PageType::TablePage),
             1 => Ok(PageType::BTreeInternal),
             2 => Ok(PageType::BTreeLeaf),
-            n => Err(OxidbError::Serialization(format!("Invalid PageType variant: {}", n))),
+            n => Err(OxidbError::Serialization(format!("Invalid PageType variant: {n}"))),
         }
     }
 }
@@ -348,7 +348,15 @@ impl Serialize for LogRecord {
                 old_record_data.serialize(writer)?;
                 prev_lsn.serialize(writer)?;
             }
-            LogRecord::UpdateRecord { lsn, tx_id, page_id, slot_id, old_record_data, new_record_data, prev_lsn } => {
+            LogRecord::UpdateRecord {
+                lsn,
+                tx_id,
+                page_id,
+                slot_id,
+                old_record_data,
+                new_record_data,
+                prev_lsn,
+            } => {
                 5u8.serialize(writer)?;
                 lsn.serialize(writer)?;
                 tx_id.serialize(writer)?;
@@ -366,7 +374,16 @@ impl Serialize for LogRecord {
                 page_type.serialize(writer)?;
                 prev_lsn.serialize(writer)?;
             }
-            LogRecord::CompensationLogRecord { lsn, tx_id, page_id, slot_id, undone_lsn, data_for_redo_of_undo, prev_lsn, next_undo_lsn } => {
+            LogRecord::CompensationLogRecord {
+                lsn,
+                tx_id,
+                page_id,
+                slot_id,
+                undone_lsn,
+                data_for_redo_of_undo,
+                prev_lsn,
+                next_undo_lsn,
+            } => {
                 7u8.serialize(writer)?;
                 lsn.serialize(writer)?;
                 tx_id.serialize(writer)?;
@@ -451,15 +468,13 @@ impl Deserialize for LogRecord {
                 prev_lsn: Lsn::deserialize(reader)?,
                 next_undo_lsn: Option::<Lsn>::deserialize(reader)?,
             }),
-            8 => Ok(LogRecord::CheckpointBegin {
-                lsn: Lsn::deserialize(reader)?,
-            }),
+            8 => Ok(LogRecord::CheckpointBegin { lsn: Lsn::deserialize(reader)? }),
             9 => Ok(LogRecord::CheckpointEnd {
                 lsn: Lsn::deserialize(reader)?,
                 active_transactions: Vec::<ActiveTransactionInfo>::deserialize(reader)?,
                 dirty_pages: Vec::<DirtyPageInfo>::deserialize(reader)?,
             }),
-            n => Err(OxidbError::Serialization(format!("Invalid LogRecord variant: {}", n))),
+            n => Err(OxidbError::Serialization(format!("Invalid LogRecord variant: {n}"))),
         }
     }
 }

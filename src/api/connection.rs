@@ -1,9 +1,9 @@
-use crate::api::types::{QueryResult, Row};
 use crate::api::types::DataSet;
+use crate::api::types::{QueryResult, Row};
 use crate::core::common::types::Value;
 use crate::core::common::OxidbError;
 use crate::core::config::Config;
-use crate::core::performance::{PerformanceContext, PerformanceAnalyzer};
+use crate::core::performance::{PerformanceAnalyzer, PerformanceContext};
 use crate::core::query::executor::QueryExecutor;
 use crate::core::query::parser::parse_query;
 use crate::core::query::sql::parser::SqlParser;
@@ -13,9 +13,9 @@ use crate::core::storage::engine::SimpleFileKvStore;
 use crate::core::wal::log_manager::LogManager;
 use crate::core::wal::writer::WalWriter;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use std::path::PathBuf;
 
 /// A database connection that provides an ergonomic API for database operations.
 ///
@@ -33,7 +33,7 @@ pub struct Connection {
 // Helper function to convert DataType to Value
 fn data_type_to_value(data_type: crate::core::types::DataType) -> Value {
     use crate::core::types::DataType;
-    
+
     match data_type {
         DataType::Integer(i) => Value::Integer(i),
         DataType::Float(f) => Value::Float(f.0),
@@ -42,9 +42,9 @@ fn data_type_to_value(data_type: crate::core::types::DataType) -> Value {
         DataType::RawBytes(b) => Value::Blob(b),
         DataType::Vector(v) => Value::Vector(v.0.data),
         DataType::Null => Value::Null,
-        DataType::Map(map) => Value::Text(
-            serde_json::to_string(&map.0).unwrap_or_else(|_| "{}".to_string())
-        ),
+        DataType::Map(map) => {
+            Value::Text(serde_json::to_string(&map.0).unwrap_or_else(|_| "{}".to_string()))
+        }
         DataType::JsonBlob(json) => Value::Text(json.0.to_string()),
     }
 }
@@ -60,15 +60,13 @@ impl Connection {
     /// - Index directory creation fails
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, OxidbError> {
         let path_buf = path.as_ref().to_path_buf();
-        let data_dir = path.as_ref().parent().map_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")), std::path::Path::to_path_buf);
-        
+        let data_dir = path.as_ref().parent().map_or_else(
+            || std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            std::path::Path::to_path_buf,
+        );
+
         let index_dir = data_dir.join("oxidb_indexes");
-        let config = Config {
-            database_file: path_buf,
-            data_dir,
-            index_dir,
-            ..Config::default()
-        };
+        let config = Config { database_file: path_buf, data_dir, index_dir, ..Config::default() };
 
         Self::new_with_config(&config)
     }
@@ -112,7 +110,7 @@ impl Connection {
     }
 
     /// Enables performance monitoring for this connection.
-    /// 
+    ///
     /// This method configures the connection to track detailed performance metrics
     /// for all subsequent operations.
     pub fn enable_performance_monitoring(&mut self) {
@@ -142,21 +140,20 @@ impl Connection {
         // Parse SQL to Command
         let command = parse_query(sql)?;
         let result = self.executor.execute_command(command)?;
-        
+
         // Convert ExecutionResult to QueryResult
         use crate::core::query::executor::ExecutionResult;
-        
+
         let query_result = match result {
             ExecutionResult::Query { columns, rows } => {
                 // Convert Vec<Vec<DataType>> rows to Value rows
-                let converted_rows = rows.into_iter()
+                let converted_rows = rows
+                    .into_iter()
                     .map(|row_values| Row {
-                        values: row_values.into_iter()
-                            .map(data_type_to_value)
-                            .collect(),
+                        values: row_values.into_iter().map(data_type_to_value).collect(),
                     })
                     .collect();
-                
+
                 QueryResult::Data(DataSet::new(columns, converted_rows))
             }
             ExecutionResult::Updated { count } => QueryResult::RowsAffected(count as u64),
@@ -164,10 +161,9 @@ impl Connection {
                 vec!["value".to_string()],
                 vec![Row { values: vec![data_type_to_value(dt)] }],
             )),
-            ExecutionResult::Value(None) => QueryResult::Data(DataSet::new(
-                vec!["value".to_string()],
-                vec![],
-            )),
+            ExecutionResult::Value(None) => {
+                QueryResult::Data(DataSet::new(vec!["value".to_string()], vec![]))
+            }
             ExecutionResult::Values(dts) => QueryResult::Data(DataSet::new(
                 vec!["value".to_string()],
                 dts.into_iter().map(|dt| Row { values: vec![data_type_to_value(dt)] }).collect(),
@@ -180,20 +176,24 @@ impl Connection {
             ExecutionResult::RankedResults(results) => {
                 // For ranked results, include distance as a column
                 let columns = vec!["distance".to_string(), "data".to_string()];
-                let converted_rows = results.into_iter()
+                let converted_rows = results
+                    .into_iter()
                     .map(|(distance, data_values)| Row {
                         values: vec![
                             Value::Float(f64::from(distance)),
                             // Combine data values into a single JSON string
-                            Value::Text(serde_json::to_string(&data_values).unwrap_or_else(|_| "[]".to_string())),
+                            Value::Text(
+                                serde_json::to_string(&data_values)
+                                    .unwrap_or_else(|_| "[]".to_string()),
+                            ),
                         ],
                     })
                     .collect();
-                
+
                 QueryResult::Data(DataSet::new(columns, converted_rows))
-            },
+            }
         };
-        
+
         Ok(query_result)
     }
 
@@ -217,13 +217,15 @@ impl Connection {
         // Parse SQL to Command
         let command = parse_query(sql)?;
         let result = self.executor.execute_command(command)?;
-        
+
         // Convert ExecutionResult to rows affected count
         use crate::core::query::executor::ExecutionResult;
-        
+
         let mapped = match result {
             ExecutionResult::Updated { count } => QueryResult::RowsAffected(count as u64),
-            ExecutionResult::Deleted(success) => QueryResult::RowsAffected(if success { 1 } else { 0 }),
+            ExecutionResult::Deleted(success) => {
+                QueryResult::RowsAffected(if success { 1 } else { 0 })
+            }
             ExecutionResult::Success => QueryResult::Success,
             ExecutionResult::Query { columns, rows } => {
                 let converted_rows = rows
@@ -238,7 +240,9 @@ impl Connection {
                 vec!["value".to_string()],
                 vec![Row { values: vec![data_type_to_value(dt)] }],
             )),
-            ExecutionResult::Value(None) => QueryResult::Data(DataSet::new(vec!["value".to_string()], vec![])),
+            ExecutionResult::Value(None) => {
+                QueryResult::Data(DataSet::new(vec!["value".to_string()], vec![]))
+            }
             ExecutionResult::Values(dts) => QueryResult::Data(DataSet::new(
                 vec!["value".to_string()],
                 dts.into_iter().map(|dt| Row { values: vec![data_type_to_value(dt)] }).collect(),
@@ -250,7 +254,10 @@ impl Connection {
                     .map(|(distance, data_values)| Row {
                         values: vec![
                             Value::Float(f64::from(distance)),
-                            Value::Text(serde_json::to_string(&data_values).unwrap_or_else(|_| "[]".to_string())),
+                            Value::Text(
+                                serde_json::to_string(&data_values)
+                                    .unwrap_or_else(|_| "[]".to_string()),
+                            ),
                         ],
                     })
                     .collect();
@@ -353,13 +360,15 @@ impl Connection {
     /// ```
     pub fn get_performance_report(&self) -> Result<String, OxidbError> {
         let analyzer = PerformanceAnalyzer::new();
-        
+
         // Get a read lock on the metrics
-        let metrics = self.performance.metrics
+        let metrics = self
+            .performance
+            .metrics
             .read()
             .map_err(|_| OxidbError::Lock("Failed to acquire metrics lock".to_string()))?;
-        
-        let report = analyzer.analyze(&*metrics);
+
+        let report = analyzer.analyze(&metrics);
         Ok(report.to_string())
     }
 
@@ -422,14 +431,13 @@ impl Connection {
     ) -> Result<QueryResult, OxidbError> {
         // Parse SQL directly to AST for parameterized queries
         let mut tokenizer = Tokenizer::new(sql);
-        let tokens = tokenizer.tokenize().map_err(|e| {
-            OxidbError::SqlParsing(format!("SQL tokenizer error: {e}"))
-        })?;
-        
+        let tokens = tokenizer
+            .tokenize()
+            .map_err(|e| OxidbError::SqlParsing(format!("SQL tokenizer error: {e}")))?;
+
         let mut parser = SqlParser::new(tokens);
-        let statement = parser.parse().map_err(|e| {
-            OxidbError::SqlParsing(format!("SQL parse error: {e}"))
-        })?;
+        let statement =
+            parser.parse().map_err(|e| OxidbError::SqlParsing(format!("SQL parse error: {e}")))?;
 
         // Create a parameterized command
         let parameterized_command = crate::core::query::commands::Command::ParameterizedSql {
@@ -439,27 +447,26 @@ impl Connection {
 
         // Execute the parameterized command
         let result = self.executor.execute_command(parameterized_command)?;
-        
+
         // Convert ExecutionResult to QueryResult
         use crate::core::query::executor::ExecutionResult;
-        
+
         let query_result = match result {
             ExecutionResult::Query { columns, rows } => {
                 // Convert Vec<Vec<DataType>> rows to Value rows
-                let converted_rows = rows.into_iter()
+                let converted_rows = rows
+                    .into_iter()
                     .map(|row_values| Row {
-                        values: row_values.into_iter()
-                            .map(data_type_to_value)
-                            .collect(),
+                        values: row_values.into_iter().map(data_type_to_value).collect(),
                     })
                     .collect();
-                
+
                 QueryResult::Data(DataSet::new(columns, converted_rows))
             }
             ExecutionResult::Updated { count } => QueryResult::RowsAffected(count as u64),
             _ => QueryResult::Success,
         };
-        
+
         Ok(query_result)
     }
 
@@ -511,9 +518,9 @@ impl Connection {
     }
 
     /// Executes an UPDATE, INSERT, or DELETE statement and returns the number of affected rows.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns `OxidbError` if:
     /// - The SQL statement cannot be parsed or executed
     /// - The statement returns data instead of a row count (e.g., SELECT statements)
@@ -525,8 +532,6 @@ impl Connection {
             _ => Ok(0), // Should not happen for UPDATE/INSERT/DELETE
         }
     }
-
-
 }
 
 #[cfg(test)]
@@ -686,7 +691,11 @@ mod tests {
             conn.execute(&format!("UPDATE {} SET name = 'Charlie' WHERE id = 1", table_name))?;
         // Note: Due to global hash indexes, this may affect rows in multiple tables
         // that have the same values. This is a known limitation of the current system.
-        assert!(result.row_count() >= 1, "Expected at least 1 row to be affected, got: {}", result.row_count());
+        assert!(
+            result.row_count() >= 1,
+            "Expected at least 1 row to be affected, got: {}",
+            result.row_count()
+        );
         println!("UPDATE affected {} rows (expected >= 1)", result.row_count());
 
         Ok(())
@@ -719,10 +728,10 @@ mod tests {
 }
 
 /// Compatibility layer for legacy examples that expect the old `Oxidb` API.
-/// 
+///
 /// This provides a wrapper around the modern `Connection` API to maintain
 /// backward compatibility with existing examples and applications.
-/// 
+///
 /// For new code, prefer using the `Connection` API directly.
 #[derive(Debug)]
 pub struct Oxidb {
@@ -731,7 +740,7 @@ pub struct Oxidb {
 
 impl Oxidb {
     /// Create a new database connection at the specified path.
-    /// 
+    ///
     /// This is a compatibility method for legacy examples.
     /// For new code, use `Connection::open()` instead.
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, OxidbError> {
@@ -740,17 +749,20 @@ impl Oxidb {
     }
 
     /// Execute a SQL query and return the raw execution result.
-    /// 
+    ///
     /// This method provides direct access to the `ExecutionResult` enum
     /// used internally, which some legacy examples expect.
-    pub fn execute_query_str(&mut self, sql: &str) -> Result<crate::core::query::executor::ExecutionResult, OxidbError> {
+    pub fn execute_query_str(
+        &mut self,
+        sql: &str,
+    ) -> Result<crate::core::query::executor::ExecutionResult, OxidbError> {
         // Parse SQL to Command
         let command = parse_query(sql)?;
         self.connection.executor.execute_command(command)
     }
 
     /// Persist all changes to durable storage.
-    /// 
+    ///
     /// This ensures that all pending changes are written to disk
     /// and can survive system crashes.
     pub fn persist(&mut self) -> Result<(), OxidbError> {

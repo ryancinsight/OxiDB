@@ -389,8 +389,8 @@ async fn demonstrate_comprehensive_persistence() -> Result<(), Box<dyn std::erro
     // Test GraphQuery capabilities (NOW ACCESSIBLE via factory!)
     println!("  🔍 Testing GraphQuery capabilities (previously inaccessible)...");
 
-    let oxidb_nodes = factory_store
-        .find_nodes_by_property("name", &Value::Text("Oxidb Database".to_string()))?;
+    let oxidb_nodes =
+        factory_store.find_nodes_by_property("name", &Value::Text("Oxidb Database".to_string()))?;
     println!(
         "    ✅ find_nodes_by_property: Found {} nodes with name 'Oxidb Database'",
         oxidb_nodes.len()
@@ -440,8 +440,8 @@ async fn demonstrate_comprehensive_persistence() -> Result<(), Box<dyn std::erro
     factory_store.begin_transaction()?;
 
     // Find all company nodes and update their status
-    let company_nodes = factory_store
-        .find_nodes_by_property("name", &Value::Text("Oxidb Corp".to_string()))?;
+    let company_nodes =
+        factory_store.find_nodes_by_property("name", &Value::Text("Oxidb Corp".to_string()))?;
     for &company_id in &company_nodes {
         // In a real scenario, you'd update properties here
         println!("    🏢 Processing company node: {}", company_id);

@@ -73,15 +73,15 @@ impl Optimizer {
                     }
                     columns => {
                         // Check if we have aggregates in the SELECT clause
-                        let has_aggregates = columns.iter().any(|col| {
-                            matches!(col, SelectColumn::AggregateFunction { .. })
-                        });
-                        
+                        let has_aggregates = columns
+                            .iter()
+                            .any(|col| matches!(col, SelectColumn::AggregateFunction { .. }));
+
                         if has_aggregates {
                             // Build aggregate plan
                             let mut aggregate_specs = Vec::new();
                             let mut non_aggregate_columns = Vec::new();
-                            
+
                             for col in columns {
                                 match col {
                                     SelectColumn::AggregateFunction { function, column, alias } => {
@@ -90,7 +90,8 @@ impl Optimizer {
                                             SelectColumn::Asterisk => None, // For COUNT(*)
                                             _ => {
                                                 return Err(OxidbError::SqlParsing(
-                                                    "Nested aggregate functions not supported".to_string()
+                                                    "Nested aggregate functions not supported"
+                                                        .to_string(),
                                                 ));
                                             }
                                         };
@@ -105,12 +106,12 @@ impl Optimizer {
                                     }
                                     SelectColumn::Asterisk => {
                                         return Err(OxidbError::SqlParsing(
-                                            "Cannot use * with aggregate functions".to_string()
+                                            "Cannot use * with aggregate functions".to_string(),
                                         ));
                                     }
                                 }
                             }
-                            
+
                             // Check if non-aggregate columns match GROUP BY columns
                             if !non_aggregate_columns.is_empty() {
                                 if let Some(group_by) = &select_stmt.group_by {
@@ -118,7 +119,7 @@ impl Optimizer {
                                     for col in &non_aggregate_columns {
                                         if !group_by.contains(col) {
                                             return Err(OxidbError::SqlParsing(
-                                                format!("Column '{}' must appear in the GROUP BY clause or be used in an aggregate function", col)
+                                                format!("Column '{col}' must appear in the GROUP BY clause or be used in an aggregate function")
                                             ));
                                         }
                                     }
@@ -128,7 +129,7 @@ impl Optimizer {
                                     ));
                                 }
                             }
-                            
+
                             QueryPlanNode::Aggregate {
                                 input: Box::new(base_plan),
                                 aggregates: aggregate_specs,
@@ -171,7 +172,8 @@ impl Optimizer {
                         }
                         _ => {
                             return Err(OxidbError::SqlParsing(
-                                "HAVING clause requires GROUP BY or aggregate functions".to_string()
+                                "HAVING clause requires GROUP BY or aggregate functions"
+                                    .to_string(),
                             ));
                         }
                     }
@@ -232,7 +234,9 @@ impl Optimizer {
                                 if let Ok(i) = n.parse::<i64>() {
                                     crate::core::types::DataType::Integer(i)
                                 } else if let Ok(f) = n.parse::<f64>() {
-                                    crate::core::types::DataType::Float(crate::core::types::OrderedFloat(f))
+                                    crate::core::types::DataType::Float(
+                                        crate::core::types::OrderedFloat(f),
+                                    )
                                 } else {
                                     // Fallback to string if parsing fails
                                     crate::core::types::DataType::String(n.clone())
@@ -375,13 +379,13 @@ impl Optimizer {
                 let optimized_input = self.apply_index_selection(*input, index_manager)?;
                 Ok(QueryPlanNode::DeleteNode { input: Box::new(optimized_input), table_name })
             }
-            
+
             QueryPlanNode::Aggregate { input, aggregates, group_by } => {
                 let optimized_input = self.apply_index_selection(*input, index_manager)?;
-                Ok(QueryPlanNode::Aggregate { 
-                    input: Box::new(optimized_input), 
-                    aggregates, 
-                    group_by 
+                Ok(QueryPlanNode::Aggregate {
+                    input: Box::new(optimized_input),
+                    aggregates,
+                    group_by,
                 })
             }
 

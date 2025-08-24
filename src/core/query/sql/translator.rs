@@ -75,7 +75,9 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
                     ast::AstDataType::Integer => DataType::Integer(0), // Default value for schema
                     ast::AstDataType::Text => DataType::String(String::new()),
                     ast::AstDataType::Boolean => DataType::Boolean(false),
-                    ast::AstDataType::Float => DataType::Float(crate::core::types::OrderedFloat(0.0)),
+                    ast::AstDataType::Float => {
+                        DataType::Float(crate::core::types::OrderedFloat(0.0))
+                    }
                     ast::AstDataType::Blob => DataType::RawBytes(Vec::new()), // Assuming RawBytes is the engine type for Blob
                     ast::AstDataType::Vector { dimension } => {
                         // For schema definition, create a vector with correct dimension filled with zeros
@@ -347,7 +349,7 @@ fn translate_select_columns(ast_columns: Vec<ast::SelectColumn>) -> commands::Se
     // Use iterator-based logic to avoid intermediate collections
     match specific_columns.is_empty() {
         true => commands::SelectColumnSpec::All,
-        false => commands::SelectColumnSpec::Specific(specific_columns)
+        false => commands::SelectColumnSpec::Specific(specific_columns),
     }
 }
 
@@ -556,10 +558,10 @@ mod tests {
             from_clause: ast::TableReference { name: "users".to_string(), alias: None },
             joins: Vec::new(),
             condition: None,
-            group_by: None,     // Added missing field
-            having: None,       // Added missing field
-            order_by: None,     // Added
-            limit: None,        // Added
+            group_by: None, // Added missing field
+            having: None,   // Added missing field
+            order_by: None, // Added
+            limit: None,    // Added
         });
         let command = translate_ast_to_command(ast_stmt).unwrap();
         match command {
@@ -592,8 +594,8 @@ mod tests {
                     "101".to_string(),
                 )),
             })),
-            group_by: None,     // Added missing field
-            having: None,       // Added missing field
+            group_by: None, // Added missing field
+            having: None,   // Added missing field
             order_by: None,
             limit: None,
         });
@@ -644,7 +646,10 @@ mod tests {
                 assert_eq!(source, "products");
                 assert_eq!(assignments.len(), 1);
                 assert_eq!(assignments[0].column, "price");
-                assert_eq!(assignments[0].value, DataType::Float(crate::core::types::OrderedFloat(19.99)));
+                assert_eq!(
+                    assignments[0].value,
+                    DataType::Float(crate::core::types::OrderedFloat(19.99))
+                );
                 assert!(condition.is_some());
                 if let Some(commands::SqlConditionTree::Comparison(simple_cond)) = condition {
                     assert_eq!(simple_cond.column, "product_id");

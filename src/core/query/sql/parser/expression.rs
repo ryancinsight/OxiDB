@@ -1,6 +1,6 @@
 use super::core::SqlParser;
 use crate::core::query::sql::ast::{
-    AggregateFunction, Assignment, AstLiteralValue, AstExpressionValue, Condition, ConditionTree, 
+    AggregateFunction, Assignment, AstExpressionValue, AstLiteralValue, Condition, ConditionTree,
     SelectColumn,
 };
 use crate::core::query::sql::errors::SqlParseError;
@@ -349,29 +349,33 @@ impl SqlParser {
     fn parse_aggregate_function(&mut self) -> Result<SelectColumn, SqlParseError> {
         let func_name = match self.peek() {
             Some(Token::Identifier(name)) => name.to_uppercase(),
-            _ => return Err(SqlParseError::UnexpectedToken {
-                expected: "aggregate function name".to_string(),
-                found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
-                position: self.current_token_pos(),
-            }),
+            _ => {
+                return Err(SqlParseError::UnexpectedToken {
+                    expected: "aggregate function name".to_string(),
+                    found: format!("{:?}", self.peek().unwrap_or(&Token::EOF)),
+                    position: self.current_token_pos(),
+                })
+            }
         };
-        
+
         self.consume_any().ok_or(SqlParseError::UnexpectedEOF)?; // Consume function name
         self.consume(Token::LParen)?;
-        
+
         let function = match func_name.as_str() {
             "COUNT" => AggregateFunction::Count,
             "SUM" => AggregateFunction::Sum,
             "AVG" => AggregateFunction::Avg,
             "MIN" => AggregateFunction::Min,
             "MAX" => AggregateFunction::Max,
-            _ => return Err(SqlParseError::UnexpectedToken {
-                expected: "aggregate function".to_string(),
-                found: func_name,
-                position: self.current_token_pos(),
-            }),
+            _ => {
+                return Err(SqlParseError::UnexpectedToken {
+                    expected: "aggregate function".to_string(),
+                    found: func_name,
+                    position: self.current_token_pos(),
+                })
+            }
         };
-        
+
         // Parse the column or * for COUNT(*)
         let column = if self.match_token(Token::Asterisk) {
             self.consume(Token::Asterisk)?;
@@ -380,9 +384,9 @@ impl SqlParser {
             let col_name = self.parse_qualified_identifier("Expected column name")?;
             Box::new(SelectColumn::ColumnName(col_name))
         };
-        
+
         self.consume(Token::RParen)?;
-        
+
         // Check for optional alias (AS alias_name)
         let alias = if self.peek_is_identifier_str("AS") {
             self.consume_any().ok_or(SqlParseError::UnexpectedEOF)?; // Consume AS
@@ -390,11 +394,7 @@ impl SqlParser {
         } else {
             None
         };
-        
-        Ok(SelectColumn::AggregateFunction {
-            function,
-            column,
-            alias,
-        })
+
+        Ok(SelectColumn::AggregateFunction { function, column, alias })
     }
 }

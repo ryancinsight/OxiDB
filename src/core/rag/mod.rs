@@ -10,8 +10,8 @@ pub mod retriever;
 pub use self::document::{Document, Embedding};
 pub use self::embedder::{EmbeddingModel, SemanticEmbedder, TfIdfEmbedder};
 pub use self::graphrag::{
-    GraphRAGContext, GraphRAGEngine, GraphRAGResult, KnowledgeEdge, KnowledgeNode,
-    GraphRAGConfig, GraphRAGEngineBuilder,
+    GraphRAGConfig, GraphRAGContext, GraphRAGEngine, GraphRAGEngineBuilder, GraphRAGResult,
+    KnowledgeEdge, KnowledgeNode,
 };
 pub use self::hybrid::{HybridRAGConfig, HybridRAGEngine, HybridRAGEngineBuilder, HybridRAGResult};
 pub use self::retriever::Retriever;

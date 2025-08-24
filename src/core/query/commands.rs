@@ -10,7 +10,7 @@ pub type Key = Vec<u8>;
 pub type Value = Vec<u8>;
 
 // Renamed from SqlCondition to be part of the new SqlConditionTree enum
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct SqlSimpleCondition {
     pub column: String,
     pub operator: String, // e.g., "=", "!=", "<", ">", "<=", ">="
@@ -25,7 +25,7 @@ pub enum SqlConditionTree {
     Not(Box<SqlConditionTree>),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct SqlAssignment {
     pub column: String,
     pub value: DataType, // Use DataType here

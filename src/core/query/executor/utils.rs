@@ -90,13 +90,18 @@ pub fn datatype_to_ast_literal(data_type: &DataType) -> Result<AstLiteralValue, 
             // Represent bytes as a hex string literal or handle as an error
             // For now, let's convert to a hex string, assuming it might be used in some contexts.
             // This might not be directly usable in all SQL condition contexts without specific function calls.
-                            Ok(AstLiteralValue::String(crate::core::common::hex::encode(bytes)))
+            Ok(AstLiteralValue::String(crate::core::common::hex::encode(bytes)))
         }
         DataType::Vector(vec) => {
             // Convert vector to a string representation for AST compatibility
             let vec_str = format!(
                 "[{}]",
-                vec.0.data.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join(",")
+                vec.0
+                    .data
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(",")
             );
             Ok(AstLiteralValue::String(vec_str))
         }

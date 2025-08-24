@@ -1,11 +1,11 @@
 //! Zero-cost iterator abstractions for database operations
-//! 
+//!
 //! This module provides efficient, allocation-free iterators that leverage
 //! Rust's zero-cost abstractions for maximum performance.
 
-use std::marker::PhantomData;
-use crate::core::common::types::Value;
 use crate::core::common::types::Row;
+use crate::core::common::types::Value;
+use std::marker::PhantomData;
 
 /// Zero-cost iterator over database rows that avoids allocations
 pub struct RowRefIterator<'a> {
@@ -17,16 +17,13 @@ impl<'a> RowRefIterator<'a> {
     /// Create a new row reference iterator
     #[inline]
     pub const fn new(rows: &'a [Row]) -> Self {
-        Self {
-            rows,
-            position: 0,
-        }
+        Self { rows, position: 0 }
     }
 }
 
 impl<'a> Iterator for RowRefIterator<'a> {
     type Item = &'a Row;
-    
+
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.position < self.rows.len() {
@@ -37,13 +34,13 @@ impl<'a> Iterator for RowRefIterator<'a> {
             None
         }
     }
-    
+
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.rows.len().saturating_sub(self.position);
         (remaining, Some(remaining))
     }
-    
+
     #[inline]
     fn nth(&mut self, n: usize) -> Option<Self::Item> {
         self.position = self.position.saturating_add(n);
@@ -51,14 +48,14 @@ impl<'a> Iterator for RowRefIterator<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for RowRefIterator<'a> {
+impl ExactSizeIterator for RowRefIterator<'_> {
     #[inline]
     fn len(&self) -> usize {
         self.rows.len().saturating_sub(self.position)
     }
 }
 
-impl<'a> DoubleEndedIterator for RowRefIterator<'a> {
+impl DoubleEndedIterator for RowRefIterator<'_> {
     #[inline]
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.position < self.rows.len() {
@@ -77,18 +74,14 @@ pub struct ColumnProjection<'a, I> {
     _phantom: PhantomData<&'a ()>,
 }
 
-impl<'a, I> ColumnProjection<'a, I> 
+impl<'a, I> ColumnProjection<'a, I>
 where
     I: Iterator<Item = &'a Row>,
 {
     /// Create a new column projection iterator
     #[inline]
     pub fn new(iter: I, column_indices: &'a [usize]) -> Self {
-        Self {
-            iter,
-            column_indices,
-            _phantom: PhantomData,
-        }
+        Self { iter, column_indices, _phantom: PhantomData }
     }
 }
 
@@ -97,14 +90,11 @@ where
     I: Iterator<Item = &'a Row>,
 {
     type Item = Vec<&'a Value>;
-    
+
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|row| {
-            self.column_indices
-                .iter()
-                .filter_map(|&idx| row.values.get(idx))
-                .collect()
-        })
+        self.iter
+            .next()
+            .map(|row| self.column_indices.iter().filter_map(|&idx| row.values.get(idx)).collect())
     }
 }
 
@@ -123,11 +113,7 @@ where
     /// Create a new filter iterator
     #[inline]
     pub fn new(iter: I, predicate: F) -> Self {
-        Self {
-            iter,
-            predicate,
-            _phantom: PhantomData,
-        }
+        Self { iter, predicate, _phantom: PhantomData }
     }
 }
 
@@ -137,12 +123,12 @@ where
     F: Fn(&'a Row) -> bool,
 {
     type Item = &'a Row;
-    
+
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.find(|row| (self.predicate)(row))
     }
-    
+
     fn size_hint(&self) -> (usize, Option<usize>) {
         let (_, upper) = self.iter.size_hint();
         (0, upper)
@@ -160,17 +146,13 @@ impl<'a, T> WindowIterator<'a, T> {
     /// Create a new window iterator
     #[inline]
     pub const fn new(data: &'a [T], window_size: usize) -> Self {
-        Self {
-            data,
-            window_size,
-            position: 0,
-        }
+        Self { data, window_size, position: 0 }
     }
 }
 
 impl<'a, T> Iterator for WindowIterator<'a, T> {
     type Item = &'a [T];
-    
+
     fn next(&mut self) -> Option<Self::Item> {
         if self.position + self.window_size <= self.data.len() {
             let window = &self.data[self.position..self.position + self.window_size];
@@ -180,12 +162,11 @@ impl<'a, T> Iterator for WindowIterator<'a, T> {
             None
         }
     }
-    
+
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = self.data.len()
-            .saturating_sub(self.position)
-            .saturating_sub(self.window_size - 1);
+        let remaining =
+            self.data.len().saturating_sub(self.position).saturating_sub(self.window_size - 1);
         (remaining, Some(remaining))
     }
 }
@@ -204,11 +185,7 @@ where
     /// Create a new batched iterator
     #[inline]
     pub fn new(iter: I, batch_size: usize) -> Self {
-        Self {
-            iter,
-            batch_size,
-            _phantom: PhantomData,
-        }
+        Self { iter, batch_size, _phantom: PhantomData }
     }
 }
 
@@ -217,13 +194,10 @@ where
     I: Iterator<Item = &'a Row>,
 {
     type Item = Vec<&'a Row>;
-    
+
     fn next(&mut self) -> Option<Self::Item> {
-        let batch: Vec<_> = self.iter
-            .by_ref()
-            .take(self.batch_size)
-            .collect();
-            
+        let batch: Vec<_> = self.iter.by_ref().take(self.batch_size).collect();
+
         if batch.is_empty() {
             None
         } else {
@@ -247,11 +221,7 @@ where
     /// Create a new chained iterator
     #[inline]
     pub fn new(first: I1, second: I2) -> Self {
-        Self {
-            first: Some(first),
-            second,
-            _phantom: PhantomData,
-        }
+        Self { first: Some(first), second, _phantom: PhantomData }
     }
 }
 
@@ -261,7 +231,7 @@ where
     I2: Iterator<Item = &'a Row>,
 {
     type Item = &'a Row;
-    
+
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(ref mut first) = self.first {
             if let Some(item) = first.next() {
@@ -279,7 +249,7 @@ pub trait ZeroCostIteratorExt<'a>: Iterator<Item = &'a Row> + Sized {
     fn project_columns(self, column_indices: &'a [usize]) -> ColumnProjection<'a, Self> {
         ColumnProjection::new(self, column_indices)
     }
-    
+
     /// Filter rows without allocation
     fn filter_rows<F>(self, predicate: F) -> FilterIterator<'a, Self, F>
     where
@@ -287,12 +257,12 @@ pub trait ZeroCostIteratorExt<'a>: Iterator<Item = &'a Row> + Sized {
     {
         FilterIterator::new(self, predicate)
     }
-    
+
     /// Process rows in batches
     fn batched(self, batch_size: usize) -> BatchedIterator<'a, Self> {
         BatchedIterator::new(self, batch_size)
     }
-    
+
     /// Chain with another iterator
     fn chain_with<I2>(self, other: I2) -> ChainedIterator<'a, Self, I2>
     where
@@ -300,7 +270,7 @@ pub trait ZeroCostIteratorExt<'a>: Iterator<Item = &'a Row> + Sized {
     {
         ChainedIterator::new(self, other)
     }
-    
+
     /// Map rows to another type without allocation
     fn map_rows<F, T>(self, map_fn: F) -> MapIterator<'a, Self, F, T>
     where
@@ -308,7 +278,7 @@ pub trait ZeroCostIteratorExt<'a>: Iterator<Item = &'a Row> + Sized {
     {
         MapIterator::new(self, map_fn)
     }
-    
+
     /// Flat map rows for expanding transformations
     fn flat_map_rows<F, U>(self, flat_map_fn: F) -> FlatMapIterator<'a, Self, F, U>
     where
@@ -317,7 +287,7 @@ pub trait ZeroCostIteratorExt<'a>: Iterator<Item = &'a Row> + Sized {
     {
         FlatMapIterator::new(self, flat_map_fn)
     }
-    
+
     /// Scan with state for running computations
     fn scan_rows<St, F, T>(self, initial_state: St, scan_fn: F) -> ScanIterator<'a, Self, St, F>
     where
@@ -325,7 +295,7 @@ pub trait ZeroCostIteratorExt<'a>: Iterator<Item = &'a Row> + Sized {
     {
         ScanIterator::new(self, initial_state, scan_fn)
     }
-    
+
     /// Take rows while predicate is true
     fn take_while_rows<P>(self, predicate: P) -> TakeWhileIterator<'a, Self, P>
     where
@@ -333,7 +303,7 @@ pub trait ZeroCostIteratorExt<'a>: Iterator<Item = &'a Row> + Sized {
     {
         TakeWhileIterator::new(self, predicate)
     }
-    
+
     /// Skip rows while predicate is true
     fn skip_while_rows<P>(self, predicate: P) -> SkipWhileIterator<'a, Self, P>
     where
@@ -341,7 +311,7 @@ pub trait ZeroCostIteratorExt<'a>: Iterator<Item = &'a Row> + Sized {
     {
         SkipWhileIterator::new(self, predicate)
     }
-    
+
     /// Make iterator peekable
     fn peekable_rows(self) -> PeekableIterator<'a, Self> {
         PeekableIterator::new(self)
@@ -364,11 +334,7 @@ where
 {
     #[inline]
     pub fn new(iter: I, map_fn: F) -> Self {
-        Self {
-            iter,
-            map_fn,
-            _phantom: PhantomData,
-        }
+        Self { iter, map_fn, _phantom: PhantomData }
     }
 }
 
@@ -378,12 +344,12 @@ where
     F: FnMut(&'a Row) -> T,
 {
     type Item = T;
-    
+
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(&mut self.map_fn)
     }
-    
+
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.iter.size_hint()
@@ -406,12 +372,7 @@ where
 {
     #[inline]
     pub fn new(iter: I, flat_map_fn: F) -> Self {
-        Self {
-            iter,
-            flat_map_fn,
-            current: None,
-            _phantom: PhantomData,
-        }
+        Self { iter, flat_map_fn, current: None, _phantom: PhantomData }
     }
 }
 
@@ -422,7 +383,7 @@ where
     U: IntoIterator,
 {
     type Item = U::Item;
-    
+
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(ref mut inner) = self.current {
@@ -430,7 +391,7 @@ where
                     return Some(item);
                 }
             }
-            
+
             match self.iter.next() {
                 Some(row) => self.current = Some((self.flat_map_fn)(row).into_iter()),
                 None => return None,
@@ -454,12 +415,7 @@ where
 {
     #[inline]
     pub fn new(iter: I, initial_state: St, scan_fn: F) -> Self {
-        Self {
-            iter,
-            state: initial_state,
-            scan_fn,
-            _phantom: PhantomData,
-        }
+        Self { iter, state: initial_state, scan_fn, _phantom: PhantomData }
     }
 }
 
@@ -469,7 +425,7 @@ where
     F: FnMut(&mut St, &'a Row) -> Option<T>,
 {
     type Item = T;
-    
+
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().and_then(|row| (self.scan_fn)(&mut self.state, row))
@@ -491,12 +447,7 @@ where
 {
     #[inline]
     pub fn new(iter: I, predicate: P) -> Self {
-        Self {
-            iter,
-            predicate,
-            done: false,
-            _phantom: PhantomData,
-        }
+        Self { iter, predicate, done: false, _phantom: PhantomData }
     }
 }
 
@@ -506,7 +457,7 @@ where
     P: FnMut(&&'a Row) -> bool,
 {
     type Item = &'a Row;
-    
+
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.done {
@@ -538,11 +489,7 @@ where
 {
     #[inline]
     pub fn new(iter: I, predicate: P) -> Self {
-        Self {
-            iter,
-            predicate: Some(predicate),
-            _phantom: PhantomData,
-        }
+        Self { iter, predicate: Some(predicate), _phantom: PhantomData }
     }
 }
 
@@ -552,11 +499,11 @@ where
     P: FnMut(&&'a Row) -> bool,
 {
     type Item = &'a Row;
-    
+
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(mut predicate) = self.predicate.take() {
             // Skip elements while predicate is true
-            while let Some(row) = self.iter.next() {
+            for row in self.iter.by_ref() {
                 if !predicate(&row) {
                     return Some(row);
                 }
@@ -581,12 +528,9 @@ where
 {
     #[inline]
     pub fn new(iter: I) -> Self {
-        Self {
-            iter,
-            peeked: None,
-        }
+        Self { iter, peeked: None }
     }
-    
+
     /// Peek at the next element without consuming it
     #[inline]
     pub fn peek(&mut self) -> Option<&&'a Row> {
@@ -606,7 +550,7 @@ where
     I: Iterator<Item = &'a Row>,
 {
     type Item = &'a Row;
-    
+
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         match self.peeked.take() {
@@ -620,14 +564,14 @@ where
 mod tests {
     use super::*;
     use crate::core::common::types::Value;
-    
+
     #[test]
     fn test_row_ref_iterator() {
         let rows = vec![
             Row::new(vec![Value::Integer(1), Value::Text("a".to_string())]),
             Row::new(vec![Value::Integer(2), Value::Text("b".to_string())]),
         ];
-        
+
         let mut iter = RowRefIterator::new(&rows);
         assert_eq!(iter.len(), 2);
         assert!(iter.next().is_some());
@@ -636,7 +580,7 @@ mod tests {
         assert_eq!(iter.len(), 0);
         assert!(iter.next().is_none());
     }
-    
+
     #[test]
     fn test_window_iterator() {
         let data = vec![1, 2, 3, 4, 5];
@@ -646,7 +590,7 @@ mod tests {
         assert_eq!(windows[1], &[2, 3, 4]);
         assert_eq!(windows[2], &[3, 4, 5]);
     }
-    
+
     #[test]
     fn test_map_iterator() {
         let rows = vec![
@@ -654,18 +598,18 @@ mod tests {
             Row::new(vec![Value::Integer(2)]),
             Row::new(vec![Value::Integer(3)]),
         ];
-        
+
         let iter = RowRefIterator::new(&rows);
-        let mapped: Vec<_> = iter.map_rows(|row| {
-            match row.values.first() {
+        let mapped: Vec<_> = iter
+            .map_rows(|row| match row.values.first() {
                 Some(Value::Integer(n)) => *n * 2,
                 _ => 0,
-            }
-        }).collect();
-        
+            })
+            .collect();
+
         assert_eq!(mapped, vec![2, 4, 6]);
     }
-    
+
     #[test]
     fn test_filter_iterator() {
         let rows = vec![
@@ -674,18 +618,18 @@ mod tests {
             Row::new(vec![Value::Integer(3)]),
             Row::new(vec![Value::Integer(4)]),
         ];
-        
+
         let iter = RowRefIterator::new(&rows);
-        let filtered: Vec<_> = iter.filter_rows(|row| {
-            match row.values.first() {
+        let filtered: Vec<_> = iter
+            .filter_rows(|row| match row.values.first() {
                 Some(Value::Integer(n)) => *n % 2 == 0,
                 _ => false,
-            }
-        }).collect();
-        
+            })
+            .collect();
+
         assert_eq!(filtered.len(), 2);
     }
-    
+
     #[test]
     fn test_scan_iterator() {
         let rows = vec![
@@ -693,21 +637,21 @@ mod tests {
             Row::new(vec![Value::Integer(2)]),
             Row::new(vec![Value::Integer(3)]),
         ];
-        
+
         let iter = RowRefIterator::new(&rows);
-        let sums: Vec<_> = iter.scan_rows(0i64, |sum, row| {
-            match row.values.first() {
+        let sums: Vec<_> = iter
+            .scan_rows(0i64, |sum, row| match row.values.first() {
                 Some(Value::Integer(n)) => {
                     *sum += n;
                     Some(*sum)
-                },
+                }
                 _ => None,
-            }
-        }).collect();
-        
+            })
+            .collect();
+
         assert_eq!(sums, vec![1, 3, 6]);
     }
-    
+
     #[test]
     fn test_take_while_iterator() {
         let rows = vec![
@@ -716,32 +660,29 @@ mod tests {
             Row::new(vec![Value::Integer(3)]),
             Row::new(vec![Value::Integer(1)]),
         ];
-        
+
         let iter = RowRefIterator::new(&rows);
-        let taken: Vec<_> = iter.take_while_rows(|row| {
-            match row.values.first() {
+        let taken: Vec<_> = iter
+            .take_while_rows(|row| match row.values.first() {
                 Some(Value::Integer(n)) => *n < 3,
                 _ => false,
-            }
-        }).collect();
-        
+            })
+            .collect();
+
         assert_eq!(taken.len(), 2);
     }
-    
+
     #[test]
     fn test_peekable_iterator() {
-        let rows = vec![
-            Row::new(vec![Value::Integer(1)]),
-            Row::new(vec![Value::Integer(2)]),
-        ];
-        
+        let rows = vec![Row::new(vec![Value::Integer(1)]), Row::new(vec![Value::Integer(2)])];
+
         let iter = RowRefIterator::new(&rows);
         let mut peekable = iter.peekable_rows();
-        
+
         // Peek doesn't consume
         assert!(peekable.peek().is_some());
         assert!(peekable.peek().is_some());
-        
+
         // Next consumes
         assert!(peekable.next().is_some());
         assert!(peekable.peek().is_some());

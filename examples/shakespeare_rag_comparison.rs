@@ -9,7 +9,9 @@
 
 use oxidb::core::rag::document::Document;
 use oxidb::core::rag::embedder::{EmbeddingModel, SemanticEmbedder, TfIdfEmbedder};
-use oxidb::core::rag::graphrag::{GraphRAGEngineImpl, GraphRAGContext, KnowledgeNode, KnowledgeEdge};
+use oxidb::core::rag::graphrag::{
+    GraphRAGContext, GraphRAGEngineImpl, KnowledgeEdge, KnowledgeNode,
+};
 use oxidb::core::rag::retriever::{InMemoryRetriever, SimilarityMetric};
 use oxidb::core::rag::{GraphRAGEngine, Retriever};
 use oxidb::Value;
@@ -72,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n📚 Downloading Shakespeare works...");
     let works = get_shakespeare_works();
     let mut raw_documents = Vec::new();
-    
+
     for work in &works {
         match download_shakespeare_work(work, download_dir).await {
             Ok(content) => {
@@ -92,13 +94,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 2: Create enhanced embeddings
     println!("\n🧠 Creating enhanced embeddings...");
-    
+
     // Create TF-IDF embedder for traditional RAG
     let tfidf_embedder = TfIdfEmbedder::new(&raw_documents);
-    
+
     // Create semantic embedder for GraphRAG
     let semantic_embedder = SemanticEmbedder::new(512);
-    
+
     // Generate embeddings for RAG system
     println!("🔢 Generating TF-IDF embeddings for RAG...");
     let mut rag_documents = Vec::new();
@@ -106,7 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let embedding = tfidf_embedder.embed_document(doc).await?;
         rag_documents.push(doc.clone().with_embedding(embedding));
     }
-    
+
     // Generate embeddings for GraphRAG system
     println!("🎨 Generating semantic embeddings for GraphRAG...");
     let mut graphrag_documents = Vec::new();
@@ -123,7 +125,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🕸️  Setting up enhanced GraphRAG system...");
     let graphrag_retriever = Box::new(InMemoryRetriever::new(graphrag_documents.clone()));
     let mut graphrag_engine = GraphRAGEngineImpl::new(graphrag_retriever);
-    
+
     // Build enhanced knowledge graph
     println!("🏗️  Building enhanced knowledge graph...");
     graphrag_engine.build_knowledge_graph(&graphrag_documents).await?;
@@ -136,16 +138,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for query in &test_queries {
         println!("\n🔎 Testing query: '{}'", query);
-        
+
         // Test traditional RAG
-        let rag_result = benchmark_enhanced_rag_retrieval(&*rag_retriever, query, &semantic_embedder).await?;
-        
+        let rag_result =
+            benchmark_enhanced_rag_retrieval(&*rag_retriever, query, &semantic_embedder).await?;
+
         // Test GraphRAG
-        let graphrag_result = benchmark_enhanced_graphrag_retrieval(&graphrag_engine, query, &semantic_embedder).await?;
-        
+        let graphrag_result =
+            benchmark_enhanced_graphrag_retrieval(&graphrag_engine, query, &semantic_embedder)
+                .await?;
+
         // Analyze quality
         let quality_analysis = analyze_result_quality(query, &rag_result.1, &graphrag_result.1);
-        
+
         let comparison = ComparisonResult {
             query: query.clone(),
             rag_metrics: rag_result.0,
@@ -154,14 +159,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             graphrag_results: graphrag_result.1,
             quality_analysis,
         };
-        
+
         results.push(comparison);
     }
 
     // Step 6: Display enhanced analysis
     println!("\n📊 Enhanced Analysis Results");
     println!("============================");
-    
+
     for result in &results {
         display_enhanced_comparison_result(result);
     }
@@ -224,19 +229,17 @@ async fn download_shakespeare_work(
     download_dir: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let file_path = Path::new(download_dir).join(&work.filename);
-    
+
     if file_path.exists() {
         return Ok(fs::read_to_string(file_path)?);
     }
 
     // Use reqwest for HTTP downloads
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()?;
-    
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build()?;
+
     let response = client.get(&work.url).send().await?;
     let content = response.text().await?;
-    
+
     fs::write(&file_path, &content)?;
     Ok(content)
 }
@@ -244,22 +247,22 @@ async fn download_shakespeare_work(
 /// Process Shakespeare text into documents
 fn process_shakespeare_text(title: &str, content: &str, genre: &str) -> Vec<Document> {
     let mut documents = Vec::new();
-    
+
     // Clean the text (remove Project Gutenberg headers/footers)
     let cleaned_content = clean_gutenberg_text(content);
-    
+
     // Split into acts and scenes
     let act_scene_regex = Regex::new(r"(?i)(ACT\s+[IVX]+|SCENE\s+[IVX]+)").unwrap();
     let parts: Vec<&str> = act_scene_regex.split(&cleaned_content).collect();
-    
+
     let mut current_act = "Unknown";
     let mut current_scene = "Unknown";
-    
+
     for (_i, part) in parts.iter().enumerate() {
         if part.trim().is_empty() {
             continue;
         }
-        
+
         // Determine if this is an act or scene marker
         if let Some(captures) = act_scene_regex.find(part) {
             let marker = captures.as_str().to_uppercase();
@@ -271,51 +274,52 @@ fn process_shakespeare_text(title: &str, content: &str, genre: &str) -> Vec<Docu
             }
             continue;
         }
-        
+
         // Create document for this part
-        if part.len() > 100 { // Only include substantial content
-            let doc_id = format!("{}_{}_{}_{}", 
+        if part.len() > 100 {
+            // Only include substantial content
+            let doc_id = format!(
+                "{}_{}_{}_{}",
                 title.to_lowercase().replace(' ', "_"),
                 genre.to_lowercase(),
                 current_act.to_lowercase().replace(' ', "_"),
                 current_scene.to_lowercase().replace(' ', "_")
             );
-            
+
             let mut metadata = HashMap::new();
             metadata.insert("title".to_string(), Value::Text(title.to_string()));
             metadata.insert("genre".to_string(), Value::Text(genre.to_string()));
             metadata.insert("act".to_string(), Value::Text(current_act.to_string()));
             metadata.insert("scene".to_string(), Value::Text(current_scene.to_string()));
-            
-            let document = Document::new(doc_id, part.trim().to_string())
-                .with_metadata(metadata);
-            
+
+            let document = Document::new(doc_id, part.trim().to_string()).with_metadata(metadata);
+
             documents.push(document);
         }
     }
-    
+
     // If no acts/scenes found, create chunks
     if documents.is_empty() {
         let chunks = chunk_text(&cleaned_content, 1000);
         for (i, chunk) in chunks.iter().enumerate() {
-            let doc_id = format!("{}_{}_{}", 
+            let doc_id = format!(
+                "{}_{}_{}",
                 title.to_lowercase().replace(' ', "_"),
                 genre.to_lowercase(),
                 i
             );
-            
+
             let mut metadata = HashMap::new();
             metadata.insert("title".to_string(), Value::Text(title.to_string()));
             metadata.insert("genre".to_string(), Value::Text(genre.to_string()));
             metadata.insert("chunk_index".to_string(), Value::Integer(i as i64));
-            
-            let document = Document::new(doc_id, chunk.clone())
-                .with_metadata(metadata);
-            
+
+            let document = Document::new(doc_id, chunk.clone()).with_metadata(metadata);
+
             documents.push(document);
         }
     }
-    
+
     documents
 }
 
@@ -324,7 +328,7 @@ fn clean_gutenberg_text(content: &str) -> String {
     let lines: Vec<&str> = content.lines().collect();
     let mut start_idx = 0;
     let mut end_idx = lines.len();
-    
+
     // Find start of actual content (after Project Gutenberg header)
     for (i, line) in lines.iter().enumerate() {
         if line.contains("*** START OF") || line.contains("ACT I") || line.contains("SCENE I") {
@@ -332,7 +336,7 @@ fn clean_gutenberg_text(content: &str) -> String {
             break;
         }
     }
-    
+
     // Find end of actual content (before Project Gutenberg footer)
     for (i, line) in lines.iter().enumerate().rev() {
         if line.contains("*** END OF") || line.contains("THE END") {
@@ -340,7 +344,7 @@ fn clean_gutenberg_text(content: &str) -> String {
             break;
         }
     }
-    
+
     lines[start_idx..end_idx].join("\n")
 }
 
@@ -350,22 +354,22 @@ fn chunk_text(text: &str, max_chunk_size: usize) -> Vec<String> {
     let mut chunks = Vec::new();
     let mut current_chunk = Vec::new();
     let mut current_size = 0;
-    
+
     for word in words {
         if current_size + word.len() > max_chunk_size && !current_chunk.is_empty() {
             chunks.push(current_chunk.join(" "));
             current_chunk.clear();
             current_size = 0;
         }
-        
+
         current_chunk.push(word);
         current_size += word.len() + 1; // +1 for space
     }
-    
+
     if !current_chunk.is_empty() {
         chunks.push(current_chunk.join(" "));
     }
-    
+
     chunks
 }
 
@@ -377,16 +381,20 @@ fn create_sample_shakespeare_content(title: &str, genre: &str) -> Vec<Document> 
         "Macbeth meets the three witches who prophesy he will become king.",
         "The lovers in the forest are confused by Puck's magical interventions.",
     ];
-    
-    sample_contents.iter().enumerate().map(|(i, content)| {
-        let doc_id = format!("{}_sample_{}", title.to_lowercase().replace(' ', "_"), i);
-        let mut metadata = HashMap::new();
-        metadata.insert("title".to_string(), Value::Text(title.to_string()));
-        metadata.insert("genre".to_string(), Value::Text(genre.to_string()));
-        metadata.insert("is_sample".to_string(), Value::Text("true".to_string()));
-        
-        Document::new(doc_id, content.to_string()).with_metadata(metadata)
-    }).collect()
+
+    sample_contents
+        .iter()
+        .enumerate()
+        .map(|(i, content)| {
+            let doc_id = format!("{}_sample_{}", title.to_lowercase().replace(' ', "_"), i);
+            let mut metadata = HashMap::new();
+            metadata.insert("title".to_string(), Value::Text(title.to_string()));
+            metadata.insert("genre".to_string(), Value::Text(genre.to_string()));
+            metadata.insert("is_sample".to_string(), Value::Text("true".to_string()));
+
+            Document::new(doc_id, content.to_string()).with_metadata(metadata)
+        })
+        .collect()
 }
 
 /// Get enhanced test queries
@@ -412,25 +420,26 @@ async fn benchmark_enhanced_rag_retrieval(
     embedder: &SemanticEmbedder,
 ) -> Result<(PerformanceMetrics, Vec<String>), Box<dyn std::error::Error>> {
     let start_time = Instant::now();
-    
+
     // Create query document and embed it
     let query_doc = Document::new("query".to_string(), query.to_string());
     let query_embedding = embedder.embed_document(&query_doc).await?;
-    
+
     let retrieval_start = Instant::now();
     let documents = retriever.retrieve(&query_embedding, 10, SimilarityMetric::Cosine).await?;
     let retrieval_time = retrieval_start.elapsed();
-    
+
     let processing_time = start_time.elapsed();
-    
+
     // Calculate enhanced metrics
     let relevance_score = calculate_relevance_score(query, &documents);
     let semantic_quality = calculate_semantic_quality(query, &documents);
-    
-    let results: Vec<String> = documents.iter()
+
+    let results: Vec<String> = documents
+        .iter()
         .map(|doc| format!("{}: {}", doc.id, doc.content.chars().take(100).collect::<String>()))
         .collect();
-    
+
     let metrics = PerformanceMetrics {
         retrieval_time,
         processing_time,
@@ -440,7 +449,7 @@ async fn benchmark_enhanced_rag_retrieval(
         entity_count: 0, // RAG doesn't extract entities
         relationship_count: 0,
     };
-    
+
     Ok((metrics, results))
 }
 
@@ -451,11 +460,11 @@ async fn benchmark_enhanced_graphrag_retrieval(
     embedder: &SemanticEmbedder,
 ) -> Result<(PerformanceMetrics, Vec<String>), Box<dyn std::error::Error>> {
     let start_time = Instant::now();
-    
+
     // Create query document and embed it
     let query_doc = Document::new("query".to_string(), query.to_string());
     let query_embedding = embedder.embed_document(&query_doc).await?;
-    
+
     let retrieval_start = Instant::now();
     let context = GraphRAGContext {
         query_embedding,
@@ -465,20 +474,22 @@ async fn benchmark_enhanced_graphrag_retrieval(
         exclude_relationships: vec![],
         entity_types: vec!["CHARACTER".to_string(), "THEME".to_string()],
     };
-    
+
     let result = engine.retrieve_with_graph(context).await?;
     let retrieval_time = retrieval_start.elapsed();
-    
+
     let processing_time = start_time.elapsed();
-    
+
     // Calculate enhanced metrics
     let relevance_score = calculate_relevance_score(query, &result.documents);
     let semantic_quality = calculate_semantic_quality(query, &result.documents);
-    
-    let results: Vec<String> = result.documents.iter()
+
+    let results: Vec<String> = result
+        .documents
+        .iter()
         .map(|doc| format!("{}: {}", doc.id, doc.content.chars().take(100).collect::<String>()))
         .collect();
-    
+
     let metrics = PerformanceMetrics {
         retrieval_time,
         processing_time,
@@ -488,7 +499,7 @@ async fn benchmark_enhanced_graphrag_retrieval(
         entity_count: result.relevant_entities.len(),
         relationship_count: result.entity_relationships.len(),
     };
-    
+
     Ok((metrics, results))
 }
 
@@ -497,26 +508,27 @@ fn calculate_relevance_score(query: &str, documents: &[Document]) -> f64 {
     if documents.is_empty() {
         return 0.0;
     }
-    
+
     let query_lower = query.to_lowercase();
     let query_words: Vec<&str> = query_lower.split_whitespace().collect();
     let mut total_relevance = 0.0;
-    
+
     for doc in documents {
         let doc_lower = doc.content.to_lowercase();
         let doc_words: Vec<&str> = doc_lower.split_whitespace().collect();
         let mut matches = 0;
-        
+
         for query_word in &query_words {
-            if doc_words.iter().any(|&word| word.contains(query_word) || query_word.contains(word)) {
+            if doc_words.iter().any(|&word| word.contains(query_word) || query_word.contains(word))
+            {
                 matches += 1;
             }
         }
-        
+
         let doc_relevance = matches as f64 / query_words.len() as f64;
         total_relevance += doc_relevance;
     }
-    
+
     total_relevance / documents.len() as f64
 }
 
@@ -525,11 +537,11 @@ fn calculate_semantic_quality(_query: &str, documents: &[Document]) -> f64 {
     if documents.is_empty() {
         return 0.0;
     }
-    
+
     // Simple semantic quality based on content diversity and relevance
     let mut unique_themes = std::collections::HashSet::new();
     let mut total_quality = 0.0;
-    
+
     for doc in documents {
         // Check for thematic diversity
         let content_lower = doc.content.to_lowercase();
@@ -545,25 +557,29 @@ fn calculate_semantic_quality(_query: &str, documents: &[Document]) -> f64 {
         if content_lower.contains("family") || content_lower.contains("father") {
             unique_themes.insert("family");
         }
-        
+
         // Quality based on content length and structure
         let content_quality = (doc.content.len() as f64 / 1000.0).min(1.0);
         total_quality += content_quality;
     }
-    
+
     let theme_diversity = unique_themes.len() as f64 / 4.0; // Max 4 themes
     let avg_content_quality = total_quality / documents.len() as f64;
-    
+
     (theme_diversity + avg_content_quality) / 2.0
 }
 
 /// Analyze result quality
-fn analyze_result_quality(query: &str, rag_results: &[String], graphrag_results: &[String]) -> QualityAnalysis {
+fn analyze_result_quality(
+    query: &str,
+    rag_results: &[String],
+    graphrag_results: &[String],
+) -> QualityAnalysis {
     let context_relevance = calculate_context_relevance(query, rag_results, graphrag_results);
     let character_coverage = calculate_character_coverage(rag_results, graphrag_results);
     let theme_identification = calculate_theme_identification(query, rag_results, graphrag_results);
     let relationship_accuracy = calculate_relationship_accuracy(rag_results, graphrag_results);
-    
+
     QualityAnalysis {
         context_relevance,
         character_coverage,
@@ -573,16 +589,24 @@ fn analyze_result_quality(query: &str, rag_results: &[String], graphrag_results:
 }
 
 /// Calculate context relevance
-fn calculate_context_relevance(query: &str, rag_results: &[String], graphrag_results: &[String]) -> f64 {
+fn calculate_context_relevance(
+    query: &str,
+    rag_results: &[String],
+    graphrag_results: &[String],
+) -> f64 {
     let query_lower = query.to_lowercase();
-    let rag_relevance = rag_results.iter()
+    let rag_relevance = rag_results
+        .iter()
         .map(|r| if r.to_lowercase().contains(&query_lower) { 1.0 } else { 0.0 })
-        .sum::<f64>() / rag_results.len().max(1) as f64;
-    
-    let graphrag_relevance = graphrag_results.iter()
+        .sum::<f64>()
+        / rag_results.len().max(1) as f64;
+
+    let graphrag_relevance = graphrag_results
+        .iter()
         .map(|r| if r.to_lowercase().contains(&query_lower) { 1.0 } else { 0.0 })
-        .sum::<f64>() / graphrag_results.len().max(1) as f64;
-    
+        .sum::<f64>()
+        / graphrag_results.len().max(1) as f64;
+
     (rag_relevance + graphrag_relevance) / 2.0
 }
 
@@ -590,37 +614,41 @@ fn calculate_context_relevance(query: &str, rag_results: &[String], graphrag_res
 fn calculate_character_coverage(rag_results: &[String], graphrag_results: &[String]) -> f64 {
     let characters = vec!["romeo", "juliet", "hamlet", "macbeth", "othello"];
     let all_results = [rag_results, graphrag_results].concat();
-    
-    let covered_characters = characters.iter()
+
+    let covered_characters = characters
+        .iter()
         .filter(|&&character| {
             all_results.iter().any(|result| result.to_lowercase().contains(character))
         })
         .count();
-    
+
     covered_characters as f64 / characters.len() as f64
 }
 
 /// Calculate theme identification
-fn calculate_theme_identification(query: &str, rag_results: &[String], graphrag_results: &[String]) -> f64 {
+fn calculate_theme_identification(
+    query: &str,
+    rag_results: &[String],
+    graphrag_results: &[String],
+) -> f64 {
     let themes = vec!["love", "death", "power", "revenge", "family"];
     let query_lower = query.to_lowercase();
     let all_results = [rag_results, graphrag_results].concat();
-    
-    let relevant_themes = themes.iter()
-        .filter(|&&theme| query_lower.contains(theme))
-        .count();
-    
+
+    let relevant_themes = themes.iter().filter(|&&theme| query_lower.contains(theme)).count();
+
     if relevant_themes == 0 {
         return 0.5; // Neutral score if no specific themes in query
     }
-    
-    let identified_themes = themes.iter()
+
+    let identified_themes = themes
+        .iter()
         .filter(|&&theme| {
-            query_lower.contains(theme) && 
-            all_results.iter().any(|result| result.to_lowercase().contains(theme))
+            query_lower.contains(theme)
+                && all_results.iter().any(|result| result.to_lowercase().contains(theme))
         })
         .count();
-    
+
     identified_themes as f64 / relevant_themes as f64
 }
 
@@ -628,15 +656,17 @@ fn calculate_theme_identification(query: &str, rag_results: &[String], graphrag_
 fn calculate_relationship_accuracy(_rag_results: &[String], graphrag_results: &[String]) -> f64 {
     // GraphRAG should identify more relationships
     let relationship_indicators = vec!["loves", "kills", "betrays", "serves", "fights"];
-    
-    let relationship_count = relationship_indicators.iter()
+
+    let relationship_count = relationship_indicators
+        .iter()
         .map(|&indicator| {
-            graphrag_results.iter()
+            graphrag_results
+                .iter()
                 .filter(|result| result.to_lowercase().contains(indicator))
                 .count()
         })
         .sum::<usize>();
-    
+
     (relationship_count as f64 / 10.0).min(1.0) // Normalize to 0-1
 }
 
@@ -649,7 +679,7 @@ fn display_enhanced_comparison_result(result: &ComparisonResult) {
     println!("     📊 Results count: {}", result.rag_metrics.result_count);
     println!("     🎯 Relevance score: {:.3}", result.rag_metrics.relevance_score);
     println!("     🧠 Semantic quality: {:.3}", result.rag_metrics.semantic_quality);
-    
+
     println!("   GraphRAG Performance:");
     println!("     ⏱️  Retrieval time: {:?}", result.graphrag_metrics.retrieval_time);
     println!("     🔄 Processing time: {:?}", result.graphrag_metrics.processing_time);
@@ -658,18 +688,24 @@ fn display_enhanced_comparison_result(result: &ComparisonResult) {
     println!("     🧠 Semantic quality: {:.3}", result.graphrag_metrics.semantic_quality);
     println!("     👥 Entities found: {}", result.graphrag_metrics.entity_count);
     println!("     🔗 Relationships: {}", result.graphrag_metrics.relationship_count);
-    
+
     println!("   📈 Quality Analysis:");
     println!("     🎯 Context relevance: {:.3}", result.quality_analysis.context_relevance);
     println!("     👥 Character coverage: {:.3}", result.quality_analysis.character_coverage);
     println!("     🎭 Theme identification: {:.3}", result.quality_analysis.theme_identification);
     println!("     🔗 Relationship accuracy: {:.3}", result.quality_analysis.relationship_accuracy);
-    
+
     if !result.rag_results.is_empty() {
-        println!("   📄 RAG Sample: {}", result.rag_results[0].chars().take(80).collect::<String>());
+        println!(
+            "   📄 RAG Sample: {}",
+            result.rag_results[0].chars().take(80).collect::<String>()
+        );
     }
     if !result.graphrag_results.is_empty() {
-        println!("   🕸️  GraphRAG Sample: {}", result.graphrag_results[0].chars().take(80).collect::<String>());
+        println!(
+            "   🕸️  GraphRAG Sample: {}",
+            result.graphrag_results[0].chars().take(80).collect::<String>()
+        );
     }
 }
 
@@ -677,58 +713,57 @@ fn display_enhanced_comparison_result(result: &ComparisonResult) {
 fn display_enhanced_summary(results: &[ComparisonResult]) {
     println!("\n📈 Enhanced Performance Summary");
     println!("==============================");
-    
-    let avg_rag_time: f64 = results.iter()
-        .map(|r| r.rag_metrics.retrieval_time.as_nanos() as f64)
-        .sum::<f64>() / results.len() as f64;
-    
-    let avg_graphrag_time: f64 = results.iter()
-        .map(|r| r.graphrag_metrics.retrieval_time.as_nanos() as f64)
-        .sum::<f64>() / results.len() as f64;
-    
-    let avg_rag_relevance: f64 = results.iter()
-        .map(|r| r.rag_metrics.relevance_score)
-        .sum::<f64>() / results.len() as f64;
-    
-    let avg_graphrag_relevance: f64 = results.iter()
-        .map(|r| r.graphrag_metrics.relevance_score)
-        .sum::<f64>() / results.len() as f64;
-    
-    let avg_rag_quality: f64 = results.iter()
-        .map(|r| r.rag_metrics.semantic_quality)
-        .sum::<f64>() / results.len() as f64;
-    
-    let avg_graphrag_quality: f64 = results.iter()
-        .map(|r| r.graphrag_metrics.semantic_quality)
-        .sum::<f64>() / results.len() as f64;
-    
+
+    let avg_rag_time: f64 =
+        results.iter().map(|r| r.rag_metrics.retrieval_time.as_nanos() as f64).sum::<f64>()
+            / results.len() as f64;
+
+    let avg_graphrag_time: f64 =
+        results.iter().map(|r| r.graphrag_metrics.retrieval_time.as_nanos() as f64).sum::<f64>()
+            / results.len() as f64;
+
+    let avg_rag_relevance: f64 =
+        results.iter().map(|r| r.rag_metrics.relevance_score).sum::<f64>() / results.len() as f64;
+
+    let avg_graphrag_relevance: f64 =
+        results.iter().map(|r| r.graphrag_metrics.relevance_score).sum::<f64>()
+            / results.len() as f64;
+
+    let avg_rag_quality: f64 =
+        results.iter().map(|r| r.rag_metrics.semantic_quality).sum::<f64>() / results.len() as f64;
+
+    let avg_graphrag_quality: f64 =
+        results.iter().map(|r| r.graphrag_metrics.semantic_quality).sum::<f64>()
+            / results.len() as f64;
+
     println!("⏱️  Average Retrieval Times:");
     println!("   RAG: {:.2}ms", avg_rag_time / 1_000_000.0);
     println!("   GraphRAG: {:.2}ms", avg_graphrag_time / 1_000_000.0);
-    
+
     println!("🎯 Average Relevance Scores:");
     println!("   RAG: {:.3}", avg_rag_relevance);
     println!("   GraphRAG: {:.3}", avg_graphrag_relevance);
-    
+
     println!("🧠 Average Semantic Quality:");
     println!("   RAG: {:.3}", avg_rag_quality);
     println!("   GraphRAG: {:.3}", avg_graphrag_quality);
-    
+
     let speed_factor = if avg_rag_time < avg_graphrag_time {
         avg_graphrag_time / avg_rag_time
     } else {
         avg_rag_time / avg_graphrag_time
     };
-    
-    let quality_improvement = ((avg_graphrag_relevance - avg_rag_relevance) / avg_rag_relevance) * 100.0;
-    
+
+    let quality_improvement =
+        ((avg_graphrag_relevance - avg_rag_relevance) / avg_rag_relevance) * 100.0;
+
     println!("\n🏆 Key Insights:");
     if avg_rag_time < avg_graphrag_time {
         println!("   📈 RAG is {:.1}x faster than GraphRAG", speed_factor);
     } else {
         println!("   📈 GraphRAG is {:.1}x faster than RAG", speed_factor);
     }
-    
+
     if quality_improvement > 0.0 {
         println!("   🎯 GraphRAG shows {:.1}% better relevance", quality_improvement);
     } else {
@@ -748,7 +783,7 @@ async fn enhance_shakespeare_knowledge_graph(
         ("OTHELLO", "DESDEMONA", "LOVES", 0.88),
         ("OTHELLO", "IAGO", "BETRAYED_BY", 0.85),
     ];
-    
+
     for (char1, char2, relationship, confidence) in character_relationships {
         // Create entities if they don't exist
         let entity1 = KnowledgeNode {
@@ -760,7 +795,7 @@ async fn enhance_shakespeare_knowledge_graph(
             properties: HashMap::new(),
             confidence_score: 0.95,
         };
-        
+
         let entity2 = KnowledgeNode {
             id: 0, // Will be assigned
             entity_type: "CHARACTER".to_string(),
@@ -770,10 +805,10 @@ async fn enhance_shakespeare_knowledge_graph(
             properties: HashMap::new(),
             confidence_score: 0.95,
         };
-        
+
         let id1 = engine.add_entity(entity1).await?;
         let id2 = engine.add_entity(entity2).await?;
-        
+
         let edge = KnowledgeEdge {
             id: 0, // Will be assigned
             from_entity: id1,
@@ -783,10 +818,10 @@ async fn enhance_shakespeare_knowledge_graph(
             confidence_score: confidence,
             weight: Some(confidence),
         };
-        
+
         engine.add_relationship(edge).await?;
     }
-    
+
     Ok(())
 }
 
@@ -795,23 +830,23 @@ async fn demonstrate_enhanced_graphrag_features(
     _engine: &GraphRAGEngineImpl,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("🔍 Character relationship analysis:");
-    
+
     // This is a simplified demonstration since we can't easily query specific entities
     // In a full implementation, you would have methods to find entities by name
     println!("   • Enhanced entity extraction identifies characters, themes, and locations");
     println!("   • Relationship detection finds love, conflict, and family connections");
     println!("   • Confidence scoring provides quality metrics for relationships");
     println!("   • Multi-hop reasoning enables complex query answering");
-    
+
     println!("\n🎭 Theme and character associations:");
     println!("   • ROMEO ↔ LOVE (confidence: 0.95)");
     println!("   • HAMLET ↔ REVENGE (confidence: 0.90)");
     println!("   • MACBETH ↔ AMBITION (confidence: 0.88)");
-    
+
     println!("\n🏰 Location and setting connections:");
     println!("   • VERONA ← Romeo and Juliet");
     println!("   • ELSINORE ← Hamlet");
     println!("   • SCOTLAND ← Macbeth");
-    
+
     Ok(())
 }

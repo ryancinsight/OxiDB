@@ -1,8 +1,8 @@
-use crate::core::optimizer::{QueryPlanNode, Expression};
+use crate::core::optimizer::{Expression, QueryPlanNode};
 use crate::core::types::DataType;
 
 /// Applies the no-op filter removal optimization rule.
-/// 
+///
 /// This rule removes filter nodes that have predicates that always evaluate to true,
 /// such as "1 = 1" or "true". These filters don't actually filter any rows and just
 /// add unnecessary overhead.
@@ -23,11 +23,13 @@ pub fn apply_noop_filter_removal_rule(plan: QueryPlanNode) -> QueryPlanNode {
             }
         }
         // For other node types, recursively apply the rule to children
-        QueryPlanNode::NestedLoopJoin { left, right, join_predicate } => QueryPlanNode::NestedLoopJoin {
-            left: Box::new(apply_noop_filter_removal_rule(*left)),
-            right: Box::new(apply_noop_filter_removal_rule(*right)),
-            join_predicate,
-        },
+        QueryPlanNode::NestedLoopJoin { left, right, join_predicate } => {
+            QueryPlanNode::NestedLoopJoin {
+                left: Box::new(apply_noop_filter_removal_rule(*left)),
+                right: Box::new(apply_noop_filter_removal_rule(*right)),
+                join_predicate,
+            }
+        }
         QueryPlanNode::Project { input, columns } => QueryPlanNode::Project {
             input: Box::new(apply_noop_filter_removal_rule(*input)),
             columns,
@@ -42,8 +44,7 @@ pub fn apply_noop_filter_removal_rule(plan: QueryPlanNode) -> QueryPlanNode {
             aggregates,
         },
         // Leaf nodes have no children to optimize
-        node @ (QueryPlanNode::TableScan { .. } | 
-                QueryPlanNode::IndexScan { .. }) => node,
+        node @ (QueryPlanNode::TableScan { .. } | QueryPlanNode::IndexScan { .. }) => node,
     }
 }
 
@@ -53,12 +54,10 @@ fn is_always_true(expr: &Expression) -> bool {
         // Check for literal true
         Expression::Literal(DataType::Boolean(true)) => true,
         // Check for expressions like "1 = 1"
-        Expression::BinaryOp { left, op, right } if op == "=" => {
-            match (&**left, &**right) {
-                (Expression::Literal(l), Expression::Literal(r)) => l == r,
-                _ => false,
-            }
-        }
+        Expression::BinaryOp { left, op, right } if op == "=" => match (&**left, &**right) {
+            (Expression::Literal(l), Expression::Literal(r)) => l == r,
+            _ => false,
+        },
         // TODO: Add more patterns like "x OR true", "NOT false", etc.
         _ => false,
     }

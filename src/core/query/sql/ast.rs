@@ -64,8 +64,8 @@ pub struct SelectStatement {
     pub from_clause: TableReference,
     pub joins: Vec<JoinClause>,
     pub condition: Option<ConditionTree>,
-    pub group_by: Option<Vec<String>>,       // GROUP BY columns
-    pub having: Option<ConditionTree>,       // HAVING condition
+    pub group_by: Option<Vec<String>>, // GROUP BY columns
+    pub having: Option<ConditionTree>, // HAVING condition
     pub order_by: Option<Vec<OrderByExpr>>,
     pub limit: Option<AstLiteralValue>,
 }

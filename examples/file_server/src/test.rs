@@ -1,10 +1,4 @@
-use axum::{
-    routing::get,
-    Router,
-    Json,
-    response::IntoResponse,
-    http::StatusCode,
-};
+use axum::{http::StatusCode, response::IntoResponse, routing::get, Json, Router};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -19,16 +13,12 @@ async fn hello() -> &'static str {
 
 // Handler with JSON
 async fn json_handler() -> Json<TestPayload> {
-    Json(TestPayload {
-        message: "Hello from JSON".to_string(),
-    })
+    Json(TestPayload { message: "Hello from JSON".to_string() })
 }
 
 // Handler with Result
 async fn result_handler() -> Result<Json<TestPayload>, StatusCode> {
-    Ok(Json(TestPayload {
-        message: "Hello from Result".to_string(),
-    }))
+    Ok(Json(TestPayload { message: "Hello from Result".to_string() }))
 }
 
 // Custom error type
@@ -43,9 +33,7 @@ impl IntoResponse for MyError {
 
 // Handler with custom error
 async fn custom_error_handler() -> Result<Json<TestPayload>, MyError> {
-    Ok(Json(TestPayload {
-        message: "Hello with custom error".to_string(),
-    }))
+    Ok(Json(TestPayload { message: "Hello with custom error".to_string() }))
 }
 
 pub fn test_routes() -> Router {

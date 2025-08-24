@@ -2,7 +2,7 @@ use oxidb::{Connection, OxidbError};
 use std::time::Instant;
 
 /// Simple Working Test Suite for Oxidb
-/// 
+///
 /// Demonstrates design principles with current API:
 /// - SOLID: Single Responsibility, Open/Closed, Liskov, Interface Segregation, Dependency Inversion
 /// - GRASP: Information Expert, Creator, Controller, Low Coupling, High Cohesion
@@ -38,9 +38,7 @@ struct TestController {
 
 impl TestController {
     fn new(db_path: &str) -> Self {
-        Self {
-            database_path: db_path.to_string(),
-        }
+        Self { database_path: db_path.to_string() }
     }
 
     /// Test basic database operations (SOLID: Single Responsibility)
@@ -64,7 +62,9 @@ impl TestController {
     /// Create and populate test table (DRY: Don't Repeat Yourself)
     fn create_and_populate_test_table(&self, conn: &mut Connection) -> Result<(), OxidbError> {
         // Create table with proper syntax
-        conn.execute("CREATE TABLE simple_test (id INTEGER PRIMARY KEY, name TEXT, score INTEGER)")?;
+        conn.execute(
+            "CREATE TABLE simple_test (id INTEGER PRIMARY KEY, name TEXT, score INTEGER)",
+        )?;
         println!("    ✓ Table created successfully");
 
         // Insert test data
@@ -139,7 +139,7 @@ impl TestController {
         conn.execute("INSERT INTO edge_test (value, text) VALUES (0, 'zero')")?;
         conn.execute("INSERT INTO edge_test (value, text) VALUES (-1, 'negative')")?;
         conn.execute("INSERT INTO edge_test (value, text) VALUES (999999, 'large')")?;
-        
+
         // Test empty and special text
         conn.execute("INSERT INTO edge_test (value, text) VALUES (1, '')")?;
         conn.execute("INSERT INTO edge_test (value, text) VALUES (2, 'Special chars: !@#$%')")?;
@@ -161,7 +161,7 @@ impl TestController {
         // Test constraint violations
         conn.execute("CREATE TABLE unique_test (id INTEGER PRIMARY KEY, unique_val TEXT UNIQUE)")?;
         conn.execute("INSERT INTO unique_test (unique_val) VALUES ('unique1')")?;
-        
+
         match conn.execute("INSERT INTO unique_test (unique_val) VALUES ('unique1')") {
             Ok(_) => println!("    ⚠ Duplicate constraint unexpectedly allowed"),
             Err(_) => println!("    ✓ Duplicate constraint properly rejected"),
@@ -192,10 +192,14 @@ impl TestController {
         conn.execute("CREATE TABLE perf_test (id INTEGER PRIMARY KEY, data TEXT, number INTEGER)")?;
 
         let start = Instant::now();
-        
+
         // Insert 50 records for performance testing
         for i in 0..50 {
-            conn.execute(&format!("INSERT INTO perf_test (data, number) VALUES ('data_{}', {})", i, i * 10))?;
+            conn.execute(&format!(
+                "INSERT INTO perf_test (data, number) VALUES ('data_{}', {})",
+                i,
+                i * 10
+            ))?;
         }
 
         let duration = start.elapsed();
@@ -285,37 +289,43 @@ fn run_all_tests() -> Result<Vec<TestResult>, Box<dyn std::error::Error>> {
 /// Display test summary (CLEAN: Clear reporting)
 fn display_summary(results: &[TestResult]) {
     println!("\n=== Test Summary ===");
-    
+
     let total = results.len();
     let passed = results.iter().filter(|r| r.success).count();
     let failed = total - passed;
-    
+
     println!("Total Test Suites: {}", total);
     println!("Passed: {} ✅", passed);
     println!("Failed: {} ❌", failed);
-    
+
     let total_duration: std::time::Duration = results.iter().map(|r| r.duration).sum();
     println!("Total Duration: {:?}", total_duration);
-    
+
     println!("\nDetailed Results:");
     for result in results {
         let status = if result.success { "✅" } else { "❌" };
         println!("  {} {} ({:?}) - {}", status, result.name, result.duration, result.details);
     }
-    
+
     println!("\n=== Design Principles Successfully Demonstrated ===");
     println!("✅ SOLID Principles: Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion");
-    println!("✅ GRASP Principles: Information Expert, Creator, Controller, Low Coupling, High Cohesion");
-    println!("✅ CUPID Principles: Composable, Unix Philosophy, Predictable, Idiomatic, Domain-based");
+    println!(
+        "✅ GRASP Principles: Information Expert, Creator, Controller, Low Coupling, High Cohesion"
+    );
+    println!(
+        "✅ CUPID Principles: Composable, Unix Philosophy, Predictable, Idiomatic, Domain-based"
+    );
     println!("✅ CLEAN Principles: Clear, Logical, Efficient, Actionable, Natural");
     println!("✅ DRY: Don't Repeat Yourself - modular helper functions");
     println!("✅ KISS: Keep It Simple, Stupid - focused, clear implementations");
     println!("✅ YAGNI: You Aren't Gonna Need It - minimal, targeted functionality");
     println!("✅ ACID: Atomicity, Consistency, Isolation, Durability testing");
     println!("✅ SSOT: Single Source of Truth - centralized configuration");
-    
+
     if failed == 0 {
-        println!("\n🎉 All tests passed! Oxidb demonstrates excellent adherence to design principles!");
+        println!(
+            "\n🎉 All tests passed! Oxidb demonstrates excellent adherence to design principles!"
+        );
     } else {
         println!("\n⚠️  Some tests failed, but design principles are properly implemented in the test structure.");
     }

@@ -1,34 +1,34 @@
 #![cfg(feature = "legacy_examples")]
 //! PostgreSQL-Style Analytics & Data Warehousing Demo
-//! 
+//!
 //! This example demonstrates Oxidb usage patterns familiar to PostgreSQL developers,
 //! including advanced analytics, window functions, CTEs, and data warehousing patterns.
 //! Features:
 //! - Advanced analytical queries with window functions
-//! - Common Table Expressions (CTEs) 
+//! - Common Table Expressions (CTEs)
 //! - Time-series analysis and reporting
 //! - Data aggregation and OLAP-style queries
 //! - PostgreSQL-specific functions and patterns
 
-use oxidb::Oxidb;
+use chrono::{DateTime, Datelike, Duration, Utc};
 use oxidb::core::common::OxidbError;
 use oxidb::core::sql::ExecutionResult;
+use oxidb::Oxidb;
 use std::collections::HashMap;
-use chrono::{DateTime, Utc, Duration, Datelike};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🐘 PostgreSQL-Style Analytics & Data Warehousing Demo");
     println!("{}", "=".repeat(65));
-    
+
     // Initialize database connection (PostgreSQL-style)
     let mut db = Oxidb::new("postgresql_analytics.db")?;
-    
+
     // Clean up and create schema
     setup_analytics_schema(&mut db)?;
-    
+
     // Generate sample data for analytics
     generate_sample_data(&mut db)?;
-    
+
     // Demonstrate PostgreSQL-style analytics
     demonstrate_window_functions(&mut db)?;
     demonstrate_cte_queries(&mut db)?;
@@ -36,29 +36,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     demonstrate_advanced_aggregations(&mut db)?;
     demonstrate_data_warehousing_patterns(&mut db)?;
     demonstrate_analytical_functions(&mut db)?;
-    
+
     println!("\n✅ PostgreSQL-style analytics demo completed successfully!");
     Ok(())
 }
 
 fn setup_analytics_schema(db: &mut Oxidb) -> Result<(), OxidbError> {
     println!("\n🏗️  Setting up Analytics Schema (PostgreSQL-style)...");
-    
+
     // Clean up existing tables
     let tables = vec![
         "daily_sales_summary",
         "product_sales_fact",
-        "customer_transactions", 
+        "customer_transactions",
         "time_dimension",
         "sales_events",
         "user_sessions",
-        "page_views"
+        "page_views",
     ];
-    
+
     for table in tables {
         let _ = db.execute_query_str(&format!("DROP TABLE IF EXISTS {}", table));
     }
-    
+
     // Time dimension table (data warehouse pattern)
     let create_time_dim = r#"
         CREATE TABLE time_dimension (
@@ -80,7 +80,7 @@ fn setup_analytics_schema(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     db.execute_query_str(create_time_dim)?;
     println!("✓ Created time_dimension table");
-    
+
     // Sales events table (fact table)
     let create_sales = r#"
         CREATE TABLE sales_events (
@@ -103,7 +103,7 @@ fn setup_analytics_schema(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     db.execute_query_str(create_sales)?;
     println!("✓ Created sales_events table");
-    
+
     // Customer transactions (for cohort analysis)
     let create_transactions = r#"
         CREATE TABLE customer_transactions (
@@ -120,7 +120,7 @@ fn setup_analytics_schema(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     db.execute_query_str(create_transactions)?;
     println!("✓ Created customer_transactions table");
-    
+
     // User sessions (web analytics)
     let create_sessions = r#"
         CREATE TABLE user_sessions (
@@ -142,7 +142,7 @@ fn setup_analytics_schema(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     db.execute_query_str(create_sessions)?;
     println!("✓ Created user_sessions table");
-    
+
     // Page views (event stream)
     let create_page_views = r#"
         CREATE TABLE page_views (
@@ -160,7 +160,7 @@ fn setup_analytics_schema(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     db.execute_query_str(create_page_views)?;
     println!("✓ Created page_views table");
-    
+
     // Product sales fact table (OLAP cube)
     let create_product_fact = r#"
         CREATE TABLE product_sales_fact (
@@ -180,7 +180,7 @@ fn setup_analytics_schema(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     db.execute_query_str(create_product_fact)?;
     println!("✓ Created product_sales_fact table");
-    
+
     // Daily sales summary (materialized view pattern)
     let create_daily_summary = r#"
         CREATE TABLE daily_sales_summary (
@@ -199,23 +199,24 @@ fn setup_analytics_schema(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     db.execute_query_str(create_daily_summary)?;
     println!("✓ Created daily_sales_summary table");
-    
+
     println!("✅ Analytics schema setup completed!");
     Ok(())
 }
 
 fn generate_sample_data(db: &mut Oxidb) -> Result<(), OxidbError> {
     println!("\n🌱 Generating Sample Analytics Data...");
-    
+
     // Generate time dimension data (PostgreSQL generate_series equivalent)
     println!("📅 Populating time dimension...");
     let base_date = chrono::NaiveDate::from_ymd_opt(2023, 1, 1).unwrap();
-    
+
     for i in 0..365 {
         let current_date = base_date + chrono::Duration::days(i);
         let date_key = current_date.format("%Y%m%d").to_string().parse::<i32>().unwrap();
-        
-        let sql = format!(r#"
+
+        let sql = format!(
+            r#"
             INSERT INTO time_dimension (
                 date_key, full_date, year, quarter, month, month_name,
                 day_of_month, day_of_week, day_name, week_of_year, is_weekend,
@@ -238,23 +239,28 @@ fn generate_sample_data(db: &mut Oxidb) -> Result<(), OxidbError> {
             current_date.iso_week().week(),
             current_date.weekday().number_from_monday() >= 6,
             if current_date.month() >= 4 { current_date.year() } else { current_date.year() - 1 },
-            if current_date.month() >= 4 { (current_date.month() - 4) / 3 + 1 } else { (current_date.month() + 8) / 3 + 1 }
+            if current_date.month() >= 4 {
+                (current_date.month() - 4) / 3 + 1
+            } else {
+                (current_date.month() + 8) / 3 + 1
+            }
         );
         db.execute_query_str(&sql)?;
     }
     println!("✓ Time dimension populated with 365 days");
-    
+
     // Generate sales events data
     println!("💰 Generating sales events...");
     let regions = vec!["North", "South", "East", "West", "Central"];
     let channels = vec!["online", "retail", "mobile", "phone"];
-    
+
     for i in 1..=1000 {
         let date_offset = rand::random::<i64>() % 365;
         let event_date = base_date + chrono::Duration::days(date_offset);
         let date_key = event_date.format("%Y%m%d").to_string().parse::<i32>().unwrap();
-        
-        let sql = format!(r#"
+
+        let sql = format!(
+            r#"
             INSERT INTO sales_events (
                 transaction_id, customer_id, product_id, date_key,
                 quantity, unit_price, total_amount, discount_amount,
@@ -280,16 +286,17 @@ fn generate_sample_data(db: &mut Oxidb) -> Result<(), OxidbError> {
         db.execute_query_str(&sql)?;
     }
     println!("✓ Generated 1000 sales events");
-    
+
     // Generate customer transaction data
     println!("👥 Generating customer transactions...");
     let segments = vec!["Premium", "Standard", "Basic"];
     let channels = vec!["organic", "paid_search", "social", "email", "referral"];
-    
+
     for i in 1..=2000 {
         let transaction_date = base_date + chrono::Duration::days(rand::random::<i64>() % 365);
-        
-        let sql = format!(r#"
+
+        let sql = format!(
+            r#"
             INSERT INTO customer_transactions (
                 customer_id, transaction_date, transaction_amount,
                 transaction_type, payment_method, is_first_purchase,
@@ -312,18 +319,21 @@ fn generate_sample_data(db: &mut Oxidb) -> Result<(), OxidbError> {
         db.execute_query_str(&sql)?;
     }
     println!("✓ Generated 2000 customer transactions");
-    
+
     // Generate user sessions
     println!("🌐 Generating user sessions...");
     let traffic_sources = vec!["google", "facebook", "direct", "email", "referral"];
     let devices = vec!["desktop", "mobile", "tablet"];
     let countries = vec!["US", "UK", "CA", "AU", "DE", "FR"];
-    
+
     for i in 1..=5000 {
-        let start_time = base_date.and_hms_opt(0, 0, 0).unwrap() + chrono::Duration::days(rand::random::<i64>() % 365) + chrono::Duration::seconds(rand::random::<i64>() % 86400);
+        let start_time = base_date.and_hms_opt(0, 0, 0).unwrap()
+            + chrono::Duration::days(rand::random::<i64>() % 365)
+            + chrono::Duration::seconds(rand::random::<i64>() % 86400);
         let duration = rand::random::<i32>() % 3600 + 30; // 30 seconds to 1 hour
-        
-        let sql = format!(r#"
+
+        let sql = format!(
+            r#"
             INSERT INTO user_sessions (
                 session_id, user_id, start_time, duration_seconds,
                 page_views, bounce, conversion, revenue,
@@ -349,7 +359,7 @@ fn generate_sample_data(db: &mut Oxidb) -> Result<(), OxidbError> {
         db.execute_query_str(&sql)?;
     }
     println!("✓ Generated 5000 user sessions");
-    
+
     println!("✅ Sample data generation completed!");
     Ok(())
 }
@@ -357,7 +367,7 @@ fn generate_sample_data(db: &mut Oxidb) -> Result<(), OxidbError> {
 fn demonstrate_window_functions(db: &mut Oxidb) -> Result<(), OxidbError> {
     println!("\n🪟 Window Functions (PostgreSQL Advanced Analytics)");
     println!("{}", "=".repeat(55));
-    
+
     // Running totals and moving averages
     println!("\n📈 Running Totals & Moving Averages:");
     let running_totals = r#"
@@ -386,7 +396,7 @@ fn demonstrate_window_functions(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     let result = db.execute_query_str(running_totals)?;
     println!("✓ Running totals and moving averages calculated");
-    
+
     // Customer ranking and segmentation
     println!("\n👑 Customer Ranking & Segmentation:");
     let customer_ranking = r#"
@@ -422,7 +432,7 @@ fn demonstrate_window_functions(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     let ranking_result = db.execute_query_str(customer_ranking)?;
     println!("✓ Customer ranking and segmentation completed");
-    
+
     // Product performance analysis
     println!("\n📦 Product Performance Analysis:");
     let product_analysis = r#"
@@ -455,14 +465,14 @@ fn demonstrate_window_functions(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     let product_result = db.execute_query_str(product_analysis)?;
     println!("✓ Product performance analysis completed");
-    
+
     Ok(())
 }
 
 fn demonstrate_cte_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
     println!("\n🔗 Common Table Expressions (CTEs)");
     println!("{}", "=".repeat(40));
-    
+
     // Recursive CTE for hierarchical data
     println!("\n🌳 Recursive CTE - Customer Referral Chain:");
     let recursive_cte = r#"
@@ -502,7 +512,7 @@ fn demonstrate_cte_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     // Note: This demonstrates the pattern - actual recursive functionality would need implementation
     println!("✓ Recursive CTE pattern demonstrated");
-    
+
     // Complex multi-CTE analysis
     println!("\n📊 Multi-CTE Sales Funnel Analysis:");
     let funnel_analysis = r#"
@@ -571,7 +581,7 @@ fn demonstrate_cte_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     let funnel_result = db.execute_query_str(funnel_analysis)?;
     println!("✓ Sales funnel analysis with multiple CTEs completed");
-    
+
     // Time-based cohort analysis
     println!("\n👥 Cohort Analysis with CTEs:");
     let cohort_analysis = r#"
@@ -618,14 +628,14 @@ fn demonstrate_cte_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     let cohort_result = db.execute_query_str(cohort_analysis)?;
     println!("✓ Cohort analysis completed");
-    
+
     Ok(())
 }
 
 fn demonstrate_time_series_analysis(db: &mut Oxidb) -> Result<(), OxidbError> {
     println!("\n📅 Time Series Analysis (PostgreSQL Patterns)");
     println!("{}", "=".repeat(50));
-    
+
     // Time series aggregation with gaps filled
     println!("\n📈 Time Series with Gap Filling:");
     let time_series = r#"
@@ -674,7 +684,7 @@ fn demonstrate_time_series_analysis(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     let ts_result = db.execute_query_str(time_series)?;
     println!("✓ Time series with gap filling completed");
-    
+
     // Seasonal analysis
     println!("\n🌤️  Seasonal Analysis:");
     let seasonal_analysis = r#"
@@ -724,7 +734,7 @@ fn demonstrate_time_series_analysis(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     let seasonal_result = db.execute_query_str(seasonal_analysis)?;
     println!("✓ Seasonal analysis completed");
-    
+
     // Trend detection
     println!("\n📊 Trend Detection & Forecasting:");
     let trend_analysis = r#"
@@ -777,14 +787,14 @@ fn demonstrate_time_series_analysis(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     let trend_result = db.execute_query_str(trend_analysis)?;
     println!("✓ Trend detection analysis completed");
-    
+
     Ok(())
 }
 
 fn demonstrate_advanced_aggregations(db: &mut Oxidb) -> Result<(), OxidbError> {
     println!("\n🧮 Advanced Aggregations (PostgreSQL OLAP)");
     println!("{}", "=".repeat(45));
-    
+
     // CUBE and ROLLUP operations
     println!("\n🎲 Multi-dimensional Analysis (CUBE/ROLLUP patterns):");
     let cube_analysis = r#"
@@ -873,7 +883,7 @@ fn demonstrate_advanced_aggregations(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     let cube_result = db.execute_query_str(cube_analysis)?;
     println!("✓ Multi-dimensional CUBE analysis completed");
-    
+
     // Statistical aggregations
     println!("\n📊 Statistical Analysis:");
     let stats_analysis = r#"
@@ -910,7 +920,7 @@ fn demonstrate_advanced_aggregations(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     let stats_result = db.execute_query_str(stats_analysis)?;
     println!("✓ Statistical analysis completed");
-    
+
     // Advanced window functions with frames
     println!("\n🖼️  Advanced Window Functions:");
     let advanced_windows = r#"
@@ -959,14 +969,14 @@ fn demonstrate_advanced_aggregations(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     let window_result = db.execute_query_str(advanced_windows)?;
     println!("✓ Advanced window functions analysis completed");
-    
+
     Ok(())
 }
 
 fn demonstrate_data_warehousing_patterns(db: &mut Oxidb) -> Result<(), OxidbError> {
     println!("\n🏪 Data Warehousing Patterns");
     println!("{}", "=".repeat(35));
-    
+
     // Star schema query pattern
     println!("\n⭐ Star Schema Query Pattern:");
     let star_schema = r#"
@@ -1018,7 +1028,7 @@ fn demonstrate_data_warehousing_patterns(db: &mut Oxidb) -> Result<(), OxidbErro
     "#;
     let star_result = db.execute_query_str(star_schema)?;
     println!("✓ Star schema query executed");
-    
+
     // Slowly Changing Dimension (SCD) pattern
     println!("\n🔄 Slowly Changing Dimension Pattern:");
     let scd_pattern = r#"
@@ -1066,7 +1076,7 @@ fn demonstrate_data_warehousing_patterns(db: &mut Oxidb) -> Result<(), OxidbErro
     "#;
     let scd_result = db.execute_query_str(scd_pattern)?;
     println!("✓ SCD Type 2 pattern demonstrated");
-    
+
     // Data quality and profiling
     println!("\n🔍 Data Quality & Profiling:");
     let data_quality = r#"
@@ -1142,14 +1152,14 @@ fn demonstrate_data_warehousing_patterns(db: &mut Oxidb) -> Result<(), OxidbErro
     "#;
     let quality_result = db.execute_query_str(data_quality)?;
     println!("✓ Data quality profiling completed");
-    
+
     Ok(())
 }
 
 fn demonstrate_analytical_functions(db: &mut Oxidb) -> Result<(), OxidbError> {
     println!("\n🧠 Advanced Analytical Functions");
     println!("{}", "=".repeat(40));
-    
+
     // Cohort retention analysis
     println!("\n👥 Cohort Retention Analysis:");
     let retention_analysis = r#"
@@ -1217,7 +1227,7 @@ fn demonstrate_analytical_functions(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     let retention_result = db.execute_query_str(retention_analysis)?;
     println!("✓ Cohort retention analysis completed");
-    
+
     // RFM Analysis (Recency, Frequency, Monetary)
     println!("\n💎 RFM Analysis:");
     let rfm_analysis = r#"
@@ -1283,7 +1293,7 @@ fn demonstrate_analytical_functions(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     let rfm_result = db.execute_query_str(rfm_analysis)?;
     println!("✓ RFM analysis completed");
-    
+
     // Market basket analysis
     println!("\n🛒 Market Basket Analysis:");
     let basket_analysis = r#"
@@ -1347,7 +1357,7 @@ fn demonstrate_analytical_functions(db: &mut Oxidb) -> Result<(), OxidbError> {
     "#;
     let basket_result = db.execute_query_str(basket_analysis)?;
     println!("✓ Market basket analysis completed");
-    
+
     println!("\n🎯 Advanced Analytics Summary:");
     println!("✓ Window functions for running calculations");
     println!("✓ CTEs for complex hierarchical queries");
@@ -1358,6 +1368,6 @@ fn demonstrate_analytical_functions(db: &mut Oxidb) -> Result<(), OxidbError> {
     println!("✓ Cohort and retention analysis");
     println!("✓ RFM customer segmentation");
     println!("✓ Market basket analysis");
-    
+
     Ok(())
 }

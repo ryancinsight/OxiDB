@@ -9,20 +9,11 @@ use crate::core::graph::GraphStore;
 use std::sync::{Arc, Mutex};
 
 /// Builder for GraphRAG engines
+#[derive(Default)]
 pub struct GraphRAGEngineBuilder {
     graph_store: Option<Arc<Mutex<Box<dyn GraphStore>>>>,
     embedder: Option<Arc<dyn crate::core::rag::embedder::EmbeddingModel + Send + Sync>>,
     config: GraphRAGConfig,
-}
-
-impl Default for GraphRAGEngineBuilder {
-    fn default() -> Self {
-        Self {
-            graph_store: None,
-            embedder: None,
-            config: GraphRAGConfig::default(),
-        }
-    }
 }
 
 impl GraphRAGEngineBuilder {
@@ -32,10 +23,7 @@ impl GraphRAGEngineBuilder {
     }
 
     /// Set the graph store
-    pub fn with_graph_store<T: GraphStore + 'static>(
-        mut self,
-        store: T,
-    ) -> Self {
+    pub fn with_graph_store<T: GraphStore + 'static>(mut self, store: T) -> Self {
         // Wrap the store in a Mutex for thread-safe access
         self.graph_store = Some(Arc::new(Mutex::new(Box::new(store))));
         self
@@ -70,13 +58,13 @@ impl GraphRAGEngineBuilder {
 
     /// Build the GraphRAG engine
     pub fn build(self) -> Result<GraphRAGEngineImpl, OxidbError> {
-        let graph_store = self.graph_store.ok_or_else(|| OxidbError::Configuration(
-            "Graph store not configured".to_string()
-        ))?;
+        let graph_store = self
+            .graph_store
+            .ok_or_else(|| OxidbError::Configuration("Graph store not configured".to_string()))?;
 
-        let embedder = self.embedder.ok_or_else(|| OxidbError::Configuration(
-            "Embedding model not configured".to_string()
-        ))?;
+        let embedder = self.embedder.ok_or_else(|| {
+            OxidbError::Configuration("Embedding model not configured".to_string())
+        })?;
 
         Ok(GraphRAGEngineImpl::new(graph_store, embedder, self.config))
     }

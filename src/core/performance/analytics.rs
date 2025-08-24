@@ -1,8 +1,8 @@
 //! Performance analytics and reporting
 
 use super::metrics::PerformanceMetrics;
-use std::time::Duration;
 use std::fmt;
+use std::time::Duration;
 
 /// Performance analyzer for generating insights and reports
 #[derive(Debug)]
@@ -307,7 +307,7 @@ impl fmt::Display for PerformanceReport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "=== Performance Report ===")?;
         writeln!(f)?;
-        
+
         // Query Analysis
         writeln!(f, "Query Performance:")?;
         writeln!(f, "  Total Queries: {}", self.query_analysis.total_queries)?;
@@ -319,7 +319,7 @@ impl fmt::Display for PerformanceReport {
             writeln!(f, "  ⚠️  Slow queries detected!")?;
         }
         writeln!(f)?;
-        
+
         // Transaction Analysis
         writeln!(f, "Transaction Performance:")?;
         writeln!(f, "  Total Transactions: {}", self.transaction_analysis.total_transactions)?;
@@ -327,32 +327,36 @@ impl fmt::Display for PerformanceReport {
         writeln!(f, "  Commit Rate: {:.1}%", self.transaction_analysis.commit_rate * 100.0)?;
         writeln!(f, "  Abort Rate: {:.1}%", self.transaction_analysis.abort_rate * 100.0)?;
         writeln!(f)?;
-        
+
         // Storage Analysis
         writeln!(f, "Storage I/O:")?;
         writeln!(f, "  Bytes Read: {}", format_bytes(self.storage_analysis.total_bytes_read))?;
-        writeln!(f, "  Bytes Written: {}", format_bytes(self.storage_analysis.total_bytes_written))?;
+        writeln!(
+            f,
+            "  Bytes Written: {}",
+            format_bytes(self.storage_analysis.total_bytes_written)
+        )?;
         writeln!(f, "  Total I/O Operations: {}", self.storage_analysis.total_io_operations)?;
         writeln!(f, "  Average I/O Duration: {:?}", self.storage_analysis.average_io_duration)?;
         writeln!(f, "  Read/Write Ratio: {:.2}:1", self.storage_analysis.read_write_ratio)?;
         writeln!(f)?;
-        
+
         // Bottlenecks
         writeln!(f, "Bottleneck Analysis:")?;
         writeln!(f, "  Severity: {:?}", self.bottlenecks.severity)?;
         for bottleneck in &self.bottlenecks.bottlenecks {
-            writeln!(f, "  - {}", bottleneck)?;
+            writeln!(f, "  - {bottleneck}")?;
         }
         writeln!(f)?;
-        
+
         // Recommendations
         if !self.recommendations.is_empty() {
             writeln!(f, "Recommendations:")?;
             for recommendation in &self.recommendations {
-                writeln!(f, "  • {}", recommendation)?;
+                writeln!(f, "  • {recommendation}")?;
             }
         }
-        
+
         Ok(())
     }
 }
@@ -362,11 +366,11 @@ fn format_bytes(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut size = bytes as f64;
     let mut unit_index = 0;
-    
+
     while size >= 1024.0 && unit_index < UNITS.len() - 1 {
         size /= 1024.0;
         unit_index += 1;
     }
-    
+
     format!("{:.2} {}", size, UNITS[unit_index])
 }

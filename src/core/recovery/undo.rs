@@ -130,7 +130,7 @@ impl UndoPhase {
         self.state = RecoveryState::Completed;
         self.statistics.state = RecoveryState::Completed;
 
-                // info!("Undo phase completed successfully. Undone {} transactions, processed {} records, generated {} CLRs",
+        // info!("Undo phase completed successfully. Undone {} transactions, processed {} records, generated {} CLRs",
         //      self.statistics.transactions_undone,
         //      self.statistics.records_processed,
         //      self.statistics.clrs_generated);

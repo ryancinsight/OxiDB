@@ -1,5 +1,8 @@
 use oxidb::{Connection, OxidbError};
-use std::sync::{Arc, Mutex, atomic::{AtomicUsize, Ordering}};
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc, Mutex,
+};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -114,10 +117,7 @@ impl SimpleConnectionPool {
             connections.push(Arc::new(Mutex::new(conn)));
         }
 
-        Ok(Self {
-            connections: Arc::new(Mutex::new(connections)),
-            max_size,
-        })
+        Ok(Self { connections: Arc::new(Mutex::new(connections)), max_size })
     }
 }
 
@@ -152,12 +152,8 @@ struct PerformanceTestSuite {
 impl PerformanceTestSuite {
     fn new(config: TestConfig) -> Result<Self, OxidbError> {
         let pool = Arc::new(SimpleConnectionPool::new(config.thread_count * 2)?);
-        
-        Ok(Self {
-            config,
-            metrics: Arc::new(TestMetrics::new()),
-            pool,
-        })
+
+        Ok(Self { config, metrics: Arc::new(TestMetrics::new()), pool })
     }
 
     fn setup_test_schema(&self) -> Result<(), OxidbError> {
@@ -165,26 +161,34 @@ impl PerformanceTestSuite {
         let mut conn = conn.lock().unwrap();
 
         // Create tables with constraints for edge case testing
-        conn.execute("CREATE TABLE IF NOT EXISTS large_data_test (
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS large_data_test (
             id INTEGER PRIMARY KEY,
             data TEXT NOT NULL,
             value INTEGER NOT NULL CHECK(value >= 0),
             timestamp TEXT NOT NULL,
             category TEXT NOT NULL
-        )")?;
+        )",
+        )?;
 
-        conn.execute("CREATE TABLE IF NOT EXISTS concurrent_test (
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS concurrent_test (
             id INTEGER PRIMARY KEY,
             thread_id INTEGER NOT NULL,
             operation_count INTEGER NOT NULL,
             data BLOB,
             created_at TEXT NOT NULL
-        )")?;
+        )",
+        )?;
 
         // Create indexes for performance testing
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_large_data_category ON large_data_test(category)")?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_large_data_category ON large_data_test(category)",
+        )?;
         conn.execute("CREATE INDEX IF NOT EXISTS idx_large_data_value ON large_data_test(value)")?;
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_concurrent_thread ON concurrent_test(thread_id)")?;
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_concurrent_thread ON concurrent_test(thread_id)",
+        )?;
 
         Ok(())
     }
@@ -208,7 +212,7 @@ impl PerformanceTestSuite {
                 chrono::Utc::now().to_rfc3339(),
                 format!("category_{}", i % 10)
             );
-            
+
             match conn.execute(&query) {
                 Ok(_) => self.metrics.record_success(),
                 Err(_) => self.metrics.record_failure(),
@@ -225,7 +229,10 @@ impl PerformanceTestSuite {
         // Query performance test
         let query_start = Instant::now();
         for category in 0..10 {
-            let query = format!("SELECT COUNT(*) FROM large_data_test WHERE category = 'category_{}'", category);
+            let query = format!(
+                "SELECT COUNT(*) FROM large_data_test WHERE category = 'category_{}'",
+                category
+            );
             match conn.query_all(&query) {
                 Ok(_) => self.metrics.record_success(),
                 Err(_) => self.metrics.record_failure(),
@@ -236,7 +243,8 @@ impl PerformanceTestSuite {
 
         // Range query test
         let range_start = Instant::now();
-        let range_query = "SELECT * FROM large_data_test WHERE value BETWEEN 100 AND 200 ORDER BY value";
+        let range_query =
+            "SELECT * FROM large_data_test WHERE value BETWEEN 100 AND 200 ORDER BY value";
         match conn.query_all(range_query) {
             Ok(result) => {
                 println!("  ✅ Range query returned {} records", result.len());
@@ -264,7 +272,7 @@ impl PerformanceTestSuite {
 
                 thread::spawn(move || {
                     let thread_start = Instant::now();
-                    
+
                     for i in 0..iterations {
                         let conn = match pool.get_connection() {
                             Ok(conn) => conn,
@@ -275,7 +283,7 @@ impl PerformanceTestSuite {
                         };
 
                         let mut conn_guard = conn.lock().unwrap();
-                        
+
                         // Mix of operations to simulate real workload
                         match i % 4 {
                             0 => {
@@ -475,9 +483,9 @@ impl PerformanceTestSuite {
 
     fn run_all_tests(&self) -> Result<TestSummary, OxidbError> {
         println!("=== Starting Performance and Edge Case Tests ===\n");
-        
+
         self.setup_test_schema()?;
-        
+
         // Run test suite
         self.test_large_dataset_operations()?;
         self.test_concurrent_operations()?;

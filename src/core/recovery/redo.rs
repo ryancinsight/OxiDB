@@ -150,7 +150,7 @@ impl RedoPhase {
             })?;
 
             page_guard.set_lsn(lsn);
-                            // log::debug!("Redid update on page {} with LSN {}", page_id.0, lsn);
+            // log::debug!("Redid update on page {} with LSN {}", page_id.0, lsn);
         }
 
         Ok(())
@@ -181,7 +181,7 @@ impl RedoPhase {
             })?;
 
             page_guard.set_lsn(lsn);
-                            // log::debug!("Redid insert on page {} with LSN {}", page_id.0, lsn);
+            // log::debug!("Redid insert on page {} with LSN {}", page_id.0, lsn);
         }
 
         Ok(())
@@ -211,7 +211,7 @@ impl RedoPhase {
             })?;
 
             page_guard.set_lsn(lsn);
-                            // log::debug!("Redid delete on page {} with LSN {}", page_id.0, lsn);
+            // log::debug!("Redid delete on page {} with LSN {}", page_id.0, lsn);
         }
 
         Ok(())

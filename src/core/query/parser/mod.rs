@@ -29,15 +29,14 @@ use crate::core::query::sql::translator::translate_ast_to_command;
 pub fn parse_query(query_str: &str) -> Result<Command, OxidbError> {
     // Tokenize the query
     let mut tokenizer = Tokenizer::new(query_str);
-    let tokens = tokenizer.tokenize().map_err(|e| {
-        OxidbError::SqlParsing(format!("SQL tokenizer error: {e}"))
-    })?;
+    let tokens = tokenizer
+        .tokenize()
+        .map_err(|e| OxidbError::SqlParsing(format!("SQL tokenizer error: {e}")))?;
 
     // Parse SQL
     let mut parser = SqlParser::new(tokens);
-    let statement = parser.parse().map_err(|e| {
-        OxidbError::SqlParsing(format!("SQL parse error: {e}"))
-    })?;
+    let statement =
+        parser.parse().map_err(|e| OxidbError::SqlParsing(format!("SQL parse error: {e}")))?;
 
     // Translate AST to Command
     translate_ast_to_command(statement)

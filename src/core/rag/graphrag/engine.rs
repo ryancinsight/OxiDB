@@ -2,13 +2,15 @@
 //!
 //! Core engine for GraphRAG operations following SOLID principles.
 
-use super::types::{GraphRAGContext, GraphRAGResult, KnowledgeNode, KnowledgeEdge, ReasoningPath, GraphRAGConfig};
+use super::types::{
+    GraphRAGConfig, GraphRAGContext, GraphRAGResult, KnowledgeEdge, KnowledgeNode, ReasoningPath,
+};
 use crate::core::common::OxidbError;
 use crate::core::graph::{GraphStore, NodeId};
 use async_trait::async_trait;
-use std::sync::{Arc, Mutex};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 /// Trait for GraphRAG engines following Interface Segregation Principle
 #[async_trait]
@@ -74,7 +76,7 @@ impl GraphRAGEngineImpl {
             next_node_id: Arc::new(AtomicU64::new(1)), // Start from 1 to avoid 0 as a special value
         }
     }
-    
+
     /// Generate a unique node ID using atomic counter
     fn generate_node_id(&self) -> NodeId {
         self.next_node_id.fetch_add(1, Ordering::SeqCst)
@@ -86,13 +88,17 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
     async fn query(&self, context: &GraphRAGContext) -> Result<GraphRAGResult, OxidbError> {
         // Retrieve nodes based on query embedding similarity
         let query_embedding = self.embedder.embed(&context.query).await?;
-        
+
         // Collect all matching documents with their scores using zero-cost iterator chains
-        let mut matching_docs: Vec<(KnowledgeNode, f64)> = self.entities
+        let mut matching_docs: Vec<(KnowledgeNode, f64)> = self
+            .entities
             .values()
             .filter_map(|node| {
                 node.embedding.as_ref().and_then(|embedding| {
-                    match crate::core::vector::similarity::cosine_similarity(&query_embedding.vector, &embedding.vector) {
+                    match crate::core::vector::similarity::cosine_similarity(
+                        &query_embedding.vector,
+                        &embedding.vector,
+                    ) {
                         Ok(similarity) => {
                             let similarity_f64 = f64::from(similarity);
                             if similarity_f64 >= context.similarity_threshold {
@@ -106,7 +112,7 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
                 })
             })
             .collect();
-        
+
         // Sort by score descending
         matching_docs.sort_unstable_by(|a, b| {
             match (b.1.is_nan(), a.1.is_nan()) {
@@ -116,15 +122,13 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
                 (false, false) => b.1.partial_cmp(&a.1).unwrap(),
             }
         });
-        
+
         // Take only the top max_results
         matching_docs.truncate(context.max_results);
-        
+
         // Separate documents and scores
-        let (documents, scores): (Vec<KnowledgeNode>, Vec<f64>) = matching_docs
-            .into_iter()
-            .unzip();
-        
+        let (documents, scores): (Vec<KnowledgeNode>, Vec<f64>) = matching_docs.into_iter().unzip();
+
         Ok(GraphRAGResult {
             documents,
             reasoning_paths: Vec::new(),
@@ -139,10 +143,10 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
     ) -> Result<NodeId, OxidbError> {
         // Generate embedding for the document
         let embedding = self.embedder.embed(&document.content).await?;
-        
+
         // Generate a unique node ID using atomic counter
         let node_id = self.generate_node_id();
-        
+
         // Create knowledge node from document
         let knowledge_node = KnowledgeNode {
             id: node_id,
@@ -151,16 +155,19 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
             embedding: Some(embedding),
             metadata: document.metadata.clone().unwrap_or_default(),
         };
-        
+
         // Store in local cache
         self.entities.insert(node_id, knowledge_node);
-        
+
         // Add to graph store
         let graph_data = crate::core::graph::GraphData::new("document".to_string())
             .with_properties(document.metadata.clone().unwrap_or_default());
-        let mut graph_store = self.graph_store.lock().map_err(|_| OxidbError::Internal("Failed to acquire graph_store lock".to_string()))?;
+        let mut graph_store = self
+            .graph_store
+            .lock()
+            .map_err(|_| OxidbError::Internal("Failed to acquire graph_store lock".to_string()))?;
         graph_store.add_node(graph_data)?;
-        
+
         Ok(node_id)
     }
 
@@ -176,13 +183,20 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
             name: relationship_type.to_string(),
             direction: crate::core::graph::RelationshipDirection::Outgoing,
         };
-        
-        let edge_data = Some(crate::core::graph::GraphData::new(relationship_type.to_string())
-            .with_property("weight".to_string(), crate::core::common::types::Value::Float(weight)));
-        
-        let mut store = self.graph_store.lock().map_err(|_| OxidbError::Internal("Failed to acquire graph_store lock (possibly poisoned)".to_string()))?;
+
+        let edge_data =
+            Some(crate::core::graph::GraphData::new(relationship_type.to_string()).with_property(
+                "weight".to_string(),
+                crate::core::common::types::Value::Float(weight),
+            ));
+
+        let mut store = self.graph_store.lock().map_err(|_| {
+            OxidbError::Internal(
+                "Failed to acquire graph_store lock (possibly poisoned)".to_string(),
+            )
+        })?;
         let _edge_id = store.add_edge(source, target, relationship, edge_data)?;
-        
+
         // Store knowledge edge
         let edge = KnowledgeEdge {
             id: 0,
@@ -203,7 +217,7 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
             node.embedding = Some(embedding);
             Ok(())
         } else {
-            Err(OxidbError::NotFound(format!("Node not found: {}", node_id)))
+            Err(OxidbError::NotFound(format!("Node not found: {node_id}")))
         }
     }
 

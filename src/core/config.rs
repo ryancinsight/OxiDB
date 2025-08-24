@@ -255,9 +255,9 @@ impl Default for Config {
 
 impl Config {
     /// Creates a new `Builder` for fluent configuration
-#[must_use]
-pub const fn builder() -> Builder {
-    Builder::new()
+    #[must_use]
+    pub const fn builder() -> Builder {
+        Builder::new()
     }
 
     /// Validates the configuration

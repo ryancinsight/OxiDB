@@ -457,7 +457,7 @@ impl SqlParser {
             loop {
                 let column = self.expect_identifier("Expected column name in GROUP BY")?;
                 group_columns.push(column);
-                
+
                 if self.match_token(Token::Comma) {
                     self.consume(Token::Comma)?;
                 } else {

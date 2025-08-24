@@ -157,39 +157,33 @@ fn login_user(db: &mut Connection, username: &str, password: &str) -> Result<Opt
                 return Ok(None);
             };
             // Assuming columns are: id, username, password_hash
-            if let (Some(id_val), Some(username_val), Some(password_hash_val)) = 
-                (row.get(0), row.get(1), row.get(2)) {
-                
+            if let (Some(id_val), Some(username_val), Some(password_hash_val)) =
+                (row.get(0), row.get(1), row.get(2))
+            {
                 use oxidb::Value;
                 let id = match id_val {
                     Value::Integer(i) => *i as u64,
                     _ => return Err(anyhow::anyhow!("Invalid id type")),
                 };
-                
+
                 let stored_username = match username_val {
                     Value::Text(s) => s.clone(),
                     _ => return Err(anyhow::anyhow!("Invalid username type")),
                 };
-                
+
                 let stored_hash = match password_hash_val {
                     Value::Text(s) => s.clone(),
                     _ => return Err(anyhow::anyhow!("Invalid password_hash type")),
                 };
-                
+
                 if hash_password(password) == stored_hash {
-                    Ok(Some(User {
-                        id,
-                        username: stored_username,
-                    }))
+                    Ok(Some(User { id, username: stored_username }))
                 } else {
                     println!("Login failed: Incorrect password for user '{}'.", username);
                     Ok(None)
                 }
             } else {
-                Err(anyhow::anyhow!(
-                    "Login error: Missing data for user '{}'.",
-                    username
-                ))
+                Err(anyhow::anyhow!("Login error: Missing data for user '{}'.", username))
             }
         }
         other => Err(anyhow::anyhow!("Login failed for user '{}': {:?}", username, other)),
@@ -201,7 +195,7 @@ fn add_file(db: &mut Connection, user_id: u64, file_name: &str, content: &str) -
     ensure_tables_exist(db)?;
     let escaped_file_name = file_name.replace("'", "''");
     let content_bytes = content.as_bytes();
-            let hex_content = oxidb::core::common::hex::encode(content_bytes); // Content is stored as hex string for X'' literal
+    let hex_content = oxidb::core::common::hex::encode(content_bytes); // Content is stored as hex string for X'' literal
 
     // Using X'' for blob literal, assuming Oxidb SQL parser handles this for BLOB columns
     let query = format!(
@@ -227,43 +221,46 @@ fn list_files(db: &mut Connection, user_id: u64) -> Result<()> {
 
     let data = db.execute(&query)?;
     {
-            let rows: Vec<_> = match data { oxidb::QueryResult::Data(ds) => ds.rows, _ => Vec::new() };
-            if rows.is_empty() {
-                println!("No files found for user ID {}.", user_id);
-                return Ok(());
+        let rows: Vec<_> = match data {
+            oxidb::QueryResult::Data(ds) => ds.rows,
+            _ => Vec::new(),
+        };
+        if rows.is_empty() {
+            println!("No files found for user ID {}.", user_id);
+            return Ok(());
+        }
+        println!("Files for user ID {}:", user_id);
+        for row in &rows {
+            // Columns: id, user_id, file_name, file_content
+            if let (Some(id_val), Some(_user_id_val), Some(name_val), Some(content_val)) =
+                (row.get(0), row.get(1), row.get(2), row.get(3))
+            {
+                use oxidb::Value;
+                let file_id = match id_val {
+                    Value::Integer(i) => *i,
+                    _ => continue,
+                };
+
+                let file_name = match name_val {
+                    Value::Text(s) => s.clone(),
+                    _ => continue,
+                };
+
+                let content = match content_val {
+                    Value::Blob(b) => b.clone(),
+                    _ => continue,
+                };
+
+                let content_preview = String::from_utf8_lossy(&content);
+                println!(
+                    "- ID: {}, Name: {}, Content Preview (lossy UTF-8): {:.50}{}",
+                    file_id,
+                    file_name,
+                    content_preview.chars().take(50).collect::<String>(),
+                    if content_preview.len() > 50 { "..." } else { "" }
+                );
             }
-            println!("Files for user ID {}:", user_id);
-            for row in &rows {
-                // Columns: id, user_id, file_name, file_content
-                if let (Some(id_val), Some(_user_id_val), Some(name_val), Some(content_val)) = 
-                    (row.get(0), row.get(1), row.get(2), row.get(3)) {
-                    
-                    use oxidb::Value;
-                    let file_id = match id_val {
-                        Value::Integer(i) => *i,
-                        _ => continue,
-                    };
-                    
-                    let file_name = match name_val {
-                        Value::Text(s) => s.clone(),
-                        _ => continue,
-                    };
-                    
-                    let content = match content_val {
-                        Value::Blob(b) => b.clone(),
-                        _ => continue,
-                    };
-                    
-                    let content_preview = String::from_utf8_lossy(&content);
-                    println!(
-                        "- ID: {}, Name: {}, Content Preview (lossy UTF-8): {:.50}{}",
-                        file_id,
-                        file_name,
-                        content_preview.chars().take(50).collect::<String>(),
-                        if content_preview.len() > 50 { "..." } else { "" }
-                    );
-                }
-            }
+        }
     }
     Ok(())
 }
@@ -274,7 +271,7 @@ fn get_file(db: &mut Connection, user_id: u64, file_id: u64) -> Result<Option<Us
         "SELECT id, user_id, file_name, file_content FROM {} WHERE id = {} AND user_id = {}",
         USER_FILES_TABLE, file_id, user_id
     );
- 
+
     let result = db.execute(&query)?;
     let ds = match result {
         oxidb::QueryResult::Data(ds) => ds,
@@ -289,10 +286,22 @@ fn get_file(db: &mut Connection, user_id: u64, file_id: u64) -> Result<Option<Us
         (row.get(0), row.get(1), row.get(2), row.get(3))
     {
         use oxidb::Value;
-        let id = match id_val { Value::Integer(i) => *i as u64, _ => return Err(anyhow::anyhow!("Invalid file id type")) };
-        let user_id = match user_id_val { Value::Integer(i) => *i as u64, _ => return Err(anyhow::anyhow!("Invalid user_id type")) };
-        let file_name = match name_val { Value::Text(s) => s.clone(), _ => return Err(anyhow::anyhow!("Invalid file_name type")) };
-        let content = match content_val { Value::Blob(b) => b.clone(), _ => return Err(anyhow::anyhow!("Invalid file_content type")) };
+        let id = match id_val {
+            Value::Integer(i) => *i as u64,
+            _ => return Err(anyhow::anyhow!("Invalid file id type")),
+        };
+        let user_id = match user_id_val {
+            Value::Integer(i) => *i as u64,
+            _ => return Err(anyhow::anyhow!("Invalid user_id type")),
+        };
+        let file_name = match name_val {
+            Value::Text(s) => s.clone(),
+            _ => return Err(anyhow::anyhow!("Invalid file_name type")),
+        };
+        let content = match content_val {
+            Value::Blob(b) => b.clone(),
+            _ => return Err(anyhow::anyhow!("Invalid file_content type")),
+        };
         Ok(Some(UserFile { id, user_id, file_name, content }))
     } else {
         Err(anyhow::anyhow!("Missing data for file ID {}", file_id))

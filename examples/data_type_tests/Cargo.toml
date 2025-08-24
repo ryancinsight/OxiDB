@@ -2,6 +2,11 @@
 name = "oxidb_datatype_constraint_tests"
 version = "0.1.0"
 edition = "2021"
+description = "Test suite for OxiDB data type constraints and validation"
+license = "MIT"
+repository = "https://github.com/ryancinsight/OxiDB"
+keywords = ["database", "testing", "constraints"]
+categories = ["database-implementations"]
 
 [dependencies]
 oxidb = { path = "../../" }

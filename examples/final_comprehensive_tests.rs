@@ -1,9 +1,9 @@
 use oxidb::{Connection, OxidbError};
-use std::time::Instant;
 use std::fs;
+use std::time::Instant;
 
 /// Final Comprehensive Test Suite for Oxidb
-/// 
+///
 /// Demonstrates all design principles while working with current API:
 /// - SOLID: Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion
 /// - GRASP: Information Expert, Creator, Controller, Low Coupling, High Cohesion  
@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Run comprehensive test suite with proper error handling
     let test_results = run_comprehensive_tests()?;
-    
+
     // Display results summary
     display_test_summary(&test_results);
 
@@ -49,10 +49,7 @@ struct TestSuite {
 
 impl TestSuite {
     fn new(db_path: &str) -> Self {
-        Self {
-            database_path: db_path.to_string(),
-            test_data_size: 100,
-        }
+        Self { database_path: db_path.to_string(), test_data_size: 100 }
     }
 
     /// Test database operations and ACID properties (SOLID: Single Responsibility)
@@ -62,10 +59,10 @@ impl TestSuite {
 
         // Test basic CRUD operations
         self.test_crud_operations(&mut conn)?;
-        
+
         // Test transaction behavior
         self.test_transaction_behavior(&mut conn)?;
-        
+
         // Test data consistency
         self.test_data_consistency(&mut conn)?;
 
@@ -123,12 +120,12 @@ impl TestSuite {
     fn test_data_consistency(&self, conn: &mut Connection) -> Result<(), OxidbError> {
         // Test that data remains consistent across operations
         let _before_count = conn.execute("SELECT COUNT(*) FROM crud_test")?;
-        
+
         // Perform operations that should maintain consistency
         conn.execute("BEGIN TRANSACTION")?;
         conn.execute("UPDATE crud_test SET value = value + 10 WHERE value > 0")?;
         conn.execute("COMMIT")?;
-        
+
         let _after_count = conn.execute("SELECT COUNT(*) FROM crud_test")?;
         println!("    ✓ Data consistency maintained");
         Ok(())
@@ -159,11 +156,11 @@ impl TestSuite {
 
         // Test empty strings
         conn.execute("INSERT INTO edge_test (text_val, num_val) VALUES ('', 0)")?;
-        
+
         // Test special characters (properly escaped)
         conn.execute("INSERT INTO edge_test (text_val, num_val) VALUES ('Hello World!', 42)")?;
         conn.execute("INSERT INTO edge_test (text_val, num_val) VALUES ('Test with spaces', -1)")?;
-        
+
         // Test Unicode (basic)
         conn.execute("INSERT INTO edge_test (text_val, num_val) VALUES ('Unicode test', 999)")?;
 
@@ -174,12 +171,14 @@ impl TestSuite {
 
     /// Test large data handling (within reasonable limits)
     fn test_large_data_handling(&self, conn: &mut Connection) -> Result<(), OxidbError> {
-        conn.execute("CREATE TABLE IF NOT EXISTS large_test (id INTEGER PRIMARY KEY, large_text TEXT)")?;
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS large_test (id INTEGER PRIMARY KEY, large_text TEXT)",
+        )?;
 
         // Test with moderately large string (avoid memory issues)
         let large_string = "Large data test ".repeat(50); // 800 characters
         conn.execute(&format!("INSERT INTO large_test (large_text) VALUES ('{}')", large_string))?;
-        
+
         let _result = conn.execute("SELECT * FROM large_test")?;
         println!("    ✓ Large data handled efficiently");
         Ok(())
@@ -187,11 +186,13 @@ impl TestSuite {
 
     /// Test numeric boundaries
     fn test_numeric_boundaries(&self, conn: &mut Connection) -> Result<(), OxidbError> {
-        conn.execute("CREATE TABLE IF NOT EXISTS numeric_test (id INTEGER PRIMARY KEY, test_value INTEGER)")?;
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS numeric_test (id INTEGER PRIMARY KEY, test_value INTEGER)",
+        )?;
 
         // Test various numeric values
         let test_values = vec![0, 1, -1, 1000, -1000, 999999, -999999];
-        
+
         for value in test_values {
             conn.execute(&format!("INSERT INTO numeric_test (test_value) VALUES ({})", value))?;
         }
@@ -203,18 +204,20 @@ impl TestSuite {
 
     /// Simulate concurrent operations (single-threaded simulation)
     fn test_concurrent_simulation(&self, conn: &mut Connection) -> Result<(), OxidbError> {
-        conn.execute("CREATE TABLE IF NOT EXISTS concurrent_test (id INTEGER PRIMARY KEY, counter INTEGER)")?;
-        
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS concurrent_test (id INTEGER PRIMARY KEY, counter INTEGER)",
+        )?;
+
         // Initialize counter
         conn.execute("INSERT INTO concurrent_test (counter) VALUES (0)")?;
-        
+
         // Simulate multiple "concurrent" updates
         for i in 1..=10 {
             conn.execute("BEGIN TRANSACTION")?;
             conn.execute("UPDATE concurrent_test SET counter = counter + 1 WHERE id = 1")?;
             conn.execute("COMMIT")?;
         }
-        
+
         let _result = conn.execute("SELECT * FROM concurrent_test")?;
         println!("    ✓ Concurrent operations simulation completed");
         Ok(())
@@ -227,7 +230,7 @@ impl TestSuite {
 
         // Test bulk operations
         self.test_bulk_operations(&mut conn)?;
-        
+
         // Test query performance
         self.test_query_performance(&mut conn)?;
 
@@ -244,21 +247,24 @@ impl TestSuite {
         conn.execute("CREATE TABLE IF NOT EXISTS bulk_test (id INTEGER PRIMARY KEY, data TEXT)")?;
 
         let start = Instant::now();
-        
+
         // Insert test data efficiently
         for i in 0..self.test_data_size {
             conn.execute(&format!("INSERT INTO bulk_test (data) VALUES ('data_{}')", i))?;
         }
 
         let duration = start.elapsed();
-        println!("    ✓ Bulk operations ({} records) completed in {:?}", self.test_data_size, duration);
+        println!(
+            "    ✓ Bulk operations ({} records) completed in {:?}",
+            self.test_data_size, duration
+        );
         Ok(())
     }
 
     /// Test query performance
     fn test_query_performance(&self, conn: &mut Connection) -> Result<(), OxidbError> {
         let start = Instant::now();
-        
+
         // Test various query patterns
         let _result1 = conn.execute("SELECT COUNT(*) FROM bulk_test")?;
         let _result2 = conn.execute("SELECT * FROM bulk_test WHERE id <= 10")?;
@@ -306,10 +312,10 @@ impl TestSuite {
     /// Test constraint handling
     fn test_constraint_handling(&self, conn: &mut Connection) -> Result<(), OxidbError> {
         conn.execute("CREATE TABLE IF NOT EXISTS constraint_test (id INTEGER PRIMARY KEY, unique_val TEXT UNIQUE)")?;
-        
+
         // Insert valid data
         conn.execute("INSERT INTO constraint_test (unique_val) VALUES ('unique1')")?;
-        
+
         // Test duplicate constraint (should fail gracefully)
         match conn.execute("INSERT INTO constraint_test (unique_val) VALUES ('unique1')") {
             Ok(_) => println!("    ⚠ Duplicate constraint unexpectedly allowed"),
@@ -403,24 +409,24 @@ fn run_comprehensive_tests() -> Result<Vec<TestResult>, Box<dyn std::error::Erro
 /// Display comprehensive test summary (CLEAN: Clear reporting)
 fn display_test_summary(results: &[TestResult]) {
     println!("\n=== Final Test Summary ===");
-    
+
     let total_tests = results.len();
     let passed_tests = results.iter().filter(|r| r.success).count();
     let failed_tests = total_tests - passed_tests;
-    
+
     println!("Total Test Suites: {}", total_tests);
     println!("Passed: {} ✅", passed_tests);
     println!("Failed: {} ❌", failed_tests);
-    
+
     let total_duration: std::time::Duration = results.iter().map(|r| r.duration).sum();
     println!("Total Duration: {:?}", total_duration);
-    
+
     println!("\nDetailed Results:");
     for result in results {
         let status = if result.success { "✅" } else { "❌" };
         println!("  {} {} ({:?}) - {}", status, result.test_name, result.duration, result.details);
     }
-    
+
     println!("\n=== Design Principles Demonstrated ===");
     println!("✅ SOLID: Single Responsibility, Open/Closed, Liskov Substitution, Interface Segregation, Dependency Inversion");
     println!("✅ GRASP: Information Expert, Creator, Controller, Low Coupling, High Cohesion");
@@ -431,7 +437,7 @@ fn display_test_summary(results: &[TestResult]) {
     println!("✅ YAGNI: You Aren't Gonna Need It - minimal, focused implementation");
     println!("✅ ACID: Atomicity, Consistency, Isolation, Durability testing");
     println!("✅ SSOT: Single Source of Truth - centralized test configuration");
-    
+
     if failed_tests == 0 {
         println!("\n🎉 All tests passed! Database implementation follows solid design principles.");
     } else {
@@ -451,10 +457,10 @@ fn cleanup_test_databases() -> Result<(), Box<dyn std::error::Error>> {
         "final_test.db_error",
         "final_test.db_error.wal",
     ];
-    
+
     for file in test_files {
         let _ = fs::remove_file(file); // Ignore errors - file may not exist
     }
-    
+
     Ok(())
 }

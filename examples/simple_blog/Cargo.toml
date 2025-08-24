@@ -2,6 +2,11 @@
 name = "simple_blog_example"
 version = "0.1.0"
 edition = "2021"
+description = "Simple blog application example using OxiDB"
+license = "MIT"
+repository = "https://github.com/ryancinsight/OxiDB"
+keywords = ["database", "blog", "example"]
+categories = ["database-implementations"]
 
 [dependencies]
 oxidb = { path = "../../" } # Assuming oxidb is two levels up

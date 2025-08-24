@@ -96,9 +96,9 @@ impl BlinkTreeIndex {
     /// In Blink trees, we're more lenient about underflow to support concurrency
     pub fn is_underflowing(&self, node: &BlinkTreeNode) -> bool {
         let min_keys = if node.is_leaf() {
-            (self.order + 1) / 2 // Ceiling division
+            self.order.div_ceil(2) // Ceiling division
         } else {
-            (self.order - 1 + 1) / 2 // Ceiling division for internal nodes
+            (self.order - 1).div_ceil(2) // Ceiling division for internal nodes
         };
 
         node.get_keys().len() < min_keys && !node.get_keys().is_empty()
@@ -146,9 +146,7 @@ impl BlinkTreeIndex {
     /// Handle an underflowing leaf node
     /// In Blink trees, we can be more aggressive about leaving small nodes
     /// since concurrent access is more important than perfect balance
-    fn handle_underflowing_leaf(
-        _leaf_page_id: super::PageId,
-    ) -> Result<(), BlinkTreeError> {
+    fn handle_underflowing_leaf(_leaf_page_id: super::PageId) -> Result<(), BlinkTreeError> {
         // For now, we'll leave underflowing leaves as-is
         // In a full implementation, we could:
         // 1. Try to borrow from siblings
