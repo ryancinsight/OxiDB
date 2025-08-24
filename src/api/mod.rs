@@ -14,3 +14,6 @@ pub use crate::core::common::types::Value;
 pub use crate::core::common::OxidbError;
 pub use crate::core::config::Config;
 
+// Compatibility layer for legacy examples
+pub use connection::Oxidb;
+

@@ -48,10 +48,18 @@ fn ensure_table_exists(db: &mut Oxidb) -> Result<(), Box<dyn Error>> {
             Ok(())
         }
         Err(e) => {
-            // This arm would handle other errors during table creation,
-            // if CREATE TABLE could fail for reasons other than "already exists".
-            eprintln!("Error ensuring table '{}' exists: {:?}", TODO_TABLE, e);
-            Err(Box::new(e))
+            // Handle the case where the table already exists - this is expected
+            match &e {
+                OxidbError::AlreadyExists { name } if name.contains("'todos'") => {
+                    println!("Table '{}' already exists.", TODO_TABLE);
+                    Ok(())
+                }
+                _ => {
+                    // This arm would handle other errors during table creation
+                    eprintln!("Error ensuring table '{}' exists: {:?}", TODO_TABLE, e);
+                    Err(Box::new(e))
+                }
+            }
         }
     }
 }
@@ -121,6 +129,63 @@ fn list_items(db: &mut Oxidb) -> Result<(), Box<dyn Error>> {
     let query = format!("SELECT * FROM {}", TODO_TABLE);
 
     match db.execute_query_str(&query) {
+        Ok(ExecutionResult::RankedResults(ranked_results)) => {
+            if ranked_results.is_empty() {
+                println!("No todo items yet!");
+                return Ok(());
+            }
+
+            let mut items = Vec::new();
+            for (_distance, row_data) in ranked_results {
+                // row_data should contain the columns: [id, description, done]
+                if row_data.len() != 3 {
+                    return Err(Box::new(OxidbError::Internal(
+                        format!("Expected 3 columns, got {}", row_data.len()).into(),
+                    )));
+                }
+
+                let id = match &row_data[0] {
+                    oxidb::core::types::DataType::Integer(i) => *i as u64,
+                    _ => {
+                        return Err(Box::new(OxidbError::Internal(
+                            "Expected id column to be an integer".into(),
+                        )));
+                    }
+                };
+                let description = match &row_data[1] {
+                    oxidb::core::types::DataType::String(s) => s.clone(),
+                    _ => {
+                        return Err(Box::new(OxidbError::Internal(
+                            "Expected description column to be a string".into(),
+                        )));
+                    }
+                };
+                let done = match &row_data[2] {
+                    oxidb::core::types::DataType::Boolean(b) => *b,
+                    _ => {
+                        return Err(Box::new(OxidbError::Internal(
+                            "Expected done column to be a boolean".into(),
+                        )));
+                    }
+                };
+                items.push(TodoItem { id, description, done });
+            }
+
+            if items.is_empty() {
+                println!("No todo items yet!");
+            } else {
+                println!("Todo items:");
+                for item in items {
+                    println!(
+                        "[{}] {} - {}",
+                        if item.done { "x" } else { " " },
+                        item.id,
+                        item.description
+                    );
+                }
+            }
+            Ok(())
+        }
         Ok(ExecutionResult::Values(values)) => {
             if values.is_empty() {
                 println!("No todo items yet!");
@@ -201,7 +266,7 @@ fn list_items(db: &mut Oxidb) -> Result<(), Box<dyn Error>> {
             Ok(())
         }
         Ok(other_result) => {
-            eprintln!("Unexpected result type from list_items query: {:?}", other_result);
+            eprintln!("Unexpected result type from list_items query. Expected RankedResults or Values, got: {:?}", other_result);
             Err(Box::new(OxidbError::Internal("Unexpected result type for list".into())))
         }
         Err(e) => {

@@ -171,6 +171,9 @@ pub use crate::core::common::types::Value;
 // Core module exports for advanced users
 pub use crate::core::common::OxidbError;
 
+// Compatibility layer for legacy examples
+pub use api::Oxidb;
+
 #[cfg(test)]
 mod tests {
     use super::*;

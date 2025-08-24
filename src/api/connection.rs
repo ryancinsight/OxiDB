@@ -717,3 +717,43 @@ mod tests {
         Ok(())
     }
 }
+
+/// Compatibility layer for legacy examples that expect the old `Oxidb` API.
+/// 
+/// This provides a wrapper around the modern `Connection` API to maintain
+/// backward compatibility with existing examples and applications.
+/// 
+/// For new code, prefer using the `Connection` API directly.
+#[derive(Debug)]
+pub struct Oxidb {
+    connection: Connection,
+}
+
+impl Oxidb {
+    /// Create a new database connection at the specified path.
+    /// 
+    /// This is a compatibility method for legacy examples.
+    /// For new code, use `Connection::open()` instead.
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, OxidbError> {
+        let connection = Connection::open(path)?;
+        Ok(Self { connection })
+    }
+
+    /// Execute a SQL query and return the raw execution result.
+    /// 
+    /// This method provides direct access to the `ExecutionResult` enum
+    /// used internally, which some legacy examples expect.
+    pub fn execute_query_str(&mut self, sql: &str) -> Result<crate::core::query::executor::ExecutionResult, OxidbError> {
+        // Parse SQL to Command
+        let command = parse_query(sql)?;
+        self.connection.executor.execute_command(command)
+    }
+
+    /// Persist all changes to durable storage.
+    /// 
+    /// This ensures that all pending changes are written to disk
+    /// and can survive system crashes.
+    pub fn persist(&mut self) -> Result<(), OxidbError> {
+        self.connection.persist()
+    }
+}
