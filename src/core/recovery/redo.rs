@@ -41,12 +41,7 @@ impl RedoPhase {
     pub fn new(dirty_page_table: DirtyPageTable) -> Self {
         let redo_lsn = dirty_page_table.min_recovery_lsn();
 
-        Self {
-            dirty_page_table,
-            buffer_pool: None,
-            redo_lsn,
-            state: RecoveryState::NotStarted,
-        }
+        Self { dirty_page_table, buffer_pool: None, redo_lsn, state: RecoveryState::NotStarted }
     }
 
     /// Sets the buffer pool manager for page operations

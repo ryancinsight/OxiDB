@@ -539,7 +539,7 @@ impl PersistentGraphStore {
         // Read and deserialize data from storage file
         let data = std::fs::read(&self.storage_path)
             .map_err(|e| OxidbError::Storage(format!("Failed to read graph storage: {}", e)))?;
-        
+
         if data.is_empty() {
             return Ok(());
         }
@@ -562,7 +562,7 @@ impl PersistentGraphStore {
             let edge_id = edge.id;
             let from_node = edge.from_node;
             let to_node = edge.to_node;
-            
+
             self.memory_store.edges.insert(edge_id, edge);
             self.memory_store.add_edge_to_node(from_node, edge_id);
             self.memory_store.add_edge_to_node(to_node, edge_id);
@@ -571,7 +571,7 @@ impl PersistentGraphStore {
         // Update ID counters to prevent conflicts
         self.memory_store.next_node_id = serialized_data.next_node_id;
         self.memory_store.next_edge_id = serialized_data.next_edge_id;
-        
+
         self.dirty = false;
         Ok(())
     }
@@ -580,8 +580,9 @@ impl PersistentGraphStore {
     fn save_to_disk(&self) -> Result<(), OxidbError> {
         // Ensure parent directory exists
         if let Some(parent) = self.storage_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| OxidbError::Storage(format!("Failed to create storage directory: {}", e)))?;
+            std::fs::create_dir_all(parent).map_err(|e| {
+                OxidbError::Storage(format!("Failed to create storage directory: {}", e))
+            })?;
         }
 
         // Serialize the graph data
@@ -599,7 +600,7 @@ impl PersistentGraphStore {
         let temp_path = self.storage_path.with_extension("tmp");
         std::fs::write(&temp_path, &data)
             .map_err(|e| OxidbError::Storage(format!("Failed to write temporary file: {}", e)))?;
-        
+
         std::fs::rename(&temp_path, &self.storage_path)
             .map_err(|e| OxidbError::Storage(format!("Failed to rename temporary file: {}", e)))?;
 

@@ -115,7 +115,7 @@ pub trait DurabilityManager: Send + Sync {
 }
 
 /// Main storage manager implementing all SOLID principles
-pub struct EnhancedStorageManager<S, T, L, D>
+pub struct StorageManager<S, T, L, D>
 where
     S: StorageEngine,
     T: TransactionManager,
@@ -129,7 +129,7 @@ where
     active_transactions: HashMap<TransactionId, TransactionContext>,
 }
 
-impl<S, T, L, D> EnhancedStorageManager<S, T, L, D>
+impl<S, T, L, D> StorageManager<S, T, L, D>
 where
     S: StorageEngine,
     T: TransactionManager,
@@ -359,7 +359,7 @@ where
         self
     }
 
-    pub fn build(self) -> Result<EnhancedStorageManager<S, T, L, D>, OxidbError> {
+    pub fn build(self) -> Result<StorageManager<S, T, L, D>, OxidbError> {
         let storage_engine = self.storage_engine
             .ok_or_else(|| OxidbError::Configuration("Storage engine not provided".to_string()))?;
         let transaction_manager = self.transaction_manager
@@ -369,7 +369,7 @@ where
         let durability_manager = self.durability_manager
             .ok_or_else(|| OxidbError::Configuration("Durability manager not provided".to_string()))?;
 
-        Ok(EnhancedStorageManager::new(
+        Ok(StorageManager::new(
             storage_engine,
             transaction_manager,
             lock_manager,

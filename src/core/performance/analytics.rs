@@ -129,7 +129,10 @@ impl PerformanceAnalyzer {
         }
 
         // Check I/O performance
-        if metrics.storage_metrics.average_io_duration > Duration::from_millis(100) {
+        const IO_PERFORMANCE_THRESHOLD_MS: u64 = 100;
+        if metrics.storage_metrics.average_io_duration
+            > Duration::from_millis(IO_PERFORMANCE_THRESHOLD_MS)
+        {
             bottlenecks.push(format!(
                 "Slow I/O operations: {:.2}ms average",
                 metrics.storage_metrics.average_io_duration.as_millis()

@@ -228,7 +228,7 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
         max_depth: usize,
     ) -> Result<Vec<ReasoningPath>, OxidbError> {
         use std::collections::{HashMap, VecDeque};
-        
+
         if start == end {
             // Return direct path for same node
             return Ok(vec![ReasoningPath {
@@ -273,7 +273,7 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
 
                 let mut new_path_nodes = path_nodes.clone();
                 let mut new_path_edges = path_edges.clone();
-                
+
                 if new_path_nodes.is_empty() {
                     new_path_nodes.push(current_node);
                 }
@@ -283,8 +283,9 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
                 // Check if we reached the target
                 if next_node == end {
                     let score = self.calculate_path_score(&new_path_nodes, &new_path_edges);
-                    let description = self.generate_path_description(&new_path_nodes, &new_path_edges);
-                    
+                    let description =
+                        self.generate_path_description(&new_path_nodes, &new_path_edges);
+
                     paths.push(ReasoningPath {
                         nodes: new_path_nodes,
                         edges: new_path_edges,
@@ -300,7 +301,7 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
 
         // Sort paths by score (highest first)
         paths.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-        
+
         Ok(paths)
     }
 
@@ -326,7 +327,9 @@ impl GraphRAGEngineImpl {
 
         for edge_id in edges {
             // Find the relationship with this edge ID
-            if let Some((_key, relationship)) = self.relationships.iter().find(|(_k, r)| &r.id == edge_id) {
+            if let Some((_key, relationship)) =
+                self.relationships.iter().find(|(_k, r)| &r.id == edge_id)
+            {
                 total_weight += relationship.weight;
                 valid_edges += 1;
             }
@@ -338,7 +341,7 @@ impl GraphRAGEngineImpl {
 
         let avg_weight = total_weight / valid_edges as f64;
         let length_penalty = 1.0 / (edges.len() as f64).sqrt();
-        
+
         avg_weight * length_penalty
     }
 
@@ -355,21 +358,25 @@ impl GraphRAGEngineImpl {
             if i > 0 {
                 description.push_str(" → ");
             }
-            
+
             // Find the relationship for this edge ID
-            if let Some((_key, relationship)) = self.relationships.iter().find(|(_k, r)| r.id == edge_id) {
-                let source_name = self.entities.get(&relationship.source)
+            if let Some((_key, relationship)) =
+                self.relationships.iter().find(|(_k, r)| r.id == edge_id)
+            {
+                let source_name = self
+                    .entities
+                    .get(&relationship.source)
                     .map(|e| e.content.as_str())
                     .unwrap_or("Unknown");
-                let target_name = self.entities.get(&relationship.target)
+                let target_name = self
+                    .entities
+                    .get(&relationship.target)
                     .map(|e| e.content.as_str())
                     .unwrap_or("Unknown");
 
                 description.push_str(&format!(
                     "{} --[{}]--> {}",
-                    source_name,
-                    relationship.relationship_type,
-                    target_name
+                    source_name, relationship.relationship_type, target_name
                 ));
             } else {
                 description.push_str("Unknown connection");

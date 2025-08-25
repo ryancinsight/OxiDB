@@ -179,16 +179,16 @@ impl BlinkPageManager {
         if self.free_list_head_page_id != SENTINEL_PAGE_ID {
             // Reuse a page from free list
             let reused_page_id = self.free_list_head_page_id;
-            
+
             // Read the next free page pointer from the current head page
             let next_free_page_id = self.read_free_page_next_pointer(reused_page_id)?;
-            
+
             // Update the free list head to point to the next free page
             self.free_list_head_page_id = next_free_page_id;
-            
+
             // Clear the reused page to ensure clean state
             self.clear_page(reused_page_id)?;
-            
+
             self.write_metadata()?;
             Ok(reused_page_id)
         } else {
@@ -204,10 +204,10 @@ impl BlinkPageManager {
     pub fn deallocate_page_id(&mut self, page_id_to_free: PageId) -> Result<(), BlinkTreeError> {
         // Write the current free list head as the next pointer in the page being freed
         self.write_free_page_next_pointer(page_id_to_free, self.free_list_head_page_id)?;
-        
+
         // Update the free list head to point to the newly freed page
         self.free_list_head_page_id = page_id_to_free;
-        
+
         self.write_metadata()?;
         Ok(())
     }
@@ -282,36 +282,40 @@ impl BlinkPageManager {
         let mut file_guard = self.file_handle.lock().unwrap();
         let offset = METADATA_SIZE + (page_id * PAGE_SIZE);
         file_guard.seek(SeekFrom::Start(offset))?;
-        
+
         let mut buffer = [0u8; 8];
         file_guard.read_exact(&mut buffer)?;
-        
+
         Ok(u64::from_le_bytes(buffer))
     }
-    
+
     /// Write the next free page pointer to a freed page
-    fn write_free_page_next_pointer(&self, page_id: PageId, next_page_id: PageId) -> Result<(), BlinkTreeError> {
+    fn write_free_page_next_pointer(
+        &self,
+        page_id: PageId,
+        next_page_id: PageId,
+    ) -> Result<(), BlinkTreeError> {
         let mut file_guard = self.file_handle.lock().unwrap();
         let offset = METADATA_SIZE + (page_id * PAGE_SIZE);
         file_guard.seek(SeekFrom::Start(offset))?;
-        
+
         let buffer = next_page_id.to_le_bytes();
         file_guard.write_all(&buffer)?;
         file_guard.sync_all()?;
-        
+
         Ok(())
     }
-    
+
     /// Clear a page by writing zeros to it
     fn clear_page(&self, page_id: PageId) -> Result<(), BlinkTreeError> {
         let mut file_guard = self.file_handle.lock().unwrap();
         let offset = METADATA_SIZE + (page_id * PAGE_SIZE);
         file_guard.seek(SeekFrom::Start(offset))?;
-        
+
         let zeros = vec![0u8; PAGE_SIZE as usize];
         file_guard.write_all(&zeros)?;
         file_guard.sync_all()?;
-        
+
         Ok(())
     }
 }
