@@ -9,7 +9,7 @@ use crate::core::vector::similarity::cosine_similarity;
 use std::collections::hash_map;
 
 /// Custom iterator for efficient similarity calculations without intermediate collections
-/// 
+///
 /// This iterator follows zero-cost abstraction principles by computing similarities
 /// on-demand without caching, avoiding allocations and maintaining efficiency.
 pub struct SimilarityIterator<'a> {
@@ -26,15 +26,11 @@ impl<'a> SimilarityIterator<'a> {
         query_embedding: &'a [f32],
         threshold: f64,
     ) -> Self {
-        Self {
-            entities,
-            query_embedding,
-            threshold,
-        }
+        Self { entities, query_embedding, threshold }
     }
 }
 
-impl<'a> Iterator for SimilarityIterator<'a> {
+impl Iterator for SimilarityIterator<'_> {
     type Item = (NodeId, f64);
 
     #[inline]
@@ -106,11 +102,7 @@ where
 {
     #[inline]
     pub fn new(first: I1, second: I2) -> Self {
-        Self {
-            first,
-            second,
-            first_exhausted: false,
-        }
+        Self { first, second, first_exhausted: false }
     }
 }
 
@@ -196,12 +188,7 @@ where
     I: Iterator<Item = (NodeId, f64)>,
 {
     fn new(inner: I, k: usize) -> Self {
-        Self {
-            inner: Some(inner),
-            k,
-            collected: Vec::new(),
-            index: 0,
-        }
+        Self { inner: Some(inner), k, collected: Vec::new(), index: 0 }
     }
 }
 
@@ -216,7 +203,8 @@ where
         if self.collected.is_empty() && self.index == 0 {
             if let Some(inner) = self.inner.take() {
                 self.collected = inner.collect();
-                self.collected.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                self.collected
+                    .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
                 self.collected.truncate(self.k);
             }
         }

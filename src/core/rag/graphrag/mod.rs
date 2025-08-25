@@ -7,15 +7,17 @@
 //! - Interface Segregation: Focused traits for specific capabilities
 //! - Dependency Inversion: Depend on abstractions, not concretions
 
-pub mod engine;
-pub mod types;
-pub mod iterators;
 pub mod builder;
+pub mod engine;
 pub mod factory;
+pub mod iterators;
+pub mod types;
 
 // Re-export key types for convenience
-pub use engine::{GraphRAGEngine, GraphRAGEngineImpl};
-pub use types::{GraphRAGContext, GraphRAGResult, ReasoningPath, KnowledgeNode, KnowledgeEdge, GraphRAGConfig};
-pub use iterators::SimilarityIterator;
 pub use builder::GraphRAGEngineBuilder;
+pub use engine::{GraphRAGEngine, GraphRAGEngineImpl};
 pub use factory::GraphRAGFactory;
+pub use iterators::SimilarityIterator;
+pub use types::{
+    GraphRAGConfig, GraphRAGContext, GraphRAGResult, KnowledgeEdge, KnowledgeNode, ReasoningPath,
+};

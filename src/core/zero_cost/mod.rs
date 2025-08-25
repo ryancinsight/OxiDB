@@ -1,6 +1,6 @@
 // src/core/zero_cost/mod.rs
 //! Zero-cost abstractions and zero-copy operations for OxiDB
-//! 
+//!
 //! This module provides efficient, compile-time optimized abstractions that minimize
 //! runtime overhead while maximizing performance and safety.
 
@@ -8,14 +8,14 @@ use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::ops::Deref;
 
+pub mod borrowed;
 pub mod iterators;
 pub mod views;
-pub mod borrowed;
 
 // Re-export key zero-cost types
+pub use borrowed::*;
 pub use iterators::*;
 pub use views::*;
-pub use borrowed::*;
 
 /// Zero-cost wrapper for borrowed data that prevents unnecessary allocations
 #[derive(Debug)]
@@ -28,12 +28,9 @@ impl<'a, T> ZeroCopyView<'a, T> {
     /// Create a new zero-copy view
     #[inline]
     pub const fn new(data: &'a T) -> Self {
-        Self {
-            data,
-            _phantom: PhantomData,
-        }
+        Self { data, _phantom: PhantomData }
     }
-    
+
     /// Get the underlying data reference
     #[inline]
     pub const fn get(&self) -> &'a T {
@@ -41,16 +38,16 @@ impl<'a, T> ZeroCopyView<'a, T> {
     }
 }
 
-impl<'a, T> Deref for ZeroCopyView<'a, T> {
+impl<T> Deref for ZeroCopyView<'_, T> {
     type Target = T;
-    
+
     #[inline]
     fn deref(&self) -> &Self::Target {
         self.data
     }
 }
 
-impl<'a, T: Clone> ZeroCopyView<'a, T> {
+impl<T: Clone> ZeroCopyView<'_, T> {
     /// Clone the underlying data only when necessary
     #[inline]
     pub fn into_owned(self) -> T {
@@ -80,12 +77,9 @@ impl<const N: usize> InternedString<N> {
             data[i] = bytes[i];
             i += 1;
         }
-        Self {
-            data,
-            len: bytes.len(),
-        }
+        Self { data, len: bytes.len() }
     }
-    
+
     /// Get the string slice
     #[inline]
     pub fn as_str(&self) -> &str {
@@ -110,7 +104,7 @@ impl<'a, T> RowIterator<'a, T> {
 
 impl<'a, T> Iterator for RowIterator<'a, T> {
     type Item = &'a T;
-    
+
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         if self.index < self.data.len() {
@@ -121,7 +115,7 @@ impl<'a, T> Iterator for RowIterator<'a, T> {
             None
         }
     }
-    
+
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let remaining = self.data.len() - self.index;
@@ -129,7 +123,7 @@ impl<'a, T> Iterator for RowIterator<'a, T> {
     }
 }
 
-impl<'a, T> ExactSizeIterator for RowIterator<'a, T> {}
+impl<T> ExactSizeIterator for RowIterator<'_, T> {}
 
 /// Zero-cost column access abstraction
 pub struct ColumnView<'a, T> {
@@ -142,13 +136,9 @@ impl<'a, T> ColumnView<'a, T> {
     /// Create a new column view
     #[inline]
     pub const fn new(data: &'a [T], column_index: usize, row_count: usize) -> Self {
-        Self {
-            data,
-            column_index,
-            row_count,
-        }
+        Self { data, column_index, row_count }
     }
-    
+
     /// Get value at row index
     #[inline]
     pub fn get(&self, row_index: usize) -> Option<&'a T> {
@@ -163,7 +153,7 @@ impl<'a, T> ColumnView<'a, T> {
 /// Compile-time SQL keyword constants
 pub mod sql_keywords {
     use super::InternedString;
-    
+
     pub const SELECT: InternedString<6> = InternedString::new("SELECT");
     pub const INSERT: InternedString<6> = InternedString::new("INSERT");
     pub const UPDATE: InternedString<6> = InternedString::new("UPDATE");
@@ -199,15 +189,8 @@ pub enum ExecutionStep<'a> {
     Scan { table: &'a str },
     Filter { condition: &'a str },
     Project { columns: &'a [&'a str] },
-    Join { 
-        left: &'a str, 
-        right: &'a str, 
-        condition: &'a str 
-    },
-    Aggregate { 
-        functions: &'a [&'a str],
-        group_by: &'a [&'a str] 
-    },
+    Join { left: &'a str, right: &'a str, condition: &'a str },
+    Aggregate { functions: &'a [&'a str], group_by: &'a [&'a str] },
     Sort { columns: &'a [&'a str] },
     Limit { count: usize, offset: usize },
 }
@@ -218,32 +201,35 @@ impl<'a> ExecutionPlan<'a> {
     pub const fn new(steps: &'a [ExecutionStep<'a>]) -> Self {
         Self { steps }
     }
-    
+
     /// Get an iterator over execution steps
     #[inline]
     pub fn steps(&self) -> impl Iterator<Item = &ExecutionStep<'a>> {
         self.steps.iter()
     }
-    
+
     /// Estimate execution cost (zero-cost at compile time)
     #[inline]
     pub fn estimate_cost(&self) -> u64 {
-        self.steps.iter().map(|step| match step {
-            ExecutionStep::Scan { .. } => 100,
-            ExecutionStep::Filter { .. } => 10,
-            ExecutionStep::Project { .. } => 5,
-            ExecutionStep::Join { .. } => 1000,
-            ExecutionStep::Aggregate { .. } => 500,
-            ExecutionStep::Sort { .. } => 200,
-            ExecutionStep::Limit { .. } => 1,
-        }).sum()
+        self.steps
+            .iter()
+            .map(|step| match step {
+                ExecutionStep::Scan { .. } => 100,
+                ExecutionStep::Filter { .. } => 10,
+                ExecutionStep::Project { .. } => 5,
+                ExecutionStep::Join { .. } => 1000,
+                ExecutionStep::Aggregate { .. } => 500,
+                ExecutionStep::Sort { .. } => 200,
+                ExecutionStep::Limit { .. } => 1,
+            })
+            .sum()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_zero_copy_view() {
         let data = vec![1, 2, 3, 4, 5];
@@ -251,13 +237,13 @@ mod tests {
         assert_eq!(view.len(), 5);
         assert_eq!(view[0], 1);
     }
-    
+
     #[test]
     fn test_interned_string() {
         let select = sql_keywords::SELECT;
         assert_eq!(select.as_str(), "SELECT");
     }
-    
+
     #[test]
     fn test_row_iterator() {
         let data = vec![1, 2, 3, 4, 5];
@@ -266,7 +252,7 @@ mod tests {
         assert_eq!(iter.next(), Some(&2));
         assert_eq!(iter.size_hint(), (3, Some(3)));
     }
-    
+
     #[test]
     fn test_execution_plan_cost() {
         let steps = [

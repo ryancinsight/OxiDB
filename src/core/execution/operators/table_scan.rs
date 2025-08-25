@@ -3,7 +3,7 @@ use crate::core::common::OxidbError;
 use crate::core::execution::{ExecutionOperator, Tuple};
 use crate::core::query::commands::Key;
 use crate::core::storage::engine::traits::KeyValueStore;
-use crate::core::types::{DataType, schema::Schema}; // Import JsonSafeMap and Schema
+use crate::core::types::{schema::Schema, DataType}; // Import JsonSafeMap and Schema
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock}; // Added RwLock
 
@@ -69,20 +69,18 @@ impl<S: KeyValueStore<Key, Vec<u8>> + 'static> ExecutionOperator for TableScanOp
                     if let DataType::Map(map_data) = row_data_type {
                         // Create a tuple with column values in schema order
                         let mut tuple = Vec::with_capacity(schema.columns.len());
-                        
+
                         for col_def in &schema.columns {
                             let col_name_bytes = col_def.name.as_bytes();
-                            let value = map_data.0.get(col_name_bytes)
-                                .cloned()
-                                .unwrap_or(DataType::Null);
+                            let value =
+                                map_data.0.get(col_name_bytes).cloned().unwrap_or(DataType::Null);
                             tuple.push(value);
                         }
-                        
+
                         Some(Ok(tuple))
                     } else {
                         Some(Err(OxidbError::Internal(format!(
-                            "Expected DataType::Map for row data, got {:?}",
-                            row_data_type
+                            "Expected DataType::Map for row data, got {row_data_type:?}"
                         ))))
                     }
                 }

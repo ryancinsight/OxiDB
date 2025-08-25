@@ -21,18 +21,16 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             QueryPlanNode::Filter { input, .. } => self.extract_table_name(input),
             QueryPlanNode::Project { input, .. } => self.extract_table_name(input),
             QueryPlanNode::IndexScan { table_name, .. } => Ok(table_name.clone()),
-            QueryPlanNode::NestedLoopJoin { .. } => {
-                Err(OxidbError::SqlParsing("Cannot resolve column names for JOIN queries yet".to_string()))
-            }
-            QueryPlanNode::DeleteNode { .. } => {
-                Err(OxidbError::SqlParsing("Cannot resolve column names for DELETE queries".to_string()))
-            }
-            QueryPlanNode::Aggregate { input, .. } => {
-                self.extract_table_name(input)
-            }
+            QueryPlanNode::NestedLoopJoin { .. } => Err(OxidbError::SqlParsing(
+                "Cannot resolve column names for JOIN queries yet".to_string(),
+            )),
+            QueryPlanNode::DeleteNode { .. } => Err(OxidbError::SqlParsing(
+                "Cannot resolve column names for DELETE queries".to_string(),
+            )),
+            QueryPlanNode::Aggregate { input, .. } => self.extract_table_name(input),
         }
     }
-    
+
     pub(crate) fn build_execution_tree(
         &self,
         plan: QueryPlanNode,
@@ -42,9 +40,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
         match plan {
             QueryPlanNode::TableScan { table_name, alias: _ } => {
                 // Get the table schema
-                let schema = self.get_table_schema(&table_name)?
+                let schema = self
+                    .get_table_schema(&table_name)?
                     .ok_or_else(|| OxidbError::TableNotFound(table_name.clone()))?;
-                
+
                 let operator = TableScanOperator::new(
                     self.store.clone(),
                     table_name,
@@ -73,27 +72,28 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             QueryPlanNode::Filter { input, predicate } => {
                 // First build the input operator
                 let input_operator =
-                    self.build_execution_tree(*input.clone(), snapshot_id, committed_ids.clone())?;
-                
+                    self.build_execution_tree(*input.clone(), snapshot_id, committed_ids)?;
+
                 // Try to extract table name and get schema
                 // If the input is a projection, we need to handle column mapping differently
                 let schema = match &*input {
                     QueryPlanNode::Project { input: table_input, columns } => {
                         // For projections, we need to create a mapped schema
                         let table_name = self.extract_table_name(table_input)?;
-                        let original_schema = self.get_table_schema(&table_name)?
+                        let original_schema = self
+                            .get_table_schema(&table_name)?
                             .ok_or_else(|| OxidbError::TableNotFound(table_name.clone()))?;
-                        
+
                         // Create a new schema with only the projected columns
                         let mut new_columns = Vec::new();
                         for col_name in columns {
-                            if let Some(col_def) = original_schema.columns.iter().find(|c| &c.name == col_name) {
+                            if let Some(col_def) =
+                                original_schema.columns.iter().find(|c| &c.name == col_name)
+                            {
                                 new_columns.push(col_def.clone());
                             }
                         }
-                        Arc::new(crate::core::types::schema::Schema {
-                            columns: new_columns,
-                        })
+                        Arc::new(crate::core::types::schema::Schema { columns: new_columns })
                     }
                     _ => {
                         // For non-projection inputs, use the table schema directly
@@ -102,31 +102,31 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                             .ok_or_else(|| OxidbError::TableNotFound(table_name.clone()))?
                     }
                 };
-                
+
                 let operator = FilterOperator::with_schema(input_operator, predicate, schema);
                 Ok(Box::new(operator))
             }
             QueryPlanNode::Project { input, columns } => {
                 let input_operator =
-                    self.build_execution_tree(*input.clone(), snapshot_id, committed_ids.clone())?;
-                
+                    self.build_execution_tree(*input.clone(), snapshot_id, committed_ids)?;
+
                 let mut column_indices = Vec::new();
                 if columns.len() == 1 && columns[0] == "*" {
                     column_indices = Vec::new(); // ProjectOperator interprets empty as all columns
                 } else {
                     // Try to get the table name from the input plan to resolve column names
                     let table_name = self.extract_table_name(&input)?;
-                    let schema = self.get_table_schema(&table_name)?
+                    let schema = self
+                        .get_table_schema(&table_name)?
                         .ok_or_else(|| OxidbError::TableNotFound(table_name.clone()))?;
-                    
+
                     // Resolve column names to indices
                     for col in columns {
                         if let Some(idx) = schema.get_column_index(&col) {
                             column_indices.push(idx);
                         } else {
                             return Err(OxidbError::SqlParsing(format!(
-                                "Column '{}' not found in table '{}'",
-                                col, table_name
+                                "Column '{col}' not found in table '{table_name}'"
                             )));
                         }
                     }
@@ -172,39 +172,47 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                 );
                 Ok(Box::new(delete_operator))
             }
-            
+
             QueryPlanNode::Aggregate { input, aggregates, group_by } => {
                 // Extract table name for schema lookup
                 let table_name = self.extract_table_name(&input)?;
-                let schema = self.get_table_schema(&table_name)?
+                let schema = self
+                    .get_table_schema(&table_name)?
                     .ok_or_else(|| OxidbError::TableNotFound(table_name.clone()))?;
-                
-                let input_operator = self.build_execution_tree(*input, snapshot_id, committed_ids)?;
-                
+
+                let input_operator =
+                    self.build_execution_tree(*input, snapshot_id, committed_ids)?;
+
                 // Convert optimizer AggregateSpec to execution AggregateSpec
-                let exec_aggregates = aggregates.into_iter().map(|agg| {
-                    let column_index = agg.column.as_ref().and_then(|col_name| {
-                        schema.get_column_index(col_name)
-                    });
-                    
-                    crate::core::execution::operators::aggregate::AggregateSpec {
-                        function: agg.function,
-                        column_index,
-                        alias: agg.alias,
-                    }
-                }).collect();
-                
+                let exec_aggregates = aggregates
+                    .into_iter()
+                    .map(|agg| {
+                        let column_index = agg
+                            .column
+                            .as_ref()
+                            .and_then(|col_name| schema.get_column_index(col_name));
+
+                        crate::core::execution::operators::aggregate::AggregateSpec {
+                            function: agg.function,
+                            column_index,
+                            alias: agg.alias,
+                        }
+                    })
+                    .collect();
+
                 // Convert group_by column names to indices
-                let group_by_indices: Vec<usize> = group_by.iter()
+                let group_by_indices: Vec<usize> = group_by
+                    .iter()
                     .filter_map(|col_name| schema.get_column_index(col_name))
                     .collect();
-                
-                let aggregate_operator = crate::core::execution::operators::aggregate::AggregateOperator::new(
-                    input_operator,
-                    exec_aggregates,
-                    group_by_indices,
-                );
-                
+
+                let aggregate_operator =
+                    crate::core::execution::operators::aggregate::AggregateOperator::new(
+                        input_operator,
+                        exec_aggregates,
+                        group_by_indices,
+                    );
+
                 Ok(Box::new(aggregate_operator))
             }
         }

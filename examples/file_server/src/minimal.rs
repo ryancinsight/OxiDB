@@ -1,10 +1,4 @@
-use axum::{
-    routing::post,
-    Router,
-    Json,
-    response::IntoResponse,
-    http::StatusCode,
-};
+use axum::{http::StatusCode, response::IntoResponse, routing::post, Json, Router};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug)]
@@ -35,12 +29,9 @@ struct LoginResponse {
 
 // This should work
 async fn login(Json(req): Json<LoginRequest>) -> Result<Json<LoginResponse>, AppError> {
-    Ok(Json(LoginResponse {
-        token: format!("token_for_{}", req.username),
-    }))
+    Ok(Json(LoginResponse { token: format!("token_for_{}", req.username) }))
 }
 
 pub fn minimal_routes() -> Router {
-    Router::new()
-        .route("/login", post(login))
+    Router::new().route("/login", post(login))
 }

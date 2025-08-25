@@ -13,7 +13,7 @@ impl fmt::Display for BindError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotImplemented { statement_type } => {
-                write!(f, "Binding not yet implemented for statement: {}", statement_type)
+                write!(f, "Binding not yet implemented for statement: {statement_type}")
             }
         }
     }

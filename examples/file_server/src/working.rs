@@ -18,10 +18,7 @@ impl From<anyhow::Error> for MyError {
 
 impl IntoResponse for MyError {
     fn into_response(self) -> axum::response::Response {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Something went wrong: {}", self.0),
-        )
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("Something went wrong: {}", self.0))
             .into_response()
     }
 }
@@ -38,10 +35,7 @@ pub struct User {
 }
 
 async fn create_user(Json(payload): Json<CreateUser>) -> Result<Json<User>, MyError> {
-    Ok(Json(User {
-        id: 1337,
-        username: payload.username,
-    }))
+    Ok(Json(User { id: 1337, username: payload.username }))
 }
 
 async fn health() -> &'static str {
@@ -49,7 +43,5 @@ async fn health() -> &'static str {
 }
 
 pub fn create_app() -> Router {
-    Router::new()
-        .route("/health", get(health))
-        .route("/users", post(create_user))
+    Router::new().route("/health", get(health)).route("/users", post(create_user))
 }

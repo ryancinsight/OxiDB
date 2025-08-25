@@ -492,7 +492,11 @@ fn test_delete_internal_borrow_from_right_sibling() -> Result<(), OxidbError> {
     match &root_node_after {
         Internal { keys, children, .. } => {
             assert_eq!(keys.as_slice(), &[k("10")], "Root key incorrect");
-            assert_eq!(children.as_slice(), &[page_internal_left, page_internal_right], "Root children incorrect");
+            assert_eq!(
+                children.as_slice(),
+                &[page_internal_left, page_internal_right],
+                "Root children incorrect"
+            );
         }
         _ => panic!("Root not internal"),
     }

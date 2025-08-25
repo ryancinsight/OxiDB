@@ -67,7 +67,7 @@ fn main() -> Result<(), OxidbError> {
     let verify_sql = format!("SELECT * FROM {}", table_name);
     let result = conn.execute(&verify_sql)?;
     println!("✓ Records after rollback: {:?}", result);
-    
+
     match result {
         QueryResult::Data(data) => {
             println!("Record count after rollback: {}", data.row_count());

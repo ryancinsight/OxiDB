@@ -176,10 +176,7 @@ impl VectorTransactionManager {
         let id = entry.id.clone();
 
         // Check if entry already exists for undo log
-        let mut store = self
-            .store
-            .lock()
-            .map_err(lock_error)?;
+        let mut store = self.store.lock().map_err(lock_error)?;
 
         let existing_entry = store.retrieve(&id)?;
         if let Some(existing) = existing_entry {
@@ -211,10 +208,7 @@ impl VectorTransactionManager {
             return Err(OxidbError::Transaction("Transaction is not active".to_string()));
         }
 
-        let mut store = self
-            .store
-            .lock()
-            .map_err(lock_error)?;
+        let mut store = self.store.lock().map_err(lock_error)?;
 
         // Get existing entry for undo log
         let existing_entry = store.retrieve(id)?;
@@ -270,10 +264,7 @@ impl VectorTransactionManager {
             return Err(OxidbError::Transaction("Transaction is not active".to_string()));
         }
 
-        let mut store = self
-            .store
-            .lock()
-            .map_err(lock_error)?;
+        let mut store = self.store.lock().map_err(lock_error)?;
 
         // Apply undo operations in reverse order
         for undo_op in transaction.undo_log.iter().rev() {
@@ -302,10 +293,7 @@ impl VectorTransactionManager {
 
     /// Retrieve a vector (read-only, no transaction needed)
     pub fn retrieve(&self, id: &str) -> Result<Option<VectorEntry>, OxidbError> {
-        let store = self
-            .store
-            .lock()
-            .map_err(lock_error)?;
+        let store = self.store.lock().map_err(lock_error)?;
 
         store.retrieve(id)
     }

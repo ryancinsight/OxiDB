@@ -41,44 +41,48 @@ pub enum OxidbError {
 impl fmt::Display for OxidbError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Io(e) => write!(f, "IO Error: {}", e),
-            Self::Serialization(s) => write!(f, "Serialization Error: {}", s),
-            Self::Deserialization(s) => write!(f, "Deserialization Error: {}", s),
-            Self::Json(e) => write!(f, "JSON Serialization/Deserialization Error: {}", e),
-            Self::Parsing(s) => write!(f, "Parsing Error: {}", s),
-            Self::SqlParsing(s) => write!(f, "SQL Parsing Error: {}", s),
-            Self::Execution(s) => write!(f, "Execution Error: {}", s),
-            Self::Storage(s) => write!(f, "Storage Error: {}", s),
-            Self::Transaction(s) => write!(f, "Transaction Error: {}", s),
-            Self::NotFound(s) => write!(f, "Not Found: {}", s),
+            Self::Io(e) => write!(f, "IO Error: {e}"),
+            Self::Serialization(s) => write!(f, "Serialization Error: {s}"),
+            Self::Deserialization(s) => write!(f, "Deserialization Error: {s}"),
+            Self::Json(e) => write!(f, "JSON Serialization/Deserialization Error: {e}"),
+            Self::Parsing(s) => write!(f, "Parsing Error: {s}"),
+            Self::SqlParsing(s) => write!(f, "SQL Parsing Error: {s}"),
+            Self::Execution(s) => write!(f, "Execution Error: {s}"),
+            Self::Storage(s) => write!(f, "Storage Error: {s}"),
+            Self::Transaction(s) => write!(f, "Transaction Error: {s}"),
+            Self::NotFound(s) => write!(f, "Not Found: {s}"),
             Self::InvalidNodeId => write!(f, "Invalid Node ID"),
-            Self::EntityNotFound(s) => write!(f, "Entity Not Found: {}", s),
-            Self::AlreadyExists { name } => write!(f, "Resource already exists: {}", name),
-            Self::NotImplemented { feature } => write!(f, "Feature not implemented: {}", feature),
-            Self::InvalidInput { message } => write!(f, "Invalid input: {}", message),
-            Self::Index(s) => write!(f, "Index Error: {}", s),
-            Self::Lock(s) => write!(f, "Lock Error: {}", s),
-            Self::LockTimeout(s) => write!(f, "Lock Timeout: {}", s),
-            Self::Internal(s) => write!(f, "Internal Error: {}", s),
-            Self::BufferPool(s) => write!(f, "Buffer Pool Error: {}", s),
-            Self::ConstraintViolation(s) => write!(f, "Constraint Violation: {}", s),
+            Self::EntityNotFound(s) => write!(f, "Entity Not Found: {s}"),
+            Self::AlreadyExists { name } => write!(f, "Resource already exists: {name}"),
+            Self::NotImplemented { feature } => write!(f, "Feature not implemented: {feature}"),
+            Self::InvalidInput { message } => write!(f, "Invalid input: {message}"),
+            Self::Index(s) => write!(f, "Index Error: {s}"),
+            Self::Lock(s) => write!(f, "Lock Error: {s}"),
+            Self::LockTimeout(s) => write!(f, "Lock Timeout: {s}"),
+            Self::Internal(s) => write!(f, "Internal Error: {s}"),
+            Self::BufferPool(s) => write!(f, "Buffer Pool Error: {s}"),
+            Self::ConstraintViolation(s) => write!(f, "Constraint Violation: {s}"),
             Self::VectorDimensionMismatch { dim1, dim2 } => {
-                write!(f, "Vector dimension mismatch: dim1 = {}, dim2 = {}", dim1, dim2)
+                write!(f, "Vector dimension mismatch: dim1 = {dim1}, dim2 = {dim2}")
             }
-            Self::VectorMagnitudeZero => write!(f, "Vector magnitude is zero, cannot compute cosine similarity"),
-            Self::Other(s) => write!(f, "Other: {}", s),
+            Self::VectorMagnitudeZero => {
+                write!(f, "Vector magnitude is zero, cannot compute cosine similarity")
+            }
+            Self::Other(s) => write!(f, "Other: {s}"),
             // Self::TransactionError(s) => write!(f, "Transaction error: {}", s), // Removed deprecated variant
-            Self::TransactionNotFound(s) => write!(f, "Transaction not found: {}", s),
-            Self::DeadlockDetected(s) => write!(f, "Deadlock detected: {}", s),
-            Self::TableNotFound(s) => write!(f, "Table not found: {}", s),
+            Self::TransactionNotFound(s) => write!(f, "Transaction not found: {s}"),
+            Self::DeadlockDetected(s) => write!(f, "Deadlock detected: {s}"),
+            Self::TableNotFound(s) => write!(f, "Table not found: {s}"),
             Self::NoActiveTransaction => write!(f, "No active transaction"),
-            Self::LockConflict { message } => write!(f, "Lock conflict: {}", message),
+            Self::LockConflict { message } => write!(f, "Lock conflict: {message}"),
             Self::LockAcquisitionTimeout { key, current_tx } => {
-                write!(f, "Lock acquisition timeout for key {:?} on transaction {}", key, current_tx)
+                write!(f, "Lock acquisition timeout for key {key:?} on transaction {current_tx}")
             }
-            Self::Configuration(s) => write!(f, "Configuration error: {}", s),
-            Self::Type(s) => write!(f, "Type Error: {}", s),
-            Self::TypeMismatch { expected, found } => write!(f, "Type mismatch: expected {}, found {}", expected, found),
+            Self::Configuration(s) => write!(f, "Configuration error: {s}"),
+            Self::Type(s) => write!(f, "Type Error: {s}"),
+            Self::TypeMismatch { expected, found } => {
+                write!(f, "Type mismatch: expected {expected}, found {found}")
+            }
         }
     }
 }
@@ -140,7 +144,7 @@ impl OxidbError {
     /// This maintains compatibility with existing code
     #[must_use]
     pub fn io_error(message: String) -> Self {
-        use std::io::{Error, ErrorKind};
-        Self::Io(Error::new(ErrorKind::Other, message))
+        use std::io::Error;
+        Self::Io(Error::other(message))
     }
 }

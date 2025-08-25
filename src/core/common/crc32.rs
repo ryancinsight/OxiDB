@@ -1,5 +1,5 @@
 //! Pure Rust CRC32 implementation using only core and alloc
-//! 
+//!
 //! This module provides a CRC32 checksum implementation that replaces
 //! the external crc32fast dependency, following the YAGNI principle
 //! by implementing only what we need for WAL checksums.
@@ -14,11 +14,11 @@ const CRC32_TABLE: [u32; 256] = generate_crc32_table();
 const fn generate_crc32_table() -> [u32; 256] {
     let mut table = [0u32; 256];
     let mut i = 0;
-    
+
     while i < 256 {
         let mut crc = i as u32;
         let mut j = 0;
-        
+
         while j < 8 {
             if crc & 1 == 1 {
                 crc = (crc >> 1) ^ CRC32_POLYNOMIAL;
@@ -27,11 +27,11 @@ const fn generate_crc32_table() -> [u32; 256] {
             }
             j += 1;
         }
-        
+
         table[i] = crc;
         i += 1;
     }
-    
+
     table
 }
 
@@ -51,11 +51,9 @@ impl Hasher {
     /// Create a new CRC32 hasher with initial state
     #[must_use]
     pub const fn new() -> Self {
-        Self {
-            state: 0xFFFF_FFFF,
-        }
+        Self { state: 0xFFFF_FFFF }
     }
-    
+
     /// Update the hash with a byte slice
     pub fn update(&mut self, data: &[u8]) {
         for &byte in data {
@@ -63,13 +61,13 @@ impl Hasher {
             self.state = (self.state >> 8) ^ CRC32_TABLE[table_idx];
         }
     }
-    
+
     /// Finalize the hash and return the checksum
     #[must_use]
     pub const fn finalize(&self) -> u32 {
         !self.state
     }
-    
+
     /// Convenience method to hash data and return checksum in one call
     pub fn hash(data: &[u8]) -> u32 {
         let mut hasher = Self::new();
@@ -94,41 +92,41 @@ pub fn verify(data: &[u8], expected: u32) -> bool {
 mod tests {
     use super::*;
     // use alloc::vec; // Not needed in std environment
-    
+
     #[test]
     fn test_empty_input() {
         assert_eq!(checksum(&[]), 0);
     }
-    
+
     #[test]
     fn test_known_values() {
         // Test vectors from IEEE 802.3 standard
         assert_eq!(checksum(b"123456789"), 0xCBF4_3926);
         assert_eq!(checksum(b"The quick brown fox jumps over the lazy dog"), 0x414F_A339);
     }
-    
+
     #[test]
     fn test_incremental_hashing() {
         let data = b"Hello, World!";
-        
+
         // Hash all at once
         let full_hash = checksum(data);
-        
+
         // Hash incrementally
         let mut hasher = Hasher::new();
         hasher.update(b"Hello");
         hasher.update(b", ");
         hasher.update(b"World!");
         let incremental_hash = hasher.finalize();
-        
+
         assert_eq!(full_hash, incremental_hash);
     }
-    
+
     #[test]
     fn test_verify() {
         let data = b"Test data";
         let checksum = checksum(data);
-        
+
         assert!(verify(data, checksum));
         assert!(!verify(data, checksum + 1));
     }

@@ -94,7 +94,7 @@ impl Iterator for NestedLoopJoinIteratorInternal {
                         joined_tuple.extend(right_tuple.clone());
                         return Some(Ok(joined_tuple));
                     }
-                    Ok(false) => continue,
+                    Ok(false) => {}
                     Err(e) => return Some(Err(e)),
                 }
             }

@@ -1,5 +1,5 @@
 //! IO utility functions following DRY principle
-//! 
+//!
 //! This module provides common IO operations and error handling utilities
 //! to reduce code duplication across the codebase.
 
@@ -24,7 +24,7 @@ pub trait WriteExt: io::Write {
     fn write_all_oxidb(&mut self, buf: &[u8]) -> Result<(), OxidbError> {
         self.write_all(buf).oxidb_io()
     }
-    
+
     /// Flush and convert errors to OxidbError
     fn flush_oxidb(&mut self) -> Result<(), OxidbError> {
         self.flush().oxidb_io()
@@ -47,16 +47,16 @@ impl<R: io::Read + ?Sized> ReadExt for R {}
 mod tests {
     use super::*;
     use std::io::Cursor;
-    
+
     #[test]
     fn test_io_result_ext() {
         let result: io::Result<()> = Ok(());
         assert!(result.oxidb_io().is_ok());
-        
+
         let error: io::Result<()> = Err(io::Error::new(io::ErrorKind::NotFound, "test"));
         assert!(matches!(error.oxidb_io(), Err(OxidbError::Io(_))));
     }
-    
+
     #[test]
     fn test_write_ext() {
         let mut buffer = Vec::new();
@@ -64,7 +64,7 @@ mod tests {
         assert!(buffer.flush_oxidb().is_ok());
         assert_eq!(buffer, b"test");
     }
-    
+
     #[test]
     fn test_read_ext() {
         let mut cursor = Cursor::new(b"test");

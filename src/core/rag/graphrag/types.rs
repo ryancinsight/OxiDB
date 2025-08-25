@@ -4,8 +4,8 @@
 //! following the Single Responsibility Principle by separating data
 //! representation from business logic.
 
-use crate::core::graph::{NodeId, EdgeId};
 use crate::core::common::types::Value;
+use crate::core::graph::{EdgeId, NodeId};
 use crate::core::rag::document::Embedding;
 use std::collections::HashMap;
 
@@ -95,15 +95,9 @@ pub struct GraphRAGConfig {
 
 impl Default for GraphRAGConfig {
     fn default() -> Self {
-        Self {
-            default_similarity_threshold: 0.7,
-            max_traversal_depth: 3,
-            enable_caching: true,
-        }
+        Self { default_similarity_threshold: 0.7, max_traversal_depth: 3, enable_caching: true }
     }
 }
-
-
 
 /// Edge information for graph traversal
 #[allow(dead_code)]

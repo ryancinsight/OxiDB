@@ -1,12 +1,12 @@
 use axum::{
-    extract::{Json, Path, Multipart},
+    extract::{Json, Multipart, Path},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
     Router,
 };
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 // Local models to avoid cross-module issues
@@ -80,9 +80,7 @@ where
 
         // Simple token parsing (in real app, verify JWT)
         if auth_header.starts_with("Bearer ") {
-            Ok(AuthUser {
-                user_id: "demo-user-id".to_string(),
-            })
+            Ok(AuthUser { user_id: "demo-user-id".to_string() })
         } else {
             Err(StatusCode::UNAUTHORIZED)
         }
@@ -118,7 +116,7 @@ impl IntoResponse for ApiError {
             ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized".to_string()),
             ApiError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
         };
-        
+
         (status, Json(serde_json::json!({ "error": message }))).into_response()
     }
 }
@@ -151,7 +149,7 @@ async fn register(Json(req): Json<RegisterRequest>) -> Result<Json<User>, ApiErr
         created_at: Utc::now(),
         updated_at: Utc::now(),
     };
-    
+
     Ok(Json(user))
 }
 
@@ -165,12 +163,9 @@ async fn login(Json(req): Json<LoginRequest>) -> Result<Json<LoginResponse>, Api
         created_at: Utc::now(),
         updated_at: Utc::now(),
     };
-    
-    let response = LoginResponse {
-        token: format!("demo-token-for-{}", req.username),
-        user,
-    };
-    
+
+    let response = LoginResponse { token: format!("demo-token-for-{}", req.username), user };
+
     Ok(Json(response))
 }
 
@@ -184,26 +179,24 @@ async fn get_current_user(auth_user: AuthUser) -> Result<Json<User>, ApiError> {
         created_at: Utc::now(),
         updated_at: Utc::now(),
     };
-    
+
     Ok(Json(user))
 }
 
 async fn list_files(auth_user: AuthUser) -> Result<Json<Vec<File>>, ApiError> {
     // Demo implementation
-    let files = vec![
-        File {
-            id: Uuid::new_v4().to_string(),
-            user_id: auth_user.user_id.clone(),
-            filename: "example.txt".to_string(),
-            original_name: "example.txt".to_string(),
-            mime_type: "text/plain".to_string(),
-            size: 1024,
-            path: "uploads/example.txt".to_string(),
-            uploaded_at: Utc::now(),
-            is_public: false,
-        },
-    ];
-    
+    let files = vec![File {
+        id: Uuid::new_v4().to_string(),
+        user_id: auth_user.user_id.clone(),
+        filename: "example.txt".to_string(),
+        original_name: "example.txt".to_string(),
+        mime_type: "text/plain".to_string(),
+        size: 1024,
+        path: "uploads/example.txt".to_string(),
+        uploaded_at: Utc::now(),
+        is_public: false,
+    }];
+
     Ok(Json(files))
 }
 
@@ -211,19 +204,18 @@ async fn upload_file(
     mut multipart: Multipart,
     auth_user: AuthUser,
 ) -> Result<Json<File>, ApiError> {
-    while let Some(field) = multipart.next_field().await
-        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+    while let Some(field) =
+        multipart.next_field().await.map_err(|e| ApiError::BadRequest(e.to_string()))?
     {
         let name = field.name().unwrap_or("").to_string();
         if name != "file" {
             continue;
         }
-        
+
         let filename = field.file_name().unwrap_or("unknown").to_string();
         let content_type = field.content_type().unwrap_or("application/octet-stream").to_string();
-        let data = field.bytes().await
-            .map_err(|e| ApiError::BadRequest(e.to_string()))?;
-        
+        let data = field.bytes().await.map_err(|e| ApiError::BadRequest(e.to_string()))?;
+
         // Demo: just return a mock file
         let file = File {
             id: Uuid::new_v4().to_string(),
@@ -236,10 +228,10 @@ async fn upload_file(
             uploaded_at: Utc::now(),
             is_public: false,
         };
-        
+
         return Ok(Json(file));
     }
-    
+
     Err(ApiError::BadRequest("No file uploaded".to_string()))
 }
 
@@ -259,6 +251,6 @@ async fn get_file(
         uploaded_at: Utc::now(),
         is_public: false,
     };
-    
+
     Ok(Json(file))
 }

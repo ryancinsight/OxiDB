@@ -1,7 +1,7 @@
 use oxidb::{Connection, OxidbError};
+use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use serde::{Serialize, Deserialize};
 
 /// Real-world scenario tests for Oxidb
 /// Demonstrates practical usage patterns following SOLID, GRASP, and CLEAN principles
@@ -63,35 +63,38 @@ struct DatabaseRepository {
 impl DatabaseRepository {
     fn new() -> Result<Self, OxidbError> {
         let conn = Connection::open_in_memory()?;
-        Ok(Self {
-            connection: Arc::new(Mutex::new(conn)),
-        })
+        Ok(Self { connection: Arc::new(Mutex::new(conn)) })
     }
 
     fn setup_schema(&self) -> Result<(), OxidbError> {
         let mut conn = self.connection.lock().unwrap();
-        
+
         // Users table
-        conn.execute("CREATE TABLE IF NOT EXISTS users (
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY,
             username TEXT UNIQUE NOT NULL,
             email TEXT UNIQUE NOT NULL,
             created_at TEXT NOT NULL,
             is_active BOOLEAN DEFAULT TRUE
-        )")?;
+        )",
+        )?;
 
         // Products table
-        conn.execute("CREATE TABLE IF NOT EXISTS products (
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS products (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
             price REAL NOT NULL CHECK(price >= 0),
             category TEXT NOT NULL,
             stock_quantity INTEGER NOT NULL CHECK(stock_quantity >= 0),
             description TEXT
-        )")?;
+        )",
+        )?;
 
         // Orders table
-        conn.execute("CREATE TABLE IF NOT EXISTS orders (
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY,
             user_id INTEGER NOT NULL,
             product_ids TEXT NOT NULL,
@@ -99,7 +102,8 @@ impl DatabaseRepository {
             status TEXT NOT NULL DEFAULT 'pending',
             created_at TEXT NOT NULL,
             FOREIGN KEY (user_id) REFERENCES users(id)
-        )")?;
+        )",
+        )?;
 
         // Create indexes for performance
         conn.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")?;
@@ -123,7 +127,7 @@ impl UserRepository for DatabaseRepository {
     fn find_user_by_email(&self, email: &str) -> Result<Option<User>, OxidbError> {
         let mut conn = self.connection.lock().unwrap();
         let result = conn.query_all(&format!("SELECT * FROM users WHERE email = '{}'", email))?;
-        
+
         if result.is_empty() {
             Ok(None)
         } else {
@@ -177,8 +181,9 @@ impl ProductRepository for DatabaseRepository {
 
     fn find_products_by_category(&self, category: &str) -> Result<Vec<Product>, OxidbError> {
         let mut conn = self.connection.lock().unwrap();
-        let result = conn.query_all(&format!("SELECT * FROM products WHERE category = '{}'", category))?;
-        
+        let result =
+            conn.query_all(&format!("SELECT * FROM products WHERE category = '{}'", category))?;
+
         let mut products = Vec::new();
         for row in result {
             // Assuming columns: id, name, price, category, stock_quantity, description
@@ -236,8 +241,9 @@ impl OrderRepository for DatabaseRepository {
 
     fn find_orders_by_user(&self, user_id: u64) -> Result<Vec<Order>, OxidbError> {
         let mut conn = self.connection.lock().unwrap();
-        let result = conn.query_all(&format!("SELECT * FROM orders WHERE user_id = {}", user_id))?;
-        
+        let result =
+            conn.query_all(&format!("SELECT * FROM orders WHERE user_id = {}", user_id))?;
+
         let mut orders = Vec::new();
         for row in result {
             // Assuming columns: id, user_id, product_ids, total_amount, status, created_at
@@ -246,7 +252,7 @@ impl OrderRepository for DatabaseRepository {
                 _ => "[]".to_string(),
             };
             let product_ids: Vec<u64> = serde_json::from_str(&product_ids_str).unwrap_or_default();
-            
+
             orders.push(Order {
                 id: match row.get(0) {
                     Some(oxidb::Value::Integer(i)) => *i as u64,
@@ -277,10 +283,7 @@ impl OrderRepository for DatabaseRepository {
 
     fn update_order_status(&self, order_id: u64, status: &str) -> Result<(), OxidbError> {
         let mut conn = self.connection.lock().unwrap();
-        conn.execute(&format!(
-            "UPDATE orders SET status = '{}' WHERE id = {}",
-            status, order_id
-        ))?;
+        conn.execute(&format!("UPDATE orders SET status = '{}' WHERE id = {}", status, order_id))?;
         Ok(())
     }
 }
@@ -294,21 +297,21 @@ struct ECommerceService {
 
 impl ECommerceService {
     fn new(repo: Arc<DatabaseRepository>) -> Self {
-        Self {
-            user_repo: repo.clone(),
-            product_repo: repo.clone(),
-            order_repo: repo,
-        }
+        Self { user_repo: repo.clone(), product_repo: repo.clone(), order_repo: repo }
     }
 
     /// Complex business logic combining multiple operations
     fn process_order(&self, user_email: &str, product_ids: Vec<u64>) -> Result<u64, OxidbError> {
         // Validate user exists and is active
-        let user = self.user_repo.find_user_by_email(user_email)?
+        let user = self
+            .user_repo
+            .find_user_by_email(user_email)?
             .ok_or_else(|| OxidbError::InvalidInput { message: "User not found".to_string() })?;
-        
+
         if !user.is_active {
-            return Err(OxidbError::InvalidInput { message: "User account is inactive".to_string() });
+            return Err(OxidbError::InvalidInput {
+                message: "User account is inactive".to_string(),
+            });
         }
 
         // Calculate total amount and validate stock
@@ -333,9 +336,11 @@ impl ECommerceService {
     }
 
     fn get_user_order_history(&self, user_email: &str) -> Result<Vec<Order>, OxidbError> {
-        let user = self.user_repo.find_user_by_email(user_email)?
+        let user = self
+            .user_repo
+            .find_user_by_email(user_email)?
             .ok_or_else(|| OxidbError::InvalidInput { message: "User not found".to_string() })?;
-        
+
         self.order_repo.find_orders_by_user(user.id)
     }
 }
@@ -345,13 +350,13 @@ fn main() -> Result<(), OxidbError> {
 
     // Test E-commerce Platform Scenario
     run_ecommerce_scenario()?;
-    
+
     // Test User Management Scenario
     run_user_management_scenario()?;
-    
+
     // Test Inventory Management Scenario
     run_inventory_management_scenario()?;
-    
+
     // Test Analytics Scenario
     run_analytics_scenario()?;
 
@@ -361,10 +366,10 @@ fn main() -> Result<(), OxidbError> {
 
 fn run_ecommerce_scenario() -> Result<(), OxidbError> {
     println!("🛒 Testing E-commerce Platform Scenario...");
-    
+
     let repo = Arc::new(DatabaseRepository::new()?);
     repo.setup_schema()?;
-    
+
     let service = ECommerceService::new(repo.clone());
 
     // Create test users
@@ -435,7 +440,7 @@ fn run_ecommerce_scenario() -> Result<(), OxidbError> {
 
 fn run_user_management_scenario() -> Result<(), OxidbError> {
     println!("👥 Testing User Management Scenario...");
-    
+
     let repo = Arc::new(DatabaseRepository::new()?);
     repo.setup_schema()?;
 
@@ -457,7 +462,9 @@ fn run_user_management_scenario() -> Result<(), OxidbError> {
 
         match repo.create_user(&user) {
             Ok(_) if should_succeed => println!("✅ Successfully created user: {}", username),
-            Err(_) if !should_succeed => println!("✅ Correctly rejected invalid user: {}", username),
+            Err(_) if !should_succeed => {
+                println!("✅ Correctly rejected invalid user: {}", username)
+            }
             Ok(_) => println!("❌ Should have rejected invalid user: {}", username),
             Err(e) => println!("❌ Unexpected error for user {}: {:?}", username, e),
         }
@@ -469,7 +476,7 @@ fn run_user_management_scenario() -> Result<(), OxidbError> {
 
 fn run_inventory_management_scenario() -> Result<(), OxidbError> {
     println!("📦 Testing Inventory Management Scenario...");
-    
+
     let repo = Arc::new(DatabaseRepository::new()?);
     repo.setup_schema()?;
 
@@ -507,8 +514,8 @@ fn run_inventory_management_scenario() -> Result<(), OxidbError> {
 
     // Test stock updates
     repo.update_stock(100, 950)?; // Reduce high stock
-    repo.update_stock(101, 0)?;   // Deplete low stock
-    
+    repo.update_stock(101, 0)?; // Deplete low stock
+
     // Test category-based queries
     let test_products = repo.find_products_by_category("Test")?;
     println!("✅ Found {} products in Test category", test_products.len());
@@ -519,13 +526,13 @@ fn run_inventory_management_scenario() -> Result<(), OxidbError> {
 
 fn run_analytics_scenario() -> Result<(), OxidbError> {
     println!("📊 Testing Analytics Scenario...");
-    
+
     let repo = Arc::new(DatabaseRepository::new()?);
     repo.setup_schema()?;
 
     // Create sample data for analytics
     let start_time = Instant::now();
-    
+
     // Bulk insert users
     for i in 1..=100 {
         let user = User {
@@ -570,7 +577,7 @@ trait TestDataGenerator {
     fn generate_test_email(id: u64) -> String {
         format!("test_user_{}@oxidb.test", id)
     }
-    
+
     fn generate_test_username(id: u64) -> String {
         format!("testuser_{}", id)
     }

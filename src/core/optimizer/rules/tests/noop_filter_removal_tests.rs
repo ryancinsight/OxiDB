@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::core::optimizer::{QueryPlanNode, Expression};
     use crate::core::optimizer::rules::apply_noop_filter_removal_rule;
+    use crate::core::optimizer::{Expression, QueryPlanNode};
 
     #[test]
     fn test_noop_filter_removal_removes_true_filters() {
@@ -11,7 +11,7 @@ mod tests {
             op: "=".to_string(),
             right: Box::new(Expression::Literal(crate::core::types::DataType::Integer(1))),
         };
-        
+
         let filter_node = QueryPlanNode::Filter {
             input: Box::new(QueryPlanNode::TableScan {
                 table_name: "test_table".to_string(),
@@ -19,9 +19,9 @@ mod tests {
             }),
             predicate: true_predicate,
         };
-        
+
         let optimized = apply_noop_filter_removal_rule(filter_node);
-        
+
         // The filter should be removed, leaving just the table scan
         match optimized {
             QueryPlanNode::TableScan { table_name, .. } => {
@@ -39,7 +39,7 @@ mod tests {
             op: "=".to_string(),
             right: Box::new(Expression::Literal(crate::core::types::DataType::Integer(5))),
         };
-        
+
         let filter_node = QueryPlanNode::Filter {
             input: Box::new(QueryPlanNode::TableScan {
                 table_name: "test_table".to_string(),
@@ -47,9 +47,9 @@ mod tests {
             }),
             predicate: meaningful_predicate.clone(),
         };
-        
+
         let optimized = apply_noop_filter_removal_rule(filter_node);
-        
+
         // The filter should remain
         match optimized {
             QueryPlanNode::Filter { predicate, .. } => {

@@ -9,7 +9,6 @@
 // The WAL file format consists of length-prefixed bincode-serialized LogRecord entries:
 // [4-byte length (big-endian)][serialized LogRecord][4-byte length][serialized LogRecord]...
 
-
 use std::fs::File;
 use std::io::{BufReader, Error as IoError, ErrorKind as IoErrorKind, Read};
 use std::path::{Path, PathBuf};
@@ -146,8 +145,9 @@ impl WalRecordIterator {
         })?;
 
         // Deserialize the log record
-        let log_record: LogRecord = crate::core::common::bincode_compat::deserialize(&mut record_data.as_slice())
-            .map_err(|e| WalReaderError::Deserialization(e.to_string()))?;
+        let log_record: LogRecord =
+            crate::core::common::bincode_compat::deserialize(&mut record_data.as_slice())
+                .map_err(|e| WalReaderError::Deserialization(e.to_string()))?;
 
         // Validate LSN ordering if enabled
         if self.config.validate_lsn_ordering {

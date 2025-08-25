@@ -140,7 +140,7 @@ pub(super) fn save_data_to_disk(
     let temp_file_path = file_path.with_extension("tmp");
 
     struct TempFileGuard<'a>(&'a PathBuf);
-    impl<'a> Drop for TempFileGuard<'a> {
+    impl Drop for TempFileGuard<'_> {
         fn drop(&mut self) {
             let _ = std::fs::remove_file(self.0);
         }

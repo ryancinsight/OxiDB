@@ -149,9 +149,9 @@ impl BlinkTreeNode {
     #[must_use]
     pub fn can_lend_or_merge(&self, order: usize) -> bool {
         let min_keys = if self.is_leaf() {
-            (order + 1) / 2 // Ceiling division for leaf nodes
+            order.div_ceil(2) // Ceiling division for leaf nodes
         } else {
-            (order - 1 + 1) / 2 // Ceiling division for internal nodes
+            (order - 1).div_ceil(2) // Ceiling division for internal nodes
         };
 
         self.get_keys().len() <= min_keys

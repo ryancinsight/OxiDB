@@ -11,10 +11,10 @@ static DB: OnceLock<DbConnection> = OnceLock::new();
 
 pub async fn init_database(path: &str) -> Result<()> {
     let mut conn = Connection::open(path)?;
-    
+
     // Check if tables already exist by trying to query them
     let tables_exist = conn.execute("SELECT * FROM users LIMIT 1").is_ok();
-    
+
     if !tables_exist {
         // Create users table
         conn.execute(
@@ -27,7 +27,7 @@ pub async fn init_database(path: &str) -> Result<()> {
             updated_at TEXT
         )",
         )?;
-        
+
         // Create files table
         conn.execute(
             "CREATE TABLE files (
@@ -42,7 +42,7 @@ pub async fn init_database(path: &str) -> Result<()> {
             is_public INTEGER
         )",
         )?;
-        
+
         // Create file_shares table for sharing files with specific users
         conn.execute(
             "CREATE TABLE file_shares (
@@ -54,7 +54,7 @@ pub async fn init_database(path: &str) -> Result<()> {
             permissions TEXT
         )",
         )?;
-        
+
         // Create sessions table
         conn.execute(
             "CREATE TABLE sessions (
@@ -69,7 +69,7 @@ pub async fn init_database(path: &str) -> Result<()> {
 
     // Initialize the global OnceLock if not already set
     DB.get_or_init(|| Arc::new(Mutex::new(conn)));
-    
+
     Ok(())
 }
 

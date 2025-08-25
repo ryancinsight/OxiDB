@@ -1,8 +1,8 @@
 // Imports needed for the tests
 use crate::core::query::commands::Command;
 use crate::core::query::sql::ast::{
-    self, AggregateFunction, AstColumnConstraint, AstDataType, AstLiteralValue, ConditionTree, OrderDirection,
-    SelectColumn, Statement,
+    self, AggregateFunction, AstColumnConstraint, AstDataType, AstLiteralValue, ConditionTree,
+    OrderDirection, SelectColumn, Statement,
 };
 use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::parser::SqlParser; // The struct being tested
@@ -40,10 +40,7 @@ fn test_update_empty_set_clause() {
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
     assert!(
-        matches!(
-            result,
-            Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
-        ),
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)),
         "Result was: {:?}",
         result
     );
@@ -64,10 +61,7 @@ fn test_update_missing_value_in_assignment() {
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
     assert!(
-        matches!(
-            result,
-            Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
-        ),
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)),
         "Result was: {:?}",
         result
     );
@@ -111,10 +105,7 @@ fn test_update_trailing_comma_in_assignment_list() {
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
     assert!(
-        matches!(
-            result,
-            Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
-        ),
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)),
         "Result was: {:?}",
         result
     );
@@ -138,10 +129,7 @@ fn test_update_empty_where_clause() {
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
     assert!(
-        matches!(
-            result,
-            Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
-        ),
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)),
         "Result was: {:?}",
         result
     );
@@ -168,10 +156,7 @@ fn test_update_missing_value_in_condition() {
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
     assert!(
-        matches!(
-            result,
-            Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
-        ),
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)),
         "Result was: {:?}",
         result
     );
@@ -1046,10 +1031,7 @@ fn test_select_missing_table_name() {
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
     assert!(
-        matches!(
-            result,
-            Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
-        ),
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)),
         "Result was: {:?}",
         result
     );
@@ -1071,10 +1053,7 @@ fn test_select_empty_where_clause() {
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
     assert!(
-        matches!(
-            result,
-            Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
-        ),
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)),
         "Result was: {:?}",
         result
     );
@@ -1100,10 +1079,7 @@ fn test_select_missing_value_in_condition() {
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
     assert!(
-        matches!(
-            result,
-            Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)
-        ),
+        matches!(result, Err(SqlParseError::UnexpectedToken { .. } | SqlParseError::UnexpectedEOF)),
         "Result was: {:?}",
         result
     );
@@ -2320,7 +2296,7 @@ fn test_parse_count_star() {
     let mut parser = SqlParser::new(tokens);
     let result = parser.parse();
     assert!(result.is_ok());
-    
+
     let statement = result.unwrap();
     match statement {
         Statement::Select(select) => {

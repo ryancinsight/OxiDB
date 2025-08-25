@@ -1,4 +1,3 @@
-
 use std::fs::OpenOptions;
 use std::io::{Error as IoError, ErrorKind as IoErrorKind, Write};
 use std::path::PathBuf;
@@ -114,7 +113,7 @@ impl WalWriter {
             OpenOptions::new().create(true).append(true).open(&self.wal_file_path).map_err(|e| {
                 let error_msg = format!("Failed to open existing WAL file: {e}");
                 eprintln!("[core::wal::writer::WalWriter::flush] {error_msg}");
-                IoError::new(IoErrorKind::Other, error_msg)
+                IoError::other(error_msg)
             })?
         } else {
             // Ensure parent directory exists
@@ -122,20 +121,21 @@ impl WalWriter {
                 std::fs::create_dir_all(parent).map_err(|e| {
                     let error_msg = format!("Failed to create WAL parent directory: {e}");
                     eprintln!("[core::wal::writer::WalWriter::flush] {error_msg}");
-                    IoError::new(IoErrorKind::Other, error_msg)
+                    IoError::other(error_msg)
                 })?;
             }
 
             std::fs::File::create(&self.wal_file_path).map_err(|e| {
                 let error_msg = format!("Failed to create WAL file: {e}");
                 eprintln!("[core::wal::writer::WalWriter::flush] {error_msg}");
-                IoError::new(IoErrorKind::Other, error_msg)
+                IoError::other(error_msg)
             })?
         };
 
         // Write all buffered records with length prefixes
         for record in &self.buffer {
-            let serialized_record = crate::core::common::bincode_compat::serialize_to_vec(record).map_err(|e| {
+            let serialized_record = crate::core::common::bincode_compat::serialize_to_vec(record)
+                .map_err(|e| {
                 IoError::new(
                     IoErrorKind::InvalidData,
                     format!("Log record serialization failed: {e}"),
@@ -194,8 +194,8 @@ impl WalWriter {
     /// - `true` if a periodic flush is due.
     /// - `false` otherwise.
     fn is_periodic_flush_due(&self) -> bool {
-        self.config.flush_interval_ms.map_or(false, |interval_ms| {
-            self.last_flush_time.map_or(true, |last_flush| {
+        self.config.flush_interval_ms.is_some_and(|interval_ms| {
+            self.last_flush_time.is_none_or(|last_flush| {
                 let elapsed_ms = last_flush.elapsed().as_millis();
                 elapsed_ms >= u128::from(interval_ms)
             })
@@ -448,12 +448,14 @@ mod tests {
             let mut record_bytes = vec![0u8; len as usize];
             reader.read_exact(&mut record_bytes)?;
 
-                            let record: LogRecord = crate::core::common::bincode_compat::deserialize(&mut record_bytes.as_slice()).map_err(|e| {
-                IoError::new(
-                    IoErrorKind::InvalidData,
-                    format!("Log record deserialization failed: {}", e),
-                )
-            })?;
+            let record: LogRecord =
+                crate::core::common::bincode_compat::deserialize(&mut record_bytes.as_slice())
+                    .map_err(|e| {
+                        IoError::new(
+                            IoErrorKind::InvalidData,
+                            format!("Log record deserialization failed: {}", e),
+                        )
+                    })?;
             records.push(record);
         }
         Ok(records)

@@ -325,11 +325,7 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
         self.wal_writer.log_entry(entry) // Reverted to log_entry, no separate flush needed as log_entry syncs
     }
 
-    fn gc(
-        &mut self,
-        low_water_mark: u64,
-        committed_ids: &HashSet<u64>,
-    ) -> Result<(), OxidbError> {
+    fn gc(&mut self, low_water_mark: u64, committed_ids: &HashSet<u64>) -> Result<(), OxidbError> {
         // Remove versions that are fully obsolete: both the creator and expirer are committed
         // and the expiring transaction is at or below the low_water_mark.
         let mut keys_to_remove: Vec<Vec<u8>> = Vec::new();
@@ -337,8 +333,10 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
             versions.retain(|v| {
                 match v.expired_tx_id {
                     Some(expirer_tx) => {
-                        let creator_committed = committed_ids.contains(&v.created_tx_id) || v.created_tx_id == 0;
-                        let expirer_committed = committed_ids.contains(&expirer_tx) || expirer_tx == 0;
+                        let creator_committed =
+                            committed_ids.contains(&v.created_tx_id) || v.created_tx_id == 0;
+                        let expirer_committed =
+                            committed_ids.contains(&expirer_tx) || expirer_tx == 0;
                         // Safe to drop if fully committed and expirer is not newer than the lowest active transaction
                         !(creator_committed && expirer_committed && expirer_tx <= low_water_mark)
                     }

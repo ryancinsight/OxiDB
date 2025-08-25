@@ -365,7 +365,7 @@ impl<'a> Tokenizer<'a> {
                             .chars
                             .clone()
                             .nth(1)
-                            .map_or(false, |(_, next_ch)| next_ch.is_ascii_digit())
+                            .is_some_and(|(_, next_ch)| next_ch.is_ascii_digit())
                         {
                             tokens.push(self.read_numeric_literal(idx)?);
                         } else {

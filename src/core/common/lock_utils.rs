@@ -29,29 +29,29 @@ pub fn write_lock_poisoned<T>(_: PoisonError<RwLockWriteGuard<T>>) -> OxidbError
 pub fn write_lock_poisoned_with_context<T>(
     context: &str,
 ) -> impl Fn(PoisonError<RwLockWriteGuard<T>>) -> OxidbError + '_ {
-    move |_| OxidbError::LockTimeout(format!("Failed to acquire write lock: {}", context))
+    move |_| OxidbError::LockTimeout(format!("Failed to acquire write lock: {context}"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::Mutex;
-    
+
     #[test]
     fn test_lock_error_messages() {
         // Create a mutex and poison it
         let mutex = Mutex::new(42);
         let _guard = mutex.lock().unwrap();
-        
+
         // The error messages should be as expected
         // Create a guard by locking the mutex
         let guard = mutex.lock().unwrap();
-        
+
         assert_eq!(
             lock_poisoned::<i32>(PoisonError::new(guard)).to_string(),
             "Lock Timeout: Lock poisoned"
         );
-        
+
         // Lock again for the second test
         let guard2 = mutex.lock().unwrap();
         assert_eq!(

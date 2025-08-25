@@ -5,23 +5,23 @@ fn main() -> Result<(), OxidbError> {
 
     let mut conn = Connection::open_in_memory()?;
     let process_id = std::process::id();
-    
+
     // Test 1: Basic Table Operations
     println!("--- Test 1: Basic Table Operations ---");
     test_basic_table_operations(&mut conn, process_id)?;
-    
+
     // Test 2: Data Types and Constraints
     println!("\n--- Test 2: Data Types and Constraints ---");
     test_data_types_and_constraints(&mut conn, process_id)?;
-    
+
     // Test 3: Advanced Queries
     println!("\n--- Test 3: Advanced Queries ---");
     test_advanced_queries(&mut conn, process_id)?;
-    
+
     // Test 4: Transaction Operations
     println!("\n--- Test 4: Transaction Operations ---");
     test_transaction_operations(&mut conn, process_id)?;
-    
+
     println!("\n🎉 All SQL tests completed successfully! 🎉");
     Ok(())
 }
@@ -42,7 +42,7 @@ fn test_basic_table_operations(conn: &mut Connection, process_id: u32) -> Result
         table_name
     );
     conn.execute(&insert_sql)?;
-    
+
     let insert_sql = format!(
         "INSERT INTO {} (id, name, email, age) VALUES (2, 'Bob', 'bob@example.com', 30)",
         table_name
@@ -73,7 +73,10 @@ fn test_basic_table_operations(conn: &mut Connection, process_id: u32) -> Result
     Ok(())
 }
 
-fn test_data_types_and_constraints(conn: &mut Connection, process_id: u32) -> Result<(), OxidbError> {
+fn test_data_types_and_constraints(
+    conn: &mut Connection,
+    process_id: u32,
+) -> Result<(), OxidbError> {
     let table_name = format!("products_{}", process_id);
     let create_sql = format!(
         "CREATE TABLE {} (id INTEGER PRIMARY KEY, name TEXT, price FLOAT, in_stock BOOLEAN)",
@@ -88,7 +91,7 @@ fn test_data_types_and_constraints(conn: &mut Connection, process_id: u32) -> Re
         table_name
     );
     conn.execute(&insert_sql)?;
-    
+
     let insert_sql = format!(
         "INSERT INTO {} (id, name, price, in_stock) VALUES (2, 'Mouse', 29.99, false)",
         table_name
@@ -160,24 +163,18 @@ fn test_advanced_queries(conn: &mut Connection, process_id: u32) -> Result<(), O
 
 fn test_transaction_operations(conn: &mut Connection, process_id: u32) -> Result<(), OxidbError> {
     let table_name = format!("accounts_{}", process_id);
-    let create_sql = format!(
-        "CREATE TABLE {} (id INTEGER PRIMARY KEY, name TEXT, balance FLOAT)",
-        table_name
-    );
+    let create_sql =
+        format!("CREATE TABLE {} (id INTEGER PRIMARY KEY, name TEXT, balance FLOAT)", table_name);
     conn.execute(&create_sql)?;
     println!("✓ Created accounts table");
 
     // Insert initial accounts
-    let insert_sql = format!(
-        "INSERT INTO {} (id, name, balance) VALUES (1, 'Account A', 1000.0)",
-        table_name
-    );
+    let insert_sql =
+        format!("INSERT INTO {} (id, name, balance) VALUES (1, 'Account A', 1000.0)", table_name);
     conn.execute(&insert_sql)?;
-    
-    let insert_sql = format!(
-        "INSERT INTO {} (id, name, balance) VALUES (2, 'Account B', 500.0)",
-        table_name
-    );
+
+    let insert_sql =
+        format!("INSERT INTO {} (id, name, balance) VALUES (2, 'Account B', 500.0)", table_name);
     conn.execute(&insert_sql)?;
     println!("✓ Created initial accounts");
 
@@ -188,7 +185,7 @@ fn test_transaction_operations(conn: &mut Connection, process_id: u32) -> Result
     // Transfer money
     let update_sql = format!("UPDATE {} SET balance = balance - 100 WHERE id = 1", table_name);
     conn.execute(&update_sql)?;
-    
+
     let update_sql = format!("UPDATE {} SET balance = balance + 100 WHERE id = 2", table_name);
     conn.execute(&update_sql)?;
     println!("✓ Transferred 100 from Account A to Account B");

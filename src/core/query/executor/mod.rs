@@ -1330,7 +1330,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
 
             // Use helper method for storage operation (DRY principle)
             self.store_row_data(primary_key, &row_data)?;
-            
+
             insert_count += 1;
         }
 
@@ -1354,13 +1354,16 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     }
 
     /// Execute an AST statement directly (for aggregate support)
-    pub fn execute_ast_statement(&mut self, statement: crate::core::query::sql::ast::Statement) -> Result<ExecutionResult, OxidbError> {
+    pub fn execute_ast_statement(
+        &mut self,
+        statement: crate::core::query::sql::ast::Statement,
+    ) -> Result<ExecutionResult, OxidbError> {
         match statement {
             crate::core::query::sql::ast::Statement::Select(select_stmt) => {
                 // Get current transaction context
                 let snapshot_id: TransactionId;
                 let committed_ids_vec: Vec<TransactionId>;
-                
+
                 if let Some(active_tx) = self.transaction_manager.get_active_transaction() {
                     snapshot_id = active_tx.id;
                     committed_ids_vec = self.transaction_manager.get_committed_tx_ids_snapshot();
@@ -1371,56 +1374,88 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
                         .unwrap_or(TransactionId(0));
                     committed_ids_vec = self.transaction_manager.get_committed_tx_ids_snapshot();
                 }
-                
-                let committed_ids_u64_set = Arc::new(HashSet::from_iter(committed_ids_vec.iter().map(|&t| t.0)));
-                
+
+                let committed_ids_u64_set =
+                    Arc::new(HashSet::from_iter(committed_ids_vec.iter().map(|&t| t.0)));
+
                 // Build and execute the query plan
-                let ast_statement = crate::core::query::sql::ast::Statement::Select(select_stmt.clone());
+                let ast_statement =
+                    crate::core::query::sql::ast::Statement::Select(select_stmt.clone());
                 let initial_plan = self.optimizer.build_initial_plan(&ast_statement)?;
-                let optimized_plan = self.optimizer.optimize_with_indexes(initial_plan, &self.index_manager)?;
-                
-                let mut execution_tree_root = self.build_execution_tree(optimized_plan, snapshot_id.0, committed_ids_u64_set)?;
+                let optimized_plan =
+                    self.optimizer.optimize_with_indexes(initial_plan, &self.index_manager)?;
+
+                let mut execution_tree_root = self.build_execution_tree(
+                    optimized_plan,
+                    snapshot_id.0,
+                    committed_ids_u64_set,
+                )?;
                 let results_iter = execution_tree_root.execute()?;
-                
+
                 // Collect results
                 let mut rows: Vec<Vec<DataType>> = Vec::new();
                 for tuple_result in results_iter {
                     let tuple = tuple_result?;
                     rows.push(tuple);
                 }
-                
+
                 // Create column names based on the SELECT
-                let columns = select_stmt.columns.iter().map(|col| {
-                    match col {
-                        crate::core::query::sql::ast::SelectColumn::ColumnName(name) => name.clone(),
-                        crate::core::query::sql::ast::SelectColumn::Asterisk => "*".to_string(),
-                        crate::core::query::sql::ast::SelectColumn::AggregateFunction { function, column, alias } => {
-                            if let Some(alias_name) = alias {
-                                alias_name.clone()
-                            } else {
-                                // Generate a default name for the aggregate
-                                let func_name = match function {
-                                    crate::core::query::sql::ast::AggregateFunction::Count => "COUNT",
-                                    crate::core::query::sql::ast::AggregateFunction::Sum => "SUM",
-                                    crate::core::query::sql::ast::AggregateFunction::Avg => "AVG",
-                                    crate::core::query::sql::ast::AggregateFunction::Min => "MIN",
-                                    crate::core::query::sql::ast::AggregateFunction::Max => "MAX",
-                                };
-                                match column.as_ref() {
-                                    crate::core::query::sql::ast::SelectColumn::Asterisk => format!("{}(*)", func_name),
-                                    crate::core::query::sql::ast::SelectColumn::ColumnName(col_name) => format!("{}({})", func_name, col_name),
-                                    _ => format!("{}(?)", func_name),
+                let columns = select_stmt
+                    .columns
+                    .iter()
+                    .map(|col| {
+                        match col {
+                            crate::core::query::sql::ast::SelectColumn::ColumnName(name) => {
+                                name.clone()
+                            }
+                            crate::core::query::sql::ast::SelectColumn::Asterisk => "*".to_string(),
+                            crate::core::query::sql::ast::SelectColumn::AggregateFunction {
+                                function,
+                                column,
+                                alias,
+                            } => {
+                                if let Some(alias_name) = alias {
+                                    alias_name.clone()
+                                } else {
+                                    // Generate a default name for the aggregate
+                                    let func_name = match function {
+                                        crate::core::query::sql::ast::AggregateFunction::Count => {
+                                            "COUNT"
+                                        }
+                                        crate::core::query::sql::ast::AggregateFunction::Sum => {
+                                            "SUM"
+                                        }
+                                        crate::core::query::sql::ast::AggregateFunction::Avg => {
+                                            "AVG"
+                                        }
+                                        crate::core::query::sql::ast::AggregateFunction::Min => {
+                                            "MIN"
+                                        }
+                                        crate::core::query::sql::ast::AggregateFunction::Max => {
+                                            "MAX"
+                                        }
+                                    };
+                                    match column.as_ref() {
+                                        crate::core::query::sql::ast::SelectColumn::Asterisk => {
+                                            format!("{func_name}(*)")
+                                        }
+                                        crate::core::query::sql::ast::SelectColumn::ColumnName(
+                                            col_name,
+                                        ) => format!("{func_name}({col_name})"),
+                                        _ => format!("{func_name}(?)"),
+                                    }
                                 }
                             }
                         }
-                    }
-                }).collect();
-                
+                    })
+                    .collect();
+
                 Ok(ExecutionResult::Query { columns, rows })
             }
             // For non-SELECT statements, convert to Command and use existing logic
             _ => {
-                let command = crate::core::query::sql::translator::translate_ast_to_command(statement)?;
+                let command =
+                    crate::core::query::sql::translator::translate_ast_to_command(statement)?;
                 self.execute_command(command)
             }
         }
@@ -1434,24 +1469,24 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
     ) -> Result<(), OxidbError> {
         // Serialize the data
         let value_bytes = crate::core::common::serialization::serialize_data_type(data)?;
-        
+
         // Get current transaction ID
-        let current_tx_id = self.transaction_manager.current_active_transaction_id()
-            .unwrap_or(TransactionId(0));
-        
+        let current_tx_id =
+            self.transaction_manager.current_active_transaction_id().unwrap_or(TransactionId(0));
+
         // Create transaction for store operation
         let tx_for_store = Transaction::new(current_tx_id);
-        
+
         // Generate LSN
         let new_lsn = self.log_manager.next_lsn();
-        
+
         // Update transaction's prev_lsn if in active transaction
         if current_tx_id != TransactionId(0) {
             if let Some(active_tx_mut) = self.transaction_manager.get_active_transaction_mut() {
                 active_tx_mut.prev_lsn = new_lsn;
             }
         }
-        
+
         // Store the data
         self.store.write().unwrap().put(
             key.clone(),
@@ -1459,12 +1494,12 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> QueryExecutor<S
             &tx_for_store,
             new_lsn,
         )?;
-        
+
         // Update default_value_index
         let mut indexed_values_map = std::collections::HashMap::new();
         indexed_values_map.insert("default_value_index".to_string(), value_bytes);
         self.index_manager.write().unwrap().on_insert_data(&indexed_values_map, &key)?;
-        
+
         Ok(())
     }
 }

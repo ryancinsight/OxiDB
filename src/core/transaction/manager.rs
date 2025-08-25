@@ -91,8 +91,7 @@ impl TransactionManager {
             || self.current_active_transaction_id.is_some()
         {
             // Or handle more gracefully depending on desired behavior for nested/overlapping auto-commits
-            return Err(IoError::new(
-                std::io::ErrorKind::Other,
+            return Err(IoError::other(
                 "Cannot begin specific transaction; another is active or ID exists.",
             ));
         }
@@ -332,9 +331,14 @@ mod tests {
             }
             let mut record_bytes = vec![0u8; len as usize];
             reader.read_exact(&mut record_bytes)?;
-                            let record: LogRecord = crate::core::common::bincode_compat::deserialize(&mut record_bytes.as_slice()).map_err(|e| {
-                IoError::new(IoErrorKind::InvalidData, format!("Deserialization failed: {}", e))
-            })?;
+            let record: LogRecord =
+                crate::core::common::bincode_compat::deserialize(&mut record_bytes.as_slice())
+                    .map_err(|e| {
+                        IoError::new(
+                            IoErrorKind::InvalidData,
+                            format!("Deserialization failed: {}", e),
+                        )
+                    })?;
             records.push(record);
         }
         Ok(records)

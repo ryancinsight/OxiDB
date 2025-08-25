@@ -1,7 +1,7 @@
 use crate::core::common::OxidbError;
 use crate::core::execution::{ExecutionOperator, Tuple};
 use crate::core::optimizer::Expression;
-use crate::core::types::{DataType, schema::Schema};
+use crate::core::types::{schema::Schema, DataType};
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -19,9 +19,13 @@ impl FilterOperator {
     pub fn new(input: Box<dyn ExecutionOperator + Send + Sync>, predicate: Expression) -> Self {
         Self { input, predicate, schema: None }
     }
-    
+
     #[must_use]
-    pub fn with_schema(input: Box<dyn ExecutionOperator + Send + Sync>, predicate: Expression, schema: Arc<Schema>) -> Self {
+    pub fn with_schema(
+        input: Box<dyn ExecutionOperator + Send + Sync>,
+        predicate: Expression,
+        schema: Arc<Schema>,
+    ) -> Self {
         Self { input, predicate, schema: Some(schema) }
     }
 
@@ -155,7 +159,7 @@ impl FilterOperator {
                         return Ok(Cow::Borrowed(&tuple[column_index]));
                     }
                 }
-                
+
                 // If schema is not available or column not found, try parsing as numeric index
                 if let Ok(column_index) = col_name.parse::<usize>() {
                     if column_index >= tuple.len() {
@@ -224,7 +228,11 @@ impl ExecutionOperator for FilterOperator {
         let schema_clone = self.schema.clone();
 
         let iterator = input_iter.filter_map(move |tuple_result| match tuple_result {
-            Ok(tuple) => match Self::static_evaluate_predicate(&tuple, &predicate_clone, schema_clone.as_ref()) {
+            Ok(tuple) => match Self::static_evaluate_predicate(
+                &tuple,
+                &predicate_clone,
+                schema_clone.as_ref(),
+            ) {
                 Ok(true) => Some(Ok(tuple)),
                 Ok(false) => None,
                 Err(e) => Some(Err(e)),

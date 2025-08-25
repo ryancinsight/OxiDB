@@ -1,5 +1,5 @@
 //! MongoDB-Style Document Database Demo
-//! 
+//!
 //! This example demonstrates Oxidb usage patterns familiar to MongoDB developers,
 //! including document storage, JSON queries, and NoSQL-style operations.
 //! Features:
@@ -9,23 +9,23 @@
 //! - Array operations and indexing
 //! - Aggregation pipeline patterns
 
-use oxidb::Connection;
 use oxidb::core::common::OxidbError;
+use oxidb::Connection;
 use serde_json::json;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🍃 MongoDB-Style Document Database Demo");
     println!("{}", "=".repeat(50));
-    
+
     // Initialize database (MongoDB-style connection)
     let mut db = Connection::open("mongodb_style_documents.db")?;
-    
+
     // Set up document collections (tables)
     setup_document_collections(&mut db)?;
-    
+
     // Insert document data
     insert_document_data(&mut db)?;
-    
+
     // Demonstrate document operations
     demonstrate_document_queries(&mut db)?;
     demonstrate_nested_operations(&mut db)?;
@@ -33,28 +33,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     demonstrate_aggregation_pipeline(&mut db)?;
     demonstrate_text_search(&mut db)?;
     demonstrate_geospatial_queries(&mut db)?;
-    
+
     println!("\n✅ MongoDB-style document demo completed successfully!");
     Ok(())
 }
 
 fn setup_document_collections(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n📄 Setting up Document Collections...");
-    
+
     // Clean up existing collections
-    let collections = vec![
-        "users",
-        "products", 
-        "orders",
-        "reviews",
-        "blog_posts",
-        "locations"
-    ];
-    
+    let collections = vec!["users", "products", "orders", "reviews", "blog_posts", "locations"];
+
     for collection in collections {
         let _ = db.execute(&format!("DROP TABLE IF EXISTS {}", collection));
     }
-    
+
     // Users collection (document store)
     let create_users = r#"
         CREATE TABLE users (
@@ -71,7 +64,7 @@ fn setup_document_collections(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     db.execute(create_users)?;
     println!("✓ Created users collection");
-    
+
     // Products collection with nested attributes
     let create_products = r#"
         CREATE TABLE products (
@@ -91,7 +84,7 @@ fn setup_document_collections(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     db.execute(create_products)?;
     println!("✓ Created products collection");
-    
+
     // Orders collection with embedded documents
     let create_orders = r#"
         CREATE TABLE orders (
@@ -109,7 +102,7 @@ fn setup_document_collections(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     db.execute(create_orders)?;
     println!("✓ Created orders collection");
-    
+
     // Reviews collection with ratings and text
     let create_reviews = r#"
         CREATE TABLE reviews (
@@ -127,7 +120,7 @@ fn setup_document_collections(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     db.execute(create_reviews)?;
     println!("✓ Created reviews collection");
-    
+
     // Blog posts collection with rich content
     let create_blog_posts = r#"
         CREATE TABLE blog_posts (
@@ -147,7 +140,7 @@ fn setup_document_collections(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     db.execute(create_blog_posts)?;
     println!("✓ Created blog_posts collection");
-    
+
     // Locations collection for geospatial queries
     let create_locations = r#"
         CREATE TABLE locations (
@@ -164,14 +157,14 @@ fn setup_document_collections(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     db.execute(create_locations)?;
     println!("✓ Created locations collection");
-    
+
     println!("✅ Document collections setup completed!");
     Ok(())
 }
 
 fn insert_document_data(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n📝 Inserting Document Data...");
-    
+
     // Insert users with complex profiles
     println!("👥 Inserting user documents...");
     let users = vec![
@@ -205,7 +198,7 @@ fn insert_document_data(db: &mut Connection) -> Result<(), OxidbError> {
             "loginCount": 156
         }),
         json!({
-            "_id": "user_002", 
+            "_id": "user_002",
             "username": "jane_smith",
             "email": "jane@example.com",
             "profile": {
@@ -257,9 +250,9 @@ fn insert_document_data(db: &mut Connection) -> Result<(), OxidbError> {
             "lastLogin": "2023-11-28T08:30:00Z",
             "isActive": false,
             "loginCount": 23
-        })
+        }),
     ];
-    
+
     for user in users {
         let sql = format!(
             "INSERT INTO users (_id, document) VALUES ('{}', '{}')",
@@ -269,7 +262,7 @@ fn insert_document_data(db: &mut Connection) -> Result<(), OxidbError> {
         db.execute(&sql)?;
     }
     println!("✓ Inserted {} user documents", 3);
-    
+
     // Insert products with nested attributes
     println!("📦 Inserting product documents...");
     let products = vec![
@@ -301,7 +294,7 @@ fn insert_document_data(db: &mut Connection) -> Result<(), OxidbError> {
         json!({
             "_id": "prod_002",
             "name": "iPhone 15 Pro",
-            "category": "Electronics", 
+            "category": "Electronics",
             "subcategory": "Smartphones",
             "brand": "Apple",
             "price": 999.99,
@@ -347,9 +340,9 @@ fn insert_document_data(db: &mut Connection) -> Result<(), OxidbError> {
             },
             "createdAt": "2023-06-01T00:00:00Z",
             "updatedAt": "2023-11-25T09:45:00Z"
-        })
+        }),
     ];
-    
+
     for product in products {
         let sql = format!(
             "INSERT INTO products (_id, document) VALUES ('{}', '{}')",
@@ -359,7 +352,7 @@ fn insert_document_data(db: &mut Connection) -> Result<(), OxidbError> {
         db.execute(&sql)?;
     }
     println!("✓ Inserted {} product documents", 3);
-    
+
     // Insert orders with embedded line items
     println!("🛒 Inserting order documents...");
     let orders = vec![
@@ -403,7 +396,7 @@ fn insert_document_data(db: &mut Connection) -> Result<(), OxidbError> {
         json!({
             "_id": "order_002",
             "userId": "user_002",
-            "orderNumber": "ORD-2023-002", 
+            "orderNumber": "ORD-2023-002",
             "status": "processing",
             "orderDate": "2023-11-15T15:30:00Z",
             "items": [
@@ -428,7 +421,7 @@ fn insert_document_data(db: &mut Connection) -> Result<(), OxidbError> {
                 "address": {
                     "street": "456 Oak Ave",
                     "city": "San Francisco",
-                    "state": "CA", 
+                    "state": "CA",
                     "zipCode": "94102",
                     "country": "USA"
                 }
@@ -441,9 +434,9 @@ fn insert_document_data(db: &mut Connection) -> Result<(), OxidbError> {
             "tax": 104.00,
             "shipping": 9.99,
             "total": 1413.97
-        })
+        }),
     ];
-    
+
     for order in orders {
         let sql = format!(
             "INSERT INTO orders (_id, document) VALUES ('{}', '{}')",
@@ -453,7 +446,7 @@ fn insert_document_data(db: &mut Connection) -> Result<(), OxidbError> {
         db.execute(&sql)?;
     }
     println!("✓ Inserted {} order documents", 2);
-    
+
     // Insert blog posts with rich content
     println!("📝 Inserting blog post documents...");
     let blog_posts = vec![
@@ -486,7 +479,7 @@ fn insert_document_data(db: &mut Connection) -> Result<(), OxidbError> {
             }
         }),
         json!({
-            "_id": "post_002", 
+            "_id": "post_002",
             "title": "Advanced Query Patterns in Document Stores",
             "slug": "advanced-query-patterns-document-stores",
             "author": "jane_smith",
@@ -512,9 +505,9 @@ fn insert_document_data(db: &mut Connection) -> Result<(), OxidbError> {
                 "metaDescription": "Master complex query patterns in document databases",
                 "keywords": ["advanced queries", "document database", "aggregation", "indexing"]
             }
-        })
+        }),
     ];
-    
+
     for post in blog_posts {
         let sql = format!(
             "INSERT INTO blog_posts (_id, document) VALUES ('{}', '{}')",
@@ -524,7 +517,7 @@ fn insert_document_data(db: &mut Connection) -> Result<(), OxidbError> {
         db.execute(&sql)?;
     }
     println!("✓ Inserted {} blog post documents", 2);
-    
+
     println!("✅ Document data insertion completed!");
     Ok(())
 }
@@ -532,7 +525,7 @@ fn insert_document_data(db: &mut Connection) -> Result<(), OxidbError> {
 fn demonstrate_document_queries(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n🔍 Document Query Operations (MongoDB-style)");
     println!("{}", "=".repeat(50));
-    
+
     // Find documents by field values
     println!("\n📋 Basic Document Queries:");
     let basic_query = r#"
@@ -547,7 +540,7 @@ fn demonstrate_document_queries(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     let _result = db.execute(basic_query)?;
     println!("✓ Found active users");
-    
+
     // Query nested documents
     println!("\n🏠 Nested Document Queries:");
     let nested_query = r#"
@@ -561,7 +554,7 @@ fn demonstrate_document_queries(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     let _nested_result = db.execute(nested_query)?;
     println!("✓ Found users in California");
-    
+
     // Query with multiple conditions
     println!("\n🔎 Complex Document Queries:");
     let complex_query = r#"
@@ -579,7 +572,7 @@ fn demonstrate_document_queries(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     let _complex_result = db.execute(complex_query)?;
     println!("✓ Found affordable, in-stock, highly-rated products");
-    
+
     // Query documents by date ranges
     println!("\n📅 Date Range Queries:");
     let date_query = r#"
@@ -595,14 +588,14 @@ fn demonstrate_document_queries(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     let _date_result = db.execute(date_query)?;
     println!("✓ Found recent published blog posts");
-    
+
     Ok(())
 }
 
 fn demonstrate_nested_operations(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n🪆 Nested Document Operations");
     println!("{}", "=".repeat(35));
-    
+
     // Update nested fields
     println!("\n✏️  Updating Nested Fields:");
     let update_nested = r#"
@@ -617,7 +610,7 @@ fn demonstrate_nested_operations(db: &mut Connection) -> Result<(), OxidbError> 
     "#;
     db.execute(update_nested)?;
     println!("✓ Updated user preferences and login info");
-    
+
     // Query updated nested data
     let verify_update = r#"
         SELECT _id,
@@ -630,7 +623,7 @@ fn demonstrate_nested_operations(db: &mut Connection) -> Result<(), OxidbError> 
     "#;
     let _verify_result = db.execute(verify_update)?;
     println!("✓ Verified nested field updates");
-    
+
     // Add new nested objects
     println!("\n➕ Adding Nested Objects:");
     let add_nested = r#"
@@ -652,7 +645,7 @@ fn demonstrate_nested_operations(db: &mut Connection) -> Result<(), OxidbError> 
     "#;
     db.execute(add_nested)?;
     println!("✓ Added avatar and settings objects");
-    
+
     // Query with existence checks
     println!("\n🔍 Existence Queries:");
     let existence_query = r#"
@@ -673,14 +666,14 @@ fn demonstrate_nested_operations(db: &mut Connection) -> Result<(), OxidbError> 
     "#;
     let _existence_result = db.execute(existence_query)?;
     println!("✓ Checked field existence in documents");
-    
+
     Ok(())
 }
 
 fn demonstrate_array_operations(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n📚 Array Operations (MongoDB-style)");
     println!("{}", "=".repeat(40));
-    
+
     // Query arrays with contains
     println!("\n🔍 Array Contains Queries:");
     let array_contains = r#"
@@ -692,7 +685,7 @@ fn demonstrate_array_operations(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     let _contains_result = db.execute(array_contains)?;
     println!("✓ Found users with admin role");
-    
+
     // Query product tags
     println!("\n🏷️  Product Tag Queries:");
     let tag_query = r#"
@@ -707,7 +700,7 @@ fn demonstrate_array_operations(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     let _tag_result = db.execute(tag_query)?;
     println!("✓ Found products with specific tags");
-    
+
     // Array length queries
     println!("\n📏 Array Length Queries:");
     let array_length = r#"
@@ -721,7 +714,7 @@ fn demonstrate_array_operations(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     let _length_result = db.execute(array_length)?;
     println!("✓ Found orders with multiple items");
-    
+
     // Update arrays (add elements)
     println!("\n➕ Array Update Operations:");
     let update_array = r#"
@@ -734,7 +727,7 @@ fn demonstrate_array_operations(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     db.execute(update_array)?;
     println!("✓ Added beta_tester role to user");
-    
+
     // Verify array update
     let verify_array = r#"
         SELECT _id,
@@ -745,14 +738,14 @@ fn demonstrate_array_operations(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     let _verify_array_result = db.execute(verify_array)?;
     println!("✓ Verified array update");
-    
+
     Ok(())
 }
 
 fn demonstrate_aggregation_pipeline(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n🔄 Aggregation Pipeline (MongoDB-style)");
     println!("{}", "=".repeat(45));
-    
+
     // Group and aggregate user data
     println!("\n👥 User Analytics:");
     let user_analytics = r#"
@@ -781,7 +774,7 @@ fn demonstrate_aggregation_pipeline(db: &mut Connection) -> Result<(), OxidbErro
     "#;
     let _user_result = db.execute(user_analytics)?;
     println!("✓ Generated user analytics by location");
-    
+
     // Product category analysis
     println!("\n📦 Product Category Analysis:");
     let product_analytics = r#"
@@ -811,7 +804,7 @@ fn demonstrate_aggregation_pipeline(db: &mut Connection) -> Result<(), OxidbErro
     "#;
     let _product_result = db.execute(product_analytics)?;
     println!("✓ Generated product analytics by category");
-    
+
     // Order analysis with item details
     println!("\n🛒 Order Analysis:");
     let order_analytics = r#"
@@ -841,7 +834,7 @@ fn demonstrate_aggregation_pipeline(db: &mut Connection) -> Result<(), OxidbErro
     "#;
     let _order_result = db.execute(order_analytics)?;
     println!("✓ Generated order analytics by status and shipping");
-    
+
     // Blog post engagement metrics
     println!("\n📝 Content Analytics:");
     let content_analytics = r#"
@@ -878,14 +871,14 @@ fn demonstrate_aggregation_pipeline(db: &mut Connection) -> Result<(), OxidbErro
     "#;
     let _content_result = db.execute(content_analytics)?;
     println!("✓ Generated content engagement analytics");
-    
+
     Ok(())
 }
 
 fn demonstrate_text_search(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n🔎 Text Search Operations");
     println!("{}", "=".repeat(30));
-    
+
     // Full-text search in blog posts
     println!("\n📝 Blog Post Search:");
     let text_search = r#"
@@ -902,7 +895,7 @@ fn demonstrate_text_search(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     let _search_result = db.execute(text_search)?;
     println!("✓ Performed text search in blog posts");
-    
+
     // Product search with multiple criteria
     println!("\n🛍️  Product Search:");
     let product_search = r#"
@@ -919,7 +912,7 @@ fn demonstrate_text_search(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     let _product_search_result = db.execute(product_search)?;
     println!("✓ Performed product search with filters");
-    
+
     // User search by profile data
     println!("\n👤 User Profile Search:");
     let user_search = r#"
@@ -937,14 +930,14 @@ fn demonstrate_text_search(db: &mut Connection) -> Result<(), OxidbError> {
     "#;
     let _user_search_result = db.execute(user_search)?;
     println!("✓ Performed user profile search");
-    
+
     Ok(())
 }
 
 fn demonstrate_geospatial_queries(db: &mut Connection) -> Result<(), OxidbError> {
     println!("\n🌍 Geospatial Operations");
     println!("{}", "=".repeat(25));
-    
+
     // Insert location data
     println!("\n📍 Inserting Location Data:");
     let locations = vec![
@@ -965,7 +958,7 @@ fn demonstrate_geospatial_queries(db: &mut Connection) -> Result<(), OxidbError>
             "rating": 4.7
         }),
         json!({
-            "_id": "loc_002", 
+            "_id": "loc_002",
             "name": "Golden Gate Bridge",
             "type": "landmark",
             "coordinates": {
@@ -983,21 +976,21 @@ fn demonstrate_geospatial_queries(db: &mut Connection) -> Result<(), OxidbError>
         json!({
             "_id": "loc_003",
             "name": "Times Square",
-            "type": "landmark", 
+            "type": "landmark",
             "coordinates": {
                 "lat": 40.758896,
                 "lng": -73.985130
             },
             "address": {
                 "city": "New York",
-                "state": "NY", 
+                "state": "NY",
                 "country": "USA"
             },
             "amenities": ["shopping", "restaurants", "theater"],
             "rating": 4.2
-        })
+        }),
     ];
-    
+
     for location in locations {
         let sql = format!(
             "INSERT INTO locations (_id, document) VALUES ('{}', '{}')",
@@ -1007,7 +1000,7 @@ fn demonstrate_geospatial_queries(db: &mut Connection) -> Result<(), OxidbError>
         db.execute(&sql)?;
     }
     println!("✓ Inserted {} location documents", 3);
-    
+
     // Distance calculations (simplified)
     println!("\n📏 Distance-based Queries:");
     let distance_query = r#"
@@ -1036,7 +1029,7 @@ fn demonstrate_geospatial_queries(db: &mut Connection) -> Result<(), OxidbError>
     "#;
     let _distance_result = db.execute(distance_query)?;
     println!("✓ Calculated distances from Times Square");
-    
+
     // Location queries by type and rating
     println!("\n🏛️  Location Filtering:");
     let location_filter = r#"
@@ -1053,7 +1046,7 @@ fn demonstrate_geospatial_queries(db: &mut Connection) -> Result<(), OxidbError>
     "#;
     let _filter_result = db.execute(location_filter)?;
     println!("✓ Found high-rated landmarks");
-    
+
     // Amenity-based search
     println!("\n🎯 Amenity Search:");
     let amenity_search = r#"
@@ -1069,7 +1062,7 @@ fn demonstrate_geospatial_queries(db: &mut Connection) -> Result<(), OxidbError>
     "#;
     let _amenity_result = db.execute(amenity_search)?;
     println!("✓ Found locations with specific amenities");
-    
+
     println!("\n🎯 Document Database Summary:");
     println!("✓ Document storage with JSON fields");
     println!("✓ Nested document queries and updates");
@@ -1078,6 +1071,6 @@ fn demonstrate_geospatial_queries(db: &mut Connection) -> Result<(), OxidbError>
     println!("✓ Full-text search capabilities");
     println!("✓ Geospatial data handling");
     println!("✓ Complex document relationships");
-    
+
     Ok(())
 }

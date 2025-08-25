@@ -56,11 +56,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                                 "Column count does not match value count for INSERT.".to_string(),
                             ));
                         }
-                        for (col_name, value) in insert_column_names.iter().zip(row_values_to_insert.iter()) {
-                            row_map_data.insert(
-                                col_name.as_bytes().to_vec(),
-                                value.clone(),
-                            );
+                        for (col_name, value) in
+                            insert_column_names.iter().zip(row_values_to_insert.iter())
+                        {
+                            row_map_data.insert(col_name.as_bytes().to_vec(), value.clone());
                         }
                     } else {
                         if schema.columns.len() != row_values_to_insert.len() {
@@ -68,11 +67,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                                 "Column count does not match value count for INSERT (schema order).".to_string()
                             ));
                         }
-                        for (col_def, value) in schema.columns.iter().zip(row_values_to_insert.iter()) {
-                            row_map_data.insert(
-                                col_def.name.as_bytes().to_vec(),
-                                value.clone(),
-                            );
+                        for (col_def, value) in
+                            schema.columns.iter().zip(row_values_to_insert.iter())
+                        {
+                            row_map_data.insert(col_def.name.as_bytes().to_vec(), value.clone());
                         }
                     }
 

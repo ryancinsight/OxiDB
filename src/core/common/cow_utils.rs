@@ -226,7 +226,8 @@ impl CowUtils {
             DataType::RawBytes(bytes) => Cow::Owned(String::from_utf8_lossy(bytes).into_owned()),
             DataType::Vector(vec) => Cow::Owned(format!(
                 "[{}]",
-                vec.0.data
+                vec.0
+                    .data
                     .iter()
                     .map(std::string::ToString::to_string)
                     .collect::<Vec<_>>()
@@ -249,7 +250,11 @@ impl CowUtils {
             (DataType::RawBytes(a), DataType::RawBytes(b)) => a == b,
             (DataType::Vector(a), DataType::Vector(b)) => {
                 a.0.data.len() == b.0.data.len()
-                    && a.0.data.iter().zip(b.0.data.iter()).all(|(x, y)| (x - y).abs() < f32::EPSILON)
+                    && a.0
+                        .data
+                        .iter()
+                        .zip(b.0.data.iter())
+                        .all(|(x, y)| (x - y).abs() < f32::EPSILON)
             }
             _ => false,
         }

@@ -1,6 +1,6 @@
 #![cfg(feature = "legacy_examples")]
 //! SQL Compatibility Demo
-//! 
+//!
 //! This example demonstrates Oxidb's SQL compatibility with PostgreSQL and MySQL-like syntax.
 //! It shows various SQL features including:
 //! - DDL (Data Definition Language): CREATE, ALTER, DROP

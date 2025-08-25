@@ -23,11 +23,7 @@ impl AggregateOperator {
         aggregates: Vec<AggregateSpec>,
         group_by_indices: Vec<usize>,
     ) -> Self {
-        Self {
-            input,
-            aggregates,
-            group_by_indices,
-        }
+        Self { input, aggregates, group_by_indices }
     }
 }
 
@@ -39,18 +35,19 @@ impl ExecutionOperator for AggregateOperator {
         let aggregates = self.aggregates.clone();
         // Avoid cloning by using reference to group_by_indices
         let group_by_indices = &self.group_by_indices;
-        
+
         // Collect all rows to compute aggregates (unavoidable for aggregate operations)
         let rows: Result<Vec<Tuple>, OxidbError> = input_iter.collect();
         let rows = rows?;
-        
+
         if group_by_indices.is_empty() {
             // No GROUP BY - single result row
             let result = compute_aggregates_no_group(&rows, &aggregates)?;
             Ok(Box::new(std::iter::once(Ok(result))))
         } else {
             // GROUP BY - group rows and compute aggregates per group
-            let grouped_results = compute_aggregates_with_group(&rows, &aggregates, &group_by_indices)?;
+            let grouped_results =
+                compute_aggregates_with_group(&rows, &aggregates, group_by_indices)?;
             Ok(Box::new(grouped_results.into_iter().map(Ok)))
         }
     }
@@ -61,7 +58,7 @@ fn compute_aggregates_no_group(
     aggregates: &[AggregateSpec],
 ) -> Result<Tuple, OxidbError> {
     let mut result = Vec::new();
-    
+
     for agg in aggregates {
         let value = match agg.function {
             AggregateFunction::Count => {
@@ -71,11 +68,10 @@ fn compute_aggregates_no_group(
                 } else {
                     // COUNT(column) - count non-null values
                     let col_idx = agg.column_index.unwrap();
-                    let count = rows.iter()
+                    let count = rows
+                        .iter()
                         .filter(|row| {
-                            row.get(col_idx)
-                                .map(|v| !matches!(v, DataType::Null))
-                                .unwrap_or(false)
+                            row.get(col_idx).is_some_and(|v| !matches!(v, DataType::Null))
                         })
                         .count();
                     DataType::Integer(count as i64)
@@ -83,7 +79,8 @@ fn compute_aggregates_no_group(
             }
             AggregateFunction::Sum => {
                 if let Some(col_idx) = agg.column_index {
-                    let (int_sum, float_sum) = rows.iter()
+                    let (int_sum, float_sum) = rows
+                        .iter()
                         .filter_map(|row| row.get(col_idx))
                         .try_fold((0i64, 0.0f64), |(int_acc, float_acc), val| match val {
                             DataType::Integer(i) => Ok((int_acc + *i, float_acc)),
@@ -94,7 +91,9 @@ fn compute_aggregates_no_group(
                     if float_sum == 0.0 {
                         DataType::Integer(int_sum)
                     } else {
-                        DataType::Float(crate::core::types::OrderedFloat(float_sum + int_sum as f64))
+                        DataType::Float(crate::core::types::OrderedFloat(
+                            float_sum + int_sum as f64,
+                        ))
                     }
                 } else {
                     return Err(OxidbError::Execution("SUM requires a column".to_string()));
@@ -102,14 +101,15 @@ fn compute_aggregates_no_group(
             }
             AggregateFunction::Avg => {
                 if let Some(col_idx) = agg.column_index {
-                    let (sum, count) = rows.iter()
-                        .filter_map(|row| row.get(col_idx))
-                        .try_fold((0.0f64, 0usize), |(sum, count), val| match val {
+                    let (sum, count) = rows.iter().filter_map(|row| row.get(col_idx)).try_fold(
+                        (0.0f64, 0usize),
+                        |(sum, count), val| match val {
                             DataType::Integer(i) => Ok((sum + *i as f64, count + 1)),
                             DataType::Float(f) => Ok((sum + f.0, count + 1)),
                             DataType::Null => Ok((sum, count)),
                             _ => Err(OxidbError::Type("AVG requires numeric values".to_string())),
-                        })?;
+                        },
+                    )?;
                     if count > 0 {
                         DataType::Float(crate::core::types::OrderedFloat(sum / count as f64))
                     } else {
@@ -166,7 +166,7 @@ fn compute_aggregates_no_group(
         };
         result.push(value);
     }
-    
+
     Ok(result)
 }
 
@@ -177,26 +177,25 @@ fn compute_aggregates_with_group(
 ) -> Result<Vec<Tuple>, OxidbError> {
     // Group rows by the group_by columns
     let mut groups: HashMap<Vec<DataType>, Vec<&Tuple>> = HashMap::new();
-    
+
     for row in rows {
-        let key: Vec<DataType> = group_by_indices.iter()
-            .filter_map(|&idx| row.get(idx).cloned())
-            .collect();
+        let key: Vec<DataType> =
+            group_by_indices.iter().filter_map(|&idx| row.get(idx).cloned()).collect();
         groups.entry(key).or_default().push(row);
     }
-    
+
     // Compute aggregates for each group
     let mut results = Vec::new();
     for (group_key, group_rows) in groups {
         let mut result_row = group_key;
-        
+
         // Use iterator to avoid unnecessary cloning when possible
         let group_rows_owned: Vec<Tuple> = group_rows.into_iter().cloned().collect();
         let agg_values = compute_aggregates_no_group(&group_rows_owned, aggregates)?;
-        
+
         result_row.extend(agg_values);
         results.push(result_row);
     }
-    
+
     Ok(results)
 }
