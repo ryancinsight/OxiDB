@@ -175,21 +175,26 @@ impl BlinkPageManager {
 
     /// Allocate a new page ID
     pub fn allocate_new_page_id(&mut self) -> Result<PageId, BlinkTreeError> {
-        // TODO: Implement free list management for better page recycling
-        // For now, just use next_available_page_id
-
+        // Check if we have pages available in the free list
         if self.free_list_head_page_id != SENTINEL_PAGE_ID {
-            // Reuse a page from free list (simplified implementation)
+            // Reuse a page from free list
             let reused_page_id = self.free_list_head_page_id;
-            // In a full implementation, we would read the next free page from the freed page
-            // For now, just reset the free list head
-            self.free_list_head_page_id = SENTINEL_PAGE_ID;
+            
+            // Read the next free page pointer from the current head page
+            let next_free_page_id = self.read_free_page_next_pointer(reused_page_id)?;
+            
+            // Update the free list head to point to the next free page
+            self.free_list_head_page_id = next_free_page_id;
+            
+            // Clear the reused page to ensure clean state
+            self.clear_page(reused_page_id)?;
+            
             self.write_metadata()?;
             Ok(reused_page_id)
         } else {
-            // Allocate new page
+            // Allocate new page from the end of the file
             let new_page_id = self.next_available_page_id;
-            self.next_available_page_id += 1;
+            self.next_available_page_id = self.next_available_page_id.saturating_add(1);
             self.write_metadata()?;
             Ok(new_page_id)
         }
@@ -197,15 +202,12 @@ impl BlinkPageManager {
 
     /// Deallocate a page ID (add to free list)
     pub fn deallocate_page_id(&mut self, page_id_to_free: PageId) -> Result<(), BlinkTreeError> {
-        // Simplified free list implementation
-        // In a full implementation, we would write the current free_list_head to the freed page
-        // and then update free_list_head to point to the freed page
-
-        if self.free_list_head_page_id == SENTINEL_PAGE_ID {
-            self.free_list_head_page_id = page_id_to_free;
-        }
-        // For now, we don't chain freed pages together
-
+        // Write the current free list head as the next pointer in the page being freed
+        self.write_free_page_next_pointer(page_id_to_free, self.free_list_head_page_id)?;
+        
+        // Update the free list head to point to the newly freed page
+        self.free_list_head_page_id = page_id_to_free;
+        
         self.write_metadata()?;
         Ok(())
     }
@@ -273,5 +275,43 @@ impl BlinkPageManager {
     pub fn sync_all_files(&self) -> Result<(), BlinkTreeError> {
         let file_guard = self.file_handle.lock().unwrap();
         file_guard.sync_all().map_err(BlinkTreeError::Io)
+    }
+
+    /// Read the next free page pointer from a freed page
+    fn read_free_page_next_pointer(&self, page_id: PageId) -> Result<PageId, BlinkTreeError> {
+        let mut file_guard = self.file_handle.lock().unwrap();
+        let offset = METADATA_SIZE + (page_id * PAGE_SIZE);
+        file_guard.seek(SeekFrom::Start(offset))?;
+        
+        let mut buffer = [0u8; 8];
+        file_guard.read_exact(&mut buffer)?;
+        
+        Ok(u64::from_le_bytes(buffer))
+    }
+    
+    /// Write the next free page pointer to a freed page
+    fn write_free_page_next_pointer(&self, page_id: PageId, next_page_id: PageId) -> Result<(), BlinkTreeError> {
+        let mut file_guard = self.file_handle.lock().unwrap();
+        let offset = METADATA_SIZE + (page_id * PAGE_SIZE);
+        file_guard.seek(SeekFrom::Start(offset))?;
+        
+        let buffer = next_page_id.to_le_bytes();
+        file_guard.write_all(&buffer)?;
+        file_guard.sync_all()?;
+        
+        Ok(())
+    }
+    
+    /// Clear a page by writing zeros to it
+    fn clear_page(&self, page_id: PageId) -> Result<(), BlinkTreeError> {
+        let mut file_guard = self.file_handle.lock().unwrap();
+        let offset = METADATA_SIZE + (page_id * PAGE_SIZE);
+        file_guard.seek(SeekFrom::Start(offset))?;
+        
+        let zeros = vec![0u8; PAGE_SIZE as usize];
+        file_guard.write_all(&zeros)?;
+        file_guard.sync_all()?;
+        
+        Ok(())
     }
 }

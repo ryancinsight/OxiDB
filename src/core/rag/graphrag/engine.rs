@@ -6,7 +6,7 @@ use super::types::{
     GraphRAGConfig, GraphRAGContext, GraphRAGResult, KnowledgeEdge, KnowledgeNode, ReasoningPath,
 };
 use crate::core::common::OxidbError;
-use crate::core::graph::{GraphStore, NodeId};
+use crate::core::graph::{EdgeId, GraphStore, NodeId};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -223,13 +223,85 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
 
     async fn get_reasoning_paths(
         &self,
-        _start: NodeId,
-        _end: NodeId,
-        _max_depth: usize,
+        start: NodeId,
+        end: NodeId,
+        max_depth: usize,
     ) -> Result<Vec<ReasoningPath>, OxidbError> {
-        // TODO: Implement path finding algorithm
-        // For now, return empty paths
-        Ok(Vec::new())
+        use std::collections::{HashMap, VecDeque};
+        
+        if start == end {
+            // Return direct path for same node
+            return Ok(vec![ReasoningPath {
+                nodes: vec![start],
+                edges: Vec::new(),
+                score: 1.0,
+                description: "Direct path to same node".to_string(),
+            }]);
+        }
+
+        let mut queue = VecDeque::new();
+        let mut visited = HashMap::new();
+        let mut paths = Vec::new();
+
+        // Initialize with starting node
+        queue.push_back((start, Vec::new(), Vec::new(), 0));
+        visited.insert(start, 0);
+
+        while let Some((current_node, path_nodes, path_edges, depth)) = queue.pop_front() {
+            if depth >= max_depth {
+                continue;
+            }
+
+            // Check relationships from current node
+            for ((source, target), relationship) in &self.relationships {
+                let next_node = if *source == current_node {
+                    *target
+                } else if *target == current_node {
+                    *source
+                } else {
+                    continue;
+                };
+
+                // Skip if we've already visited this node at a shorter or equal depth
+                if let Some(&previous_depth) = visited.get(&next_node) {
+                    if previous_depth <= depth + 1 {
+                        continue;
+                    }
+                }
+
+                visited.insert(next_node, depth + 1);
+
+                let mut new_path_nodes = path_nodes.clone();
+                let mut new_path_edges = path_edges.clone();
+                
+                if new_path_nodes.is_empty() {
+                    new_path_nodes.push(current_node);
+                }
+                new_path_nodes.push(next_node);
+                new_path_edges.push(relationship.id); // Store EdgeId instead of KnowledgeEdge
+
+                // Check if we reached the target
+                if next_node == end {
+                    let score = self.calculate_path_score(&new_path_nodes, &new_path_edges);
+                    let description = self.generate_path_description(&new_path_nodes, &new_path_edges);
+                    
+                    paths.push(ReasoningPath {
+                        nodes: new_path_nodes,
+                        edges: new_path_edges,
+                        score,
+                        description,
+                    });
+                } else {
+                    // Continue searching from this node
+                    queue.push_back((next_node, new_path_nodes, new_path_edges, depth + 1));
+                }
+            }
+        }
+
+        // Sort paths by score (highest first)
+        paths.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        
+        Ok(paths)
     }
 
     async fn clear(&mut self) -> Result<(), OxidbError> {
@@ -237,5 +309,73 @@ impl GraphRAGEngine for GraphRAGEngineImpl {
         self.entities.clear();
         self.relationships.clear();
         Ok(())
+    }
+}
+
+impl GraphRAGEngineImpl {
+    /// Calculate score for a reasoning path based on path length and edge weights
+    fn calculate_path_score(&self, _nodes: &[NodeId], edges: &[EdgeId]) -> f64 {
+        if edges.is_empty() {
+            return 1.0;
+        }
+
+        // Calculate score based on path length (shorter paths get higher scores)
+        // and average edge weights
+        let mut total_weight = 0.0;
+        let mut valid_edges = 0;
+
+        for edge_id in edges {
+            // Find the relationship with this edge ID
+            if let Some((_key, relationship)) = self.relationships.iter().find(|(_k, r)| &r.id == edge_id) {
+                total_weight += relationship.weight;
+                valid_edges += 1;
+            }
+        }
+
+        if valid_edges == 0 {
+            return 0.1; // Low score for invalid paths
+        }
+
+        let avg_weight = total_weight / valid_edges as f64;
+        let length_penalty = 1.0 / (edges.len() as f64).sqrt();
+        
+        avg_weight * length_penalty
+    }
+
+    /// Generate human-readable description for a reasoning path
+    fn generate_path_description(&self, nodes: &[NodeId], edges: &[EdgeId]) -> String {
+        if nodes.len() <= 1 {
+            return "Direct reference".to_string();
+        }
+
+        let mut description = String::new();
+        description.push_str("Reasoning path: ");
+
+        for (i, &edge_id) in edges.iter().enumerate() {
+            if i > 0 {
+                description.push_str(" → ");
+            }
+            
+            // Find the relationship for this edge ID
+            if let Some((_key, relationship)) = self.relationships.iter().find(|(_k, r)| r.id == edge_id) {
+                let source_name = self.entities.get(&relationship.source)
+                    .map(|e| e.content.as_str())
+                    .unwrap_or("Unknown");
+                let target_name = self.entities.get(&relationship.target)
+                    .map(|e| e.content.as_str())
+                    .unwrap_or("Unknown");
+
+                description.push_str(&format!(
+                    "{} --[{}]--> {}",
+                    source_name,
+                    relationship.relationship_type,
+                    target_name
+                ));
+            } else {
+                description.push_str("Unknown connection");
+            }
+        }
+
+        description
     }
 }
