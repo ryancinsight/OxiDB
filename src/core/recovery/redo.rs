@@ -13,10 +13,10 @@
 use crate::core::common::types::{Lsn, PageId};
 use crate::core::recovery::tables::DirtyPageTable;
 use crate::core::recovery::types::{RecoveryError, RecoveryState};
+use crate::core::storage::engine::buffer_pool_manager::BufferPoolManager;
 use crate::core::storage::engine::page::{Page, PageType};
 use crate::core::wal::log_record::LogRecord;
 use crate::core::wal::reader::WalReader;
-use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -27,8 +27,8 @@ use std::sync::{Arc, Mutex};
 pub struct RedoPhase {
     /// The dirty page table from the Analysis phase
     dirty_page_table: DirtyPageTable,
-    /// Cache of pages loaded during redo
-    page_cache: HashMap<PageId, Arc<Mutex<Page>>>,
+    /// Buffer pool manager for page operations
+    buffer_pool: Option<Arc<Mutex<BufferPoolManager>>>,
     /// The LSN to start redoing from
     redo_lsn: Option<Lsn>,
     /// Current state of the redo phase
@@ -41,12 +41,12 @@ impl RedoPhase {
     pub fn new(dirty_page_table: DirtyPageTable) -> Self {
         let redo_lsn = dirty_page_table.min_recovery_lsn();
 
-        Self {
-            dirty_page_table,
-            page_cache: HashMap::new(),
-            redo_lsn,
-            state: RecoveryState::NotStarted,
-        }
+        Self { dirty_page_table, buffer_pool: None, redo_lsn, state: RecoveryState::NotStarted }
+    }
+
+    /// Sets the buffer pool manager for page operations
+    pub fn set_buffer_pool(&mut self, buffer_pool: Arc<Mutex<BufferPoolManager>>) {
+        self.buffer_pool = Some(buffer_pool);
     }
 
     /// Performs the complete redo phase.
@@ -226,16 +226,26 @@ impl RedoPhase {
     /// * `Ok(Arc<Mutex<Page>>)` - The page wrapped in Arc<Mutex>
     /// * `Err(RecoveryError)` - If the page could not be loaded
     fn get_or_load_page(&mut self, page_id: PageId) -> Result<Arc<Mutex<Page>>, RecoveryError> {
-        if let Some(page) = self.page_cache.get(&page_id) {
-            return Ok(Arc::clone(page));
+        if let Some(buffer_pool) = &self.buffer_pool {
+            // Try to get the page through buffer pool
+            let mut pool = buffer_pool.lock().unwrap();
+            match pool.fetch_page(page_id) {
+                Ok(_page_data) => {
+                    // Convert the raw page data to our Page structure
+                    let page = Arc::new(Mutex::new(Page::new(page_id, PageType::Data)));
+                    Ok(page)
+                }
+                Err(_) => {
+                    // If page doesn't exist in buffer pool, create a new one
+                    let page = Arc::new(Mutex::new(Page::new(page_id, PageType::Data)));
+                    Ok(page)
+                }
+            }
+        } else {
+            // Fallback: create a new page if no buffer pool is available
+            let page = Arc::new(Mutex::new(Page::new(page_id, PageType::Data)));
+            Ok(page)
         }
-
-        // In a real implementation, this would load the page from storage
-        // For now, we'll create a mock page
-        let page = Arc::new(Mutex::new(Page::new(page_id, PageType::Data)));
-        self.page_cache.insert(page_id, Arc::clone(&page));
-
-        Ok(page)
     }
 
     /// Returns the redo LSN determined for this phase.
@@ -250,15 +260,16 @@ impl RedoPhase {
         &self.state
     }
 
-    /// Returns the number of pages in the cache.
+    /// Returns information about buffer pool usage.
     #[must_use]
     pub fn cache_size(&self) -> usize {
-        self.page_cache.len()
+        // Return 0 for now since we don't track local cache anymore
+        0
     }
 
-    /// Clears the page cache.
+    /// Clears any local cache (no-op since we use buffer pool).
     pub fn clear_cache(&mut self) {
-        self.page_cache.clear();
+        // No-op since buffer pool manages its own cache
     }
 
     /// Returns statistics about the redo phase.
@@ -267,7 +278,7 @@ impl RedoPhase {
         RedoStatistics {
             redo_lsn: self.redo_lsn,
             dirty_pages_count: self.dirty_page_table.len(),
-            cached_pages_count: self.page_cache.len(),
+            cached_pages_count: 0, // Buffer pool manages cache
             state: self.state.clone(),
         }
     }

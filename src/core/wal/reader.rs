@@ -129,8 +129,8 @@ impl WalRecordIterator {
         let record_length = u32::from_be_bytes(length_bytes);
 
         // Validate record length (reasonable bounds check)
-        if record_length == 0 || record_length > 1_000_000 {
-            // 1MB max record size
+        const MAX_RECORD_SIZE: u32 = 1_000_000; // 1MB max record size
+        if record_length == 0 || record_length > MAX_RECORD_SIZE {
             return Err(WalReaderError::InvalidRecordLength { length: record_length });
         }
 

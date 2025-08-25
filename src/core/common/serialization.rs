@@ -59,11 +59,10 @@ impl DataDeserializer<Self> for Vec<u8> {
             ))
         })?;
         // Basic protection against extremely large allocations
-        if len > 1_000_000_000 {
-            // 1GB limit, adjust as needed
+        const MAX_VECTOR_SIZE: usize = 1_000_000_000; // 1GB limit
+        if len > MAX_VECTOR_SIZE {
             return Err(OxidbError::Deserialization(format!(
-                // Changed
-                "Vec<u8> length {len} exceeds maximum allowed size"
+                "Vec<u8> length {len} exceeds maximum allowed size of {MAX_VECTOR_SIZE} bytes"
             )));
         }
         let mut buffer = vec![0u8; len];

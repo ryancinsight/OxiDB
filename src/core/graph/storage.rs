@@ -7,9 +7,18 @@ use super::types::{Edge, EdgeId, GraphData, Node, NodeId, Relationship};
 use super::{GraphOperations, GraphQuery, GraphTransaction, TraversalDirection};
 use crate::core::common::types::Value;
 use crate::core::common::OxidbError;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
-// Remove unused imports
+
+/// Serializable representation of graph data for persistent storage
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SerializedGraphData {
+    nodes: Vec<Node>,
+    edges: Vec<Edge>,
+    next_node_id: NodeId,
+    next_edge_id: EdgeId,
+}
 
 /// Graph storage trait for abstraction (Dependency Inversion Principle)
 pub trait GraphStorage: Send + Sync {
@@ -522,42 +531,78 @@ impl PersistentGraphStore {
 
     /// Load graph data from disk
     fn load_from_disk(&mut self) -> Result<(), OxidbError> {
-        // TODO: Implement persistent storage loading
-        // This would deserialize nodes and edges from the storage file
-        // For now, this is a placeholder (YAGNI - implement when needed)
-
         // Check if file exists
         if !self.storage_path.exists() {
             return Ok(()); // No existing data to load
         }
 
-        // Future implementation would:
-        // 1. Read serialized data from storage_path
-        // 2. Deserialize nodes and edges
-        // 3. Populate memory_store
-        // 4. Set dirty = false
+        // Read and deserialize data from storage file
+        let data = std::fs::read(&self.storage_path)
+            .map_err(|e| OxidbError::Storage(format!("Failed to read graph storage: {}", e)))?;
 
+        if data.is_empty() {
+            return Ok(());
+        }
+
+        let serialized_data: SerializedGraphData = serde_json::from_slice(&data)
+            .map_err(|e| OxidbError::Storage(format!("Failed to deserialize graph data: {}", e)))?;
+
+        // Populate memory store with loaded data
+        self.memory_store.nodes.clear();
+        self.memory_store.edges.clear();
+        self.memory_store.node_edges.clear();
+
+        // Load nodes
+        for node in serialized_data.nodes {
+            self.memory_store.nodes.insert(node.id, node);
+        }
+
+        // Load edges and build node-edge mappings
+        for edge in serialized_data.edges {
+            let edge_id = edge.id;
+            let from_node = edge.from_node;
+            let to_node = edge.to_node;
+
+            self.memory_store.edges.insert(edge_id, edge);
+            self.memory_store.add_edge_to_node(from_node, edge_id);
+            self.memory_store.add_edge_to_node(to_node, edge_id);
+        }
+
+        // Update ID counters to prevent conflicts
+        self.memory_store.next_node_id = serialized_data.next_node_id;
+        self.memory_store.next_edge_id = serialized_data.next_edge_id;
+
+        self.dirty = false;
         Ok(())
     }
 
     /// Save graph data to disk
     fn save_to_disk(&self) -> Result<(), OxidbError> {
-        // TODO: Implement persistent storage saving
-        // This would serialize nodes and edges to the storage file
-        // For now, this is a placeholder (YAGNI - implement when needed)
-
         // Ensure parent directory exists
         if let Some(parent) = self.storage_path.parent() {
-            std::fs::create_dir_all(parent)?;
+            std::fs::create_dir_all(parent).map_err(|e| {
+                OxidbError::Storage(format!("Failed to create storage directory: {}", e))
+            })?;
         }
 
-        // Future implementation would:
-        // 1. Serialize nodes and edges from memory_store
-        // 2. Write to storage_path atomically (write to temp file, then rename)
-        // 3. Handle errors properly
+        // Serialize the graph data
+        let serialized_data = SerializedGraphData {
+            nodes: self.memory_store.nodes.values().cloned().collect(),
+            edges: self.memory_store.edges.values().cloned().collect(),
+            next_node_id: self.memory_store.next_node_id,
+            next_edge_id: self.memory_store.next_edge_id,
+        };
 
-        // For now, just touch the file to indicate save was called
-        std::fs::write(&self.storage_path, b"")?;
+        let data = serde_json::to_vec(&serialized_data)
+            .map_err(|e| OxidbError::Storage(format!("Failed to serialize graph data: {}", e)))?;
+
+        // Write data atomically using temporary file
+        let temp_path = self.storage_path.with_extension("tmp");
+        std::fs::write(&temp_path, &data)
+            .map_err(|e| OxidbError::Storage(format!("Failed to write temporary file: {}", e)))?;
+
+        std::fs::rename(&temp_path, &self.storage_path)
+            .map_err(|e| OxidbError::Storage(format!("Failed to rename temporary file: {}", e)))?;
 
         Ok(())
     }

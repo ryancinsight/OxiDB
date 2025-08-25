@@ -1124,8 +1124,8 @@ mod json_value_benchmarks {
     }
 
     #[test]
-    fn demonstrate_advanced_iterator_usage() {
-        println!("\n=== Advanced Iterator Usage ===");
+    fn demonstrate_iterator_usage() {
+        println!("\n=== Iterator Usage Examples ===");
 
         let json = JsonValue(json!({
             "products": [
