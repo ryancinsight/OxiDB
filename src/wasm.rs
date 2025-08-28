@@ -53,56 +53,56 @@ impl WasmDatabase {
                 rows: None,
             },
             QueryResult::Data(data) => {
-                let mut json_rows = Vec::new();
-                for row in &data.rows {
-                    let mut json_row = Vec::new();
-                    for i in 0..data.columns.len() {
-                        let value = row
-                            .get(i)
-                            .map(|v| {
-                                // Convert Value to serde_json::Value
-                                match v {
-                                    crate::core::common::types::Value::Null => {
-                                        serde_json::Value::Null
-                                    }
-                                    crate::core::common::types::Value::Boolean(b) => {
-                                        serde_json::Value::Bool(*b)
-                                    }
-                                    crate::core::common::types::Value::Integer(i) => {
-                                        serde_json::Value::Number(serde_json::Number::from(*i))
-                                    }
-                                    crate::core::common::types::Value::Float(f) => {
-                                        serde_json::Number::from_f64(*f)
-                                            .map(serde_json::Value::Number)
-                                            .unwrap_or(serde_json::Value::Null)
-                                    }
-                                    crate::core::common::types::Value::Text(s) => {
-                                        serde_json::Value::String(s.clone())
-                                    }
-                                    crate::core::common::types::Value::Blob(b) => {
-                                        serde_json::Value::String(crate::core::common::hex::encode(
-                                            b,
-                                        ))
-                                    }
-                                    crate::core::common::types::Value::Vector(v) => {
-                                        // Convert vector to array of numbers
-                                        let vec_values: Vec<serde_json::Value> = v
-                                            .iter()
-                                            .map(|f| {
-                                                serde_json::Number::from_f64(*f as f64)
+                let json_rows: Vec<Vec<serde_json::Value>> = data.rows
+                    .iter()
+                    .map(|row| {
+                        (0..data.columns.len())
+                            .map(|i| {
+                                row.get(i)
+                                    .map(|v| {
+                                        // Convert Value to serde_json::Value
+                                        match v {
+                                            crate::core::common::types::Value::Null => {
+                                                serde_json::Value::Null
+                                            }
+                                            crate::core::common::types::Value::Boolean(b) => {
+                                                serde_json::Value::Bool(*b)
+                                            }
+                                            crate::core::common::types::Value::Integer(i) => {
+                                                serde_json::Value::Number(serde_json::Number::from(*i))
+                                            }
+                                            crate::core::common::types::Value::Float(f) => {
+                                                serde_json::Number::from_f64(*f)
                                                     .map(serde_json::Value::Number)
                                                     .unwrap_or(serde_json::Value::Null)
-                                            })
-                                            .collect();
-                                        serde_json::Value::Array(vec_values)
-                                    }
-                                }
+                                            }
+                                            crate::core::common::types::Value::Text(s) => {
+                                                serde_json::Value::String(s.clone())
+                                            }
+                                            crate::core::common::types::Value::Blob(b) => {
+                                                serde_json::Value::String(crate::core::common::hex::encode(
+                                                    b,
+                                                ))
+                                            }
+                                            crate::core::common::types::Value::Vector(v) => {
+                                                // Convert vector to array of numbers
+                                                let vec_values: Vec<serde_json::Value> = v
+                                                    .iter()
+                                                    .map(|f| {
+                                                        serde_json::Number::from_f64(*f as f64)
+                                                            .map(serde_json::Value::Number)
+                                                            .unwrap_or(serde_json::Value::Null)
+                                                    })
+                                                    .collect();
+                                                serde_json::Value::Array(vec_values)
+                                            }
+                                        }
+                                    })
+                                    .unwrap_or(serde_json::Value::Null)
                             })
-                            .unwrap_or(serde_json::Value::Null);
-                        json_row.push(value);
-                    }
-                    json_rows.push(json_row);
-                }
+                            .collect()
+                    })
+                    .collect();
 
                 JsonQueryResult {
                     success: true,

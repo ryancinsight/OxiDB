@@ -13,6 +13,12 @@ pub use crate::core::common::types::{
     ColumnDef, DataType as CommonDataType, Lsn, Row, Schema, Value,
 };
 
+/// Maximum recursion depth for JSON comparison to prevent stack overflow
+const MAX_JSON_RECURSION_DEPTH: usize = 1000;
+
+/// Maximum string size for JSON comparison fallback (10KB limit)
+const MAX_JSON_STRING_SIZE: usize = 10_000;
+
 pub mod schema;
 
 // Re-export the modules for direct access if needed
@@ -146,8 +152,7 @@ impl PartialOrd for JsonValue {
 impl Ord for JsonValue {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         // Use a configurable depth limit to prevent stack overflow
-        const MAX_RECURSION_DEPTH: usize = 1000;
-        self.cmp_with_depth(other, 0, MAX_RECURSION_DEPTH)
+        self.cmp_with_depth(other, 0, MAX_JSON_RECURSION_DEPTH)
     }
 }
 
@@ -388,10 +393,8 @@ impl JsonValue {
     /// Size-limited string comparison as final fallback
     /// Limits the string representation to prevent excessive memory usage
     fn size_limited_string_comparison(&self, other: &Self) -> std::cmp::Ordering {
-        const MAX_STRING_SIZE: usize = 10_000; // 10KB limit
-
-        let self_str = self.to_limited_string(MAX_STRING_SIZE);
-        let other_str = other.to_limited_string(MAX_STRING_SIZE);
+        let self_str = self.to_limited_string(MAX_JSON_STRING_SIZE);
+        let other_str = other.to_limited_string(MAX_JSON_STRING_SIZE);
 
         self_str.cmp(&other_str)
     }
