@@ -53,7 +53,8 @@ impl WasmDatabase {
                 rows: None,
             },
             QueryResult::Data(data) => {
-                let json_rows: Vec<Vec<serde_json::Value>> = data.rows
+                let json_rows: Vec<Vec<serde_json::Value>> = data
+                    .rows
                     .iter()
                     .map(|row| {
                         (0..data.columns.len())
@@ -69,7 +70,9 @@ impl WasmDatabase {
                                                 serde_json::Value::Bool(*b)
                                             }
                                             crate::core::common::types::Value::Integer(i) => {
-                                                serde_json::Value::Number(serde_json::Number::from(*i))
+                                                serde_json::Value::Number(serde_json::Number::from(
+                                                    *i,
+                                                ))
                                             }
                                             crate::core::common::types::Value::Float(f) => {
                                                 serde_json::Number::from_f64(*f)
@@ -80,9 +83,9 @@ impl WasmDatabase {
                                                 serde_json::Value::String(s.clone())
                                             }
                                             crate::core::common::types::Value::Blob(b) => {
-                                                serde_json::Value::String(crate::core::common::hex::encode(
-                                                    b,
-                                                ))
+                                                serde_json::Value::String(
+                                                    crate::core::common::hex::encode(b),
+                                                )
                                             }
                                             crate::core::common::types::Value::Vector(v) => {
                                                 // Convert vector to array of numbers

@@ -89,7 +89,7 @@ impl Iterator for NestedLoopJoinIteratorInternal {
             while self.right_buffer_position < self.right_tuples_buffer.len() {
                 let right_tuple = &self.right_tuples_buffer[self.right_buffer_position];
                 self.right_buffer_position += 1;
-                
+
                 match self.evaluate_join_predicate(left_tuple, right_tuple) {
                     Ok(true) => {
                         let mut joined_tuple = left_tuple.clone();

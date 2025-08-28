@@ -120,7 +120,8 @@ impl Connection {
         // Update monitoring configuration
         self.performance.config.enable_profiling = true;
         self.performance.config.enable_monitoring = true;
-        self.performance.config.slow_query_threshold = Duration::from_millis(DEFAULT_SLOW_QUERY_THRESHOLD_MS);
+        self.performance.config.slow_query_threshold =
+            Duration::from_millis(DEFAULT_SLOW_QUERY_THRESHOLD_MS);
     }
 
     /// Execute a SQL query and return the results.
