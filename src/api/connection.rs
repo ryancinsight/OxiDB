@@ -17,6 +17,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+/// Default threshold for identifying slow queries (in milliseconds)
+const DEFAULT_SLOW_QUERY_THRESHOLD_MS: u64 = 100;
+
 /// A database connection that provides an ergonomic API for database operations.
 ///
 /// This is the main entry point for interacting with the database, following
@@ -117,7 +120,7 @@ impl Connection {
         // Update monitoring configuration
         self.performance.config.enable_profiling = true;
         self.performance.config.enable_monitoring = true;
-        self.performance.config.slow_query_threshold = Duration::from_millis(100);
+        self.performance.config.slow_query_threshold = Duration::from_millis(DEFAULT_SLOW_QUERY_THRESHOLD_MS);
     }
 
     /// Execute a SQL query and return the results.

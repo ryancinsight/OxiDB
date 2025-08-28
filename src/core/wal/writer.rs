@@ -15,7 +15,7 @@ impl Default for WalWriterConfig {
     fn default() -> Self {
         Self {
             max_buffer_size: DEFAULT_MAX_BUFFER_SIZE, // Default max buffer size (number of records)
-            flush_interval_ms: Some(1000),            // Default 1 second interval
+            flush_interval_ms: Some(DEFAULT_FLUSH_INTERVAL_MS), // Default 1 second interval
         }
     }
 }
@@ -24,6 +24,10 @@ impl Default for WalWriterConfig {
 /// This value was chosen to balance memory usage and I/O performance.
 /// Users can override this value by modifying the `DEFAULT_MAX_BUFFER_SIZE` constant.
 pub const DEFAULT_MAX_BUFFER_SIZE: usize = 100;
+
+/// Default flush interval in milliseconds for the WAL writer.
+/// This represents 1 second and provides a balance between durability and performance.
+pub const DEFAULT_FLUSH_INTERVAL_MS: u64 = 1000;
 /// Write-Ahead Log writer for reliable durability guarantees.
 ///
 /// The `WalWriter` buffers log records in memory and flushes them to disk
@@ -222,7 +226,7 @@ mod tests {
     use std::path::PathBuf;
 
     // Using unique names for test files to prevent interference
-    const TEST_NEW_WAL_FILE: &str = "test_wal_writer_new_output.log";
+    const TEST_WRITER_INITIALIZATION_WAL_FILE: &str = "test_wal_writer_initialization_output.log";
     const TEST_ADD_RECORD_WAL_FILE: &str = "test_wal_writer_add_record_output.log";
     const TEST_FLUSH_EMPTY_WAL_FILE: &str = "test_flush_empty_buffer_output.log";
     const TEST_FLUSH_WRITES_WAL_FILE: &str = "test_flush_writes_records_output.log";
@@ -247,8 +251,8 @@ mod tests {
         "test_last_flush_time_update_commit_based.log";
 
     #[test]
-    fn test_wal_writer_new() {
-        let test_file_path = PathBuf::from(TEST_NEW_WAL_FILE);
+    fn test_wal_writer_initialization() {
+        let test_file_path = PathBuf::from(TEST_WRITER_INITIALIZATION_WAL_FILE);
         cleanup_file(&test_file_path);
         let config = WalWriterConfig::default();
 

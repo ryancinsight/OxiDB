@@ -315,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bpm_new() {
+    fn test_bpm_initialization() {
         const POOL_SIZE: usize = 10;
         let (bpm, _disk_manager, _temp_file) = setup_bpm(POOL_SIZE);
         assert_eq!(bpm.frames.len(), POOL_SIZE);

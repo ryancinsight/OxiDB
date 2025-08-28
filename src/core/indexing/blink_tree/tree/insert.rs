@@ -370,7 +370,7 @@ mod tests {
 
     #[test]
     fn test_insert_into_empty_tree() {
-        let (mut tree, _temp_dir) = setup_tree("test_insert_empty");
+        let (mut tree, _test_dir) = setup_tree("test_insert_empty");
 
         // Insert a key-value pair
         assert!(tree.insert(k("apple"), pk("pk1")).is_ok());
@@ -386,7 +386,7 @@ mod tests {
 
     #[test]
     fn test_insert_multiple_keys() {
-        let (mut tree, _temp_dir) = setup_tree("test_insert_multiple");
+        let (mut tree, _test_dir) = setup_tree("test_insert_multiple");
 
         // Insert several keys
         let keys = ["apple", "banana", "cherry", "date"];
@@ -407,7 +407,7 @@ mod tests {
 
     #[test]
     fn test_insert_duplicate_key() {
-        let (mut tree, _temp_dir) = setup_tree("test_insert_duplicate");
+        let (mut tree, _test_dir) = setup_tree("test_insert_duplicate");
 
         // Insert same key with different values
         assert!(tree.insert(k("apple"), pk("pk1")).is_ok());
@@ -427,7 +427,7 @@ mod tests {
 
     #[test]
     fn test_insert_causing_split() {
-        let (mut tree, _temp_dir) = setup_tree("test_insert_split");
+        let (mut tree, _test_dir) = setup_tree("test_insert_split");
 
         // Insert enough keys to force a split (order = 5, so leaf can hold 5 keys)
         let keys = ["a", "b", "c", "d", "e", "f"]; // 6 keys should cause split

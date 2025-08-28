@@ -25,10 +25,14 @@ pub struct WalReaderConfig {
     pub validate_lsn_ordering: bool,
 }
 
+/// Default buffer size for WAL reader operations (8KB)
+/// This provides efficient I/O while keeping memory usage reasonable
+pub const DEFAULT_WAL_READER_BUFFER_SIZE: usize = 8192;
+
 impl Default for WalReaderConfig {
     fn default() -> Self {
         Self {
-            buffer_size: 8192, // 8KB buffer
+            buffer_size: DEFAULT_WAL_READER_BUFFER_SIZE, // 8KB buffer
             validate_lsn_ordering: true,
         }
     }
@@ -415,7 +419,7 @@ mod tests {
     }
 
     #[test]
-    fn test_wal_reader_new() {
+    fn test_wal_reader_initialization() {
         let (temp_file, _) = create_test_wal_file();
         let config = WalReaderConfig::default();
 
