@@ -11,8 +11,8 @@
 //! - PostgreSQL-specific functions and patterns
 
 use chrono::Datelike;
-use oxidb::core::common::OxidbError;
 use oxidb::api::types::QueryResult;
+use oxidb::core::common::OxidbError;
 use oxidb::Oxidb;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

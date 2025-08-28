@@ -3,6 +3,24 @@
 //! This module provides borrowed versions of common data structures used in database
 //! operations, avoiding allocations and copies wherever possible.
 
+/// Query execution cost constants for plan optimization
+mod cost_constants {
+    /// Base cost for table scan operations
+    pub const SCAN_BASE_COST: u64 = 100;
+
+    /// Base cost for filter operations
+    pub const FILTER_BASE_COST: u64 = 10;
+
+    /// Base cost for join operations
+    pub const JOIN_BASE_COST: u64 = 1000;
+
+    /// Base cost for aggregate operations
+    pub const AGGREGATE_BASE_COST: u64 = 500;
+
+    /// Base cost for sort operations
+    pub const SORT_BASE_COST: u64 = 200;
+}
+
 use crate::core::common::types::Row;
 use crate::core::common::types::Value;
 use std::borrow::Cow;
@@ -350,14 +368,19 @@ impl<'a> BorrowedQueryPlan<'a> {
     }
 
     fn estimate_node_cost(&self, node: &BorrowedPlanNode<'a>) -> u64 {
+        use cost_constants::*;
         match node {
-            BorrowedPlanNode::Scan { .. } => 100,
-            BorrowedPlanNode::Filter { input, .. } => 10 + self.estimate_node_cost(input),
-            BorrowedPlanNode::Join { left, right, .. } => {
-                1000 + self.estimate_node_cost(left) + self.estimate_node_cost(right)
+            BorrowedPlanNode::Scan { .. } => SCAN_BASE_COST,
+            BorrowedPlanNode::Filter { input, .. } => {
+                FILTER_BASE_COST + self.estimate_node_cost(input)
             }
-            BorrowedPlanNode::Aggregate { input, .. } => 500 + self.estimate_node_cost(input),
-            BorrowedPlanNode::Sort { input, .. } => 200 + self.estimate_node_cost(input),
+            BorrowedPlanNode::Join { left, right, .. } => {
+                JOIN_BASE_COST + self.estimate_node_cost(left) + self.estimate_node_cost(right)
+            }
+            BorrowedPlanNode::Aggregate { input, .. } => {
+                AGGREGATE_BASE_COST + self.estimate_node_cost(input)
+            }
+            BorrowedPlanNode::Sort { input, .. } => SORT_BASE_COST + self.estimate_node_cost(input),
             BorrowedPlanNode::Limit { input, .. } => 1 + self.estimate_node_cost(input),
         }
     }

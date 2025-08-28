@@ -7,8 +7,6 @@
 //! 4. Hybrid scoring and result combination
 //! 5. Real-world query scenarios
 
-
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🔍 HybridRAG Validation Test");
     println!("{}", "=".repeat(40));

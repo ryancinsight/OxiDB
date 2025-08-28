@@ -1,7 +1,7 @@
 // src/core/query/executor/mod.rs
 
 //! Query execution module
-//! 
+//!
 //! This module coordinates database query execution across different components:
 //! - DDL operations (CREATE, DROP, ALTER)
 //! - DML operations (SELECT, INSERT, UPDATE, DELETE)

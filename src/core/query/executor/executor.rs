@@ -8,7 +8,7 @@ use crate::core::optimizer::Optimizer;
 use crate::core::storage::engine::traits::KeyValueStore;
 use crate::core::transaction::lock_manager::LockManager;
 use crate::core::transaction::manager::TransactionManager;
-use crate::core::types::{DataType, Schema};
+use crate::core::types::Schema;
 use crate::core::wal::log_manager::LogManager;
 use crate::core::wal::writer::WalWriter;
 use std::collections::HashMap;
@@ -51,9 +51,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         let mut index_manager = IndexManager::new(index_base_path)?;
 
         if index_manager.get_index(DEFAULT_VALUE_INDEX_NAME).is_none() {
-            index_manager.create_index(DEFAULT_VALUE_INDEX_NAME.to_string(), "hash").map_err(|e| {
-                OxidbError::Index(format!("Failed to create {}: {e}", DEFAULT_VALUE_INDEX_NAME))
-            })?;
+            index_manager.create_index(DEFAULT_VALUE_INDEX_NAME.to_string(), "hash").map_err(
+                |e| {
+                    OxidbError::Index(format!("Failed to create {}: {e}", DEFAULT_VALUE_INDEX_NAME))
+                },
+            )?;
         }
 
         // Pass a clone of log_manager to TransactionManager, store original in self
@@ -88,27 +90,31 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     pub(crate) fn next_auto_increment(&mut self, table_column: &str) -> Result<i64, OxidbError> {
         let current = self.auto_increment_state.get(table_column).copied().unwrap_or(0);
         let next = current + 1;
-        
+
         if next > MAX_AUTO_INCREMENT_VALUE {
             return Err(OxidbError::AutoIncrementOverflow {
                 table_column: table_column.to_string(),
                 max_value: MAX_AUTO_INCREMENT_VALUE,
             });
         }
-        
+
         self.auto_increment_state.insert(table_column.to_string(), next);
         Ok(next)
     }
 
     /// Reset auto-increment value for a table column
-    pub(crate) fn reset_auto_increment(&mut self, table_column: &str, value: i64) -> Result<(), OxidbError> {
+    pub(crate) fn reset_auto_increment(
+        &mut self,
+        table_column: &str,
+        value: i64,
+    ) -> Result<(), OxidbError> {
         if value < 0 || value > MAX_AUTO_INCREMENT_VALUE {
             return Err(OxidbError::InvalidAutoIncrementValue {
                 value,
                 max_allowed: MAX_AUTO_INCREMENT_VALUE,
             });
         }
-        
+
         self.auto_increment_state.insert(table_column.to_string(), value);
         Ok(())
     }
@@ -122,7 +128,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     pub fn persist(&mut self) -> Result<(), OxidbError> {
         // Persist store data
         self.persist_store()?;
-        
+
         // Persist indexes
         self.index_manager
             .read()
@@ -137,7 +143,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     /// Get the index base path
     #[must_use]
     pub fn index_base_path(&self) -> Result<PathBuf, OxidbError> {
-        Ok(self.index_manager
+        Ok(self
+            .index_manager
             .read()
             .map_err(|e| OxidbError::LockTimeout(format!("Failed to acquire read lock: {e}")))?
             .base_path())
@@ -151,10 +158,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     /// Get table schema from storage
     pub fn get_table_schema(&self, table_name: &str) -> Result<Option<Arc<Schema>>, OxidbError> {
         let schema_key = Self::schema_key(table_name);
-        
+
         match self.get(&schema_key)? {
             Some(schema_bytes) => {
-                let schema: Schema = serde_json::from_slice(&schema_bytes).map_err(OxidbError::Json)?;
+                let schema: Schema =
+                    serde_json::from_slice(&schema_bytes).map_err(OxidbError::Json)?;
                 Ok(Some(Arc::new(schema)))
             }
             None => Ok(None),
@@ -162,18 +170,22 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     }
 
     /// Store table schema in storage
-    pub fn store_table_schema(&mut self, table_name: &str, schema: &Schema) -> Result<(), OxidbError> {
+    pub fn store_table_schema(
+        &mut self,
+        table_name: &str,
+        schema: &Schema,
+    ) -> Result<(), OxidbError> {
         let schema_key = Self::schema_key(table_name);
         let schema_bytes = serde_json::to_vec(schema).map_err(OxidbError::Json)?;
-        
+
         // Use a simple transaction for schema storage
         let tx = crate::core::transaction::Transaction::new(TransactionId(0));
-        let lsn = crate::core::common::types::Lsn(0);
-        
+        let lsn: crate::core::common::types::Lsn = 0;
+
         let mut store = self.store.write().map_err(|e| {
             OxidbError::LockTimeout(format!("Failed to acquire write lock on store: {e}"))
         })?;
-        
+
         store.put(schema_key, schema_bytes, &tx, lsn)?;
         Ok(())
     }
@@ -183,9 +195,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         let store = self.store.read().map_err(|e| {
             OxidbError::LockTimeout(format!("Failed to acquire read lock on store: {e}"))
         })?;
-        
+
         // Use committed transaction set for visibility
-        let committed_tx_ids: std::collections::HashSet<u64> = self.transaction_manager
+        let committed_tx_ids: std::collections::HashSet<u64> = self
+            .transaction_manager
             .get_committed_tx_ids_snapshot()
             .into_iter()
             .map(|id| id.0)
@@ -196,12 +209,12 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     /// Simple wrapper for key-value storage with current transaction context  
     pub fn set(&mut self, key: Vec<u8>, value: Vec<u8>) -> Result<(), OxidbError> {
         let tx = crate::core::transaction::Transaction::new(TransactionId(0));
-        let lsn = crate::core::common::types::Lsn(0);
-        
+        let lsn: crate::core::common::types::Lsn = 0;
+
         let mut store = self.store.write().map_err(|e| {
             OxidbError::LockTimeout(format!("Failed to acquire write lock on store: {e}"))
         })?;
-        
+
         store.put(key, value, &tx, lsn)
     }
 
@@ -224,12 +237,12 @@ mod tests {
         let store_path = temp_dir.path().join("test.db");
         let index_path = temp_dir.path().join("indexes");
         let wal_path = temp_dir.path().join("wal.log");
-        
+
         let store = SimpleFileKvStore::new(store_path).unwrap();
         let wal_config = crate::core::wal::writer::WalWriterConfig::default();
         let wal_writer = WalWriter::new(wal_path, wal_config);
-        let log_manager = Arc::new(LogManager::new(temp_dir.path().to_path_buf()).unwrap());
-        
+        let log_manager = Arc::new(LogManager::new());
+
         let executor = QueryExecutor::new(store, index_path, wal_writer, log_manager).unwrap();
         (executor, temp_dir)
     }
@@ -243,23 +256,23 @@ mod tests {
     #[test]
     fn test_auto_increment() {
         let (mut executor, _temp_dir) = create_test_executor();
-        
+
         // Test initial value
         assert_eq!(executor.get_auto_increment("users.id"), 0);
-        
+
         // Test increment
         let next = executor.next_auto_increment("users.id").unwrap();
         assert_eq!(next, 1);
         assert_eq!(executor.get_auto_increment("users.id"), 1);
-        
+
         // Test another increment
         let next = executor.next_auto_increment("users.id").unwrap();
         assert_eq!(next, 2);
-        
+
         // Test reset
         executor.reset_auto_increment("users.id", 100).unwrap();
         assert_eq!(executor.get_auto_increment("users.id"), 100);
-        
+
         let next = executor.next_auto_increment("users.id").unwrap();
         assert_eq!(next, 101);
     }
@@ -267,10 +280,10 @@ mod tests {
     #[test]
     fn test_auto_increment_overflow() {
         let (mut executor, _temp_dir) = create_test_executor();
-        
+
         // Set to near maximum
         executor.reset_auto_increment("test.id", MAX_AUTO_INCREMENT_VALUE).unwrap();
-        
+
         // This should fail due to overflow protection
         let result = executor.next_auto_increment("test.id");
         assert!(result.is_err());
@@ -279,11 +292,11 @@ mod tests {
     #[test]
     fn test_invalid_auto_increment_reset() {
         let (mut executor, _temp_dir) = create_test_executor();
-        
+
         // Test negative value
         let result = executor.reset_auto_increment("test.id", -1);
         assert!(result.is_err());
-        
+
         // Test overflow value
         let result = executor.reset_auto_increment("test.id", MAX_AUTO_INCREMENT_VALUE + 1);
         assert!(result.is_err());

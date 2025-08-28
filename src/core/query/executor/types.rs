@@ -26,9 +26,9 @@ impl<'a> ParameterContext<'a> {
         index: u32,
     ) -> Result<&crate::core::common::types::Value, OxidbError> {
         let idx = index as usize;
-        self.parameters.get(idx).ok_or_else(|| OxidbError::ParameterIndexOutOfBounds { 
+        self.parameters.get(idx).ok_or_else(|| OxidbError::ParameterIndexOutOfBounds {
             index: idx,
-            max: self.parameters.len()
+            max: self.parameters.len(),
         })
     }
 
@@ -62,9 +62,7 @@ impl ValueConverter {
             AstLiteralValue::Boolean(b) => Ok(DataType::Boolean(*b)),
             AstLiteralValue::Null => Ok(DataType::Null),
             AstLiteralValue::Vector(_) => {
-                Err(OxidbError::NotImplemented { 
-                    feature: "Vector literal conversion".to_string() 
-                })
+                Err(OxidbError::NotImplemented { feature: "Vector literal conversion".to_string() })
             }
         }
     }
@@ -78,9 +76,7 @@ impl ValueConverter {
             Value::Text(s) => DataType::String(s.clone()),
             Value::Boolean(b) => DataType::Boolean(*b),
             Value::Blob(b) => DataType::RawBytes(b.clone()),
-            Value::Vector(v) => {
-                Self::convert_vector_to_datatype(v)
-            }
+            Value::Vector(v) => Self::convert_vector_to_datatype(v),
             Value::Null => DataType::Null,
         }
     }
@@ -150,13 +146,13 @@ mod tests {
     fn test_parameter_resolution() {
         let params = vec![Value::Integer(42), Value::Text("test".to_string())];
         let ctx = ParameterContext::new(&params);
-        
+
         let result = ctx.resolve_parameter(0).unwrap();
         assert_eq!(result, &Value::Integer(42));
-        
+
         let result = ctx.resolve_parameter(1).unwrap();
         assert_eq!(result, &Value::Text("test".to_string()));
-        
+
         assert!(ctx.resolve_parameter(2).is_err());
     }
 
@@ -179,9 +175,9 @@ mod tests {
         assert_eq!(updated.affected_rows(), 5);
         assert!(!updated.has_data());
 
-        let query = ExecutionResult::Query { 
-            columns: vec!["id".to_string()], 
-            rows: vec![vec![DataType::Integer(1)]] 
+        let query = ExecutionResult::Query {
+            columns: vec!["id".to_string()],
+            rows: vec![vec![DataType::Integer(1)]],
         };
         assert!(!query.is_success());
         assert_eq!(query.affected_rows(), 0);
