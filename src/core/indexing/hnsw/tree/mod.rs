@@ -5,6 +5,10 @@ use super::graph::HnswGraph;
 use super::node::{DistanceFunction, NodeId, Vector};
 use crate::core::query::commands::{Key as PrimaryKey, Value as TraitValue};
 
+/// Constants for vector serialization
+const U32_SIZE_BYTES: usize = 4;
+const F32_SIZE_BYTES: usize = 4;
+
 /// Main HNSW Index implementation for vector similarity search
 #[derive(Debug)]
 pub struct HnswIndex {
@@ -41,13 +45,13 @@ impl HnswIndex {
         value: &TraitValue,
     ) -> Result<Vector, crate::core::common::OxidbError> {
         // Expected format: dimension (4 bytes) + f32 values
-        if value.len() < 4 {
+        if value.len() < U32_SIZE_BYTES {
             return Err(crate::core::common::OxidbError::Index(
                 "Vector value too short".to_string(),
             ));
         }
 
-        let dimension_bytes = &value[0..4];
+        let dimension_bytes = &value[0..U32_SIZE_BYTES];
         let dimension = u32::from_le_bytes([
             dimension_bytes[0],
             dimension_bytes[1],
@@ -62,7 +66,7 @@ impl HnswIndex {
             });
         }
 
-        let expected_len = 4 + (dimension * 4); // 4 bytes per f32
+        let expected_len = U32_SIZE_BYTES + (dimension * F32_SIZE_BYTES);
         if value.len() != expected_len {
             return Err(crate::core::common::OxidbError::Index(format!(
                 "Invalid vector length: expected {}, got {}",
@@ -73,8 +77,8 @@ impl HnswIndex {
 
         let mut vector = Vec::with_capacity(dimension);
         for i in 0..dimension {
-            let start_idx = 4 + (i * 4);
-            let end_idx = start_idx + 4;
+            let start_idx = U32_SIZE_BYTES + (i * F32_SIZE_BYTES);
+            let end_idx = start_idx + F32_SIZE_BYTES;
             let float_bytes = &value[start_idx..end_idx];
             let float_value = f32::from_le_bytes([
                 float_bytes[0],

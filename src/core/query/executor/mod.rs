@@ -12,9 +12,6 @@ pub mod transaction_handlers;
 pub mod update_execution;
 pub mod utils;
 
-// Re-export planner contents
-
-// Necessary imports for struct definitions and the `new` method
 use crate::core::common::types::TransactionId; // Ensure TransactionId is imported
 use crate::core::common::OxidbError;
 use crate::core::indexing::manager::IndexManager;
@@ -29,7 +26,6 @@ use crate::core::types::DataType;
 use crate::core::wal::log_manager::LogManager; // Added LogManager
 use crate::core::wal::writer::WalWriter;
 use std::collections::{HashMap, HashSet}; // Added HashMap and HashSet import
-                                          // For base64 decoding - using a simple approach since we know the format
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use uuid;
@@ -234,18 +230,15 @@ impl QueryExecutor<SimpleFileKvStore> {
     }
 
     #[must_use]
-    pub fn index_base_path(&self) -> PathBuf {
-        // Using expect here as base_path is not expected to fail often and is not directly part of core query execution flow.
-        // A more robust solution might propagate the error.
-        self.index_manager
+    pub fn index_base_path(&self) -> Result<PathBuf, OxidbError> {
+        Ok(self.index_manager
             .read()
             .map_err(|e| {
                 OxidbError::LockTimeout(format!(
                     "Failed to acquire read lock on index manager for base_path: {e}"
                 ))
-            })
-            .expect("Failed to get lock for index_base_path; this should not happen in normal operation as it's a read lock.")
-            .base_path()
+            })?
+            .base_path())
     }
 }
 
