@@ -231,7 +231,8 @@ impl QueryExecutor<SimpleFileKvStore> {
 
     #[must_use]
     pub fn index_base_path(&self) -> Result<PathBuf, OxidbError> {
-        Ok(self.index_manager
+        Ok(self
+            .index_manager
             .read()
             .map_err(|e| {
                 OxidbError::LockTimeout(format!(

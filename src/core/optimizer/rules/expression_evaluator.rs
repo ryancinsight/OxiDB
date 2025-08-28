@@ -28,7 +28,10 @@ impl OptimizationRule for ExpressionEvaluator {
 
 impl ExpressionEvaluator {
     /// Recursively evaluate constants in condition tree
-    fn evaluate_condition_tree(&self, condition: &ConditionTree) -> Result<ConditionTree, OxidbError> {
+    fn evaluate_condition_tree(
+        &self,
+        condition: &ConditionTree,
+    ) -> Result<ConditionTree, OxidbError> {
         match condition {
             ConditionTree::And(left, right) => {
                 let evaluated_left = self.evaluate_condition_tree(left)?;

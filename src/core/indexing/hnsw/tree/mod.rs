@@ -44,7 +44,7 @@ impl HnswIndex {
         &self,
         value: &TraitValue,
     ) -> Result<Vector, crate::core::common::OxidbError> {
-        // Expected format: dimension (4 bytes) + f32 values
+        // Expected format: dimension (U32_SIZE_BYTES) + f32 values
         if value.len() < U32_SIZE_BYTES {
             return Err(crate::core::common::OxidbError::Index(
                 "Vector value too short".to_string(),
