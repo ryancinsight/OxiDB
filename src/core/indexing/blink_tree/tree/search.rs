@@ -241,7 +241,7 @@ mod tests {
 
     #[test]
     fn test_range_scan_empty_tree() {
-        let (tree, _temp_dir) = setup_tree("test_range_scan_empty");
+        let (tree, _test_dir) = setup_tree("test_range_scan_empty");
 
         let results = tree.range_scan(&k("a"), &k("z")).unwrap();
         assert!(results.is_empty());
@@ -249,7 +249,7 @@ mod tests {
 
     #[test]
     fn test_verify_structure_empty_tree() {
-        let (tree, _temp_dir) = setup_tree("test_verify_empty");
+        let (tree, _test_dir) = setup_tree("test_verify_empty");
 
         // Empty tree should be valid
         assert!(tree.verify_structure().is_ok());
@@ -257,7 +257,7 @@ mod tests {
 
     #[test]
     fn test_verify_structure_single_node() {
-        let (tree, _temp_dir) = setup_tree("test_verify_single");
+        let (tree, _test_dir) = setup_tree("test_verify_single");
 
         // Single root leaf should be valid
         assert!(tree.verify_structure().is_ok());

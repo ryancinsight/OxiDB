@@ -423,7 +423,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cleanup_old_tasks() {
+    fn test_cleanup_aged_tasks() {
         let scheduler = Scheduler::new();
 
         let task_id = scheduler.schedule_task("Old Task".to_string(), Priority::Normal).unwrap();

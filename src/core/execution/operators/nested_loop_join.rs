@@ -19,8 +19,8 @@ struct NestedLoopJoinIteratorInternal {
     current_left_tuple: Option<Tuple>,
     /// A buffer holding all tuples from the right input.
     right_tuples_buffer: Arc<Vec<Tuple>>,
-    /// An iterator over the `right_tuples_buffer`.
-    current_right_buffer_iter: std::vec::IntoIter<Tuple>,
+    /// Current position in the right buffer for iteration
+    right_buffer_position: usize,
 }
 
 impl NestedLoopJoinIteratorInternal {
@@ -76,8 +76,7 @@ impl Iterator for NestedLoopJoinIteratorInternal {
                 match self.left_input_iter.next() {
                     Some(Ok(left_tuple)) => {
                         self.current_left_tuple = Some(left_tuple);
-                        self.current_right_buffer_iter =
-                            Arc::clone(&self.right_tuples_buffer).as_ref().clone().into_iter();
+                        self.right_buffer_position = 0;
                     }
                     Some(Err(e)) => return Some(Err(e)),
                     None => return None,
@@ -87,8 +86,11 @@ impl Iterator for NestedLoopJoinIteratorInternal {
             #[allow(clippy::unwrap_used)] // Logic ensures current_left_tuple is Some here
             let left_tuple = self.current_left_tuple.as_ref().unwrap();
 
-            while let Some(right_tuple) = self.current_right_buffer_iter.next() {
-                match self.evaluate_join_predicate(left_tuple, &right_tuple) {
+            while self.right_buffer_position < self.right_tuples_buffer.len() {
+                let right_tuple = &self.right_tuples_buffer[self.right_buffer_position];
+                self.right_buffer_position += 1;
+
+                match self.evaluate_join_predicate(left_tuple, right_tuple) {
                     Ok(true) => {
                         let mut joined_tuple = left_tuple.clone();
                         joined_tuple.extend(right_tuple.clone());
@@ -152,10 +154,7 @@ impl ExecutionOperator for NestedLoopJoinOperator {
             left_input_iter: left_iter,
             join_predicate: self.join_predicate.clone(),
             current_left_tuple: None,
-            current_right_buffer_iter: Arc::clone(&right_buffer_cloned_for_iter)
-                .as_ref()
-                .clone()
-                .into_iter(),
+            right_buffer_position: 0,
             right_tuples_buffer: right_buffer_cloned_for_iter,
         };
 

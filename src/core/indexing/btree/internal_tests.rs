@@ -56,8 +56,8 @@ fn construct_tree_with_nodes(
 }
 
 #[test]
-fn test_internal_borrow_from_right_sibling_new() -> Result<(), OxidbError> {
-    let (mut tree, _path, _dir) = setup_tree("internal_borrow_right_new");
+fn test_internal_borrow_from_right_sibling() -> Result<(), OxidbError> {
+    let (mut tree, _path, _dir) = setup_tree("internal_borrow_right");
 
     const R_PID: PageId = 0;
     const IL0_PID: PageId = 1;
@@ -205,8 +205,8 @@ fn test_internal_borrow_from_right_sibling_new() -> Result<(), OxidbError> {
 }
 
 #[test]
-fn test_internal_borrow_from_left_sibling_new() -> Result<(), OxidbError> {
-    let (mut tree, _path, _dir) = setup_tree("internal_borrow_left_new");
+fn test_internal_borrow_from_left_sibling() -> Result<(), OxidbError> {
+    let (mut tree, _path, _dir) = setup_tree("internal_borrow_left");
     assert_eq!(tree.order, 4, "Test assumes order 4");
 
     const R_PID: PageId = 0;
@@ -335,8 +335,8 @@ fn test_internal_borrow_from_left_sibling_new() -> Result<(), OxidbError> {
 }
 
 #[test]
-fn test_internal_merge_with_left_sibling_new() -> Result<(), OxidbError> {
-    let (mut tree, _path, _dir) = setup_tree("internal_merge_left_new");
+fn test_internal_merge_with_left_sibling() -> Result<(), OxidbError> {
+    let (mut tree, _path, _dir) = setup_tree("internal_merge_left");
     assert_eq!(tree.order, 4);
 
     const R_PID: PageId = 0;

@@ -40,10 +40,11 @@ impl QueryResult {
         Self::Data(DataSet { columns: Vec::new(), rows: Vec::new() })
     }
 
-    /// Number of rows (0 for non-Data results)
+    /// Number of rows (data rows for Data results, affected rows for RowsAffected results)
     pub fn row_count(&self) -> usize {
         match self {
             Self::Data(ds) => ds.rows.len(),
+            Self::RowsAffected(count) => (*count).min(usize::MAX as u64) as usize,
             _ => 0,
         }
     }

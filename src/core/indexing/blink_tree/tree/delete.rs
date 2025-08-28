@@ -327,7 +327,7 @@ mod tests {
 
     #[test]
     fn test_delete_from_empty_tree() {
-        let (mut tree, _temp_dir) = setup_tree("test_delete_empty");
+        let (mut tree, _test_dir) = setup_tree("test_delete_empty");
 
         // Deleting from empty tree should return false
         let result = tree.delete(&k("nonexistent"), None).unwrap();
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn test_delete_existing_key() {
-        let (mut tree, _temp_dir) = setup_tree("test_delete_existing");
+        let (mut tree, _test_dir) = setup_tree("test_delete_existing");
 
         // Insert a key
         assert!(tree.insert(k("apple"), pk("pk1")).is_ok());
@@ -357,7 +357,7 @@ mod tests {
 
     #[test]
     fn test_delete_specific_primary_key() {
-        let (mut tree, _temp_dir) = setup_tree("test_delete_specific_pk");
+        let (mut tree, _test_dir) = setup_tree("test_delete_specific_pk");
 
         // Insert same key with multiple primary keys
         assert!(tree.insert(k("apple"), pk("pk1")).is_ok());
@@ -387,7 +387,7 @@ mod tests {
 
     #[test]
     fn test_delete_nonexistent_key() {
-        let (mut tree, _temp_dir) = setup_tree("test_delete_nonexistent");
+        let (mut tree, _test_dir) = setup_tree("test_delete_nonexistent");
 
         // Insert a key
         assert!(tree.insert(k("apple"), pk("pk1")).is_ok());
@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn test_tree_stats() {
-        let (mut tree, _temp_dir) = setup_tree("test_stats");
+        let (mut tree, _test_dir) = setup_tree("test_stats");
 
         // Empty tree stats
         let stats = tree.get_tree_stats().unwrap();
@@ -428,7 +428,7 @@ mod tests {
 
     #[test]
     fn test_clear_tree() {
-        let (mut tree, _temp_dir) = setup_tree("test_clear");
+        let (mut tree, _test_dir) = setup_tree("test_clear");
 
         // Insert some keys
         let keys = ["apple", "banana", "cherry"];
