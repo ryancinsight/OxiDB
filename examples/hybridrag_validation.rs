@@ -7,8 +7,7 @@
 //! 4. Hybrid scoring and result combination
 //! 5. Real-world query scenarios
 
-use std::collections::HashMap;
-use std::sync::Arc;
+
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🔍 HybridRAG Validation Test");
@@ -72,12 +71,12 @@ fn test_score_calculation() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Test case 2: Only vector score
-    let vector_only = Some(0.9);
+    let _vector_only = Some(0.9);
     let expected_vector_only = 0.9 * vector_weight;
     println!("✓ Vector-only score: {:.3}", expected_vector_only);
 
     // Test case 3: Only graph score
-    let graph_only = Some(0.6);
+    let _graph_only = Some(0.6);
     let expected_graph_only = 0.6 * graph_weight;
     println!("✓ Graph-only score: {:.3}", expected_graph_only);
 

@@ -10,11 +10,10 @@
 //! - Data aggregation and OLAP-style queries
 //! - PostgreSQL-specific functions and patterns
 
-use chrono::{DateTime, Datelike, Duration, Utc};
+use chrono::Datelike;
 use oxidb::core::common::OxidbError;
-use oxidb::core::sql::ExecutionResult;
+use oxidb::api::types::QueryResult;
 use oxidb::Oxidb;
-use std::collections::HashMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🐘 PostgreSQL-Style Analytics & Data Warehousing Demo");

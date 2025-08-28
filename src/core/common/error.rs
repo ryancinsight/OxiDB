@@ -36,6 +36,9 @@ pub enum OxidbError {
     Configuration(String),
     Type(String),
     TypeMismatch { expected: String, found: String },
+    ParameterIndexOutOfBounds { index: usize, max: usize },
+    AutoIncrementOverflow { table_column: String, max_value: i64 },
+    InvalidAutoIncrementValue { value: i64, max_allowed: i64 },
 }
 
 impl fmt::Display for OxidbError {
@@ -82,6 +85,15 @@ impl fmt::Display for OxidbError {
             Self::Type(s) => write!(f, "Type Error: {s}"),
             Self::TypeMismatch { expected, found } => {
                 write!(f, "Type mismatch: expected {expected}, found {found}")
+            }
+            Self::ParameterIndexOutOfBounds { index, max } => {
+                write!(f, "Parameter index {index} out of bounds (max: {max})")
+            }
+            Self::AutoIncrementOverflow { table_column, max_value } => {
+                write!(f, "Auto-increment overflow for {table_column}: exceeds maximum value {max_value}")
+            }
+            Self::InvalidAutoIncrementValue { value, max_allowed } => {
+                write!(f, "Invalid auto-increment value {value}: must be between 0 and {max_allowed}")
             }
         }
     }
