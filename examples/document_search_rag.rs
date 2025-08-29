@@ -6,7 +6,7 @@
 //! and can be searched using natural language queries.
 
 use chrono::{DateTime, Utc};
-use oxidb::{Connection, OxidbError};
+use oxidb::{Connection, OxidbError, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

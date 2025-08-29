@@ -1,9 +1,9 @@
-//! Constant Folding Optimization Rule
+//! Expression Evaluator Optimization Rule
 //!
 //! This rule performs compile-time evaluation of constant expressions,
 //! focusing on boolean logic optimization and literal value simplification.
 //!
-//! Note: Full arithmetic expression folding (2 + 3 -> 5) requires extending
+//! Note: Full arithmetic expression evaluation (2 + 3 -> 5) requires extending
 //! the AST to support `BinaryOp`, `UnaryOp`, and `FunctionCall` expression types.
 //! This implementation works with the current AST structure.
 
@@ -11,111 +11,114 @@ use crate::core::common::OxidbError;
 use crate::core::optimizer::rule::OptimizationRule;
 use crate::core::query::sql::ast::{AstExpressionValue, AstLiteralValue, ConditionTree};
 
-/// Rule that folds constant expressions at compile time
+/// Rule that evaluates constant expressions at compile time
 /// Follows SOLID's Single Responsibility Principle
 #[derive(Debug)]
-pub struct ConstantFoldingRule;
+pub struct ExpressionEvaluator;
 
-impl OptimizationRule for ConstantFoldingRule {
+impl OptimizationRule for ExpressionEvaluator {
     fn apply(&self, condition: &ConditionTree) -> Result<ConditionTree, OxidbError> {
-        self.fold_condition_tree(condition)
+        self.evaluate_condition_tree(condition)
     }
 
     fn name(&self) -> &'static str {
-        "ConstantFolding"
+        "ExpressionEvaluator"
     }
 }
 
-impl ConstantFoldingRule {
-    /// Recursively fold constants in condition tree
-    fn fold_condition_tree(&self, condition: &ConditionTree) -> Result<ConditionTree, OxidbError> {
+impl ExpressionEvaluator {
+    /// Recursively evaluate constants in condition tree
+    fn evaluate_condition_tree(
+        &self,
+        condition: &ConditionTree,
+    ) -> Result<ConditionTree, OxidbError> {
         match condition {
             ConditionTree::And(left, right) => {
-                let folded_left = self.fold_condition_tree(left)?;
-                let folded_right = self.fold_condition_tree(right)?;
+                let evaluated_left = self.evaluate_condition_tree(left)?;
+                let evaluated_right = self.evaluate_condition_tree(right)?;
 
                 // Boolean short-circuit evaluation
                 // If left is false, entire AND is false
-                if self.try_evaluate_to_boolean(&folded_left)? == Some(false) {
+                if self.try_evaluate_to_boolean(&evaluated_left)? == Some(false) {
                     return Ok(self.create_boolean_literal(false));
                 }
 
                 // If right is false, entire AND is false
-                if self.try_evaluate_to_boolean(&folded_right)? == Some(false) {
+                if self.try_evaluate_to_boolean(&evaluated_right)? == Some(false) {
                     return Ok(self.create_boolean_literal(false));
                 }
 
                 // If left is true, result is right
-                if self.try_evaluate_to_boolean(&folded_left)? == Some(true) {
-                    return Ok(folded_right);
+                if self.try_evaluate_to_boolean(&evaluated_left)? == Some(true) {
+                    return Ok(evaluated_right);
                 }
 
                 // If right is true, result is left
-                if self.try_evaluate_to_boolean(&folded_right)? == Some(true) {
-                    return Ok(folded_left);
+                if self.try_evaluate_to_boolean(&evaluated_right)? == Some(true) {
+                    return Ok(evaluated_left);
                 }
 
                 // If both sides evaluate to boolean constants, fold the AND
                 if let (Some(left_val), Some(right_val)) = (
-                    self.try_evaluate_to_boolean(&folded_left)?,
-                    self.try_evaluate_to_boolean(&folded_right)?,
+                    self.try_evaluate_to_boolean(&evaluated_left)?,
+                    self.try_evaluate_to_boolean(&evaluated_right)?,
                 ) {
                     return Ok(self.create_boolean_literal(left_val && right_val));
                 }
 
-                Ok(ConditionTree::And(Box::new(folded_left), Box::new(folded_right)))
+                Ok(ConditionTree::And(Box::new(evaluated_left), Box::new(evaluated_right)))
             }
 
             ConditionTree::Or(left, right) => {
-                let folded_left = self.fold_condition_tree(left)?;
-                let folded_right = self.fold_condition_tree(right)?;
+                let evaluated_left = self.evaluate_condition_tree(left)?;
+                let evaluated_right = self.evaluate_condition_tree(right)?;
 
                 // Boolean short-circuit evaluation
                 // If left is true, entire OR is true
-                if self.try_evaluate_to_boolean(&folded_left)? == Some(true) {
+                if self.try_evaluate_to_boolean(&evaluated_left)? == Some(true) {
                     return Ok(self.create_boolean_literal(true));
                 }
 
                 // If right is true, entire OR is true
-                if self.try_evaluate_to_boolean(&folded_right)? == Some(true) {
+                if self.try_evaluate_to_boolean(&evaluated_right)? == Some(true) {
                     return Ok(self.create_boolean_literal(true));
                 }
 
                 // If left is false, result is right
-                if self.try_evaluate_to_boolean(&folded_left)? == Some(false) {
-                    return Ok(folded_right);
+                if self.try_evaluate_to_boolean(&evaluated_left)? == Some(false) {
+                    return Ok(evaluated_right);
                 }
 
                 // If right is false, result is left
-                if self.try_evaluate_to_boolean(&folded_right)? == Some(false) {
-                    return Ok(folded_left);
+                if self.try_evaluate_to_boolean(&evaluated_right)? == Some(false) {
+                    return Ok(evaluated_left);
                 }
 
                 // If both sides evaluate to boolean constants, fold the OR
                 if let (Some(left_val), Some(right_val)) = (
-                    self.try_evaluate_to_boolean(&folded_left)?,
-                    self.try_evaluate_to_boolean(&folded_right)?,
+                    self.try_evaluate_to_boolean(&evaluated_left)?,
+                    self.try_evaluate_to_boolean(&evaluated_right)?,
                 ) {
                     return Ok(self.create_boolean_literal(left_val || right_val));
                 }
 
-                Ok(ConditionTree::Or(Box::new(folded_left), Box::new(folded_right)))
+                Ok(ConditionTree::Or(Box::new(evaluated_left), Box::new(evaluated_right)))
             }
 
             ConditionTree::Not(inner) => {
-                let folded_inner = self.fold_condition_tree(inner)?;
+                let evaluated_inner = self.evaluate_condition_tree(inner)?;
 
                 // If inner evaluates to a boolean constant, fold the NOT
-                if let Some(inner_val) = self.try_evaluate_to_boolean(&folded_inner)? {
+                if let Some(inner_val) = self.try_evaluate_to_boolean(&evaluated_inner)? {
                     return Ok(self.create_boolean_literal(!inner_val));
                 }
 
                 // Double negation elimination: NOT(NOT(x)) -> x
-                if let ConditionTree::Not(inner_inner) = &folded_inner {
+                if let ConditionTree::Not(inner_inner) = &evaluated_inner {
                     return Ok(inner_inner.as_ref().clone());
                 }
 
-                Ok(ConditionTree::Not(Box::new(folded_inner)))
+                Ok(ConditionTree::Not(Box::new(evaluated_inner)))
             }
 
             ConditionTree::Comparison(comp) => {
@@ -284,7 +287,7 @@ mod tests {
 
     #[test]
     fn test_boolean_and_folding() {
-        let rule = ConstantFoldingRule;
+        let rule = ExpressionEvaluator;
 
         let condition = ConditionTree::And(
             Box::new(rule.create_boolean_literal(true)),
@@ -303,7 +306,7 @@ mod tests {
 
     #[test]
     fn test_boolean_or_folding() {
-        let rule = ConstantFoldingRule;
+        let rule = ExpressionEvaluator;
 
         let condition = ConditionTree::Or(
             Box::new(rule.create_boolean_literal(true)),
@@ -322,7 +325,7 @@ mod tests {
 
     #[test]
     fn test_boolean_not_folding() {
-        let rule = ConstantFoldingRule;
+        let rule = ExpressionEvaluator;
 
         let condition = ConditionTree::Not(Box::new(rule.create_boolean_literal(true)));
 
@@ -338,7 +341,7 @@ mod tests {
 
     #[test]
     fn test_double_negation_elimination() {
-        let rule = ConstantFoldingRule;
+        let rule = ExpressionEvaluator;
 
         let original_condition = rule.create_boolean_literal(true);
         let double_negated =
@@ -352,7 +355,7 @@ mod tests {
 
     #[test]
     fn test_and_short_circuit_false() {
-        let rule = ConstantFoldingRule;
+        let rule = ExpressionEvaluator;
 
         // false AND anything -> false
         let condition = ConditionTree::And(
@@ -376,7 +379,7 @@ mod tests {
 
     #[test]
     fn test_or_short_circuit_true() {
-        let rule = ConstantFoldingRule;
+        let rule = ExpressionEvaluator;
 
         // true OR anything -> true
         let condition = ConditionTree::Or(
@@ -400,7 +403,7 @@ mod tests {
 
     #[test]
     fn test_self_comparison_folding() {
-        let rule = ConstantFoldingRule;
+        let rule = ExpressionEvaluator;
 
         // column = column -> true
         let condition = ConditionTree::Comparison(Condition {
@@ -421,7 +424,7 @@ mod tests {
 
     #[test]
     fn test_self_comparison_inequality() {
-        let rule = ConstantFoldingRule;
+        let rule = ExpressionEvaluator;
 
         // column != column -> false
         let condition = ConditionTree::Comparison(Condition {
@@ -442,7 +445,7 @@ mod tests {
 
     #[test]
     fn test_tautology_detection() {
-        let rule = ConstantFoldingRule;
+        let rule = ExpressionEvaluator;
 
         let tautology = rule.create_boolean_literal(true);
         assert!(rule.is_tautology(&tautology).unwrap());
@@ -453,7 +456,7 @@ mod tests {
 
     #[test]
     fn test_contradiction_detection() {
-        let rule = ConstantFoldingRule;
+        let rule = ExpressionEvaluator;
 
         let contradiction = rule.create_boolean_literal(false);
         assert!(rule.is_contradiction(&contradiction).unwrap());
@@ -464,7 +467,7 @@ mod tests {
 
     #[test]
     fn test_number_literal_normalization() {
-        let rule = ConstantFoldingRule;
+        let rule = ExpressionEvaluator;
 
         let condition = ConditionTree::Comparison(Condition {
             column: "test_column".to_string(),

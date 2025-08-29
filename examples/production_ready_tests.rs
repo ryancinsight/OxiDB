@@ -90,7 +90,7 @@ impl TestSuite {
         conn.execute("COMMIT")?;
 
         // Verify data exists
-        let result = conn.execute("SELECT COUNT(*) FROM atomic_test")?;
+        let _result = conn.execute("SELECT COUNT(*) FROM atomic_test")?;
         println!("    ✓ Atomicity test passed - transaction committed successfully");
 
         // Test failed transaction (rollback)

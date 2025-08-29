@@ -5,24 +5,30 @@
 use crate::core::common::OxidbError;
 use std::sync::{MutexGuard, PoisonError, RwLockReadGuard, RwLockWriteGuard};
 
+/// Error message constants to avoid string allocations
+const LOCK_POISONED_MSG: &str = "Lock poisoned";
+const STORE_LOCK_FAILED_MSG: &str = "Failed to lock store";
+const READ_LOCK_FAILED_MSG: &str = "Failed to acquire read lock";
+const WRITE_LOCK_FAILED_MSG: &str = "Failed to acquire write lock";
+
 /// Convert a poisoned mutex error to OxidbError with a generic message
 pub fn lock_poisoned<T>(_: PoisonError<MutexGuard<T>>) -> OxidbError {
-    OxidbError::LockTimeout("Lock poisoned".to_string())
+    OxidbError::LockTimeout(LOCK_POISONED_MSG.to_string())
 }
 
 /// Convert a poisoned mutex error to OxidbError for store locks
 pub fn store_lock_poisoned<T>(_: PoisonError<MutexGuard<T>>) -> OxidbError {
-    OxidbError::LockTimeout("Failed to lock store".to_string())
+    OxidbError::LockTimeout(STORE_LOCK_FAILED_MSG.to_string())
 }
 
 /// Convert a poisoned read lock error to OxidbError
 pub fn read_lock_poisoned<T>(_: PoisonError<RwLockReadGuard<T>>) -> OxidbError {
-    OxidbError::LockTimeout("Failed to acquire read lock".to_string())
+    OxidbError::LockTimeout(READ_LOCK_FAILED_MSG.to_string())
 }
 
 /// Convert a poisoned write lock error to OxidbError
 pub fn write_lock_poisoned<T>(_: PoisonError<RwLockWriteGuard<T>>) -> OxidbError {
-    OxidbError::LockTimeout("Failed to acquire write lock".to_string())
+    OxidbError::LockTimeout(WRITE_LOCK_FAILED_MSG.to_string())
 }
 
 /// Convert a poisoned write lock error with context

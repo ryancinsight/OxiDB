@@ -412,55 +412,6 @@ impl JsonValue {
             truncated
         }
     }
-
-    /// Efficient structural comparison without full serialization
-    /// Uses type-based ordering and size comparison for performance
-    #[allow(dead_code)]
-    fn structural_comparison(&self, other: &Self) -> std::cmp::Ordering {
-        use serde_json::Value;
-
-        // First compare by JSON value type (same ordering as main cmp)
-        let self_type_priority = self.get_type_priority();
-        let other_type_priority = other.get_type_priority();
-
-        match self_type_priority.cmp(&other_type_priority) {
-            std::cmp::Ordering::Equal => {
-                // Same type, compare by structural size/complexity
-                match (&self.0, &other.0) {
-                    (Value::Array(a), Value::Array(b)) => {
-                        // Compare by length first, then by hash
-                        match a.len().cmp(&b.len()) {
-                            std::cmp::Ordering::Equal => self.hash_based_comparison(other),
-                            len_ord => len_ord,
-                        }
-                    }
-                    (Value::Object(a), Value::Object(b)) => {
-                        // Compare by size first, then by hash
-                        match a.len().cmp(&b.len()) {
-                            std::cmp::Ordering::Equal => self.hash_based_comparison(other),
-                            len_ord => len_ord,
-                        }
-                    }
-                    _ => self.hash_based_comparison(other),
-                }
-            }
-            type_ord => type_ord,
-        }
-    }
-
-    /// Get type priority for consistent ordering (matches main cmp implementation)
-    #[allow(dead_code)]
-    fn get_type_priority(&self) -> u8 {
-        use serde_json::Value;
-        match &self.0 {
-            Value::Null => 0,
-            Value::Bool(_) => 1,
-            Value::Number(_) => 2,
-            Value::String(_) => 3,
-            Value::Array(_) => 4,
-            Value::Object(_) => 5,
-        }
-    }
 }
 
 /// Iterator for traversing leaf values in a JSON structure
@@ -488,7 +439,7 @@ impl<'a> Iterator for JsonLeafIterator<'a> {
                 }
                 Value::Object(obj) => {
                     // Add object values to stack
-                    self.stack.extend(obj.values().collect::<Vec<_>>().into_iter().rev());
+                    self.stack.extend(obj.values().rev());
                 }
                 leaf => return Some(leaf),
             }
