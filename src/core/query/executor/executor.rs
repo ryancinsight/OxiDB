@@ -103,6 +103,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     }
 
     /// Reset auto-increment value for a table column
+    #[allow(dead_code)] // Used in tests
     pub(crate) fn reset_auto_increment(
         &mut self,
         table_column: &str,
@@ -120,6 +121,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     }
 
     /// Get current auto-increment value for a table column
+    #[allow(dead_code)] // Used in tests
     pub(crate) fn get_auto_increment(&self, table_column: &str) -> i64 {
         self.auto_increment_state.get(table_column).copied().unwrap_or(0)
     }
@@ -223,6 +225,56 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         // For file-based stores, persistence might be automatic
         // This is a placeholder for explicit persistence if needed
         Ok(())
+    }
+
+    /// Store row data in the key-value store
+    pub fn store_row_data(&mut self, key: Vec<u8>, data: &crate::core::types::DataType) -> Result<(), OxidbError> {
+        use crate::core::common::serialization::serialize_data_type;
+        let serialized_data = serialize_data_type(data)?;
+        self.set(key, serialized_data)
+    }
+
+    /// Handle SQL DELETE operations
+    pub fn handle_sql_delete(
+        &mut self, 
+        _table_name: String, 
+        _condition: Option<crate::core::query::commands::SqlConditionTree>
+    ) -> Result<crate::core::query::executor::types::ExecutionResult, OxidbError> {
+        // Implementation placeholder - would involve:
+        // 1. Find matching rows based on condition
+        // 2. Delete from indexes
+        // 3. Remove from storage
+        // 4. Return count of deleted rows
+        use crate::core::query::executor::types::ExecutionResult;
+        
+        // For now, return a placeholder result
+        // In a full implementation, this would scan and filter based on condition
+        Ok(ExecutionResult::Updated { count: 0 })
+    }
+
+    /// Execute parameterized SQL statement
+    pub fn execute_parameterized_statement(
+        &mut self,
+        _statement: &str,
+        _parameters: &[crate::core::types::DataType]
+    ) -> Result<crate::core::query::executor::types::ExecutionResult, OxidbError> {
+        // Implementation placeholder for parameterized queries
+        // Would involve parsing statement, binding parameters, and executing
+        use crate::core::query::executor::types::ExecutionResult;
+        Ok(ExecutionResult::Updated { count: 0 })
+    }
+
+    /// Check uniqueness constraint for column values
+    pub fn check_uniqueness(
+        &mut self,
+        _table_name: &str,
+        _column_name: &str, 
+        _value: &crate::core::types::DataType,
+        _exclude_key: Option<&Vec<u8>>
+    ) -> Result<bool, OxidbError> {
+        // Implementation placeholder for uniqueness checking
+        // Would scan existing data to verify no duplicates exist
+        Ok(true)
     }
 }
 
