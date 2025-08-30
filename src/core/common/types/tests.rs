@@ -112,7 +112,7 @@ fn test_schema_serialization_and_get_column_index() {
     let serialized = serde_json::to_string(&schema).unwrap();
     assert_eq!(
         serialized,
-        "{\"columns\":[{\"name\":\"id\",\"data_type\":\"Integer\",\"is_nullable\":false},{\"name\":\"name\",\"data_type\":\"Text\",\"is_nullable\":true}]}"
+        "{\"columns\":[{\"name\":\"id\",\"data_type\":\"Integer\",\"is_primary_key\":true,\"is_unique\":true,\"is_nullable\":false,\"is_auto_increment\":false},{\"name\":\"name\",\"data_type\":\"Text\",\"is_primary_key\":false,\"is_unique\":false,\"is_nullable\":true,\"is_auto_increment\":false}]}"
     );
     let deserialized: Schema = serde_json::from_str(&serialized).unwrap();
     assert_eq!(deserialized, schema);

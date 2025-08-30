@@ -8,7 +8,6 @@ use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::parser::SqlParser; // The struct being tested
 use crate::core::query::sql::tokenizer::{Token, Tokenizer}; // For tokenizing test strings // Error type for assertions
 use crate::core::query::sql::translator::translate_ast_to_command;
-use crate::core::types::DataType;
 use crate::core::common::types::ColumnType;
 
 // Helper function to tokenize a string for tests
