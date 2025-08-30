@@ -9,6 +9,7 @@ use crate::core::query::sql::parser::SqlParser; // The struct being tested
 use crate::core::query::sql::tokenizer::{Token, Tokenizer}; // For tokenizing test strings // Error type for assertions
 use crate::core::query::sql::translator::translate_ast_to_command;
 use crate::core::types::DataType;
+use crate::core::common::types::ColumnType;
 
 // Helper function to tokenize a string for tests
 fn tokenize_str(input: &str) -> Vec<Token> {
@@ -2214,7 +2215,7 @@ fn test_translate_create_table_with_autoincrement() {
             // id INTEGER PRIMARY KEY AUTOINCREMENT
             let id_col = &columns[0];
             assert_eq!(id_col.name, "id");
-            assert_eq!(id_col.data_type, DataType::Integer(0));
+            assert_eq!(id_col.data_type, ColumnType::Integer);
             assert!(id_col.is_primary_key);
             assert!(id_col.is_unique);
             assert!(!id_col.is_nullable);
@@ -2223,7 +2224,7 @@ fn test_translate_create_table_with_autoincrement() {
             // name TEXT NOT NULL
             let name_col = &columns[1];
             assert_eq!(name_col.name, "name");
-            assert_eq!(name_col.data_type, DataType::String("".to_string()));
+            assert_eq!(name_col.data_type, ColumnType::Text);
             assert!(!name_col.is_primary_key);
             assert!(!name_col.is_unique);
             assert!(!name_col.is_nullable);
@@ -2285,7 +2286,7 @@ fn test_autoincrement_insert_functionality() {
     executor.execute_command(command2).unwrap();
 
     // Verify auto-increment state
-    assert_eq!(executor.get_next_auto_increment_value("test_table", "id"), 3);
+    assert_eq!(executor.get_auto_increment("test_table.id"), 2);
 }
 
 #[test]

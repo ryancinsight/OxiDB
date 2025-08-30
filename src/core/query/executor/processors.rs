@@ -1,6 +1,7 @@
 // src/core/query/executor/processors.rs
 
 use crate::core::common::OxidbError;
+use crate::core::common::types::ColumnType;
 use crate::core::query::commands::Command;
 use crate::core::query::executor::{ExecutionResult, QueryExecutor};
 use crate::core::storage::engine::traits::KeyValueStore;
@@ -88,7 +89,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                                 let next_id = executor
                                     .next_auto_increment(&table_column)?;
                                 let auto_value = match col_def.data_type {
-                                    DataType::Integer(_) => DataType::Integer(next_id),
+                                    ColumnType::Integer => DataType::Integer(next_id),
                                     _ => return Err(OxidbError::Execution(
                                         format!("AUTOINCREMENT is only supported for INTEGER columns, but column '{}' is {:?}",
                                                col_def.name, col_def.data_type)

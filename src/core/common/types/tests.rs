@@ -3,70 +3,70 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 
 #[test]
-fn test_data_type_serialization() {
-    let dt = DataType::Integer;
-    let serialized = serde_json::to_string(&dt).unwrap();
+fn test_column_type_serialization() {
+    let ct = ColumnType::Integer;
+    let serialized = serde_json::to_string(&ct).unwrap();
     assert_eq!(serialized, "\"Integer\"");
-    let deserialized: DataType = serde_json::from_str(&serialized).unwrap();
-    assert_eq!(deserialized, dt);
+    let deserialized: ColumnType = serde_json::from_str(&serialized).unwrap();
+    assert_eq!(deserialized, ct);
 
-    let dt = DataType::Text;
-    let serialized = serde_json::to_string(&dt).unwrap();
+    let ct = ColumnType::Text;
+    let serialized = serde_json::to_string(&ct).unwrap();
     assert_eq!(serialized, "\"Text\"");
-    let deserialized: DataType = serde_json::from_str(&serialized).unwrap();
-    assert_eq!(deserialized, dt);
+    let deserialized: ColumnType = serde_json::from_str(&serialized).unwrap();
+    assert_eq!(deserialized, ct);
 
-    let dt = DataType::Boolean;
-    let serialized = serde_json::to_string(&dt).unwrap();
+    let ct = ColumnType::Boolean;
+    let serialized = serde_json::to_string(&ct).unwrap();
     assert_eq!(serialized, "\"Boolean\"");
-    let deserialized: DataType = serde_json::from_str(&serialized).unwrap();
-    assert_eq!(deserialized, dt);
+    let deserialized: ColumnType = serde_json::from_str(&serialized).unwrap();
+    assert_eq!(deserialized, ct);
 
-    let dt = DataType::Blob;
-    let serialized = serde_json::to_string(&dt).unwrap();
+    let ct = ColumnType::Blob;
+    let serialized = serde_json::to_string(&ct).unwrap();
     assert_eq!(serialized, "\"Blob\"");
-    let deserialized: DataType = serde_json::from_str(&serialized).unwrap();
-    assert_eq!(deserialized, dt);
+    let deserialized: ColumnType = serde_json::from_str(&serialized).unwrap();
+    assert_eq!(deserialized, ct);
 
-    let dt = DataType::Null;
-    let serialized = serde_json::to_string(&dt).unwrap();
+    let ct = ColumnType::Null;
+    let serialized = serde_json::to_string(&ct).unwrap();
     assert_eq!(serialized, "\"Null\"");
-    let deserialized: DataType = serde_json::from_str(&serialized).unwrap();
-    assert_eq!(deserialized, dt);
+    let deserialized: ColumnType = serde_json::from_str(&serialized).unwrap();
+    assert_eq!(deserialized, ct);
 }
 
 #[test]
 fn test_value_serialization_and_get_type() {
     let v = Value::Integer(100);
-    assert_eq!(v.get_type(), DataType::Integer);
+    assert_eq!(v.get_type(), ColumnType::Integer);
     let serialized = serde_json::to_string(&v).unwrap();
     assert_eq!(serialized, "{\"Integer\":100}");
     let deserialized: Value = serde_json::from_str(&serialized).unwrap();
     assert_eq!(deserialized, v);
 
     let v = Value::Text("hello".to_string());
-    assert_eq!(v.get_type(), DataType::Text);
+    assert_eq!(v.get_type(), ColumnType::Text);
     let serialized = serde_json::to_string(&v).unwrap();
     assert_eq!(serialized, "{\"Text\":\"hello\"}");
     let deserialized: Value = serde_json::from_str(&serialized).unwrap();
     assert_eq!(deserialized, v);
 
     let v = Value::Boolean(true);
-    assert_eq!(v.get_type(), DataType::Boolean);
+    assert_eq!(v.get_type(), ColumnType::Boolean);
     let serialized = serde_json::to_string(&v).unwrap();
     assert_eq!(serialized, "{\"Boolean\":true}");
     let deserialized: Value = serde_json::from_str(&serialized).unwrap();
     assert_eq!(deserialized, v);
 
     let v = Value::Blob(vec![0, 1, 2]);
-    assert_eq!(v.get_type(), DataType::Blob);
+    assert_eq!(v.get_type(), ColumnType::Blob);
     let serialized = serde_json::to_string(&v).unwrap();
     assert_eq!(serialized, "{\"Blob\":[0,1,2]}");
     let deserialized: Value = serde_json::from_str(&serialized).unwrap();
     assert_eq!(deserialized, v);
 
     let v = Value::Null;
-    assert_eq!(v.get_type(), DataType::Null);
+    assert_eq!(v.get_type(), ColumnType::Null);
     let serialized = serde_json::to_string(&v).unwrap();
     assert_eq!(serialized, "\"Null\"");
     let deserialized: Value = serde_json::from_str(&serialized).unwrap();
@@ -86,8 +86,22 @@ fn test_row_serialization() {
 fn test_schema_serialization_and_get_column_index() {
     let schema = Schema {
         columns: vec![
-            ColumnDef { name: "id".to_string(), data_type: DataType::Integer, is_nullable: false },
-            ColumnDef { name: "name".to_string(), data_type: DataType::Text, is_nullable: true },
+            ColumnDef { 
+                name: "id".to_string(), 
+                data_type: ColumnType::Integer, 
+                is_nullable: false,
+                is_primary_key: true,
+                is_unique: true,
+                is_auto_increment: false,
+            },
+            ColumnDef { 
+                name: "name".to_string(), 
+                data_type: ColumnType::Text, 
+                is_nullable: true,
+                is_primary_key: false,
+                is_unique: false,
+                is_auto_increment: false,
+            },
         ],
     };
 

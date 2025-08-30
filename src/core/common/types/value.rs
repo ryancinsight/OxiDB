@@ -1,4 +1,4 @@
-use super::data_type::DataType;
+use super::column_type::ColumnType;
 use std::cmp::Ordering; // Required for Ordering::Equal
 
 /// Represents a value that can be stored in the database.
@@ -31,21 +31,21 @@ impl Value {
     ///
     /// ```
     /// use oxidb::Value;
-    /// use oxidb::core::common::types::DataType;
+    /// use oxidb::core::common::types::ColumnType;
     ///
     /// let val = Value::Integer(42);
-    /// assert_eq!(val.get_type(), DataType::Integer);
+    /// assert_eq!(val.get_type(), ColumnType::Integer);
     /// ```
     #[must_use]
-    pub const fn get_type(&self) -> DataType {
+    pub const fn get_type(&self) -> ColumnType {
         match self {
-            Self::Integer(_) => DataType::Integer,
-            Self::Float(_) => DataType::Float,
-            Self::Text(_) => DataType::Text,
-            Self::Boolean(_) => DataType::Boolean,
-            Self::Blob(_) => DataType::Blob,
-            Self::Vector(_) => DataType::Vector(None), // Or determine dimension if stored
-            Self::Null => DataType::Null,
+            Self::Integer(_) => ColumnType::Integer,
+            Self::Float(_) => ColumnType::Float,
+            Self::Text(_) => ColumnType::Text,
+            Self::Boolean(_) => ColumnType::Boolean,
+            Self::Blob(_) => ColumnType::Blob,
+            Self::Vector(_) => ColumnType::Vector(None), // Or determine dimension if stored
+            Self::Null => ColumnType::Null,
         }
     }
 }

@@ -1,5 +1,6 @@
 use super::ast;
 use crate::core::common::OxidbError; // Changed
+use crate::core::common::types::ColumnType;
 use crate::core::query::commands::{self, Command};
 use crate::core::types::{DataType, VectorData}; // Added VectorData
 
@@ -72,26 +73,14 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
             let mut command_columns = Vec::new();
             for ast_col_def in create_ast.columns {
                 let data_type = match ast_col_def.data_type {
-                    ast::AstDataType::Integer => DataType::Integer(0), // Default value for schema
-                    ast::AstDataType::Text => DataType::String(String::new()),
-                    ast::AstDataType::Boolean => DataType::Boolean(false),
-                    ast::AstDataType::Float => {
-                        DataType::Float(crate::core::types::OrderedFloat(0.0))
-                    }
-                    ast::AstDataType::Blob => DataType::RawBytes(Vec::new()), // Assuming RawBytes is the engine type for Blob
+                    ast::AstDataType::Integer => ColumnType::Integer,
+                    ast::AstDataType::Text => ColumnType::Text,
+                    ast::AstDataType::Boolean => ColumnType::Boolean,
+                    ast::AstDataType::Float => ColumnType::Float,
+                    ast::AstDataType::Blob => ColumnType::Blob,
                     ast::AstDataType::Vector { dimension } => {
-                        // For schema definition, create a vector with correct dimension filled with zeros
-                        let placeholder_data = vec![0.0; dimension as usize];
-                        crate::core::types::VectorData::new(dimension, placeholder_data)
-                            .map(|v| DataType::Vector(crate::core::types::HashableVectorData(v)))
-                            .ok_or_else(|| OxidbError::SqlParsing(format!(
-                                "Invalid dimension {dimension} for VECTOR type in CREATE TABLE (should not happen if parser validated > 0)"
-                            )))?
-                    } // Potentially other AstDataTypes if added
-                                                                               // _ => return Err(OxidbError::SqlParsing(format!(
-                                                                               //    "Unsupported AST column type during CREATE TABLE translation: {:?}",
-                                                                               //    ast_col_def.data_type
-                                                                               // ))),
+                        ColumnType::Vector(Some(dimension as usize))
+                    }
                 };
 
                 let mut is_primary_key = false;

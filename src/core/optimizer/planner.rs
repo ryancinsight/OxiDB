@@ -202,8 +202,8 @@ impl Default for CostBasedPlanner {
 mod tests {
     use super::*;
     use crate::core::common::types::{
-        data_type::DataType,
-        schema::{ColumnDef, Schema},
+        ColumnType,
+        ColumnDef, Schema,
     };
 
     #[test]

@@ -1,5 +1,5 @@
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum DataType {
+pub enum ColumnType {
     Integer,
     Float,
     Text,
