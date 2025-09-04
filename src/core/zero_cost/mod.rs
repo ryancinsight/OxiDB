@@ -15,7 +15,7 @@ pub mod views;
 // Re-export key zero-cost types
 pub use borrowed::*;
 pub use iterators::*;
-pub use views::*;
+// Note: views re-exports are handled in views/mod.rs
 
 /// Zero-cost wrapper for borrowed data that prevents unnecessary allocations
 #[derive(Debug)]

@@ -69,6 +69,7 @@ members = [
     "examples/graphrag_demo",
     "examples/performance_demo",
     "examples/file_server",
+    "xtask",
 ]
 resolver = "2"
 
