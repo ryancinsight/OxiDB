@@ -49,7 +49,7 @@ pub const HASH_INDEX_DEFAULT_BUCKETS: usize = 1024;
 pub const HNSW_DEFAULT_MAX_CONNECTIONS: usize = 16;
 
 /// HNSW construction parameter for layer selection
-pub const HNSW_DEFAULT_ML: f64 = 1.0 / 2.0_f64.ln();
+pub const HNSW_DEFAULT_ML: f64 = 1.4426950408889634; // 1.0 / ln(2.0)
 
 // === Vector Operations Constants ===
 
