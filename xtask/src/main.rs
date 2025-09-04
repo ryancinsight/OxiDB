@@ -7,6 +7,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+mod database_validation;
+
 #[derive(Parser)]
 #[command(name = "xtask")]
 #[command(about = "Database engineering automation tasks for OxiDB")]
@@ -29,6 +31,8 @@ enum Commands {
     TodoAudit,
     /// Validate database engineering design patterns
     DesignPatternCheck,
+    /// Database-specific engineering validation (ACID, transactions, SQL injection)
+    DatabaseValidation,
     /// Run all quality checks
     All,
 }
@@ -64,6 +68,7 @@ fn main() -> Result<()> {
         Commands::ComplexityAnalysis => analyze_complexity()?,
         Commands::TodoAudit => audit_todos()?,
         Commands::DesignPatternCheck => check_design_patterns()?,
+        Commands::DatabaseValidation => database_validation()?,
         Commands::All => run_all_checks()?,
     }
 
@@ -437,6 +442,8 @@ fn run_all_checks() -> Result<()> {
     println!();
     check_design_patterns()?;
     println!();
+    database_validation()?;
+    println!();
     
     // Generate summary report
     let report_path = "docs/quality_report.json";
@@ -465,6 +472,40 @@ fn run_all_checks() -> Result<()> {
     fs::write(report_path, serde_json::to_string_pretty(&report)?)?;
     
     println!("✅ Quality analysis complete. Check {} for detailed report.", report_path);
+    
+    Ok(())
+}
+
+fn database_validation() -> Result<()> {
+    println!("🔍 Running database engineering validation...");
+    
+    match database_validation::check_database_patterns() {
+        Ok(violations) => {
+            let report = database_validation::generate_database_report(&violations);
+            
+            // Write report to file
+            let report_path = "docs/database_engineering_report.md";
+            fs::write(report_path, &report)?;
+            
+            if violations.total_violations() == 0 {
+                println!("✅ All database engineering patterns are following best practices!");
+            } else {
+                println!("⚠️  Found {} database engineering violations:", violations.total_violations());
+                println!("   📊 Full report saved to {}", report_path);
+                
+                // Print summary
+                println!("   🔒 ACID violations: {}", violations.acid_violations.len());
+                println!("   ⚡ Transaction safety: {}", violations.transaction_safety.len());
+                println!("   🛡️  SQL injection risks: {}", violations.sql_injection_risks.len());
+                println!("   📇 Index issues: {}", violations.index_violations.len());
+                println!("   ⚡ Performance issues: {}", violations.performance_issues.len());
+                println!("   🧠 Memory safety: {}", violations.memory_safety.len());
+            }
+        }
+        Err(e) => {
+            println!("❌ Database validation failed: {}", e);
+        }
+    }
     
     Ok(())
 }
