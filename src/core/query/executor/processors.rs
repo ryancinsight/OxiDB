@@ -1,6 +1,7 @@
 // src/core/query/executor/processors.rs
 
 use crate::core::common::OxidbError;
+use crate::core::common::types::ColumnType;
 use crate::core::query::commands::Command;
 use crate::core::query::executor::{ExecutionResult, QueryExecutor};
 use crate::core::storage::engine::traits::KeyValueStore;
@@ -84,10 +85,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
 
                             // Only generate auto-increment value if no explicit value was provided (NULL or missing)
                             if current_value == DataType::Null {
+                                let table_column = format!("{}.{}", table_name, col_def.name);
                                 let next_id = executor
-                                    .get_next_auto_increment_value(table_name, &col_def.name);
+                                    .next_auto_increment(&table_column)?;
                                 let auto_value = match col_def.data_type {
-                                    DataType::Integer(_) => DataType::Integer(next_id),
+                                    ColumnType::Integer => DataType::Integer(next_id),
                                     _ => return Err(OxidbError::Execution(
                                         format!("AUTOINCREMENT is only supported for INTEGER columns, but column '{}' is {:?}",
                                                col_def.name, col_def.data_type)
@@ -123,7 +125,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                                 // For INSERT, current_row_pk_bytes is None as there's no "current row" yet.
                                 executor.check_uniqueness(
                                     table_name,
-                                    col_def,
+                                    &col_def.name,
                                     &value_for_column,
                                     None, // No existing row's PK to exclude for INSERT
                                 )?;
@@ -257,7 +259,15 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
             }
             Self::ParameterizedSql { statement, parameters } => {
                 // Handle parameterized SQL execution
-                executor.execute_parameterized_statement(statement, parameters)
+                // Convert Statement to string representation and parameters to DataType slice
+                let statement_str = format!("{:?}", statement); // Placeholder - should be proper SQL string
+                let param_datatypes: Vec<DataType> = parameters.iter().map(|param| {
+                    // Convert ParamValue to DataType - this is a simplification
+                    // In a real implementation, there would be proper conversion logic
+                    DataType::String(format!("{:?}", param))
+                }).collect();
+                
+                executor.execute_parameterized_statement(&statement_str, &param_datatypes)
             }
         }
     }

@@ -10,7 +10,7 @@ pub use crate::core::common::types::ids::{PageId, SlotId, TransactionId};
 
 // Re-export common types from the common module
 pub use crate::core::common::types::{
-    ColumnDef, DataType as CommonDataType, Lsn, Row, Schema, Value,
+    ColumnDef, ColumnType, Lsn, Row, Schema, Value,
 };
 
 /// Maximum recursion depth for JSON comparison to prevent stack overflow
@@ -22,8 +22,8 @@ const MAX_JSON_STRING_SIZE: usize = 10_000;
 pub mod schema;
 
 // Re-export the modules for direct access if needed
-pub mod data_type {
-    pub use crate::core::common::types::data_type::*;
+pub mod column_type {
+    pub use crate::core::common::types::column_type::*;
 }
 
 pub mod value {

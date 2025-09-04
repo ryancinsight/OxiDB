@@ -202,15 +202,15 @@ impl Default for CostBasedPlanner {
 mod tests {
     use super::*;
     use crate::core::common::types::{
-        data_type::DataType,
-        schema::{ColumnDef, Schema},
+        ColumnType,
+        ColumnDef, Schema,
     };
 
     #[test]
     fn test_table_scan_cost_estimation() {
         let schema = Schema::new(vec![
-            ColumnDef::new("id".to_string(), DataType::Integer, false),
-            ColumnDef::new("name".to_string(), DataType::Text, false),
+            ColumnDef::new("id".to_string(), ColumnType::Integer, false),
+            ColumnDef::new("name".to_string(), ColumnType::Text, false),
         ]);
 
         let node = TableScanNode {

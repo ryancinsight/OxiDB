@@ -70,7 +70,7 @@ impl<'a> BorrowedRow<'a> {
 pub struct BorrowedSchema<'a> {
     table_name: Cow<'a, str>,
     column_names: Cow<'a, [Cow<'a, str>]>,
-    column_types: &'a [crate::core::common::types::DataType],
+    column_types: &'a [crate::core::common::types::ColumnType],
 }
 
 impl<'a> BorrowedSchema<'a> {
@@ -78,7 +78,7 @@ impl<'a> BorrowedSchema<'a> {
     pub fn new(
         table_name: Cow<'a, str>,
         column_names: Cow<'a, [Cow<'a, str>]>,
-        column_types: &'a [crate::core::common::types::DataType],
+        column_types: &'a [crate::core::common::types::ColumnType],
     ) -> Self {
         Self { table_name, column_names, column_types }
     }
@@ -103,7 +103,7 @@ impl<'a> BorrowedSchema<'a> {
 
     /// Get column type by index
     #[inline]
-    pub fn column_type(&self, index: usize) -> Option<&crate::core::common::types::DataType> {
+    pub fn column_type(&self, index: usize) -> Option<&crate::core::common::types::ColumnType> {
         self.column_types.get(index)
     }
 

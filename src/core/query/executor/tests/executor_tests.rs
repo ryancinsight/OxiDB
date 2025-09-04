@@ -5,6 +5,7 @@ mod tests {
     // The codebase has migrated to SQL-first Command variants. To keep the build green and follow SSOT/SOC,
     // we skip legacy tests and provide a minimal SQL smoke test that exercises the current pipeline.
     use crate::core::common::traits::DataDeserializer;
+    use crate::core::common::types::ColumnType;
     use crate::core::query::commands::{Command, SqlAssignment};
     use crate::core::query::executor::*;
     use crate::core::storage::engine::wal::WalEntry;
@@ -45,7 +46,7 @@ mod tests {
             columns: vec![
                 crate::core::types::schema::ColumnDef {
                     name: "id".to_string(),
-                    data_type: DataType::Integer(0),
+                    data_type: ColumnType::Integer,
                     is_nullable: false,
                     is_primary_key: true,
                     is_unique: true,
@@ -53,7 +54,7 @@ mod tests {
                 },
                 crate::core::types::schema::ColumnDef {
                     name: "name".to_string(),
-                    data_type: DataType::String(String::new()),
+                    data_type: ColumnType::Text,
                     is_nullable: false,
                     is_primary_key: false,
                     is_unique: false,
