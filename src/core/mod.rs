@@ -1,6 +1,7 @@
 pub mod common;
 pub mod config;
 pub mod connection; // Enhanced connection management with pooling
+pub mod constants; // Database configuration constants
 pub mod execution; // Added execution module
 pub mod graph; // Added graph database module
 pub mod indexing;
@@ -17,3 +18,4 @@ pub mod vector; // Added vector module
 pub mod wal; // Added WAL module
 pub mod zero_cost; // Added zero-cost abstractions module
 pub use self::config::Config;
+pub use self::constants::*; // Export all constants for easy access
