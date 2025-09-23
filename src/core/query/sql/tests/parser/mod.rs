@@ -4,6 +4,7 @@
 use crate::core::query::sql::tokenizer::{Token, Tokenizer};
 
 // Modular test modules for focused testing (SOLID principle)
+pub mod select_tests;
 pub mod update_tests;
 
 /// Helper function to tokenize a string for tests
