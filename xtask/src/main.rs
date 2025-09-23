@@ -4,7 +4,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use walkdir::WalkDir;
 
 mod database_validation;
@@ -113,7 +113,20 @@ fn check_module_sizes() -> Result<()> {
 fn audit_naming_conventions() -> Result<()> {
     println!("🔍 Auditing naming conventions for neutrality and consistency...");
     
-    let problematic_patterns = vec![
+    let problematic_patterns = create_naming_violation_patterns();
+    let violations = find_naming_violations(&problematic_patterns)?;
+    report_naming_results(&violations);
+    
+    Ok(())
+}
+
+/// Create regex patterns for detecting naming convention violations
+/// 
+/// # Errors
+/// 
+/// Returns error if regex compilation fails
+fn create_naming_violation_patterns() -> Vec<(Regex, &'static str)> {
+    vec![
         (Regex::new(r".*_refactored.*").unwrap(), "Contains '_refactored' suffix"),
         (Regex::new(r".*_old.*").unwrap(), "Contains '_old' suffix"),
         (Regex::new(r".*_new.*").unwrap(), "Contains '_new' suffix"),
@@ -121,53 +134,93 @@ fn audit_naming_conventions() -> Result<()> {
         (Regex::new(r".*_backup.*").unwrap(), "Contains '_backup' suffix"),
         (Regex::new(r".*Test[A-Z].*").unwrap(), "Inconsistent test naming"),
         (Regex::new(r"^[a-z].*[A-Z].*").unwrap(), "Mixed case without underscore"),
-    ];
-    
+    ]
+}
+
+/// Find naming convention violations across all Rust source files
+/// 
+/// # Errors
+/// 
+/// Returns error if file system access fails or regex operations fail
+fn find_naming_violations(problematic_patterns: &[(Regex, &str)]) -> Result<Vec<String>> {
     let mut violations = Vec::new();
     
     for entry in WalkDir::new("src").into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) == Some("rs") {
-            // Check file names
-            if let Some(file_name) = path.file_stem().and_then(|s| s.to_str()) {
-                for (pattern, description) in &problematic_patterns {
-                    if pattern.is_match(file_name) {
-                        violations.push(format!("{}: {} - {}", 
-                            path.display(), file_name, description));
-                    }
-                }
-            }
-            
-            // Check struct/enum/function names in file content
-            let content = fs::read_to_string(path)
-                .with_context(|| format!("Failed to read {}", path.display()))?;
-            
-            let struct_regex = Regex::new(r"(?m)^(?:pub\s+)?struct\s+([A-Za-z_][A-Za-z0-9_]*)")?;
-            let enum_regex = Regex::new(r"(?m)^(?:pub\s+)?enum\s+([A-Za-z_][A-Za-z0-9_]*)")?;
-            let fn_regex = Regex::new(r"(?m)^(?:pub\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)")?;
-            
-            for captures in struct_regex.captures_iter(&content) {
-                let name = &captures[1];
-                for (pattern, description) in &problematic_patterns {
-                    if pattern.is_match(name) {
-                        violations.push(format!("{}: struct {} - {}", 
-                            path.display(), name, description));
-                    }
-                }
-            }
+            let mut file_violations = check_file_naming(&path, problematic_patterns)?;
+            violations.append(&mut file_violations);
         }
     }
     
+    Ok(violations)
+}
+
+/// Check naming conventions for a single file
+/// 
+/// # Errors
+/// 
+/// Returns error if file reading fails or regex operations fail
+fn check_file_naming(path: &std::path::Path, problematic_patterns: &[(Regex, &str)]) -> Result<Vec<String>> {
+    let mut violations = Vec::new();
+    
+    // Check file names
+    if let Some(file_name) = path.file_stem().and_then(|s| s.to_str()) {
+        violations.extend(check_name_against_patterns(file_name, problematic_patterns, &format!("{}:", path.display())));
+    }
+    
+    // Check struct/enum/function names in file content
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
+    
+    let mut content_violations = check_content_naming(&content, path, problematic_patterns)?;
+    violations.append(&mut content_violations);
+    
+    Ok(violations)
+}
+
+/// Check naming patterns in file content (structs, enums, functions)
+/// 
+/// # Errors
+/// 
+/// Returns error if regex compilation fails
+fn check_content_naming(content: &str, path: &std::path::Path, problematic_patterns: &[(Regex, &str)]) -> Result<Vec<String>> {
+    let mut violations = Vec::new();
+    
+    let struct_regex = Regex::new(r"(?m)^(?:pub\s+)?struct\s+([A-Za-z_][A-Za-z0-9_]*)")?;
+    
+    for captures in struct_regex.captures_iter(content) {
+        let name = &captures[1];
+        let prefix = format!("{}: struct {}", path.display(), name);
+        violations.extend(check_name_against_patterns(name, problematic_patterns, &prefix));
+    }
+    
+    Ok(violations)
+}
+
+/// Check a name against all problematic patterns
+fn check_name_against_patterns(name: &str, patterns: &[(Regex, &str)], prefix: &str) -> Vec<String> {
+    let mut violations = Vec::new();
+    
+    for (pattern, description) in patterns {
+        if pattern.is_match(name) {
+            violations.push(format!("{} - {}", prefix, description));
+        }
+    }
+    
+    violations
+}
+
+/// Report naming convention audit results
+fn report_naming_results(violations: &[String]) {
     if violations.is_empty() {
         println!("✅ All naming conventions are consistent and neutral");
     } else {
         println!("❌ Found {} naming violations:", violations.len());
-        for violation in &violations {
+        for violation in violations {
             println!("   {}", violation);
         }
     }
-    
-    Ok(())
 }
 
 fn generate_tests() -> Result<()> {
@@ -243,7 +296,18 @@ mod property_tests {
 fn analyze_complexity() -> Result<()> {
     println!("🔍 Analyzing code complexity (target: <10 cyclomatic complexity)...");
     
-    // Simplified complexity analysis by counting control flow statements
+    let high_complexity_functions = find_high_complexity_functions()?;
+    report_complexity_results(&high_complexity_functions);
+    
+    Ok(())
+}
+
+/// Find functions with complexity >10 across all Rust source files
+/// 
+/// # Errors
+/// 
+/// Returns error if file system access fails or regex compilation fails
+fn find_high_complexity_functions() -> Result<Vec<String>> {
     let mut high_complexity_functions = Vec::new();
     
     for entry in WalkDir::new("src").into_iter().filter_map(|e| e.ok()) {
@@ -252,59 +316,92 @@ fn analyze_complexity() -> Result<()> {
             let content = fs::read_to_string(path)
                 .with_context(|| format!("Failed to read {}", path.display()))?;
             
-            // Simple heuristic: count if/match/for/while/loop statements
-            let complexity_keywords = Regex::new(r"\b(if|match|for|while|loop)\b")?;
-            let function_regex = Regex::new(r"(?m)^(?:pub\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)")?;
+            let mut file_violations = analyze_file_complexity(&content, path)?;
+            high_complexity_functions.append(&mut file_violations);
+        }
+    }
+    
+    Ok(high_complexity_functions)
+}
+
+/// Analyze complexity for a single file
+/// 
+/// # Errors
+/// 
+/// Returns error if regex compilation fails
+fn analyze_file_complexity(content: &str, path: &std::path::Path) -> Result<Vec<String>> {
+    let complexity_keywords = Regex::new(r"\b(if|match|for|while|loop)\b")?;
+    let function_regex = Regex::new(r"(?m)^(?:pub\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)")?;
+    
+    let lines: Vec<&str> = content.lines().collect();
+    let functions = extract_functions(&lines, &function_regex)?;
+    
+    let mut violations = Vec::new();
+    for (name, start, end) in functions {
+        let complexity = calculate_function_complexity(&lines[start..=end], &complexity_keywords);
+        if complexity > 10 {
+            violations.push(format!(
+                "{}: function '{}' has complexity {} (>10)",
+                path.display(),
+                name,
+                complexity
+            ));
+        }
+    }
+    
+    Ok(violations)
+}
+
+/// Extract function boundaries from source lines
+/// 
+/// # Errors
+/// 
+/// Returns error if regex operations fail
+fn extract_functions(lines: &[&str], function_regex: &Regex) -> Result<Vec<(String, usize, usize)>> {
+    let mut functions = Vec::new();
+    let mut current_function = None;
+    let mut function_start = 0;
+    let mut brace_count = 0;
+    
+    for (i, line) in lines.iter().enumerate() {
+        if let Some(captures) = function_regex.captures(line) {
+            current_function = Some(captures[1].to_string());
+            function_start = i;
+            brace_count = 0;
+        }
+        
+        if current_function.is_some() {
+            brace_count += line.matches('{').count() as i32;
+            brace_count -= line.matches('}').count() as i32;
             
-            let lines: Vec<&str> = content.lines().collect();
-            let mut current_function = None;
-            let mut function_start = 0;
-            let mut brace_count = 0;
-            
-            for (i, line) in lines.iter().enumerate() {
-                if let Some(captures) = function_regex.captures(line) {
-                    current_function = Some(captures[1].to_string());
-                    function_start = i;
-                    brace_count = 0;
-                }
-                
-                if current_function.is_some() {
-                    brace_count += line.matches('{').count() as i32;
-                    brace_count -= line.matches('}').count() as i32;
-                    
-                    if brace_count == 0 && line.contains('}') {
-                        // End of function
-                        let function_lines = &lines[function_start..=i];
-                        let function_content = function_lines.join("\n");
-                        let complexity = complexity_keywords.find_iter(&function_content).count();
-                        
-                        if complexity > 10 {
-                            high_complexity_functions.push(format!(
-                                "{}: function '{}' has complexity {} (>10)",
-                                path.display(),
-                                current_function.as_ref().unwrap(),
-                                complexity
-                            ));
-                        }
-                        
-                        current_function = None;
-                    }
+            if brace_count == 0 && line.contains('}') {
+                if let Some(name) = current_function.take() {
+                    functions.push((name, function_start, i));
                 }
             }
         }
     }
     
+    Ok(functions)
+}
+
+/// Calculate cyclomatic complexity for function lines
+fn calculate_function_complexity(function_lines: &[&str], complexity_keywords: &Regex) -> usize {
+    let function_content = function_lines.join("\n");
+    complexity_keywords.find_iter(&function_content).count()
+}
+
+/// Report complexity analysis results
+fn report_complexity_results(high_complexity_functions: &[String]) {
     if high_complexity_functions.is_empty() {
         println!("✅ All functions have acceptable complexity (<10)");
     } else {
         println!("❌ Found {} high-complexity functions:", high_complexity_functions.len());
-        for func in &high_complexity_functions {
+        for func in high_complexity_functions {
             println!("   {}", func);
         }
         println!("\n💡 Consider breaking down complex functions using SOLID principles");
     }
-    
-    Ok(())
 }
 
 fn audit_todos() -> Result<()> {

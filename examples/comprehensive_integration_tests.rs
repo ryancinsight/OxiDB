@@ -152,7 +152,7 @@ fn test_product_catalog_operations(conn: &mut Connection) -> Result<(), OxidbErr
     }
 
     // Test price range queries
-    let expensive_products = conn.execute("SELECT name, price FROM products WHERE price > 1000")?;
+    let _expensive_products = conn.execute("SELECT name, price FROM products WHERE price > 1000")?;
 
     // Test category-based queries
     let electronics = conn.execute(
@@ -195,7 +195,7 @@ fn test_customer_management(conn: &mut Connection) -> Result<(), OxidbError> {
     }
 
     // Test customer lookup
-    let customer_lookup =
+    let _customer_lookup =
         conn.execute("SELECT id, name FROM customers WHERE email = 'jane.smith@email.com'")?;
 
     println!("✓ Customer management operations completed");
@@ -245,7 +245,7 @@ fn test_successful_order_processing(conn: &mut Connection) -> Result<(), OxidbEr
     conn.execute("UPDATE products SET stock_quantity = stock_quantity - 1 WHERE id = 2")?;
 
     // Verify stock levels are still valid
-    let stock_check = conn
+    let _stock_check = conn
         .execute("SELECT stock_quantity FROM products WHERE id IN (1, 2) AND stock_quantity < 0")?;
 
     conn.execute("COMMIT")?;
@@ -274,7 +274,7 @@ fn test_insufficient_stock_scenario(conn: &mut Connection) -> Result<(), OxidbEr
             match conn.execute("UPDATE products SET stock_quantity = stock_quantity - 1000 WHERE id = 5") {
                 Ok(_) => {
                     // Check if stock went negative
-                    let negative_stock = conn.execute("SELECT stock_quantity FROM products WHERE id = 5 AND stock_quantity < 0")?;
+                    let _negative_stock = conn.execute("SELECT stock_quantity FROM products WHERE id = 5 AND stock_quantity < 0")?;
                     conn.execute("ROLLBACK")?;
                     println!("✓ Insufficient stock detected, transaction rolled back");
                 }
@@ -317,11 +317,11 @@ fn test_order_cancellation(conn: &mut Connection) -> Result<(), OxidbError> {
 /// Test inventory management with potential concurrency issues
 fn test_inventory_management(conn: &mut Connection) -> Result<(), OxidbError> {
     // Test low stock alerts
-    let low_stock_products =
+    let _low_stock_products =
         conn.execute("SELECT name, stock_quantity FROM products WHERE stock_quantity < 10")?;
 
     // Test inventory valuation
-    let inventory_value =
+    let _inventory_value =
         conn.execute("SELECT SUM(price * stock_quantity) as total_inventory_value FROM products")?;
 
     // Test product restocking
@@ -336,7 +336,7 @@ fn test_inventory_management(conn: &mut Connection) -> Result<(), OxidbError> {
 /// Test e-commerce analytics with complex queries
 fn test_ecommerce_analytics(conn: &mut Connection) -> Result<(), OxidbError> {
     // Top selling products
-    let top_products = conn.execute(
+    let _top_products = conn.execute(
         "
         SELECT p.name, SUM(oi.quantity) as total_sold, SUM(oi.quantity * oi.unit_price) as revenue
         FROM products p
@@ -350,7 +350,7 @@ fn test_ecommerce_analytics(conn: &mut Connection) -> Result<(), OxidbError> {
     )?;
 
     // Customer lifetime value
-    let customer_ltv = conn.execute(
+    let _customer_ltv = conn.execute(
         "
         SELECT c.name, c.email, COUNT(o.id) as order_count, SUM(o.total_amount) as lifetime_value
         FROM customers c
@@ -361,7 +361,7 @@ fn test_ecommerce_analytics(conn: &mut Connection) -> Result<(), OxidbError> {
     )?;
 
     // Category performance
-    let category_performance = conn.execute(
+    let _category_performance = conn.execute(
         "
         SELECT cat.name, COUNT(DISTINCT p.id) as product_count, AVG(p.price) as avg_price
         FROM categories cat
@@ -467,7 +467,7 @@ fn test_account_operations(conn: &mut Connection) -> Result<(), OxidbError> {
     }
 
     // Test balance inquiry
-    let balance_check = conn
+    let _balance_check = conn
         .execute("SELECT account_number, balance FROM accounts WHERE customer_name = 'John Doe'")?;
 
     // Test account status updates
@@ -501,7 +501,7 @@ fn test_successful_money_transfer(conn: &mut Connection) -> Result<(), OxidbErro
     conn.execute("BEGIN TRANSACTION")?;
 
     // Check sufficient funds
-    let balance_check = conn.execute(&format!(
+    let _balance_check = conn.execute(&format!(
         "SELECT balance FROM accounts WHERE id = {} AND balance >= {}",
         from_account, transfer_amount
     ))?;
@@ -526,7 +526,7 @@ fn test_successful_money_transfer(conn: &mut Connection) -> Result<(), OxidbErro
     ))?;
 
     // Verify balances are still valid
-    let negative_balance_check = conn.execute("SELECT id FROM accounts WHERE balance < 0")?;
+    let _negative_balance_check = conn.execute("SELECT id FROM accounts WHERE balance < 0")?;
 
     conn.execute("COMMIT")?;
     println!("✓ Successful money transfer completed");
@@ -1780,9 +1780,9 @@ fn test_tenant_isolation(conn: &mut Connection) -> Result<(), OxidbError> {
     }
 
     // Test data isolation - each tenant should only see their own data
-    let tenant1_docs = conn.execute("SELECT title FROM tenant_documents WHERE tenant_id = 1")?;
-    let tenant2_docs = conn.execute("SELECT title FROM tenant_documents WHERE tenant_id = 2")?;
-    let tenant3_docs = conn.execute("SELECT title FROM tenant_documents WHERE tenant_id = 3")?;
+    let _tenant1_docs = conn.execute("SELECT title FROM tenant_documents WHERE tenant_id = 1")?;
+    let _tenant2_docs = conn.execute("SELECT title FROM tenant_documents WHERE tenant_id = 2")?;
+    let _tenant3_docs = conn.execute("SELECT title FROM tenant_documents WHERE tenant_id = 3")?;
 
     println!("✓ Tenant data isolation verified");
     Ok(())
@@ -1791,7 +1791,7 @@ fn test_tenant_isolation(conn: &mut Connection) -> Result<(), OxidbError> {
 /// Test cross-tenant analytics (aggregated, anonymized)
 fn test_cross_tenant_analytics(conn: &mut Connection) -> Result<(), OxidbError> {
     // Platform-wide statistics (no tenant-specific data exposed)
-    let platform_stats = conn.execute(
+    let _platform_stats = conn.execute(
         "
         SELECT 
             COUNT(*) as total_tenants,
@@ -1804,7 +1804,7 @@ fn test_cross_tenant_analytics(conn: &mut Connection) -> Result<(), OxidbError> 
     )?;
 
     // Usage analytics by plan type
-    let usage_by_plan = conn.execute(
+    let _usage_by_plan = conn.execute(
         "
         SELECT t.plan,
                COUNT(DISTINCT tu.id) as total_users,
@@ -1818,7 +1818,7 @@ fn test_cross_tenant_analytics(conn: &mut Connection) -> Result<(), OxidbError> 
     )?;
 
     // Resource utilization analysis
-    let resource_utilization = conn.execute(
+    let _resource_utilization = conn.execute(
         "
         SELECT t.plan,
                AVG(CAST(user_count AS REAL) / t.max_users * 100) as avg_user_utilization,
@@ -1865,7 +1865,7 @@ fn test_tenant_resource_limits(conn: &mut Connection) -> Result<(), OxidbError> 
     }
 
     // Check for tenants approaching limits
-    let approaching_limits = conn.execute("
+    let _approaching_limits = conn.execute("
         SELECT t.name, t.plan, 
                tu_users.metric_value as current_users, t.max_users,
                tu_storage.metric_value as current_storage, t.max_storage,
@@ -1880,7 +1880,7 @@ fn test_tenant_resource_limits(conn: &mut Connection) -> Result<(), OxidbError> 
 
     // Test enforcement - prevent operations that would exceed limits
     // This would typically be implemented in application logic
-    let over_limit_check = conn.execute(
+    let _over_limit_check = conn.execute(
         "
         SELECT t.id, t.name
         FROM tenants t

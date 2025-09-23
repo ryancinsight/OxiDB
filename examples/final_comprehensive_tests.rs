@@ -212,7 +212,7 @@ impl TestSuite {
         conn.execute("INSERT INTO concurrent_test (counter) VALUES (0)")?;
 
         // Simulate multiple "concurrent" updates
-        for i in 1..=10 {
+        for _i in 1..=10 {
             conn.execute("BEGIN TRANSACTION")?;
             conn.execute("UPDATE concurrent_test SET counter = counter + 1 WHERE id = 1")?;
             conn.execute("COMMIT")?;
