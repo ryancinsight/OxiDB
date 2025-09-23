@@ -11,5 +11,8 @@ mod select_tests;
 mod translate_tests;
 mod update_tests;
 
+// Modular parser tests (SOLID principle implementation)
+pub mod parser;
+
 // Legacy large test file (to be removed after migration)
 pub mod parser_tests;
