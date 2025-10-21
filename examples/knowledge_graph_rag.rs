@@ -117,7 +117,7 @@ impl KnowledgeGraphDB {
             "CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(relationship_type)",
         )?;
 
-        Ok(KnowledgeGraphDB { conn, embedding_dimension })
+        Ok(KnowledgeGraphDB { conn })
     }
 
     // Entity management

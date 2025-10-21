@@ -152,10 +152,10 @@ fn test_product_catalog_operations(conn: &mut Connection) -> Result<(), OxidbErr
     }
 
     // Test price range queries
-    let _expensive_products = conn.execute("SELECT name, price FROM products WHERE price > 1000")?;
+    let ___expensive_products = conn.execute("SELECT name, price FROM products WHERE price > 1000")?;
 
     // Test category-based queries
-    let _electronics = conn.execute(
+    let ___electronics = conn.execute(
         "
         SELECT p.name, p.price, c.name as category 
         FROM products p 
@@ -195,7 +195,7 @@ fn test_customer_management(conn: &mut Connection) -> Result<(), OxidbError> {
     }
 
     // Test customer lookup
-    let customer_lookup =
+    let _customer_lookup =
         conn.execute("SELECT id, name FROM customers WHERE email = 'jane.smith@email.com'")?;
 
     println!("✓ Customer management operations completed");
@@ -274,7 +274,7 @@ fn test_insufficient_stock_scenario(conn: &mut Connection) -> Result<(), OxidbEr
             match conn.execute("UPDATE products SET stock_quantity = stock_quantity - 1000 WHERE id = 5") {
                 Ok(_) => {
                     // Check if stock went negative
-                    let _negative_stock = conn.execute("SELECT stock_quantity FROM products WHERE id = 5 AND stock_quantity < 0")?;
+                    let ___negative_stock = conn.execute("SELECT stock_quantity FROM products WHERE id = 5 AND stock_quantity < 0")?;
                     conn.execute("ROLLBACK")?;
                     println!("✓ Insufficient stock detected, transaction rolled back");
                 }
@@ -336,7 +336,7 @@ fn test_inventory_management(conn: &mut Connection) -> Result<(), OxidbError> {
 /// Test e-commerce analytics with complex queries
 fn test_ecommerce_analytics(conn: &mut Connection) -> Result<(), OxidbError> {
     // Top selling products
-    let _top_products = conn.execute(
+    let ___top_products = conn.execute(
         "
         SELECT p.name, SUM(oi.quantity) as total_sold, SUM(oi.quantity * oi.unit_price) as revenue
         FROM products p
@@ -350,7 +350,7 @@ fn test_ecommerce_analytics(conn: &mut Connection) -> Result<(), OxidbError> {
     )?;
 
     // Customer lifetime value
-    let _customer_ltv = conn.execute(
+    let ___customer_ltv = conn.execute(
         "
         SELECT c.name, c.email, COUNT(o.id) as order_count, SUM(o.total_amount) as lifetime_value
         FROM customers c
@@ -361,7 +361,7 @@ fn test_ecommerce_analytics(conn: &mut Connection) -> Result<(), OxidbError> {
     )?;
 
     // Category performance
-    let _category_performance = conn.execute(
+    let ___category_performance = conn.execute(
         "
         SELECT cat.name, COUNT(DISTINCT p.id) as product_count, AVG(p.price) as avg_price
         FROM categories cat
@@ -501,7 +501,7 @@ fn test_successful_money_transfer(conn: &mut Connection) -> Result<(), OxidbErro
     conn.execute("BEGIN TRANSACTION")?;
 
     // Check sufficient funds
-    let _balance_check = conn.execute(&format!(
+    let ___balance_check = conn.execute(&format!(
         "SELECT balance FROM accounts WHERE id = {} AND balance >= {}",
         from_account, transfer_amount
     ))?;
@@ -526,7 +526,7 @@ fn test_successful_money_transfer(conn: &mut Connection) -> Result<(), OxidbErro
     ))?;
 
     // Verify balances are still valid
-    let _negative_balance_check = conn.execute("SELECT id FROM accounts WHERE balance < 0")?;
+    let ___negative_balance_check = conn.execute("SELECT id FROM accounts WHERE balance < 0")?;
 
     conn.execute("COMMIT")?;
     println!("✓ Successful money transfer completed");
@@ -542,7 +542,7 @@ fn test_insufficient_funds_transfer(conn: &mut Connection) -> Result<(), OxidbEr
     conn.execute("BEGIN TRANSACTION")?;
 
     // Check if sufficient funds exist
-    let _balance_result = conn.execute(&format!(
+    let ___balance_result = conn.execute(&format!(
         "SELECT balance FROM accounts WHERE id = {} AND balance >= {}",
         from_account, transfer_amount
     ))?;
@@ -568,7 +568,7 @@ fn test_transfer_to_suspended_account(conn: &mut Connection) -> Result<(), Oxidb
     let to_account = 4; // Suspended account
 
     // Check if destination account is active
-    let _account_status = conn.execute(&format!(
+    let ___account_status = conn.execute(&format!(
         "SELECT status FROM accounts WHERE id = {} AND status = 'active'",
         to_account
     ))?;
@@ -587,7 +587,7 @@ fn test_transfer_to_suspended_account(conn: &mut Connection) -> Result<(), Oxidb
 /// Test banking audit trail and reporting
 fn test_banking_audit_trail(conn: &mut Connection) -> Result<(), OxidbError> {
     // Transaction history for account
-    let _account_history = conn.execute(
+    let ___account_history = conn.execute(
         "
         SELECT t.created_at, t.transaction_type, t.amount, t.description, t.status,
                fa.account_number as from_account, ta.account_number as to_account
@@ -599,7 +599,7 @@ fn test_banking_audit_trail(conn: &mut Connection) -> Result<(), OxidbError> {
     )?;
 
     // Daily transaction summary
-    let _daily_summary = conn.execute(
+    let ___daily_summary = conn.execute(
         "
         SELECT transaction_type, COUNT(*) as count, SUM(amount) as total_amount
         FROM transactions
@@ -609,7 +609,7 @@ fn test_banking_audit_trail(conn: &mut Connection) -> Result<(), OxidbError> {
     )?;
 
     // Account balances summary
-    let _balance_summary = conn.execute(
+    let ___balance_summary = conn.execute(
         "
         SELECT at.name as account_type, COUNT(a.id) as account_count, 
                SUM(a.balance) as total_balance, AVG(a.balance) as avg_balance
@@ -921,7 +921,7 @@ fn test_social_interactions(conn: &mut Connection) -> Result<(), OxidbError> {
 /// Test feed generation algorithms
 fn test_feed_generation(conn: &mut Connection) -> Result<(), OxidbError> {
     // Generate personalized feed for user 1 (John)
-    let _personalized_feed = conn.execute(
+    let ___personalized_feed = conn.execute(
         "
         SELECT p.id, p.content, p.like_count, p.comment_count, u.display_name, p.created_at
         FROM posts p
@@ -934,7 +934,7 @@ fn test_feed_generation(conn: &mut Connection) -> Result<(), OxidbError> {
     )?;
 
     // Generate trending posts
-    let _trending_posts = conn.execute(
+    let ___trending_posts = conn.execute(
         "
         SELECT p.id, p.content, p.like_count, p.comment_count, p.share_count,
                u.display_name, p.created_at,
@@ -948,7 +948,7 @@ fn test_feed_generation(conn: &mut Connection) -> Result<(), OxidbError> {
     )?;
 
     // Generate user suggestions (users with similar interests)
-    let _user_suggestions = conn.execute(
+    let ___user_suggestions = conn.execute(
         "
         SELECT u.id, u.username, u.display_name, u.follower_count
         FROM users u
@@ -967,7 +967,7 @@ fn test_feed_generation(conn: &mut Connection) -> Result<(), OxidbError> {
 /// Test analytics and insights
 fn test_analytics_and_insights(conn: &mut Connection) -> Result<(), OxidbError> {
     // User engagement metrics
-    let _user_engagement = conn.execute(
+    let ___user_engagement = conn.execute(
         "
         SELECT u.username, u.display_name,
                COUNT(p.id) as post_count,
@@ -982,7 +982,7 @@ fn test_analytics_and_insights(conn: &mut Connection) -> Result<(), OxidbError> 
     )?;
 
     // Content performance by type
-    let _content_performance = conn.execute(
+    let ___content_performance = conn.execute(
         "
         SELECT post_type,
                COUNT(*) as post_count,
@@ -997,7 +997,7 @@ fn test_analytics_and_insights(conn: &mut Connection) -> Result<(), OxidbError> 
     )?;
 
     // Network analysis
-    let _network_stats = conn.execute(
+    let ___network_stats = conn.execute(
         "
         SELECT 
             COUNT(*) as total_follow_relationships,
@@ -1276,7 +1276,7 @@ fn test_user_permissions(conn: &mut Connection) -> Result<(), OxidbError> {
     }
 
     // Test permission checking query
-    let _user_permissions = conn.execute(
+    let ___user_permissions = conn.execute(
         "
         SELECT u.username, r.name as role, p.name as permission
         FROM cms_users u
@@ -1313,7 +1313,7 @@ fn test_content_versioning(conn: &mut Connection) -> Result<(), OxidbError> {
     )?;
 
     // Query version history
-    let _version_history = conn.execute(
+    let ___version_history = conn.execute(
         "
         SELECT av.version_number, av.title, av.created_at, u.username as created_by
         FROM article_versions av
@@ -1360,8 +1360,8 @@ fn test_media_management(conn: &mut Connection) -> Result<(), OxidbError> {
     }
 
     // Query media by type
-    let _images = conn.execute("SELECT * FROM media WHERE mime_type LIKE 'image/%'")?;
-    let _videos = conn.execute("SELECT * FROM media WHERE mime_type LIKE 'video/%'")?;
+    let ___images = conn.execute("SELECT * FROM media WHERE mime_type LIKE 'image/%'")?;
+    let ___videos = conn.execute("SELECT * FROM media WHERE mime_type LIKE 'video/%'")?;
 
     println!("✓ Media management completed");
     Ok(())
@@ -1510,7 +1510,7 @@ fn test_event_tracking(conn: &mut Connection) -> Result<(), OxidbError> {
 /// Test user behavior analysis
 fn test_user_behavior_analysis(conn: &mut Connection) -> Result<(), OxidbError> {
     // Analyze user journey
-    let _user_journey = conn.execute(
+    let ___user_journey = conn.execute(
         "
         SELECT e.user_id, e.session_id, e.page_url, e.event_type, e.event_data, e.created_at
         FROM events e
@@ -1520,7 +1520,7 @@ fn test_user_behavior_analysis(conn: &mut Connection) -> Result<(), OxidbError> 
     )?;
 
     // Page popularity analysis
-    let _page_popularity = conn.execute(
+    let ___page_popularity = conn.execute(
         "
         SELECT page_url, COUNT(*) as views, AVG(load_time) as avg_load_time
         FROM page_views
@@ -1530,7 +1530,7 @@ fn test_user_behavior_analysis(conn: &mut Connection) -> Result<(), OxidbError> 
     )?;
 
     // Device type analysis
-    let _device_analysis = conn.execute(
+    let ___device_analysis = conn.execute(
         "
         SELECT device_type, COUNT(*) as sessions, AVG(duration) as avg_duration
         FROM sessions
@@ -1540,7 +1540,7 @@ fn test_user_behavior_analysis(conn: &mut Connection) -> Result<(), OxidbError> 
     )?;
 
     // Event type distribution
-    let _event_distribution = conn.execute(
+    let ___event_distribution = conn.execute(
         "
         SELECT event_type, COUNT(*) as count, 
                COUNT(DISTINCT user_id) as unique_users,
@@ -1575,7 +1575,7 @@ fn test_performance_metrics(conn: &mut Connection) -> Result<(), OxidbError> {
     }
 
     // Analyze performance trends
-    let _performance_summary = conn.execute(
+    let ___performance_summary = conn.execute(
         "
         SELECT metric_name, 
                AVG(metric_value) as avg_value,
@@ -1595,7 +1595,7 @@ fn test_performance_metrics(conn: &mut Connection) -> Result<(), OxidbError> {
 /// Test real-time dashboard queries
 fn test_real_time_dashboards(conn: &mut Connection) -> Result<(), OxidbError> {
     // Real-time active users (simplified)
-    let _active_users = conn.execute(
+    let ___active_users = conn.execute(
         "
         SELECT COUNT(DISTINCT user_id) as active_users
         FROM events
@@ -1604,7 +1604,7 @@ fn test_real_time_dashboards(conn: &mut Connection) -> Result<(), OxidbError> {
     )?;
 
     // Top pages in last hour
-    let _top_pages = conn.execute(
+    let ___top_pages = conn.execute(
         "
         SELECT page_url, COUNT(*) as views
         FROM page_views
@@ -1616,7 +1616,7 @@ fn test_real_time_dashboards(conn: &mut Connection) -> Result<(), OxidbError> {
     )?;
 
     // Bounce rate calculation (simplified)
-    let _bounce_rate = conn.execute(
+    let ___bounce_rate = conn.execute(
         "
         SELECT 
             COUNT(CASE WHEN page_views = 1 THEN 1 END) * 100.0 / COUNT(*) as bounce_rate
@@ -1626,7 +1626,7 @@ fn test_real_time_dashboards(conn: &mut Connection) -> Result<(), OxidbError> {
     )?;
 
     // Conversion funnel analysis
-    let _conversion_funnel = conn.execute("
+    let ___conversion_funnel = conn.execute("
         SELECT 
             SUM(CASE WHEN event_type = 'page_view' AND page_url = '/home' THEN 1 ELSE 0 END) as home_views,
             SUM(CASE WHEN event_type = 'page_view' AND page_url = '/products' THEN 1 ELSE 0 END) as product_views,
@@ -1791,7 +1791,7 @@ fn test_tenant_isolation(conn: &mut Connection) -> Result<(), OxidbError> {
 /// Test cross-tenant analytics (aggregated, anonymized)
 fn test_cross_tenant_analytics(conn: &mut Connection) -> Result<(), OxidbError> {
     // Platform-wide statistics (no tenant-specific data exposed)
-    let _platform_stats = conn.execute(
+    let ___platform_stats = conn.execute(
         "
         SELECT 
             COUNT(*) as total_tenants,
@@ -1804,7 +1804,7 @@ fn test_cross_tenant_analytics(conn: &mut Connection) -> Result<(), OxidbError> 
     )?;
 
     // Usage analytics by plan type
-    let _usage_by_plan = conn.execute(
+    let ___usage_by_plan = conn.execute(
         "
         SELECT t.plan,
                COUNT(DISTINCT tu.id) as total_users,
@@ -1818,7 +1818,7 @@ fn test_cross_tenant_analytics(conn: &mut Connection) -> Result<(), OxidbError> 
     )?;
 
     // Resource utilization analysis
-    let _resource_utilization = conn.execute(
+    let ___resource_utilization = conn.execute(
         "
         SELECT t.plan,
                AVG(CAST(user_count AS REAL) / t.max_users * 100) as avg_user_utilization,
@@ -1865,7 +1865,7 @@ fn test_tenant_resource_limits(conn: &mut Connection) -> Result<(), OxidbError> 
     }
 
     // Check for tenants approaching limits
-    let _approaching_limits = conn.execute("
+    let ___approaching_limits = conn.execute("
         SELECT t.name, t.plan, 
                tu_users.metric_value as current_users, t.max_users,
                tu_storage.metric_value as current_storage, t.max_storage,
@@ -1880,7 +1880,7 @@ fn test_tenant_resource_limits(conn: &mut Connection) -> Result<(), OxidbError> 
 
     // Test enforcement - prevent operations that would exceed limits
     // This would typically be implemented in application logic
-    let _over_limit_check = conn.execute(
+    let ___over_limit_check = conn.execute(
         "
         SELECT t.id, t.name
         FROM tenants t

@@ -126,9 +126,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 4: Setup enhanced GraphRAG system
     println!("🕸️  Setting up enhanced GraphRAG system...");
-    let graphrag_retriever = Box::new(InMemoryRetriever::new(graphrag_documents.clone()));
+    let _graphrag_retriever = Box::new(InMemoryRetriever::new(graphrag_documents.clone()));
     let graph_store = Arc::new(Mutex::new(Box::new(oxidb::core::graph::InMemoryGraphStore::new()) as Box<dyn oxidb::core::graph::GraphStore>));
-    let embedder = Arc::new(SemanticEmbedder::new());
+    let embedder = Arc::new(SemanticEmbedder::new(384)); // Standard embedding dimension
     let config = oxidb::core::rag::GraphRAGConfig::default();
     let mut graphrag_engine = GraphRAGEngineImpl::new(graph_store, embedder, config);
 
@@ -148,7 +148,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Test traditional RAG
         let rag_result =
-            benchmark_enhanced_rag_retrieval(&*rag_retriever, query, &semantic_embedder).await?;
+            benchmark_enhanced_rag_retrieval(&rag_retriever, query, &semantic_embedder).await?;
 
         // Test GraphRAG
         let graphrag_result =
@@ -265,7 +265,7 @@ fn process_shakespeare_text(title: &str, content: &str, genre: &str) -> Vec<Docu
     let mut current_act = "Unknown";
     let mut current_scene = "Unknown";
 
-    for (_i, part) in parts.iter().enumerate() {
+    for part in parts.iter() {
         if part.trim().is_empty() {
             continue;
         }
@@ -382,7 +382,7 @@ fn chunk_text(text: &str, max_chunk_size: usize) -> Vec<String> {
 
 /// Create sample content for testing
 fn create_sample_shakespeare_content(title: &str, genre: &str) -> Vec<Document> {
-    let sample_contents = vec![
+    let sample_contents = [
         "Romeo and Juliet meet at the Capulet party and fall in love at first sight.",
         "Hamlet sees his father's ghost who tells him of his murder by Claudius.",
         "Macbeth meets the three witches who prophesy he will become king.",
@@ -430,7 +430,7 @@ async fn benchmark_enhanced_rag_retrieval(
 
     // Create query document and embed it
     let query_doc = Document::new("query".to_string(), query.to_string());
-    let _query_embedding = embedder.embed_document(&query_doc).await?;
+    let query_embedding = embedder.embed_document(&query_doc).await?;
 
     let retrieval_start = Instant::now();
     let documents = retriever.retrieve(&query_embedding, 10, SimilarityMetric::Cosine).await?;
@@ -633,7 +633,7 @@ fn calculate_context_relevance(
 
 /// Calculate character coverage
 fn calculate_character_coverage(rag_results: &[String], graphrag_results: &[String]) -> f64 {
-    let characters = vec!["romeo", "juliet", "hamlet", "macbeth", "othello"];
+    let characters = ["romeo", "juliet", "hamlet", "macbeth", "othello"];
     let all_results = [rag_results, graphrag_results].concat();
 
     let covered_characters = characters
@@ -652,7 +652,7 @@ fn calculate_theme_identification(
     rag_results: &[String],
     graphrag_results: &[String],
 ) -> f64 {
-    let themes = vec!["love", "death", "power", "revenge", "family"];
+    let themes = ["love", "death", "power", "revenge", "family"];
     let query_lower = query.to_lowercase();
     let all_results = [rag_results, graphrag_results].concat();
 
@@ -676,7 +676,7 @@ fn calculate_theme_identification(
 /// Calculate relationship accuracy
 fn calculate_relationship_accuracy(_rag_results: &[String], graphrag_results: &[String]) -> f64 {
     // GraphRAG should identify more relationships
-    let relationship_indicators = vec!["loves", "kills", "betrays", "serves", "fights"];
+    let relationship_indicators = ["loves", "kills", "betrays", "serves", "fights"];
 
     let relationship_count = relationship_indicators
         .iter()

@@ -878,11 +878,11 @@ fn demonstrate_advanced_features(db: &mut Oxidb) -> Result<(), OxidbError> {
     println!("\n🔧 Database Maintenance:");
 
     // Analyze table statistics (MySQL ANALYZE TABLE equivalent)
-    let analyze_sql = "ANALYZE TABLE products, orders, customers";
+    let _analyze_sql = "ANALYZE TABLE products, orders, customers";
     println!("✓ Table analysis pattern shown");
 
     // Index optimization suggestions
-    let index_analysis = r#"
+    let _index_analysis = r#"
         -- Suggested indexes for performance optimization:
         -- CREATE INDEX idx_orders_customer_status ON orders(customer_id, status);
         -- CREATE INDEX idx_products_category_active ON products(category_id, is_active);
