@@ -9,9 +9,7 @@ use std::collections::HashMap; // Added for SimpleMap // Refined imports
 pub use crate::core::common::types::ids::{PageId, SlotId, TransactionId};
 
 // Re-export common types from the common module
-pub use crate::core::common::types::{
-    ColumnDef, ColumnType, Lsn, Row, Schema, Value,
-};
+pub use crate::core::common::types::{ColumnDef, ColumnType, Lsn, Row, Schema, Value};
 
 /// Maximum recursion depth for JSON comparison to prevent stack overflow
 const MAX_JSON_RECURSION_DEPTH: usize = 1000;

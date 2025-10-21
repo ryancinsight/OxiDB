@@ -83,7 +83,7 @@ mod tests {
                 assert_eq!(columns.len(), 2);
                 assert_eq!(rows.len(), 1);
             }
-            other => panic!("Unexpected result: {:?}", other),
+            other => assert!(false, "Unexpected result: {:?}", other),
         }
         Ok(())
     }

@@ -497,7 +497,7 @@ mod tests {
                 LogRecord::CommitTransaction { tx_id, .. } => {
                     assert_eq!(*tx_id, TransactionId(100))
                 }
-                _ => panic!("Unexpected record type"),
+                _ => assert!(false, "Unexpected record type"),
             }
         }
     }

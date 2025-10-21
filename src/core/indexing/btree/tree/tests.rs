@@ -94,7 +94,7 @@ fn test_new_tree_creation() {
         assert!(keys.is_empty());
         assert!(values.is_empty());
     } else {
-        panic!("Root should be an empty leaf node");
+        assert!(false, "Root should be an empty leaf node");
     }
 }
 
@@ -168,7 +168,7 @@ fn test_insert_multiple_no_split_and_find() {
         assert_eq!(keys[2], k("mango"));
         assert!(keys.len() == tree.order - 1);
     } else {
-        panic!("Root should be a leaf node");
+        assert!(false, "Root should be a leaf node");
     }
 }
 
@@ -210,7 +210,7 @@ fn test_insert_causing_leaf_split_and_new_root() {
             assert_eq!(l_values, vec![vec![pk("v_a")]]);
             assert_eq!(l_next, Some(child1_page_id));
         } else {
-            panic!("Child 0 is not a Leaf as expected");
+            assert!(false, "Child 0 is not a Leaf as expected");
         }
         let right_leaf = tree.read_node(child1_page_id).expect("Read child1 failed");
         if let BPlusTreeNode::Leaf {
@@ -227,10 +227,10 @@ fn test_insert_causing_leaf_split_and_new_root() {
             assert_eq!(rl_values, vec![vec![pk("v_b")], vec![pk("v_c")], vec![pk("v_d")]]);
             assert_eq!(rl_next, None);
         } else {
-            panic!("Child 1 is not a Leaf as expected");
+            assert!(false, "Child 1 is not a Leaf as expected");
         }
     } else {
-        panic!("New root is not an Internal node as expected");
+        assert!(false, "New root is not an Internal node as expected");
     }
     assert_eq!(tree.find_primary_keys(&k("d")).expect("Find d failed"), Some(vec![pk("v_d")]));
 }
@@ -252,7 +252,7 @@ fn test_delete_from_leaf_no_underflow() {
     if let BPlusTreeNode::Leaf { keys, .. } = root_node {
         assert_eq!(keys, vec![k("a"), k("c")]);
     } else {
-        panic!("Should be leaf root");
+        assert!(false, "Should be leaf root");
     }
 }
 
@@ -295,7 +295,7 @@ fn test_delete_causing_underflow_simple_root_empty() {
     if let BPlusTreeNode::Leaf { keys, .. } = root_node {
         assert!(keys.is_empty(), "Root leaf should be empty but not removed");
     } else {
-        panic!("Root should remain a leaf");
+        assert!(false, "Root should remain a leaf");
     }
 }
 
@@ -317,7 +317,10 @@ fn test_delete_leaf_borrow_from_right_sibling() -> Result<(), OxidbError> {
             assert_eq!(keys, &vec![k("banana")]);
             (children[0], children[1])
         }
-        _ => panic!("Root should be internal"),
+        _ => {
+            assert!(false, "Root should be internal");
+            (0, 0) // This will never be reached
+        }
     };
 
     let deleted = tree.delete(&k("apple"), None)?;
@@ -329,7 +332,10 @@ fn test_delete_leaf_borrow_from_right_sibling() -> Result<(), OxidbError> {
             assert_eq!(keys, &vec![k("cherry")]);
             (children[0], children[1])
         }
-        _ => panic!("Root should remain internal"),
+        _ => {
+            assert!(false, "Root should remain internal");
+            (0, 0) // This will never be reached
+        }
     };
 
     assert_eq!(final_l1_pid, initial_l1_pid);
@@ -342,7 +348,7 @@ fn test_delete_leaf_borrow_from_right_sibling() -> Result<(), OxidbError> {
             assert_eq!(*parent_page_id, Some(root_pid));
             assert_eq!(next_leaf, &Some(final_l2_pid));
         }
-        _ => panic!("L1 should be a Leaf node"),
+        _ => assert!(false, "L1 should be a Leaf node"),
     }
 
     let final_l2_node = tree.read_node(final_l2_pid)?;
@@ -352,7 +358,7 @@ fn test_delete_leaf_borrow_from_right_sibling() -> Result<(), OxidbError> {
             assert_eq!(*parent_page_id, Some(root_pid));
             assert_eq!(next_leaf, &None);
         }
-        _ => panic!("L2 should be a Leaf node"),
+        _ => assert!(false, "L2 should be a Leaf node"),
     }
     Ok(())
 }
@@ -498,7 +504,7 @@ fn test_delete_internal_borrow_from_right_sibling() -> Result<(), OxidbError> {
                 "Root children incorrect"
             );
         }
-        _ => panic!("Root not internal"),
+        _ => assert!(false, "Root not internal"),
     }
 
     let il0_node_after = tree.read_node(page_internal_left)?;
@@ -513,7 +519,7 @@ fn test_delete_internal_borrow_from_right_sibling() -> Result<(), OxidbError> {
             let merged_l0l1_node = tree.read_node(merged_l0l1_page_id)?;
             assert_eq!(merged_l0l1_node.get_keys().as_slice(), &[k("02")]); // L0 was [k("00")], L1 was [k("02")]. After deleting k("00"), L0 merges L1.
         }
-        _ => panic!("IL0 not internal"),
+        _ => assert!(false, "IL0 not internal"),
     }
 
     let il1_node_after = tree.read_node(page_internal_right)?;
@@ -522,7 +528,7 @@ fn test_delete_internal_borrow_from_right_sibling() -> Result<(), OxidbError> {
             assert_eq!(keys.as_slice(), &[k("12")]);
             assert_eq!(children.as_slice(), &[page_leaf_3, page_leaf_4]);
         }
-        _ => panic!("IL1 not internal"),
+        _ => assert!(false, "IL1 not internal"),
     }
     Ok(())
 }
@@ -635,7 +641,10 @@ fn test_delete_internal_merge_with_left_sibling() -> Result<(), OxidbError> {
             let merged_l0l1 = tree.read_node(P_L0)?;
             assert_eq!(merged_l0l1.get_keys().as_slice(), &[k("01")]); // L0 got k00, L1 got k01, merged L0L1 on L0 gets k01
         }
-        _ => panic!("New root is not internal as expected after merge cascade"),
+        _ => {
+            assert!(false, "New root is not internal as expected after merge cascade");
+            unreachable!()
+        }
     }
     Ok(())
 }
@@ -744,7 +753,10 @@ fn test_delete_internal_merge_with_right_sibling() -> Result<(), OxidbError> {
     assert_eq!(root_node_after.get_keys(), &vec![k("07")]);
     match &root_node_after {
         Internal { children, .. } => assert_eq!(children.as_slice(), &[IL0_PID, IL2_PID]),
-        _ => panic!("Root not internal"),
+        _ => {
+            assert!(false, "Root not internal");
+            unreachable!()
+        }
     }
 
     let il0_node_after = tree.read_node(IL0_PID)?;
@@ -770,7 +782,10 @@ fn test_delete_recursive_จน_root_is_leaf() -> Result<(), OxidbError> {
     let final_root_node = tree.read_node(tree.root_page_id)?;
     match final_root_node {
         Leaf { keys, .. } => assert_eq!(keys, vec![k("3")]),
-        _ => panic!("Root should be leaf at the end"),
+        _ => {
+            assert!(false, "Root should be leaf at the end");
+            unreachable!()
+        }
     }
     Ok(())
 }

@@ -27,7 +27,7 @@ mod tests {
             QueryPlanNode::TableScan { table_name, .. } => {
                 assert_eq!(table_name, "test_table");
             }
-            _ => panic!("Expected TableScan after removing no-op filter"),
+            _ => assert!(false, "Expected TableScan after removing no-op filter"),
         }
     }
 
@@ -55,7 +55,7 @@ mod tests {
             QueryPlanNode::Filter { predicate, .. } => {
                 assert!(matches!(predicate, Expression::BinaryOp { .. }));
             }
-            _ => panic!("Expected Filter to remain for meaningful predicate"),
+            _ => assert!(false, "Expected Filter to remain for meaningful predicate"),
         }
     }
 }

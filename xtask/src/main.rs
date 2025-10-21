@@ -77,26 +77,30 @@ fn main() -> Result<()> {
 
 fn check_module_sizes() -> Result<()> {
     println!("🔍 Checking module sizes (SLAP principle: <300 lines)...");
-    
+
     let mut violations = Vec::new();
     let mut total_modules = 0;
-    
+
     for entry in WalkDir::new("src").into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) == Some("rs") {
             total_modules += 1;
             let content = fs::read_to_string(path)
                 .with_context(|| format!("Failed to read {}", path.display()))?;
-            
+
             let line_count = content.lines().count();
-            
+
             if line_count > 300 {
                 violations.push(format!("{}: {} lines", path.display(), line_count));
-                println!("⚠️  {} has {} lines (exceeds 300 line limit)", path.display(), line_count);
+                println!(
+                    "⚠️  {} has {} lines (exceeds 300 line limit)",
+                    path.display(),
+                    line_count
+                );
             }
         }
     }
-    
+
     if violations.is_empty() {
         println!("✅ All {} modules comply with 300-line limit", total_modules);
     } else {
@@ -106,13 +110,13 @@ fn check_module_sizes() -> Result<()> {
         }
         println!("\n💡 Consider splitting large modules using SOLID principles");
     }
-    
+
     Ok(())
 }
 
 fn audit_naming_conventions() -> Result<()> {
     println!("🔍 Auditing naming conventions for neutrality and consistency...");
-    
+
     let problematic_patterns = vec![
         (Regex::new(r".*_refactored.*").unwrap(), "Contains '_refactored' suffix"),
         (Regex::new(r".*_old.*").unwrap(), "Contains '_old' suffix"),
@@ -122,9 +126,9 @@ fn audit_naming_conventions() -> Result<()> {
         (Regex::new(r".*Test[A-Z].*").unwrap(), "Inconsistent test naming"),
         (Regex::new(r"^[a-z].*[A-Z].*").unwrap(), "Mixed case without underscore"),
     ];
-    
+
     let mut violations = Vec::new();
-    
+
     for entry in WalkDir::new("src").into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) == Some("rs") {
@@ -132,32 +136,40 @@ fn audit_naming_conventions() -> Result<()> {
             if let Some(file_name) = path.file_stem().and_then(|s| s.to_str()) {
                 for (pattern, description) in &problematic_patterns {
                     if pattern.is_match(file_name) {
-                        violations.push(format!("{}: {} - {}", 
-                            path.display(), file_name, description));
+                        violations.push(format!(
+                            "{}: {} - {}",
+                            path.display(),
+                            file_name,
+                            description
+                        ));
                     }
                 }
             }
-            
+
             // Check struct/enum/function names in file content
             let content = fs::read_to_string(path)
                 .with_context(|| format!("Failed to read {}", path.display()))?;
-            
+
             let struct_regex = Regex::new(r"(?m)^(?:pub\s+)?struct\s+([A-Za-z_][A-Za-z0-9_]*)")?;
             let enum_regex = Regex::new(r"(?m)^(?:pub\s+)?enum\s+([A-Za-z_][A-Za-z0-9_]*)")?;
             let fn_regex = Regex::new(r"(?m)^(?:pub\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)")?;
-            
+
             for captures in struct_regex.captures_iter(&content) {
                 let name = &captures[1];
                 for (pattern, description) in &problematic_patterns {
                     if pattern.is_match(name) {
-                        violations.push(format!("{}: struct {} - {}", 
-                            path.display(), name, description));
+                        violations.push(format!(
+                            "{}: struct {} - {}",
+                            path.display(),
+                            name,
+                            description
+                        ));
                     }
                 }
             }
         }
     }
-    
+
     if violations.is_empty() {
         println!("✅ All naming conventions are consistent and neutral");
     } else {
@@ -166,16 +178,16 @@ fn audit_naming_conventions() -> Result<()> {
             println!("   {}", violation);
         }
     }
-    
+
     Ok(())
 }
 
 fn generate_tests() -> Result<()> {
     println!("🔍 Analyzing test coverage gaps and generating property-based tests...");
-    
+
     // This would analyze the codebase and generate comprehensive tests
     // For now, we'll create a template for property-based testing
-    
+
     let test_template = r#"
 #[cfg(test)]
 mod property_tests {
@@ -225,7 +237,7 @@ mod property_tests {
     }
 }
 "#;
-    
+
     let test_path = Path::new("src/tests/generated_property_tests.rs");
     if !test_path.exists() {
         if let Some(parent) = test_path.parent() {
@@ -236,48 +248,48 @@ mod property_tests {
     } else {
         println!("✅ Property-based test file already exists");
     }
-    
+
     Ok(())
 }
 
 fn analyze_complexity() -> Result<()> {
     println!("🔍 Analyzing code complexity (target: <10 cyclomatic complexity)...");
-    
+
     // Simplified complexity analysis by counting control flow statements
     let mut high_complexity_functions = Vec::new();
-    
+
     for entry in WalkDir::new("src").into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) == Some("rs") {
             let content = fs::read_to_string(path)
                 .with_context(|| format!("Failed to read {}", path.display()))?;
-            
+
             // Simple heuristic: count if/match/for/while/loop statements
             let complexity_keywords = Regex::new(r"\b(if|match|for|while|loop)\b")?;
             let function_regex = Regex::new(r"(?m)^(?:pub\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)")?;
-            
+
             let lines: Vec<&str> = content.lines().collect();
             let mut current_function = None;
             let mut function_start = 0;
             let mut brace_count = 0;
-            
+
             for (i, line) in lines.iter().enumerate() {
                 if let Some(captures) = function_regex.captures(line) {
                     current_function = Some(captures[1].to_string());
                     function_start = i;
                     brace_count = 0;
                 }
-                
+
                 if current_function.is_some() {
                     brace_count += line.matches('{').count() as i32;
                     brace_count -= line.matches('}').count() as i32;
-                    
+
                     if brace_count == 0 && line.contains('}') {
                         // End of function
                         let function_lines = &lines[function_start..=i];
                         let function_content = function_lines.join("\n");
                         let complexity = complexity_keywords.find_iter(&function_content).count();
-                        
+
                         if complexity > 10 {
                             high_complexity_functions.push(format!(
                                 "{}: function '{}' has complexity {} (>10)",
@@ -286,14 +298,14 @@ fn analyze_complexity() -> Result<()> {
                                 complexity
                             ));
                         }
-                        
+
                         current_function = None;
                     }
                 }
             }
         }
     }
-    
+
     if high_complexity_functions.is_empty() {
         println!("✅ All functions have acceptable complexity (<10)");
     } else {
@@ -303,22 +315,22 @@ fn analyze_complexity() -> Result<()> {
         }
         println!("\n💡 Consider breaking down complex functions using SOLID principles");
     }
-    
+
     Ok(())
 }
 
 fn audit_todos() -> Result<()> {
     println!("🔍 Auditing TODO/FIXME/hack comments...");
-    
+
     let todo_regex = Regex::new(r"(?i)(TODO|FIXME|XXX|HACK|BUG):\s*(.+)")?;
     let mut todo_items = Vec::new();
-    
+
     for entry in WalkDir::new("src").into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) == Some("rs") {
             let content = fs::read_to_string(path)
                 .with_context(|| format!("Failed to read {}", path.display()))?;
-            
+
             for (line_num, line) in content.lines().enumerate() {
                 if let Some(captures) = todo_regex.captures(line) {
                     todo_items.push(format!(
@@ -332,7 +344,7 @@ fn audit_todos() -> Result<()> {
             }
         }
     }
-    
+
     if todo_items.is_empty() {
         println!("✅ No TODO/FIXME items found - codebase is complete");
     } else {
@@ -342,63 +354,69 @@ fn audit_todos() -> Result<()> {
         }
         println!("\n💡 Consider resolving these items for production readiness");
     }
-    
+
     Ok(())
 }
 
 fn check_design_patterns() -> Result<()> {
     println!("🔍 Checking database engineering design patterns...");
-    
+
     let mut violations = Vec::new();
-    
+
     for entry in WalkDir::new("src").into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) == Some("rs") {
             let content = fs::read_to_string(path)
                 .with_context(|| format!("Failed to read {}", path.display()))?;
-            
+
             // Check for common anti-patterns in database code
-            
+
             // 1. Excessive cloning
             let clone_count = content.matches(".clone()").count();
             if clone_count > 20 {
                 violations.push(format!(
                     "{}: Excessive cloning ({} instances) - consider borrowing or Cow",
-                    path.display(), clone_count
+                    path.display(),
+                    clone_count
                 ));
             }
-            
+
             // 2. Hardcoded magic numbers (should use constants)
             let magic_number_regex = Regex::new(r"\b(?:1024|4096|8192|65536)\b")?;
             let magic_count = magic_number_regex.find_iter(&content).count();
             if magic_count > 5 {
                 violations.push(format!(
                     "{}: Magic numbers detected ({} instances) - use constants module",
-                    path.display(), magic_count
+                    path.display(),
+                    magic_count
                 ));
             }
-            
+
             // 3. Large functions (>50 lines approximate)
             let lines = content.lines().collect::<Vec<_>>();
             let mut in_function = false;
             let mut function_lines = 0;
             let mut current_function = String::new();
-            
+
             for line in lines {
-                if line.trim_start().starts_with("fn ") || line.trim_start().starts_with("pub fn ") {
+                if line.trim_start().starts_with("fn ") || line.trim_start().starts_with("pub fn ")
+                {
                     in_function = true;
                     function_lines = 0;
                     if let Some(fn_name) = line.split_whitespace().nth(1) {
-                        current_function = fn_name.split('(').next().unwrap_or("unknown").to_string();
+                        current_function =
+                            fn_name.split('(').next().unwrap_or("unknown").to_string();
                     }
                 }
-                
+
                 if in_function {
                     function_lines += 1;
                     if line.trim() == "}" && function_lines > 50 {
                         violations.push(format!(
                             "{}: Large function '{}' ({} lines) - violates SLAP principle",
-                            path.display(), current_function, function_lines
+                            path.display(),
+                            current_function,
+                            function_lines
                         ));
                         in_function = false;
                     } else if line.trim() == "}" {
@@ -406,7 +424,7 @@ fn check_design_patterns() -> Result<()> {
                     }
                 }
             }
-            
+
             // 4. Missing error documentation
             if content.contains("-> Result<") && !content.contains("# Errors") {
                 violations.push(format!(
@@ -416,7 +434,7 @@ fn check_design_patterns() -> Result<()> {
             }
         }
     }
-    
+
     if violations.is_empty() {
         println!("✅ All design patterns follow database engineering best practices");
     } else {
@@ -425,13 +443,13 @@ fn check_design_patterns() -> Result<()> {
             println!("   {}", violation);
         }
     }
-    
+
     Ok(())
 }
 
 fn run_all_checks() -> Result<()> {
     println!("🚀 Running comprehensive database engineering quality checks...\n");
-    
+
     check_module_sizes()?;
     println!();
     audit_naming_conventions()?;
@@ -444,11 +462,11 @@ fn run_all_checks() -> Result<()> {
     println!();
     database_validation()?;
     println!();
-    
+
     // Generate summary report
     let report_path = "docs/quality_report.json";
     println!("📊 Generating quality report at {}", report_path);
-    
+
     // This would collect all the data from above checks
     let summary = QualitySummary {
         total_modules: 0, // Would be calculated
@@ -459,7 +477,7 @@ fn run_all_checks() -> Result<()> {
         pattern_violations: 0,
         overall_score: 85.0, // Example score
     };
-    
+
     let report = QualityReport {
         module_sizes: HashMap::new(),
         naming_issues: Vec::new(),
@@ -468,31 +486,34 @@ fn run_all_checks() -> Result<()> {
         design_pattern_violations: Vec::new(),
         summary,
     };
-    
+
     fs::write(report_path, serde_json::to_string_pretty(&report)?)?;
-    
+
     println!("✅ Quality analysis complete. Check {} for detailed report.", report_path);
-    
+
     Ok(())
 }
 
 fn database_validation() -> Result<()> {
     println!("🔍 Running database engineering validation...");
-    
+
     match database_validation::check_database_patterns() {
         Ok(violations) => {
             let report = database_validation::generate_database_report(&violations);
-            
+
             // Write report to file
             let report_path = "docs/database_engineering_report.md";
             fs::write(report_path, &report)?;
-            
+
             if violations.total_violations() == 0 {
                 println!("✅ All database engineering patterns are following best practices!");
             } else {
-                println!("⚠️  Found {} database engineering violations:", violations.total_violations());
+                println!(
+                    "⚠️  Found {} database engineering violations:",
+                    violations.total_violations()
+                );
                 println!("   📊 Full report saved to {}", report_path);
-                
+
                 // Print summary
                 println!("   🔒 ACID violations: {}", violations.acid_violations.len());
                 println!("   ⚡ Transaction safety: {}", violations.transaction_safety.len());
@@ -506,6 +527,6 @@ fn database_validation() -> Result<()> {
             println!("❌ Database validation failed: {}", e);
         }
     }
-    
+
     Ok(())
 }

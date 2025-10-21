@@ -121,7 +121,7 @@ mod tests {
                 // Changed
                 assert!(e.to_string().contains("expected value at line 1 column 1"));
             }
-            _ => panic!("Expected OxidbError::Json"), // Changed
+            _ => assert!(false, "Expected OxidbError::Json"), // Changed
         }
     }
 
@@ -141,7 +141,7 @@ mod tests {
                 println!("Deserialization error for wrong structure: {}", msg); // For debugging
                 assert!(msg.contains("missing field") || msg.contains("unknown variant"));
             }
-            _ => panic!("Expected OxidbError::Json for wrong JSON structure"), // Changed
+            _ => assert!(false, "Expected OxidbError::Json for wrong JSON structure"), // Changed
         }
     }
 }

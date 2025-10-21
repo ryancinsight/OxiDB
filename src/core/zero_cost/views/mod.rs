@@ -2,7 +2,7 @@
 //!
 //! This module provides view types that allow accessing data without copying,
 //! enabling efficient data processing with minimal memory overhead.
-//! 
+//!
 //! The module is organized into separate view types following SOLID principles:
 //! - `row_view`: Zero-copy access to row data
 //! - `table_view`: Zero-copy access to table data with schema
@@ -33,22 +33,10 @@ mod integration_tests {
     fn test_view_integration() {
         // Create test data
         let rows = vec![
-            Row::new(vec![
-                Value::Integer(1),
-                Value::Text("Alice".to_string()),
-                Value::Integer(25),
-            ]),
-            Row::new(vec![
-                Value::Integer(2),
-                Value::Text("Bob".to_string()),
-                Value::Integer(30),
-            ]),
+            Row::new(vec![Value::Integer(1), Value::Text("Alice".to_string()), Value::Integer(25)]),
+            Row::new(vec![Value::Integer(2), Value::Text("Bob".to_string()), Value::Integer(30)]),
         ];
-        let column_names = vec![
-            "id".to_string(),
-            "name".to_string(),
-            "age".to_string(),
-        ];
+        let column_names = vec!["id".to_string(), "name".to_string(), "age".to_string()];
 
         // Test TableView
         let table_view = TableView::new(&rows, Cow::Borrowed(&column_names));
@@ -108,22 +96,17 @@ mod integration_tests {
                 Value::Float(70000.0),
             ]),
         ];
-        let column_names = vec![
-            "id".to_string(),
-            "department".to_string(),
-            "salary".to_string(),
-        ];
+        let column_names = vec!["id".to_string(), "department".to_string(), "salary".to_string()];
 
         let table_view = TableView::new(&rows, Cow::Borrowed(&column_names));
-        
+
         // Use column view to analyze salary column
         let salary_column = table_view.column(2);
         assert_eq!(salary_column.count_non_null(), 3);
-        
+
         // Check if all salaries are above 60000
-        let all_high_salary = salary_column.all(|value| {
-            matches!(value, Value::Float(salary) if *salary > 60000.0)
-        });
+        let all_high_salary =
+            salary_column.all(|value| matches!(value, Value::Float(salary) if *salary > 60000.0));
         assert!(all_high_salary);
 
         // Use projection to get only department and salary
@@ -140,10 +123,7 @@ mod integration_tests {
     fn test_view_performance_characteristics() {
         // Test that views don't copy data
         let large_text = "A".repeat(10000);
-        let row = Row::new(vec![
-            Value::Integer(1),
-            Value::Text(large_text.clone()),
-        ]);
+        let row = Row::new(vec![Value::Integer(1), Value::Text(large_text.clone())]);
 
         // RowView should not copy the large text
         let row_view = RowView::new(&row.values);

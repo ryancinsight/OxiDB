@@ -9,7 +9,7 @@
 //! - Product recommendations using vector similarity
 
 use chrono::{DateTime, Utc};
-use oxidb::{Connection, OxidbError, QueryResult, Row, Value};
+use oxidb::{Connection, OxidbError, Row, Value};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -265,6 +265,7 @@ impl EcommerceDB {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn get_user_by_email(&mut self, email: &str) -> Result<Option<User>, OxidbError> {
         let sql = format!("SELECT * FROM users WHERE email = '{}'", email);
         let result = self.db.execute(&sql)?;
@@ -333,6 +334,7 @@ impl EcommerceDB {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn get_cart(&mut self, user_id: &str) -> Result<Option<ShoppingCart>, OxidbError> {
         let sql = format!("SELECT * FROM shopping_carts WHERE user_id = '{}'", user_id);
         let result = self.db.execute(&sql)?;
@@ -414,6 +416,7 @@ impl EcommerceDB {
         })
     }
 
+    #[allow(dead_code)]
     fn row_to_user(&mut self, row: &Row) -> Result<User, OxidbError> {
         Ok(User {
             id: self.get_string(
@@ -495,6 +498,7 @@ impl EcommerceDB {
         })
     }
 
+    #[allow(dead_code)]
     fn row_to_cart(&mut self, row: &Row) -> Result<ShoppingCart, OxidbError> {
         Ok(ShoppingCart {
             user_id: self.get_string(

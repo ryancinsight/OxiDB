@@ -72,11 +72,10 @@ struct GraphPath {
 
 struct KnowledgeGraphDB {
     conn: Connection,
-    embedding_dimension: usize,
 }
 
 impl KnowledgeGraphDB {
-    fn new(db_path: &str, embedding_dimension: usize) -> Result<Self, OxidbError> {
+    fn new(db_path: &str, _embedding_dimension: usize) -> Result<Self, OxidbError> {
         let mut conn = Connection::open(db_path)?;
 
         // Create tables for entities and relationships
@@ -118,7 +117,7 @@ impl KnowledgeGraphDB {
             "CREATE INDEX IF NOT EXISTS idx_relationships_type ON relationships(relationship_type)",
         )?;
 
-        Ok(KnowledgeGraphDB { conn, embedding_dimension })
+        Ok(KnowledgeGraphDB { conn })
     }
 
     // Entity management

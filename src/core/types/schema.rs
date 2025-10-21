@@ -17,9 +17,9 @@ impl ColumnDef {
     /// Create a new column definition with basic properties
     #[must_use]
     pub const fn new(name: String, data_type: ColumnType, is_nullable: bool) -> Self {
-        Self { 
-            name, 
-            data_type, 
+        Self {
+            name,
+            data_type,
             is_nullable,
             is_primary_key: false,
             is_unique: false,
@@ -30,21 +30,14 @@ impl ColumnDef {
     /// Create a new column definition with all constraint options
     #[must_use]
     pub const fn with_constraints(
-        name: String, 
-        data_type: ColumnType, 
+        name: String,
+        data_type: ColumnType,
         is_nullable: bool,
         is_primary_key: bool,
         is_unique: bool,
         is_auto_increment: bool,
     ) -> Self {
-        Self { 
-            name, 
-            data_type, 
-            is_nullable,
-            is_primary_key,
-            is_unique,
-            is_auto_increment,
-        }
+        Self { name, data_type, is_nullable, is_primary_key, is_unique, is_auto_increment }
     }
 
     /// Create a primary key column (non-nullable, unique)

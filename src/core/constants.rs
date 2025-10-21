@@ -1,5 +1,5 @@
 /// Database configuration constants following domain-driven design principles
-/// 
+///
 /// This module centralizes all configurable constants to avoid magic numbers
 /// throughout the codebase and enable easy tuning for different deployment scenarios.
 
@@ -161,10 +161,10 @@ pub const fn validate_constants() {
     // Ensure page size is power of 2 and reasonable
     assert!(PAGE_SIZE.is_power_of_two());
     assert!(PAGE_SIZE >= 1024 && PAGE_SIZE <= 65536);
-    
+
     // Ensure buffer pool sizes are reasonable
     assert!(DEFAULT_BUFFER_POOL_SIZE <= MAX_BUFFER_POOL_SIZE);
-    
+
     // Ensure timeouts are reasonable
     assert!(DEFAULT_QUERY_TIMEOUT_MS >= 1000); // At least 1 second
     assert!(DEFAULT_TRANSACTION_TIMEOUT_MS >= 1000);
@@ -179,7 +179,7 @@ mod tests {
         validate_constants();
     }
 
-    #[test] 
+    #[test]
     fn test_page_size_alignment() {
         assert_eq!(PAGE_SIZE % 1024, 0); // Should be KB-aligned
         assert!(PAGE_SIZE.is_power_of_two()); // Should be power of 2
@@ -189,7 +189,7 @@ mod tests {
     fn test_buffer_pool_constraints() {
         assert!(DEFAULT_BUFFER_POOL_SIZE > 0);
         assert!(DEFAULT_BUFFER_POOL_SIZE <= MAX_BUFFER_POOL_SIZE);
-        
+
         // Buffer pool should be able to hold at least 10 pages
         assert!(DEFAULT_BUFFER_POOL_SIZE >= 10);
     }
@@ -200,7 +200,7 @@ mod tests {
         assert!(DEFAULT_QUERY_TIMEOUT_MS >= 1000);
         assert!(DEFAULT_TRANSACTION_TIMEOUT_MS >= 1000);
         assert!(DEFAULT_LOCK_TIMEOUT_MS >= 1000);
-        
+
         // Connection timeouts should be reasonable
         assert!(DEFAULT_CONNECTION_IDLE_TIMEOUT_MS >= 60_000); // At least 1 minute
     }

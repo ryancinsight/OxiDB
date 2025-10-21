@@ -556,10 +556,18 @@ mod tests {
         // Reverting to expect 34 as per observed tokenizer output
         if let Err(ref e) = result {
             if !matches!(e, SqlTokenizerError::InvalidCharacter('#', 34)) {
-                panic!("Tokenizer error mismatch. Expected InvalidCharacter('#', 34), got {:?}", e);
+                assert!(
+                    false,
+                    "Tokenizer error mismatch. Expected InvalidCharacter('#', 34), got {:?}",
+                    e
+                );
             }
         } else {
-            panic!("Tokenizer succeeded, but expected InvalidCharacter error. Got: {:?}", result);
+            assert!(
+                false,
+                "Tokenizer succeeded, but expected InvalidCharacter error. Got: {:?}",
+                result
+            );
         }
         assert!(result.is_err());
     }

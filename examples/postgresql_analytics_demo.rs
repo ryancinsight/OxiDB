@@ -11,7 +11,7 @@
 //! - PostgreSQL-specific functions and patterns
 
 use chrono::Datelike;
-use oxidb::api::types::QueryResult;
+// Removed unused import
 use oxidb::core::common::OxidbError;
 use oxidb::Oxidb;
 
@@ -250,8 +250,8 @@ fn generate_sample_data(db: &mut Oxidb) -> Result<(), OxidbError> {
 
     // Generate sales events data
     println!("💰 Generating sales events...");
-    let regions = vec!["North", "South", "East", "West", "Central"];
-    let channels = vec!["online", "retail", "mobile", "phone"];
+    let regions = ["North", "South", "East", "West", "Central"];
+    let channels = ["online", "retail", "mobile", "phone"];
 
     for i in 1..=1000 {
         let date_offset = rand::random::<i64>() % 365;
@@ -288,10 +288,10 @@ fn generate_sample_data(db: &mut Oxidb) -> Result<(), OxidbError> {
 
     // Generate customer transaction data
     println!("👥 Generating customer transactions...");
-    let segments = vec!["Premium", "Standard", "Basic"];
-    let channels = vec!["organic", "paid_search", "social", "email", "referral"];
+    let segments = ["Premium", "Standard", "Basic"];
+    let channels = ["organic", "paid_search", "social", "email", "referral"];
 
-    for i in 1..=2000 {
+    for _i in 1..=2000 {
         let transaction_date = base_date + chrono::Duration::days(rand::random::<i64>() % 365);
 
         let sql = format!(
@@ -321,9 +321,9 @@ fn generate_sample_data(db: &mut Oxidb) -> Result<(), OxidbError> {
 
     // Generate user sessions
     println!("🌐 Generating user sessions...");
-    let traffic_sources = vec!["google", "facebook", "direct", "email", "referral"];
-    let devices = vec!["desktop", "mobile", "tablet"];
-    let countries = vec!["US", "UK", "CA", "AU", "DE", "FR"];
+    let traffic_sources = ["google", "facebook", "direct", "email", "referral"];
+    let devices = ["desktop", "mobile", "tablet"];
+    let countries = ["US", "UK", "CA", "AU", "DE", "FR"];
 
     for i in 1..=5000 {
         let start_time = base_date.and_hms_opt(0, 0, 0).unwrap()
@@ -393,7 +393,7 @@ fn demonstrate_window_functions(db: &mut Oxidb) -> Result<(), OxidbError> {
         ORDER BY full_date
         LIMIT 30
     "#;
-    let result = db.execute_query_str(running_totals)?;
+    let _result = db.execute_query_str(running_totals)?;
     println!("✓ Running totals and moving averages calculated");
 
     // Customer ranking and segmentation
@@ -429,7 +429,7 @@ fn demonstrate_window_functions(db: &mut Oxidb) -> Result<(), OxidbError> {
         ORDER BY total_spent DESC
         LIMIT 50
     "#;
-    let ranking_result = db.execute_query_str(customer_ranking)?;
+    let _ranking_result = db.execute_query_str(customer_ranking)?;
     println!("✓ Customer ranking and segmentation completed");
 
     // Product performance analysis
@@ -462,7 +462,7 @@ fn demonstrate_window_functions(db: &mut Oxidb) -> Result<(), OxidbError> {
         ORDER BY revenue DESC
         LIMIT 30
     "#;
-    let product_result = db.execute_query_str(product_analysis)?;
+    let _product_result = db.execute_query_str(product_analysis)?;
     println!("✓ Product performance analysis completed");
 
     Ok(())
@@ -474,7 +474,7 @@ fn demonstrate_cte_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
 
     // Recursive CTE for hierarchical data
     println!("\n🌳 Recursive CTE - Customer Referral Chain:");
-    let recursive_cte = r#"
+    let _recursive_cte = r#"
         -- Note: This shows the PostgreSQL recursive CTE pattern
         -- Actual implementation would depend on referral table structure
         WITH RECURSIVE customer_hierarchy AS (
@@ -578,7 +578,7 @@ fn demonstrate_cte_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
         FROM performance_summary
         ORDER BY total_revenue DESC
     "#;
-    let funnel_result = db.execute_query_str(funnel_analysis)?;
+    let _funnel_result = db.execute_query_str(funnel_analysis)?;
     println!("✓ Sales funnel analysis with multiple CTEs completed");
 
     // Time-based cohort analysis
@@ -625,7 +625,7 @@ fn demonstrate_cte_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
         ORDER BY cd.cohort_month, cd.transaction_month
         LIMIT 50
     "#;
-    let cohort_result = db.execute_query_str(cohort_analysis)?;
+    let _cohort_result = db.execute_query_str(cohort_analysis)?;
     println!("✓ Cohort analysis completed");
 
     Ok(())
@@ -681,7 +681,7 @@ fn demonstrate_time_series_analysis(db: &mut Oxidb) -> Result<(), OxidbError> {
         JOIN daily_metrics dm ON ds.full_date = dm.full_date
         ORDER BY ds.full_date
     "#;
-    let ts_result = db.execute_query_str(time_series)?;
+    let _ts_result = db.execute_query_str(time_series)?;
     println!("✓ Time series with gap filling completed");
 
     // Seasonal analysis
@@ -731,7 +731,7 @@ fn demonstrate_time_series_analysis(db: &mut Oxidb) -> Result<(), OxidbError> {
         JOIN quarterly_comparison qc ON ms.year = qc.year AND ms.quarter = qc.quarter
         ORDER BY ms.year, ms.month
     "#;
-    let seasonal_result = db.execute_query_str(seasonal_analysis)?;
+    let _seasonal_result = db.execute_query_str(seasonal_analysis)?;
     println!("✓ Seasonal analysis completed");
 
     // Trend detection
@@ -784,7 +784,7 @@ fn demonstrate_time_series_analysis(db: &mut Oxidb) -> Result<(), OxidbError> {
         ORDER BY year, week_of_year
         LIMIT 30
     "#;
-    let trend_result = db.execute_query_str(trend_analysis)?;
+    let _trend_result = db.execute_query_str(trend_analysis)?;
     println!("✓ Trend detection analysis completed");
 
     Ok(())
@@ -880,7 +880,7 @@ fn demonstrate_advanced_aggregations(db: &mut Oxidb) -> Result<(), OxidbError> {
             CASE WHEN quarter IS NULL THEN 1 ELSE 0 END,
             quarter
     "#;
-    let cube_result = db.execute_query_str(cube_analysis)?;
+    let _cube_result = db.execute_query_str(cube_analysis)?;
     println!("✓ Multi-dimensional CUBE analysis completed");
 
     // Statistical aggregations
@@ -917,7 +917,7 @@ fn demonstrate_advanced_aggregations(db: &mut Oxidb) -> Result<(), OxidbError> {
             COUNT(CASE WHEN order_frequency >= 10 THEN 1 END) as frequent_customers
         FROM customer_stats
     "#;
-    let stats_result = db.execute_query_str(stats_analysis)?;
+    let _stats_result = db.execute_query_str(stats_analysis)?;
     println!("✓ Statistical analysis completed");
 
     // Advanced window functions with frames
@@ -966,7 +966,7 @@ fn demonstrate_advanced_aggregations(db: &mut Oxidb) -> Result<(), OxidbError> {
         ORDER BY full_date
         LIMIT 50
     "#;
-    let window_result = db.execute_query_str(advanced_windows)?;
+    let _window_result = db.execute_query_str(advanced_windows)?;
     println!("✓ Advanced window functions analysis completed");
 
     Ok(())
@@ -1025,7 +1025,7 @@ fn demonstrate_data_warehousing_patterns(db: &mut Oxidb) -> Result<(), OxidbErro
         ORDER BY 
             td.year, td.quarter, total_revenue DESC
     "#;
-    let star_result = db.execute_query_str(star_schema)?;
+    let _star_result = db.execute_query_str(star_schema)?;
     println!("✓ Star schema query executed");
 
     // Slowly Changing Dimension (SCD) pattern
@@ -1073,7 +1073,7 @@ fn demonstrate_data_warehousing_patterns(db: &mut Oxidb) -> Result<(), OxidbErro
         ORDER BY customer_id, version
         LIMIT 50
     "#;
-    let scd_result = db.execute_query_str(scd_pattern)?;
+    let _scd_result = db.execute_query_str(scd_pattern)?;
     println!("✓ SCD Type 2 pattern demonstrated");
 
     // Data quality and profiling
@@ -1149,7 +1149,7 @@ fn demonstrate_data_warehousing_patterns(db: &mut Oxidb) -> Result<(), OxidbErro
         FROM quality_metrics
         ORDER BY table_name
     "#;
-    let quality_result = db.execute_query_str(data_quality)?;
+    let _quality_result = db.execute_query_str(data_quality)?;
     println!("✓ Data quality profiling completed");
 
     Ok(())
@@ -1224,7 +1224,7 @@ fn demonstrate_analytical_functions(db: &mut Oxidb) -> Result<(), OxidbError> {
         ORDER BY ct.cohort_month, ct.months_since_first
         LIMIT 50
     "#;
-    let retention_result = db.execute_query_str(retention_analysis)?;
+    let _retention_result = db.execute_query_str(retention_analysis)?;
     println!("✓ Cohort retention analysis completed");
 
     // RFM Analysis (Recency, Frequency, Monetary)
@@ -1290,7 +1290,7 @@ fn demonstrate_analytical_functions(db: &mut Oxidb) -> Result<(), OxidbError> {
         GROUP BY customer_segment
         ORDER BY segment_potential DESC
     "#;
-    let rfm_result = db.execute_query_str(rfm_analysis)?;
+    let _rfm_result = db.execute_query_str(rfm_analysis)?;
     println!("✓ RFM analysis completed");
 
     // Market basket analysis
@@ -1354,7 +1354,7 @@ fn demonstrate_analytical_functions(db: &mut Oxidb) -> Result<(), OxidbError> {
         ORDER BY ps.co_occurrence_count DESC, confidence DESC
         LIMIT 20
     "#;
-    let basket_result = db.execute_query_str(basket_analysis)?;
+    let _basket_result = db.execute_query_str(basket_analysis)?;
     println!("✓ Market basket analysis completed");
 
     println!("\n🎯 Advanced Analytics Summary:");

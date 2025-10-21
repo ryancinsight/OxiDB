@@ -86,17 +86,17 @@ fn test_row_serialization() {
 fn test_schema_serialization_and_get_column_index() {
     let schema = Schema {
         columns: vec![
-            ColumnDef { 
-                name: "id".to_string(), 
-                data_type: ColumnType::Integer, 
+            ColumnDef {
+                name: "id".to_string(),
+                data_type: ColumnType::Integer,
                 is_nullable: false,
                 is_primary_key: true,
                 is_unique: true,
                 is_auto_increment: false,
             },
-            ColumnDef { 
-                name: "name".to_string(), 
-                data_type: ColumnType::Text, 
+            ColumnDef {
+                name: "name".to_string(),
+                data_type: ColumnType::Text,
                 is_nullable: true,
                 is_primary_key: false,
                 is_unique: false,

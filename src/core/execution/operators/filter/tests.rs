@@ -274,7 +274,7 @@ fn test_filter_unsupported_operator_in_compare() -> Result<(), OxidbError> {
         OxidbError::NotImplemented { feature } => {
             assert!(feature.contains("Operator 'IS NULL' not implemented in CompareOp."))
         }
-        e => panic!("Expected NotImplemented error, got {:?}", e),
+        e => assert!(false, "Expected NotImplemented error, got {:?}", e),
     }
     Ok(())
 }
@@ -291,7 +291,7 @@ fn test_filter_unsupported_operator_in_binary() -> Result<(), OxidbError> {
         OxidbError::NotImplemented { feature } => {
             assert!(feature.contains("Logical operator 'XOR' not implemented in BinaryOp."))
         }
-        e => panic!("Expected NotImplemented error, got {:?}", e),
+        e => assert!(false, "Expected NotImplemented error, got {:?}", e),
     }
     Ok(())
 }
@@ -308,7 +308,7 @@ fn test_filter_unsupported_expression_type() -> Result<(), OxidbError> {
         OxidbError::NotImplemented { feature } => {
             assert!(feature.contains("not supported as a predicate yet"))
         }
-        e => panic!("Expected NotImplemented error, got {:?}", e),
+        e => assert!(false, "Expected NotImplemented error, got {:?}", e),
     }
     Ok(())
 }

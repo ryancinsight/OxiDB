@@ -1,4 +1,5 @@
 // Imports needed for the tests
+use crate::core::common::types::ColumnType;
 use crate::core::query::commands::Command;
 use crate::core::query::sql::ast::{
     self, AggregateFunction, AstColumnConstraint, AstDataType, AstLiteralValue, ConditionTree,
@@ -8,12 +9,14 @@ use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::parser::SqlParser; // The struct being tested
 use crate::core::query::sql::tokenizer::{Token, Tokenizer}; // For tokenizing test strings // Error type for assertions
 use crate::core::query::sql::translator::translate_ast_to_command;
-use crate::core::common::types::ColumnType;
 
 // Helper function to tokenize a string for tests
 fn tokenize_str(input: &str) -> Vec<Token> {
     let mut tokenizer = Tokenizer::new(input);
-    tokenizer.tokenize().unwrap_or_else(|e| panic!("Test tokenizer error: {}", e))
+    tokenizer.tokenize().unwrap_or_else(|e| {
+        assert!(false, "Test tokenizer error: {}", e);
+        unreachable!()
+    })
 }
 
 #[test]
@@ -30,7 +33,7 @@ fn test_update_missing_set_keyword() {
         assert!(expected.to_lowercase().contains("set"));
         assert!(found.to_lowercase().contains("identifier(\"field\")"));
     } else {
-        panic!("Wrong error type: {:?}", result);
+        assert!(false, "Wrong error type: {:?}", result);
     }
 }
 
@@ -49,9 +52,13 @@ fn test_update_empty_set_clause() {
         assert_eq!(found.to_lowercase(), "semicolon");
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // also possible, if input is just "UPDATE table SET"
-        panic!("UnexpectedEOF, expected UnexpectedToken for 'UPDATE table SET;'");
+        assert!(false, "UnexpectedEOF, expected UnexpectedToken for 'UPDATE table SET;'");
     } else {
-        panic!("Wrong error type for empty SET clause: {:?}, expected UnexpectedToken", result);
+        assert!(
+            false,
+            "Wrong error type for empty SET clause: {:?}, expected UnexpectedToken",
+            result
+        );
     }
 }
 
@@ -74,7 +81,7 @@ fn test_update_missing_value_in_assignment() {
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // also possible
     } else {
-        panic!("Wrong error type for missing value in assignment: {:?}", result);
+        assert!(false, "Wrong error type for missing value in assignment: {:?}", result);
     }
 }
 
@@ -95,7 +102,7 @@ fn test_update_missing_equals_in_assignment() {
         );
         assert!(found.to_lowercase().contains("stringliteral(\"value\")"));
     } else {
-        panic!("Wrong error type for missing equals in assignment: {:?}", result);
+        assert!(false, "Wrong error type for missing equals in assignment: {:?}", result);
     }
 }
 
@@ -114,9 +121,13 @@ fn test_update_trailing_comma_in_assignment_list() {
         assert_eq!(found.to_lowercase(), "semicolon");
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // also possible
-        panic!("UnexpectedEOF, expected UnexpectedToken for 'UPDATE table SET field = 'val', ;'");
+        assert!(
+            false,
+            "UnexpectedEOF, expected UnexpectedToken for 'UPDATE table SET field = 'val', ;'"
+        );
     } else {
-        panic!(
+        assert!(
+            false,
             "Wrong error type for trailing comma in assignment: {:?}, expected UnexpectedToken",
             result
         );
@@ -141,9 +152,10 @@ fn test_update_empty_where_clause() {
         assert_eq!(found.to_lowercase(), "semicolon");
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // also possible if input is "UPDATE table SET field = 'val' WHERE"
-        panic!("UnexpectedEOF, expected UnexpectedToken for 'WHERE;'");
+        assert!(false, "UnexpectedEOF, expected UnexpectedToken for 'WHERE;'");
     } else {
-        panic!(
+        assert!(
+            false,
             "Wrong error type for empty WHERE clause (UPDATE): {:?}, expected UnexpectedToken",
             result
         );
@@ -170,7 +182,7 @@ fn test_update_missing_value_in_condition() {
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // also possible if input ends after "="
     } else {
-        panic!("Wrong error type for missing value in condition (UPDATE): {:?}", result);
+        assert!(false, "Wrong error type for missing value in condition (UPDATE): {:?}", result);
     }
 }
 
@@ -188,7 +200,7 @@ fn test_update_missing_operator_in_condition() {
         assert!(expected.to_lowercase().contains("operator"));
         assert!(found.to_lowercase().contains("identifier(\"value\")"));
     } else {
-        panic!("Wrong error type for missing operator in condition (UPDATE): {:?}", result);
+        assert!(false, "Wrong error type for missing operator in condition (UPDATE): {:?}", result);
     }
 }
 
@@ -206,7 +218,7 @@ fn test_update_extra_token_after_valid_statement_no_semicolon() {
         assert!(expected.to_lowercase().contains("end of statement or eof"));
         assert!(found.to_lowercase().contains("identifier(\"extra_token\")"));
     } else {
-        panic!("Wrong error type for extra token (UPDATE, no semi): {:?}", result);
+        assert!(false, "Wrong error type for extra token (UPDATE, no semi): {:?}", result);
     }
 }
 
@@ -224,7 +236,7 @@ fn test_update_extra_token_after_semicolon() {
         assert!(expected.to_lowercase().contains("end of statement or eof"));
         assert!(found.to_lowercase().contains("identifier(\"extra_token\")"));
     } else {
-        panic!("Wrong error type for extra token (UPDATE, with semi): {:?}", result);
+        assert!(false, "Wrong error type for extra token (UPDATE, with semi): {:?}", result);
     }
 }
 
@@ -256,7 +268,7 @@ fn test_parse_select_simple() {
             assert!(select_stmt.condition.is_none());
             assert!(select_stmt.joins.is_empty()); // New check
         }
-        _ => panic!("Expected SelectStatement"),
+        _ => assert!(false, "Expected SelectStatement"),
     }
 }
 
@@ -319,7 +331,7 @@ fn test_parse_create_table_with_constraints() {
             assert_eq!(bio_col.data_type, AstDataType::Text);
             assert!(bio_col.constraints.is_empty());
         }
-        _ => panic!("Expected CreateTableStatement"),
+        _ => assert!(false, "Expected CreateTableStatement"),
     }
 }
 
@@ -344,7 +356,10 @@ fn test_parse_create_table_primary_key_not_null_variants() {
         let sql = format!("CREATE TABLE test_pk ( {} );", col_sql);
         let tokens = tokenize_str(&sql);
         let mut parser = SqlParser::new(tokens);
-        let ast = parser.parse().unwrap_or_else(|e| panic!("Failed to parse '{}': {:?}", sql, e));
+        let ast = parser.parse().unwrap_or_else(|e| {
+            assert!(false, "Failed to parse '{}': {:?}", sql, e);
+            unreachable!()
+        });
 
         match ast {
             Statement::CreateTable(create_stmt) => {
@@ -361,7 +376,7 @@ fn test_parse_create_table_primary_key_not_null_variants() {
                     col_sql
                 );
             }
-            _ => panic!("Expected CreateTableStatement for: {}", sql),
+            _ => assert!(false, "Expected CreateTableStatement for: {}", sql),
         }
     }
 }
@@ -396,7 +411,7 @@ fn test_parse_create_table_with_autoincrement() {
             assert_eq!(name_col.constraints.len(), 1);
             assert!(name_col.constraints.contains(&AstColumnConstraint::NotNull));
         }
-        _ => panic!("Expected CreateTableStatement"),
+        _ => assert!(false, "Expected CreateTableStatement"),
     }
 }
 
@@ -417,7 +432,7 @@ fn test_parse_create_table_no_constraints() {
             assert_eq!(create_stmt.columns[1].data_type, self::ast::AstDataType::Text); // Assuming VARCHAR maps to Text
             assert!(create_stmt.columns[1].constraints.is_empty());
         }
-        _ => panic!("Expected CreateTableStatement"),
+        _ => assert!(false, "Expected CreateTableStatement"),
     }
 }
 
@@ -458,7 +473,7 @@ fn test_parse_create_table_with_vector_and_blob() {
             assert_eq!(desc_col.data_type, self::ast::AstDataType::Text);
             assert!(desc_col.constraints.is_empty());
         }
-        _ => panic!("Expected CreateTableStatement for vector/blob test"),
+        _ => assert!(false, "Expected CreateTableStatement for vector/blob test"),
     }
 }
 
@@ -476,7 +491,7 @@ fn test_parse_create_table_invalid_vector_dimension() {
         assert_eq!(parameter, "0");
         assert!(reason.contains("greater than 0"));
     } else {
-        panic!("Wrong error type for invalid vector dimension: {:?}", result_invalid);
+        assert!(false, "Wrong error type for invalid vector dimension: {:?}", result_invalid);
     }
 
     let sql_non_numeric_dim = "CREATE TABLE t (v VECTOR[abc]);";
@@ -488,7 +503,11 @@ fn test_parse_create_table_invalid_vector_dimension() {
         assert!(expected.contains("numeric dimension"));
         assert!(found.to_lowercase().contains("identifier(\"abc\")"));
     } else {
-        panic!("Wrong error type for non-numeric vector dimension: {:?}", result_non_numeric);
+        assert!(
+            false,
+            "Wrong error type for non-numeric vector dimension: {:?}",
+            result_non_numeric
+        );
     }
 }
 
@@ -513,10 +532,10 @@ fn test_parse_delete_simple() {
                         ))
                     );
                 }
-                _ => panic!("Expected simple comparison in DELETE"),
+                _ => assert!(false, "Expected simple comparison in DELETE"),
             }
         }
-        _ => panic!("Expected DeleteStatement"),
+        _ => assert!(false, "Expected DeleteStatement"),
     }
 }
 
@@ -531,7 +550,7 @@ fn test_parse_delete_no_where() {
             assert_eq!(del_stmt.table_name, "logs");
             assert!(del_stmt.condition.is_none());
         }
-        _ => panic!("Expected DeleteStatement"),
+        _ => assert!(false, "Expected DeleteStatement"),
     }
 }
 
@@ -548,7 +567,7 @@ fn test_parse_delete_complex_where() {
             assert!(del_stmt.condition.is_some());
             // Further checks on ConditionTree structure can be added, similar to SELECT test
         }
-        _ => panic!("Expected DeleteStatement"),
+        _ => assert!(false, "Expected DeleteStatement"),
     }
 }
 
@@ -580,7 +599,7 @@ fn test_parse_create_table_invalid_constraint_sequence() {
             lower_found
         );
     } else {
-        panic!("Expected UnexpectedToken for invalid 'NOT PRIMARY', got {:?}", result);
+        assert!(false, "Expected UnexpectedToken for invalid 'NOT PRIMARY', got {:?}", result);
     }
 }
 
@@ -596,7 +615,7 @@ fn test_parse_select_asterisk() {
             assert!(select_stmt.condition.is_none());
             assert!(select_stmt.joins.is_empty());
         }
-        _ => panic!("Expected SelectStatement"),
+        _ => assert!(false, "Expected SelectStatement"),
     }
 }
 
@@ -619,7 +638,7 @@ fn test_parse_select_multiple_columns() {
             assert!(select_stmt.condition.is_none());
             assert!(select_stmt.joins.is_empty());
         }
-        _ => panic!("Expected SelectStatement"),
+        _ => assert!(false, "Expected SelectStatement"),
     }
 }
 
@@ -645,10 +664,10 @@ fn test_parse_select_with_where_clause() {
                         ))
                     );
                 }
-                _ => panic!("Expected ConditionTree::Comparison for price condition"),
+                _ => assert!(false, "Expected ConditionTree::Comparison for price condition"),
             }
         }
-        _ => panic!("Expected SelectStatement"),
+        _ => assert!(false, "Expected SelectStatement"),
     }
 }
 
@@ -683,7 +702,7 @@ fn test_parse_select_with_complex_where_clause_and_or_not_parens() {
                                         ))
                                     );
                                 }
-                                _ => panic!("Expected Comparison for col1=10"),
+                                _ => assert!(false, "Expected Comparison for col1=10"),
                             }
                             match *right_and_box {
                                 ConditionTree::Comparison(cond) => {
@@ -696,10 +715,10 @@ fn test_parse_select_with_complex_where_clause_and_or_not_parens() {
                                         ))
                                     );
                                 }
-                                _ => panic!("Expected Comparison for col2='test'"),
+                                _ => assert!(false, "Expected Comparison for col2='test'"),
                             }
                         }
-                        _ => panic!("Expected AND on the left side of OR"),
+                        _ => assert!(false, "Expected AND on the left side of OR"),
                     }
 
                     // Right side of OR: NOT( (col3<5.5) )
@@ -715,15 +734,15 @@ fn test_parse_select_with_complex_where_clause_and_or_not_parens() {
                                     ))
                                 );
                             }
-                            _ => panic!("Expected Comparison for col3<5.5 inside NOT"),
+                            _ => assert!(false, "Expected Comparison for col3<5.5 inside NOT"),
                         },
-                        _ => panic!("Expected NOT on the right side of OR"),
+                        _ => assert!(false, "Expected NOT on the right side of OR"),
                     }
                 }
-                _ => panic!("Expected top-level OR condition"),
+                _ => assert!(false, "Expected top-level OR condition"),
             }
         }
-        _ => panic!("Expected SelectStatement"),
+        _ => assert!(false, "Expected SelectStatement"),
     }
 }
 
@@ -753,7 +772,7 @@ fn test_parse_select_where_precedence() {
                             );
                             // Added value check
                         }
-                        _ => panic!("Expected comparison for 'a=1'"),
+                        _ => assert!(false, "Expected comparison for 'a=1'"),
                     }
                     match *right_or_box {
                         ConditionTree::And(left_and_box, right_and_box) => {
@@ -768,7 +787,7 @@ fn test_parse_select_where_precedence() {
                                         ))
                                     ); // Added value check
                                 }
-                                _ => panic!("Expected comparison for 'b=2'"),
+                                _ => assert!(false, "Expected comparison for 'b=2'"),
                             }
                             match *right_and_box {
                                 ConditionTree::Comparison(cond) => {
@@ -781,16 +800,16 @@ fn test_parse_select_where_precedence() {
                                         ))
                                     ); // Added value check
                                 }
-                                _ => panic!("Expected comparison for 'c=3'"),
+                                _ => assert!(false, "Expected comparison for 'c=3'"),
                             }
                         }
-                        _ => panic!("Expected AND for 'b=2 AND c=3'"),
+                        _ => assert!(false, "Expected AND for 'b=2 AND c=3'"),
                     }
                 }
-                _ => panic!("Expected OR at top level due to precedence"),
+                _ => assert!(false, "Expected OR at top level due to precedence"),
             }
         }
-        _ => panic!("Expected SelectStatement"),
+        _ => assert!(false, "Expected SelectStatement"),
     }
 }
 
@@ -817,7 +836,7 @@ fn test_parse_select_where_is_null_and_is_not_null() {
                                 ast::AstExpressionValue::Literal(AstLiteralValue::Null)
                             );
                         }
-                        _ => panic!("Expected Comparison for name IS NULL"),
+                        _ => assert!(false, "Expected Comparison for name IS NULL"),
                     }
                     match *right_and_box {
                         ConditionTree::Comparison(cond) => {
@@ -828,13 +847,13 @@ fn test_parse_select_where_is_null_and_is_not_null() {
                                 ast::AstExpressionValue::Literal(AstLiteralValue::Null)
                             );
                         }
-                        _ => panic!("Expected Comparison for description IS NOT NULL"),
+                        _ => assert!(false, "Expected Comparison for description IS NOT NULL"),
                     }
                 }
-                _ => panic!("Expected AND at top level"),
+                _ => assert!(false, "Expected AND at top level"),
             }
         }
-        _ => panic!("Expected SelectStatement"),
+        _ => assert!(false, "Expected SelectStatement"),
     }
 }
 
@@ -862,10 +881,10 @@ fn test_parse_update_simple() {
                         ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string()))
                     );
                 }
-                _ => panic!("Expected ConditionTree::Comparison for id condition"),
+                _ => assert!(false, "Expected ConditionTree::Comparison for id condition"),
             }
         }
-        _ => panic!("Expected UpdateStatement"),
+        _ => assert!(false, "Expected UpdateStatement"),
     }
 }
 
@@ -903,10 +922,10 @@ fn test_parse_update_multiple_assignments() {
                         ))
                     );
                 }
-                _ => panic!("Expected ConditionTree::Comparison for category condition"),
+                _ => assert!(false, "Expected ConditionTree::Comparison for category condition"),
             }
         }
-        _ => panic!("Expected UpdateStatement"),
+        _ => assert!(false, "Expected UpdateStatement"),
     }
 }
 
@@ -924,7 +943,7 @@ fn test_parse_select_missing_from() {
         assert!(expected.to_lowercase().contains("from"));
         assert!(found.to_lowercase().contains("identifier(\"users\")"));
     } else {
-        panic!("Wrong error type for select missing FROM: {:?}", result);
+        assert!(false, "Wrong error type for select missing FROM: {:?}", result);
     }
 }
 
@@ -942,7 +961,7 @@ fn test_parse_update_missing_set() {
         assert!(expected.contains("Set")); // Token::Set
         assert!(found.contains("Identifier(\"name\")"));
     } else {
-        panic!("Wrong error type");
+        assert!(false, "Wrong error type");
     }
 }
 
@@ -963,7 +982,7 @@ fn test_unexpected_token_instead_of_literal() {
         );
         assert!(found.contains("Select"));
     } else {
-        panic!("Wrong error type for unexpected token: {:?}", result);
+        assert!(false, "Wrong error type for unexpected token: {:?}", result);
     }
 }
 
@@ -981,7 +1000,7 @@ fn test_select_missing_columns() {
         assert_eq!(expected.to_lowercase(), "column name or '*'");
         assert_eq!(found.to_lowercase(), "from");
     } else {
-        panic!("Wrong error type: {:?}", result);
+        assert!(false, "Wrong error type: {:?}", result);
     }
 }
 
@@ -1003,7 +1022,7 @@ fn test_select_missing_from_keyword() {
             found
         ); // Expect "Table"
     } else {
-        panic!("Wrong error type for select missing FROM keyword: {:?}", result);
+        assert!(false, "Wrong error type for select missing FROM keyword: {:?}", result);
     }
 }
 
@@ -1021,7 +1040,7 @@ fn test_select_trailing_comma_in_column_list() {
         assert_eq!(expected.to_lowercase(), "column name or '*' after comma");
         assert_eq!(found.to_lowercase(), "from");
     } else {
-        panic!("Wrong error type: {:?}", result);
+        assert!(false, "Wrong error type: {:?}", result);
     }
 }
 
@@ -1041,9 +1060,13 @@ fn test_select_missing_table_name() {
         assert_eq!(found.to_lowercase(), "semicolon");
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // This case is also possible if input is "SELECT col FROM"
-        panic!("UnexpectedEOF, expected UnexpectedToken for 'FROM;'");
+        assert!(false, "UnexpectedEOF, expected UnexpectedToken for 'FROM;'");
     } else {
-        panic!("Wrong error type for missing table name: {:?}, expected UnexpectedToken", result);
+        assert!(
+            false,
+            "Wrong error type for missing table name: {:?}, expected UnexpectedToken",
+            result
+        );
     }
 }
 
@@ -1067,9 +1090,9 @@ fn test_select_empty_where_clause() {
         // If UnexpectedEOF is a valid outcome for some variant of this test,
         // the test should be more specific or split. Given current strictness,
         // "SELECT col FROM table WHERE;" should yield UnexpectedToken.
-        panic!("UnexpectedEOF, expected UnexpectedToken for 'WHERE;'");
+        assert!(false, "UnexpectedEOF, expected UnexpectedToken for 'WHERE;'");
     } else {
-        panic!("Wrong error type: {:?}, expected UnexpectedToken", result);
+        assert!(false, "Wrong error type: {:?}, expected UnexpectedToken", result);
     }
 }
 
@@ -1093,7 +1116,7 @@ fn test_select_missing_value_in_condition() {
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // This case is also possible if input is "SELECT ... WHERE field =" (no semicolon)
     } else {
-        panic!("Wrong error type for select missing value in condition: {:?}", result);
+        assert!(false, "Wrong error type for select missing value in condition: {:?}", result);
     }
 }
 
@@ -1111,7 +1134,7 @@ fn test_select_missing_operator_in_condition() {
         assert!(expected.to_lowercase().contains("operator"));
         assert!(found.to_lowercase().contains("identifier(\"value\")"));
     } else {
-        panic!("Wrong error type for select missing operator: {:?}", result);
+        assert!(false, "Wrong error type for select missing operator: {:?}", result);
     }
 }
 
@@ -1129,7 +1152,7 @@ fn test_select_extra_token_after_valid_statement_no_semicolon() {
         assert!(expected.to_lowercase().contains("end of statement or eof"));
         assert!(found.to_lowercase().contains("identifier(\"extra_token\")"));
     } else {
-        panic!("Wrong error type for select extra token (no semi): {:?}", result);
+        assert!(false, "Wrong error type for select extra token (no semi): {:?}", result);
     }
 }
 
@@ -1153,7 +1176,7 @@ fn test_select_extra_token_after_semicolon() {
         );
         assert!(found.to_lowercase().contains("identifier(\"extra_token\")"));
     } else {
-        panic!("Wrong error type for select extra token (with semi): {:?}", result);
+        assert!(false, "Wrong error type for select extra token (with semi): {:?}", result);
     }
 }
 
@@ -1175,10 +1198,10 @@ fn test_select_empty_string_literal() {
                         ast::AstExpressionValue::Literal(AstLiteralValue::String("".to_string()))
                     );
                 }
-                _ => panic!("Expected ConditionTree::Comparison for name condition"),
+                _ => assert!(false, "Expected ConditionTree::Comparison for name condition"),
             }
         }
-        _ => panic!("Expected SelectStatement"),
+        _ => assert!(false, "Expected SelectStatement"),
     }
 }
 
@@ -1203,10 +1226,10 @@ fn test_update_set_null_value() {
                         ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string()))
                     );
                 }
-                _ => panic!("Expected ConditionTree::Comparison for id condition"),
+                _ => assert!(false, "Expected ConditionTree::Comparison for id condition"),
             }
         }
-        _ => panic!("Expected UpdateStatement"),
+        _ => assert!(false, "Expected UpdateStatement"),
     }
 }
 
@@ -1225,10 +1248,10 @@ fn test_select_where_null_value() {
                     assert_eq!(cond.operator, "=");
                     assert_eq!(cond.value, ast::AstExpressionValue::Literal(AstLiteralValue::Null));
                 }
-                _ => panic!("Expected ConditionTree::Comparison for data condition"),
+                _ => assert!(false, "Expected ConditionTree::Comparison for data condition"),
             }
         }
-        _ => panic!("Expected SelectStatement"),
+        _ => assert!(false, "Expected SelectStatement"),
     }
 }
 
@@ -1251,10 +1274,10 @@ fn test_identifier_as_substring_of_keyword() {
                         ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string()))
                     );
                 }
-                _ => panic!("Expected ConditionTree::Comparison for selector_id condition"),
+                _ => assert!(false, "Expected ConditionTree::Comparison for selector_id condition"),
             }
         }
-        _ => panic!("Expected SelectStatement"),
+        _ => assert!(false, "Expected SelectStatement"),
     }
 }
 
@@ -1281,7 +1304,7 @@ fn test_parse_insert_simple() {
                 ))
             );
         }
-        _ => panic!("Expected InsertStatement"),
+        _ => assert!(false, "Expected InsertStatement"),
     }
 }
 
@@ -1342,7 +1365,7 @@ fn test_parse_insert_multiple_values() {
                 ast::AstExpressionValue::Literal(AstLiteralValue::Number("75.50".to_string()))
             );
         }
-        _ => panic!("Expected InsertStatement for TC1"),
+        _ => assert!(false, "Expected InsertStatement for TC1"),
     }
 
     // Test case 2: Multiple VALUES sets without explicit columns
@@ -1374,7 +1397,7 @@ fn test_parse_insert_multiple_values() {
                 ast::AstExpressionValue::Literal(AstLiteralValue::String("Toronto".to_string()))
             );
         }
-        _ => panic!("Expected InsertStatement for TC2"),
+        _ => assert!(false, "Expected InsertStatement for TC2"),
     }
 
     // Test case 3: Single VALUES set (ensure loop handles this correctly)
@@ -1394,7 +1417,7 @@ fn test_parse_insert_multiple_values() {
                 ))
             );
         }
-        _ => panic!("Expected InsertStatement for TC3"),
+        _ => assert!(false, "Expected InsertStatement for TC3"),
     }
 
     // Test case 4: Error - Trailing comma after last VALUES set
@@ -1416,9 +1439,9 @@ fn test_parse_insert_multiple_values() {
         assert!(found.to_lowercase().contains("semicolon"));
     } else if let Err(SqlParseError::UnexpectedEOF) = result4 {
         // This might also be valid if the parser expects another ( but finds EOF after comma
-        panic!("UnexpectedEOF, expected UnexpectedToken for trailing comma in VALUES");
+        assert!(false, "UnexpectedEOF, expected UnexpectedToken for trailing comma in VALUES");
     } else {
-        panic!("Wrong error type for trailing comma in VALUES: {:?}", result4);
+        assert!(false, "Wrong error type for trailing comma in VALUES: {:?}", result4);
     }
 }
 
@@ -1442,10 +1465,10 @@ fn test_mixed_case_keywords() {
                         ast::AstExpressionValue::Literal(AstLiteralValue::Boolean(true))
                     );
                 }
-                _ => panic!("Expected simple comparison"),
+                _ => assert!(false, "Expected simple comparison"),
             }
         }
-        _ => panic!("Expected SelectStatement"),
+        _ => assert!(false, "Expected SelectStatement"),
     }
 }
 
@@ -1472,10 +1495,10 @@ fn test_parse_vector_literal_simple() {
                         ]))
                     );
                 }
-                _ => panic!("Expected simple comparison for vector literal"),
+                _ => assert!(false, "Expected simple comparison for vector literal"),
             }
         }
-        _ => panic!("Expected SelectStatement for vector literal test"),
+        _ => assert!(false, "Expected SelectStatement for vector literal test"),
     }
 }
 
@@ -1509,15 +1532,15 @@ fn test_parse_vector_literal_mixed_types_and_nested() {
                                 AstLiteralValue::Number("2.0".to_string())
                             );
                         }
-                        _ => panic!("Expected nested vector for second element"),
+                        _ => assert!(false, "Expected nested vector for second element"),
                     }
                     assert_eq!(elements[2], AstLiteralValue::Boolean(true));
                     assert_eq!(elements[3], AstLiteralValue::Null);
                 }
-                _ => panic!("Expected top-level vector literal"),
+                _ => assert!(false, "Expected top-level vector literal"),
             }
         }
-        _ => panic!("Expected InsertStatement for mixed/nested vector test"),
+        _ => assert!(false, "Expected InsertStatement for mixed/nested vector test"),
     }
 }
 
@@ -1540,10 +1563,10 @@ fn test_parse_vector_literal_empty() {
                         ast::AstExpressionValue::Literal(AstLiteralValue::Vector(vec![]))
                     );
                 }
-                _ => panic!("Expected simple comparison for empty vector"),
+                _ => assert!(false, "Expected simple comparison for empty vector"),
             }
         }
-        _ => panic!("Expected SelectStatement for empty vector test"),
+        _ => assert!(false, "Expected SelectStatement for empty vector test"),
     }
 }
 
@@ -1558,7 +1581,7 @@ fn test_parse_vector_literal_trailing_comma_error() {
         assert_eq!(expected.to_lowercase(), "value after comma in vector literal");
         assert_eq!(found, "]");
     } else {
-        panic!("Wrong error type for trailing comma in vector: {:?}", result);
+        assert!(false, "Wrong error type for trailing comma in vector: {:?}", result);
     }
 }
 
@@ -1573,7 +1596,7 @@ fn test_parse_vector_literal_missing_comma_error() {
         assert_eq!(expected.to_lowercase(), "comma or ']' in vector literal");
         assert_eq!(found.to_lowercase(), "numericliteral(\"2\")"); // Match debug format
     } else {
-        panic!("Wrong error type for missing comma in vector: {:?}", result);
+        assert!(false, "Wrong error type for missing comma in vector: {:?}", result);
     }
 }
 
@@ -1589,7 +1612,7 @@ fn test_parse_vector_literal_unclosed_error() {
             assert_eq!(expected.to_lowercase(), "comma or ']' in vector literal");
             assert_eq!(found.to_lowercase(), "semicolon");
         } else {
-            panic!("Wrong error for unclosed vector with semicolon: {:?}", result);
+            assert!(false, "Wrong error for unclosed vector with semicolon: {:?}", result);
         }
     } else {
         // SQL does not end with semicolon, e.g. "SELECT ... tags = [1, 2"
@@ -1606,7 +1629,8 @@ fn test_parse_vector_literal_unclosed_error() {
         } else {
             // If it's not UnexpectedToken, then the original UnexpectedEOF might be relevant for other reasons
             // but for this specific case, we expect an EOF to be an "unexpected token".
-            panic!(
+            assert!(
+                false,
                 "Expected UnexpectedToken indicating EOF, but got different error or Ok: {:?}",
                 result
             );
@@ -1627,7 +1651,7 @@ fn test_select_trailing_comma_refined() {
         assert_eq!(expected.to_lowercase(), "column name or '*' after comma");
         assert_eq!(found.to_lowercase(), "from");
     } else {
-        panic!("Wrong error type for trailing comma in SELECT: {:?}", result);
+        assert!(false, "Wrong error type for trailing comma in SELECT: {:?}", result);
     }
 }
 
@@ -1642,7 +1666,7 @@ fn test_update_trailing_comma_in_set_refined() {
         assert_eq!(expected.to_lowercase(), "column name for assignment after comma");
         assert_eq!(found.to_lowercase(), "where");
     } else {
-        panic!("Wrong error type for trailing comma in SET: {:?}", result);
+        assert!(false, "Wrong error type for trailing comma in SET: {:?}", result);
     }
 }
 
@@ -1657,7 +1681,7 @@ fn test_create_table_trailing_comma_refined() {
         assert_eq!(expected.to_lowercase(), "column definition");
         assert_eq!(found.to_lowercase(), ")");
     } else {
-        panic!("Wrong error type for trailing comma in CREATE TABLE: {:?}", result);
+        assert!(false, "Wrong error type for trailing comma in CREATE TABLE: {:?}", result);
     }
 }
 
@@ -1672,7 +1696,7 @@ fn test_create_table_empty_column_list_error() {
         assert_eq!(expected.to_lowercase(), "column definition");
         assert_eq!(found.to_lowercase(), ")");
     } else {
-        panic!("Wrong error type for empty column list in CREATE TABLE: {:?}", result);
+        assert!(false, "Wrong error type for empty column list in CREATE TABLE: {:?}", result);
     }
 }
 
@@ -1689,7 +1713,7 @@ fn test_parse_drop_table_simple() {
             assert_eq!(drop_stmt.table_name, "users");
             assert!(!drop_stmt.if_exists);
         }
-        _ => panic!("Expected DropTableStatement"),
+        _ => assert!(false, "Expected DropTableStatement"),
     }
 }
 
@@ -1704,7 +1728,7 @@ fn test_parse_drop_table_if_exists() {
             assert_eq!(drop_stmt.table_name, "customers");
             assert!(drop_stmt.if_exists);
         }
-        _ => panic!("Expected DropTableStatement with IF EXISTS"),
+        _ => assert!(false, "Expected DropTableStatement with IF EXISTS"),
     }
 }
 
@@ -1719,7 +1743,7 @@ fn test_parse_drop_table_missing_table_keyword() {
         assert!(expected.to_lowercase().contains("table"));
         assert!(found.to_lowercase().contains("identifier(\"users\")"));
     } else {
-        panic!("Wrong error type for DROP missing TABLE: {:?}", result);
+        assert!(false, "Wrong error type for DROP missing TABLE: {:?}", result);
     }
 }
 
@@ -1739,7 +1763,7 @@ fn test_parse_drop_table_missing_table_name() {
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // This can happen if input is "DROP TABLE"
     } else {
-        panic!("Wrong error type for DROP TABLE missing name: {:?}", result);
+        assert!(false, "Wrong error type for DROP TABLE missing name: {:?}", result);
     }
 }
 
@@ -1759,7 +1783,7 @@ fn test_parse_drop_table_if_exists_missing_table_name() {
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // This can happen if input is "DROP TABLE IF EXISTS"
     } else {
-        panic!("Wrong error type for DROP TABLE IF EXISTS missing name: {:?}", result);
+        assert!(false, "Wrong error type for DROP TABLE IF EXISTS missing name: {:?}", result);
     }
 }
 
@@ -1774,7 +1798,7 @@ fn test_parse_drop_table_if_missing_exists() {
         assert!(expected.to_lowercase().contains("exists"));
         assert!(found.to_lowercase().contains("identifier(customers)")); // Removed escaped quotes
     } else {
-        panic!("Wrong error type for DROP TABLE IF missing EXISTS: {:?}", result);
+        assert!(false, "Wrong error type for DROP TABLE IF missing EXISTS: {:?}", result);
     }
 }
 
@@ -1810,10 +1834,10 @@ fn test_parse_select_simple_inner_join() {
                         ast::AstExpressionValue::ColumnIdentifier("t2.t1_id".to_string())
                     );
                 }
-                _ => panic!("Expected Comparison condition for ON clause"),
+                _ => assert!(false, "Expected Comparison condition for ON clause"),
             }
         }
-        _ => panic!("Expected SelectStatement"),
+        _ => assert!(false, "Expected SelectStatement"),
     }
 }
 
@@ -1851,10 +1875,10 @@ fn test_parse_select_simple_inner_join_original_on_fails() {
                         ast::AstExpressionValue::ColumnIdentifier("t2.t1_id".to_string())
                     );
                 }
-                _ => panic!("Expected Comparison condition for ON clause"),
+                _ => assert!(false, "Expected Comparison condition for ON clause"),
             }
         }
-        _ => panic!("Expected SelectStatement"),
+        _ => assert!(false, "Expected SelectStatement"),
     }
 }
 
@@ -1881,10 +1905,10 @@ fn test_parse_select_left_outer_join() {
                         ast::AstExpressionValue::Literal(AstLiteralValue::Number("10".to_string()))
                     );
                 }
-                _ => panic!("Expected Comparison condition for ON clause"),
+                _ => assert!(false, "Expected Comparison condition for ON clause"),
             }
         }
-        _ => panic!("Expected SelectStatement with LEFT OUTER JOIN"),
+        _ => assert!(false, "Expected SelectStatement with LEFT OUTER JOIN"),
     }
 }
 
@@ -1903,7 +1927,7 @@ fn test_parse_select_right_join() {
             assert_eq!(join.right_source.name, "tableB");
             assert!(join.on_condition.is_some());
         }
-        _ => panic!("Expected SelectStatement with RIGHT JOIN"),
+        _ => assert!(false, "Expected SelectStatement with RIGHT JOIN"),
     }
 }
 
@@ -1922,7 +1946,7 @@ fn test_parse_select_full_outer_join() {
             assert_eq!(join.right_source.name, "tableB");
             assert!(join.on_condition.is_some());
         }
-        _ => panic!("Expected SelectStatement with FULL OUTER JOIN"),
+        _ => assert!(false, "Expected SelectStatement with FULL OUTER JOIN"),
     }
 }
 
@@ -1941,7 +1965,7 @@ fn test_parse_select_cross_join() {
             assert_eq!(join.right_source.name, "table2");
             assert!(join.on_condition.is_none()); // CROSS JOIN has no ON
         }
-        _ => panic!("Expected SelectStatement with CROSS JOIN"),
+        _ => assert!(false, "Expected SelectStatement with CROSS JOIN"),
     }
 }
 
@@ -1965,7 +1989,7 @@ fn test_parse_select_multiple_joins() {
                     cond.value,
                     ast::AstExpressionValue::Literal(AstLiteralValue::Number("1".to_string()))
                 ),
-                _ => panic!("Expected Comparison for first ON"),
+                _ => assert!(false, "Expected Comparison for first ON"),
             }
 
             let join2 = &select_stmt.joins[1];
@@ -1977,10 +2001,10 @@ fn test_parse_select_multiple_joins() {
                     cond.value,
                     ast::AstExpressionValue::Literal(AstLiteralValue::Number("2".to_string()))
                 ),
-                _ => panic!("Expected Comparison for second ON"),
+                _ => assert!(false, "Expected Comparison for second ON"),
             }
         }
-        _ => panic!("Expected SelectStatement with multiple JOINs"),
+        _ => assert!(false, "Expected SelectStatement with multiple JOINs"),
     }
 }
 
@@ -1995,7 +2019,7 @@ fn test_parse_join_missing_on_condition_for_inner_join() {
         assert_eq!(expected.to_lowercase(), "on"); // Parser expects ON after table name for non-CROSS joins
         assert!(found.to_lowercase().contains("semicolon") || found.to_lowercase().contains("eof"));
     } else {
-        panic!("Wrong error type for JOIN missing ON: {:?}", result);
+        assert!(false, "Wrong error type for JOIN missing ON: {:?}", result);
     }
 }
 
@@ -2010,7 +2034,7 @@ fn test_parse_join_missing_table_name_after_on() {
         assert_eq!(expected.to_lowercase(), "expected table name after join clause");
         assert_eq!(found.to_lowercase(), "on");
     } else {
-        panic!("Error expected for missing table name in JOIN: {:?}", result);
+        assert!(false, "Error expected for missing table name in JOIN: {:?}", result);
     }
 }
 
@@ -2029,7 +2053,7 @@ fn test_parse_join_cross_join_with_on_error() {
         assert_eq!(expected.to_lowercase(), "end of statement or eof");
         assert_eq!(found.to_lowercase(), "on");
     } else {
-        panic!("CROSS JOIN with ON should be an error: {:?}", result);
+        assert!(false, "CROSS JOIN with ON should be an error: {:?}", result);
     }
 }
 
@@ -2051,7 +2075,7 @@ fn test_parse_select_order_by_simple() {
             assert!(order_by_list[0].direction.is_none()); // Default ASC
             assert!(select_stmt.limit.is_none());
         }
-        _ => panic!("Expected SelectStatement with ORDER BY"),
+        _ => assert!(false, "Expected SelectStatement with ORDER BY"),
     }
 }
 
@@ -2071,7 +2095,7 @@ fn test_parse_select_order_by_asc_desc() {
             assert_eq!(order_by_list[1].expression, "id");
             assert_eq!(order_by_list[1].direction, Some(OrderDirection::Asc));
         }
-        _ => panic!("Expected SelectStatement with ORDER BY ASC/DESC"),
+        _ => assert!(false, "Expected SelectStatement with ORDER BY ASC/DESC"),
     }
 }
 
@@ -2088,7 +2112,7 @@ fn test_parse_select_limit_simple() {
             assert_eq!(select_stmt.limit.unwrap(), AstLiteralValue::Number("10".to_string()));
             assert!(select_stmt.order_by.is_none());
         }
-        _ => panic!("Expected SelectStatement with LIMIT"),
+        _ => assert!(false, "Expected SelectStatement with LIMIT"),
     }
 }
 
@@ -2110,7 +2134,7 @@ fn test_parse_select_order_by_limit() {
             assert!(select_stmt.limit.is_some());
             assert_eq!(select_stmt.limit.unwrap(), AstLiteralValue::Number("5".to_string()));
         }
-        _ => panic!("Expected SelectStatement with ORDER BY and LIMIT"),
+        _ => assert!(false, "Expected SelectStatement with ORDER BY and LIMIT"),
     }
 }
 
@@ -2126,7 +2150,7 @@ fn test_parse_select_limit_order_by_invalid_order() {
         assert!(expected.to_lowercase().contains("end of statement or eof"));
         assert!(found.to_lowercase().contains("order"));
     } else {
-        panic!("Wrong error type for LIMIT before ORDER BY: {:?}", result);
+        assert!(false, "Wrong error type for LIMIT before ORDER BY: {:?}", result);
     }
 }
 
@@ -2141,7 +2165,7 @@ fn test_parse_order_by_missing_column() {
         assert!(expected.to_lowercase().contains("at least one column for order by"));
         assert!(found.to_lowercase().contains("semicolon"));
     } else {
-        panic!("Wrong error: {:?}", result);
+        assert!(false, "Wrong error: {:?}", result);
     }
 }
 
@@ -2156,7 +2180,7 @@ fn test_parse_order_by_trailing_comma() {
         assert!(expected.to_lowercase().contains("column name after comma in order by"));
         assert!(found.to_lowercase().contains("semicolon"));
     } else {
-        panic!("Wrong error: {:?}", result);
+        assert!(false, "Wrong error: {:?}", result);
     }
 }
 
@@ -2176,7 +2200,7 @@ fn test_parse_limit_missing_value() {
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // ok if no semicolon
     } else {
-        panic!("Wrong error: {:?}", result);
+        assert!(false, "Wrong error: {:?}", result);
     }
 }
 
@@ -2191,7 +2215,7 @@ fn test_parse_limit_non_numeric_value() {
         assert!(expected.to_lowercase().contains("numeric literal for limit"));
         assert!(found.to_lowercase().contains("stringliteral(\"abc\")"));
     } else {
-        panic!("Wrong error: {:?}", result);
+        assert!(false, "Wrong error: {:?}", result);
     }
 }
 
@@ -2229,7 +2253,7 @@ fn test_translate_create_table_with_autoincrement() {
             assert!(!name_col.is_nullable);
             assert!(!name_col.is_auto_increment);
         }
-        _ => panic!("Expected CreateTable command"),
+        _ => assert!(false, "Expected CreateTable command"),
     }
 }
 
@@ -2307,9 +2331,9 @@ fn test_parse_count_star() {
                     assert!(matches!(column.as_ref(), SelectColumn::Asterisk));
                     assert!(alias.is_none());
                 }
-                _ => panic!("Expected AggregateFunction, got {:?}", select.columns[0]),
+                _ => assert!(false, "Expected AggregateFunction, got {:?}", select.columns[0]),
             }
         }
-        _ => panic!("Expected SELECT statement"),
+        _ => assert!(false, "Expected SELECT statement"),
     }
 }

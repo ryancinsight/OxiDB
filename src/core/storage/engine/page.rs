@@ -307,7 +307,7 @@ mod tests {
         if let Err(OxidbError::Deserialization(msg)) = result {
             assert!(msg.contains("Invalid PageType value"));
         } else {
-            panic!("Expected Deserialization error for invalid page type");
+            assert!(false, "Expected Deserialization error for invalid page type");
         }
     }
 
@@ -376,7 +376,7 @@ mod tests {
         if let Err(OxidbError::Deserialization(msg)) = result {
             assert!(msg.contains("does not match configured PAGE_SIZE"));
         } else {
-            panic!("Expected Deserialization error for small buffer");
+            assert!(false, "Expected Deserialization error for small buffer");
         }
     }
 
@@ -388,7 +388,7 @@ mod tests {
         if let Err(OxidbError::Deserialization(msg)) = result {
             assert!(msg.contains("does not match configured PAGE_SIZE"));
         } else {
-            panic!("Expected Deserialization error for large buffer");
+            assert!(false, "Expected Deserialization error for large buffer");
         }
     }
 

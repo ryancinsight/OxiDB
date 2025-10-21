@@ -58,14 +58,12 @@ fn test_score_calculation() -> Result<(), Box<dyn std::error::Error>> {
     let graph_weight = 0.4;
 
     // Test case 1: Both scores present
-    let vector_score = Some(0.8);
-    let graph_score = Some(0.7);
-    let expected_hybrid = 0.8 * vector_weight + 0.7 * graph_weight;
+    let vector_score = 0.8;
+    let graph_score = 0.7;
+    let expected_hybrid = vector_score * vector_weight + graph_score * graph_weight;
     println!(
         "✓ Hybrid score calculation: {:.3} (vector: {:.1}, graph: {:.1})",
-        expected_hybrid,
-        vector_score.unwrap(),
-        graph_score.unwrap()
+        expected_hybrid, vector_score, graph_score
     );
 
     // Test case 2: Only vector score

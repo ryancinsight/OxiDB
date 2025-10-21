@@ -221,7 +221,7 @@ mod tests {
                 assert!(message.contains("transaction 2"));
                 assert!(message.contains("transaction 1"));
             }
-            res => panic!("Expected LockConflict, got {:?}", res),
+            res => assert!(false, "Expected LockConflict, got {:?}", res),
         }
     }
 
@@ -237,7 +237,7 @@ mod tests {
                 assert!(message.contains("transaction 2"));
                 assert!(message.contains("transaction 1"));
             }
-            res => panic!("Expected LockConflict, got {:?}", res),
+            res => assert!(false, "Expected LockConflict, got {:?}", res),
         }
     }
 
@@ -281,7 +281,7 @@ mod tests {
                 assert!(message.contains("transaction 3"));
                 assert!(message.contains("transaction 1") || message.contains("transaction 2"));
             }
-            res => panic!("Expected LockConflict, got {:?}", res),
+            res => assert!(false, "Expected LockConflict, got {:?}", res),
         }
     }
 
@@ -316,7 +316,7 @@ mod tests {
                 assert!(message.contains("transaction 1"));
                 assert!(message.contains("transaction 2"));
             }
-            res => panic!("Expected LockConflict, got {:?}", res),
+            res => assert!(false, "Expected LockConflict, got {:?}", res),
         }
         // Check state: TX1 should still hold its original Shared lock, TX2 also holds Shared
         let locks_on_key1 = manager.lock_table.get(&key1).unwrap();

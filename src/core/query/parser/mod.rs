@@ -56,7 +56,7 @@ mod tests {
                 assert_eq!(source, "users");
                 assert!(condition.is_none());
             }
-            _ => panic!("Expected SELECT command for simple SQL"),
+            _ => assert!(false, "Expected SELECT command for simple SQL"),
         }
     }
 
@@ -72,7 +72,7 @@ mod tests {
                 assert_eq!(source, "users");
                 assert!(condition.is_some());
             }
-            _ => panic!("Expected SELECT command for SQL with WHERE"),
+            _ => assert!(false, "Expected SELECT command for SQL with WHERE"),
         }
     }
 
@@ -87,7 +87,7 @@ mod tests {
                 assert_eq!(assignments[1].column, "age");
                 assert!(condition.is_some());
             }
-            _ => panic!("Expected UPDATE command for SQL"),
+            _ => assert!(false, "Expected UPDATE command for SQL"),
         }
     }
 
@@ -100,7 +100,7 @@ mod tests {
                 assert_eq!(columns, Some(vec!["name".to_string(), "age".to_string()]));
                 assert_eq!(values.len(), 1);
             }
-            _ => panic!("Expected SqlInsert command"),
+            _ => assert!(false, "Expected SqlInsert command"),
         }
     }
 
@@ -112,7 +112,7 @@ mod tests {
                 assert_eq!(table_name, "users");
                 assert!(condition.is_some());
             }
-            _ => panic!("Expected SqlDelete command"),
+            _ => assert!(false, "Expected SqlDelete command"),
         }
     }
 
@@ -124,7 +124,7 @@ mod tests {
                 assert_eq!(table_name, "users");
                 assert_eq!(columns.len(), 2);
             }
-            _ => panic!("Expected CreateTable command"),
+            _ => assert!(false, "Expected CreateTable command"),
         }
     }
 
@@ -148,7 +148,7 @@ mod tests {
             Err(OxidbError::SqlParsing(msg)) => {
                 assert!(msg.contains("SQL"));
             }
-            _ => panic!("Expected SQL parsing error"),
+            _ => assert!(false, "Expected SQL parsing error"),
         }
     }
 

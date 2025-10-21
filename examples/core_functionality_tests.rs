@@ -116,7 +116,7 @@ impl TestController {
     /// Test edge cases (CLEAN: Comprehensive testing)
     fn test_edge_cases(&self) -> Result<TestResult, OxidbError> {
         let start = Instant::now();
-        let mut conn = Connection::open(&format!("{}_edge", self.database_path))?;
+        let mut conn = Connection::open(format!("{}_edge", self.database_path))?;
 
         // Test edge case scenarios
         self.test_boundary_values(&mut conn)?;
@@ -173,7 +173,7 @@ impl TestController {
     /// Test performance (CLEAN: Efficient)
     fn test_performance(&self) -> Result<TestResult, OxidbError> {
         let start = Instant::now();
-        let mut conn = Connection::open(&format!("{}_perf", self.database_path))?;
+        let mut conn = Connection::open(format!("{}_perf", self.database_path))?;
 
         // Performance test with reasonable data size
         self.test_bulk_inserts(&mut conn)?;

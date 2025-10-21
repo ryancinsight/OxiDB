@@ -134,7 +134,7 @@ mod tests {
                 assert_eq!(dim1, 2);
                 assert_eq!(dim2, 3);
             }
-            _ => panic!("Expected VectorDimensionMismatch"),
+            _ => assert!(false, "Expected VectorDimensionMismatch"),
         }
     }
 
@@ -179,7 +179,7 @@ mod tests {
                 assert_eq!(dim1, 2);
                 assert_eq!(dim2, 3);
             }
-            _ => panic!("Expected VectorDimensionMismatch"),
+            _ => assert!(false, "Expected VectorDimensionMismatch"),
         }
     }
 
@@ -189,7 +189,7 @@ mod tests {
         let v2 = [1.0, 2.0];
         match cosine_similarity(&v1, &v2) {
             Err(OxidbError::VectorMagnitudeZero) => {}
-            _ => panic!("Expected VectorMagnitudeZero"),
+            _ => assert!(false, "Expected VectorMagnitudeZero"),
         }
     }
 
@@ -199,7 +199,7 @@ mod tests {
         let v2 = [0.0, 0.0];
         match cosine_similarity(&v1, &v2) {
             Err(OxidbError::VectorMagnitudeZero) => {}
-            _ => panic!("Expected VectorMagnitudeZero"),
+            _ => assert!(false, "Expected VectorMagnitudeZero"),
         }
     }
 
@@ -209,7 +209,10 @@ mod tests {
         let v2: [f32; 0] = [];
         match cosine_similarity(&v1, &v2) {
             Err(OxidbError::VectorMagnitudeZero) => {} // Or handle as 1.0 or error, depending on definition for empty vectors
-            _ => panic!("Expected VectorMagnitudeZero for empty vectors or specific handling"),
+            _ => assert!(
+                false,
+                "Expected VectorMagnitudeZero for empty vectors or specific handling"
+            ),
         }
     }
 }

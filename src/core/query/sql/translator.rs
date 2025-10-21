@@ -1,6 +1,6 @@
 use super::ast;
-use crate::core::common::OxidbError; // Changed
 use crate::core::common::types::ColumnType;
+use crate::core::common::OxidbError; // Changed
 use crate::core::query::commands::{self, Command};
 use crate::core::types::{DataType, VectorData}; // Added VectorData
 
@@ -397,7 +397,7 @@ mod tests {
                 // Changed
                 assert!(msg.contains("Cannot parse numeric literal 'abc'"));
             }
-            _ => panic!("Expected SqlParsing error for unparsable number string."), // Changed
+            _ => assert!(false, "Expected SqlParsing error for unparsable number string."), // Changed
         }
     }
 
@@ -409,7 +409,7 @@ mod tests {
                 // Changed
                 assert!(msg.contains("Cannot parse numeric literal '123xyz'"));
             }
-            _ => panic!("Expected SqlParsing error for unparsable number string."), // Changed
+            _ => assert!(false, "Expected SqlParsing error for unparsable number string."), // Changed
         }
     }
 
@@ -448,7 +448,7 @@ mod tests {
             });
         match translate_condition_tree_to_sql_condition_tree(&ast_cond_tree) {
             Ok(res_cond_tree) => assert_eq!(res_cond_tree, expected_sql_cond_tree),
-            Err(e) => panic!("Translation failed: {:?}", e),
+            Err(e) => assert!(false, "Translation failed: {:?}", e),
         }
     }
 
@@ -467,7 +467,7 @@ mod tests {
             });
         match translate_condition_tree_to_sql_condition_tree(&ast_cond_tree) {
             Ok(res_cond_tree) => assert_eq!(res_cond_tree, expected_sql_cond_tree),
-            Err(e) => panic!("Translation failed: {:?}", e),
+            Err(e) => assert!(false, "Translation failed: {:?}", e),
         }
     }
 
@@ -562,7 +562,7 @@ mod tests {
                 assert!(order_by.is_none()); // Added
                 assert!(limit.is_none()); // Added
             }
-            _ => panic!("Expected Command::Select"),
+            _ => assert!(false, "Expected Command::Select"),
         }
     }
 
@@ -602,12 +602,12 @@ mod tests {
                     assert_eq!(simple_cond.operator, "=");
                     assert_eq!(simple_cond.value, DataType::Integer(101));
                 } else {
-                    panic!("Expected Comparison condition tree variant");
+                    assert!(false, "Expected Comparison condition tree variant");
                 }
                 assert!(order_by.is_none());
                 assert!(limit.is_none());
             }
-            _ => panic!("Expected Command::Select"),
+            _ => assert!(false, "Expected Command::Select"),
         }
     }
 
@@ -644,10 +644,10 @@ mod tests {
                     assert_eq!(simple_cond.column, "product_id");
                     assert_eq!(simple_cond.value, DataType::String("XYZ123".to_string()));
                 } else {
-                    panic!("Expected Comparison condition tree variant for Update");
+                    assert!(false, "Expected Comparison condition tree variant for Update");
                 }
             }
-            _ => panic!("Expected Command::Update"),
+            _ => assert!(false, "Expected Command::Update"),
         }
     }
 }

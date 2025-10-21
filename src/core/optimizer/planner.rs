@@ -201,10 +201,7 @@ impl Default for CostBasedPlanner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::common::types::{
-        ColumnType,
-        ColumnDef, Schema,
-    };
+    use crate::core::common::types::{ColumnDef, ColumnType, Schema};
 
     #[test]
     fn test_table_scan_cost_estimation() {

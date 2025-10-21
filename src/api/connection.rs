@@ -580,7 +580,7 @@ mod tests {
                 assert_eq!(ds.columns.len(), 2);
                 assert_eq!(ds.rows.len(), 1);
             }
-            other => panic!("Unexpected result: {:?}", other),
+            other => return Err(OxidbError::Execution(format!("Unexpected result: {:?}", other))),
         }
 
         Ok(())
@@ -608,7 +608,7 @@ mod tests {
         let result = conn.execute_with_params(&select_sql, &[Value::Integer(1)])?;
         match result {
             QueryResult::Data(ds) => assert_eq!(ds.rows.len(), 1),
-            other => panic!("Unexpected result: {:?}", other),
+            other => return Err(OxidbError::Execution(format!("Unexpected result: {:?}", other))),
         }
 
         Ok(())
@@ -634,7 +634,7 @@ mod tests {
         // Should have 1 row
         match result {
             QueryResult::Data(ds) => assert_eq!(ds.rows.len(), 1),
-            other => panic!("Unexpected result: {:?}", other),
+            other => return Err(OxidbError::Execution(format!("Unexpected result: {:?}", other))),
         }
 
         // Test rollback
@@ -647,7 +647,7 @@ mod tests {
         // Should still have 1 row (rollback worked)
         match result {
             QueryResult::Data(ds) => assert_eq!(ds.rows.len(), 1),
-            other => panic!("Unexpected result: {:?}", other),
+            other => return Err(OxidbError::Execution(format!("Unexpected result: {:?}", other))),
         }
 
         Ok(())
@@ -673,7 +673,7 @@ mod tests {
         let result = conn.query(&format!("SELECT * FROM {} WHERE id = 1", table_name))?;
         match result {
             QueryResult::Data(ds) => assert_eq!(ds.rows.len(), 1),
-            other => panic!("Unexpected result: {:?}", other),
+            other => return Err(OxidbError::Execution(format!("Unexpected result: {:?}", other))),
         }
 
         // Test query_all equivalent
@@ -687,7 +687,7 @@ mod tests {
                 }
                 assert_eq!(ds.rows.len(), 2);
             }
-            other => panic!("Unexpected result: {:?}", other),
+            other => return Err(OxidbError::Execution(format!("Unexpected result: {:?}", other))),
         }
 
         // Test execute_update equivalent

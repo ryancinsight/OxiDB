@@ -371,7 +371,7 @@ fn test_load_from_malformed_file_key_eof() {
                     || msg.contains("Io(Error { kind: UnexpectedEof")
             );
         }
-        e => panic!("Unexpected error type for malformed key (EOF): {:?}", e),
+        e => assert!(false, "Unexpected error type for malformed key (EOF): {:?}", e),
     }
 }
 
@@ -398,7 +398,7 @@ fn test_load_from_malformed_file_value_eof() {
                     || msg.contains("Io(Error { kind: UnexpectedEof")
             );
         }
-        e => panic!("Unexpected error type for malformed value (EOF): {:?}", e),
+        e => assert!(false, "Unexpected error type for malformed value (EOF): {:?}", e),
     }
 }
 
@@ -431,7 +431,7 @@ fn test_put_writes_to_wal_and_cache() {
             assert_eq!(k, &key);
             assert_eq!(v, &value);
         }
-        _ => panic!("Expected Put entry"),
+        _ => assert!(false, "Expected Put entry"),
     }
 }
 
@@ -472,7 +472,7 @@ fn test_delete_writes_to_wal_and_cache() {
             assert_eq!(k, &key);
             assert_eq!(v, &value);
         }
-        _ => panic!("Expected Put entry as first entry"),
+        _ => assert!(false, "Expected Put entry as first entry"),
     }
     match &entries[1] {
         WalEntry::Delete { lsn, transaction_id, key: k } => {
@@ -481,7 +481,7 @@ fn test_delete_writes_to_wal_and_cache() {
             assert_eq!(*transaction_id, tx_delete.id.0); // Compare with u64
             assert_eq!(k, &key);
         }
-        _ => panic!("Expected Delete entry as second entry"),
+        _ => assert!(false, "Expected Delete entry as second entry"),
     }
 }
 
@@ -917,7 +917,7 @@ fn test_put_atomicity_wal_failure() {
     assert!(result.is_err());
     match result.unwrap_err() {
         OxidbError::Io(_) => {}
-        other_err => panic!("Expected OxidbError::Io, got {:?}", other_err),
+        other_err => assert!(false, "Expected OxidbError::Io, got {:?}", other_err),
     }
     assert!(store.get_cache_entry_for_test(&key).is_none());
     let _ = std::fs::remove_dir_all(&wal_path);
@@ -961,7 +961,7 @@ fn test_delete_atomicity_wal_failure() {
         assert!(result.is_err());
         match result.unwrap_err() {
             OxidbError::Io(_) => {}
-            other_err => panic!("Expected OxidbError::Io, got {:?}", other_err),
+            other_err => assert!(false, "Expected OxidbError::Io, got {:?}", other_err),
         }
         assert!(store.get_cache_entry_for_test(&key).is_some());
         assert_eq!(
@@ -1196,7 +1196,7 @@ fn test_physical_wal_lsn_integration() {
             eprintln!("DELETE statement skipped due to optimizer limitation");
         }
         Err(e) => {
-            panic!("DELETE failed with unexpected error: {:?}", e);
+            assert!(false, "DELETE failed with unexpected error: {:?}", e);
         }
     }
 
@@ -1284,10 +1284,10 @@ fn test_physical_wal_lsn_integration() {
             }
             // TransactionCommit/Rollback should not be in the physical store WAL with the new design
             WalEntry::TransactionCommit { lsn, transaction_id, .. } => {
-                panic!("Unexpected TransactionCommit (lsn:{}, tx:{}) in physical store WAL at index {}", lsn, transaction_id, idx);
+                assert!(false, "Unexpected TransactionCommit (lsn:{}, tx:{}) in physical store WAL at index {}", lsn, transaction_id, idx);
             }
             WalEntry::TransactionRollback { lsn, transaction_id, .. } => {
-                panic!("Unexpected TransactionRollback (lsn:{}, tx:{}) in physical store WAL at index {}", lsn, transaction_id, idx);
+                assert!(false, "Unexpected TransactionRollback (lsn:{}, tx:{}) in physical store WAL at index {}", lsn, transaction_id, idx);
             }
         }
     }

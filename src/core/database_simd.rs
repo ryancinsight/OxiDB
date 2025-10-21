@@ -7,13 +7,13 @@
 /// Generic trait for database values that support vectorized operations
 pub trait DatabaseValue: Clone + PartialEq + Send + Sync {
     /// Serialize the value to bytes
-    /// 
+    ///
     /// # Errors
     /// Returns error if serialization fails
     fn serialize(&self) -> Result<Vec<u8>, SerializationError>;
-    
+
     /// Deserialize the value from bytes
-    /// 
+    ///
     /// # Errors
     /// Returns error if deserialization fails
     fn deserialize(data: &[u8]) -> Result<Self, SerializationError>;
@@ -56,23 +56,17 @@ pub fn similarity_search<T: DatabaseValue>(
         .iter()
         .enumerate()
         .map(|(idx, vector)| {
-            let similarity = cosine_similarity_vectorized(query, vector)
-                .unwrap_or(0.0); // Handle errors gracefully
-            SimilarityResult {
-                index: idx,
-                similarity,
-                data: database.data(idx).cloned(),
-            }
+            let similarity = cosine_similarity_vectorized(query, vector).unwrap_or(0.0); // Handle errors gracefully
+            SimilarityResult { index: idx, similarity, data: database.data(idx).cloned() }
         })
         .collect();
-    
+
     // Sort by similarity (descending) and take top k
     results.sort_unstable_by(|a, b| {
-        b.similarity.partial_cmp(&a.similarity)
-            .unwrap_or(std::cmp::Ordering::Equal)
+        b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal)
     });
     results.truncate(k);
-    
+
     Ok(results)
 }
 
@@ -108,10 +102,7 @@ pub fn bulk_similarity_search<T: DatabaseValue>(
     k: usize,
 ) -> Result<Vec<Vec<SimilarityResult<T>>>, VectorError> {
     // Use iterator pipeline for parallel processing
-    queries
-        .iter()
-        .map(|query| similarity_search(query, database, k))
-        .collect()
+    queries.iter().map(|query| similarity_search(query, database, k)).collect()
 }
 
 /// Zero-copy slice-based operations for efficient data access
@@ -130,20 +121,14 @@ pub fn slice_based_search<T: DatabaseValue>(
         .zip(data.iter())
         .enumerate()
         .map(|(idx, (vector, data_item))| {
-            let similarity = cosine_similarity_vectorized(query, vector)
-                .unwrap_or(0.0);
-            SimilarityResult {
-                index: idx,
-                similarity,
-                data: Some(data_item.clone()),
-            }
+            let similarity = cosine_similarity_vectorized(query, vector).unwrap_or(0.0);
+            SimilarityResult { index: idx, similarity, data: Some(data_item.clone()) }
         })
         .collect();
 
     // Sort and truncate
     results.sort_unstable_by(|a, b| {
-        b.similarity.partial_cmp(&a.similarity)
-            .unwrap_or(std::cmp::Ordering::Equal)
+        b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal)
     });
     results.truncate(k);
 
@@ -159,13 +144,10 @@ pub fn batch_vector_operations<T: DatabaseValue>(
         .iter()
         .map(|op| match op {
             VectorOperation::Add { vector, data } => {
-                database.add(vector.clone(), data.clone())
-                    .map(|_| OperationResult::Success)
+                database.add(vector.clone(), data.clone()).map(|_| OperationResult::Success)
             }
-            VectorOperation::Search { query, k } => {
-                similarity_search(query, database, *k)
-                    .map(|results| OperationResult::SearchResults(results.len()))
-            }
+            VectorOperation::Search { query, k } => similarity_search(query, database, *k)
+                .map(|results| OperationResult::SearchResults(results.len())),
         })
         .collect()
 }
@@ -194,11 +176,7 @@ pub struct VectorIndex<T: DatabaseValue> {
 impl<T: DatabaseValue> VectorIndex<T> {
     /// Create a new vector index
     pub fn new(dimension: usize) -> Self {
-        Self {
-            vectors: Vec::new(),
-            data: Vec::new(),
-            dimension,
-        }
+        Self { vectors: Vec::new(), data: Vec::new(), dimension }
     }
 
     /// Add a vector with associated data
@@ -278,13 +256,13 @@ impl std::error::Error for VectorError {}
 pub mod database_constants {
     /// Maximum vector dimension for optimal performance
     pub const MAX_VECTOR_DIMENSION: usize = 512;
-    
+
     /// Optimal batch size for vectorized operations (cache-friendly)
     pub const OPTIMAL_BATCH_SIZE: usize = 1024;
-    
+
     /// Default similarity search result count
     pub const DEFAULT_SIMILARITY_SEARCH_K: usize = 10;
-    
+
     /// Recommended capacity growth factor for vector indices
     pub const CAPACITY_GROWTH_FACTOR: f32 = 1.5;
 }
@@ -313,7 +291,7 @@ mod tests {
     fn test_vectorized_cosine_similarity() {
         let a = vec![1.0, 2.0, 3.0];
         let b = vec![4.0, 5.0, 6.0];
-        
+
         let similarity = cosine_similarity_vectorized(&a, &b).unwrap();
         assert!(similarity > 0.9); // Should be high similarity
     }
@@ -321,15 +299,15 @@ mod tests {
     #[test]
     fn test_vector_index() {
         let mut index = VectorIndex::new(3);
-        
+
         let vector1 = vec![1.0, 0.0, 0.0];
         let data1 = TestValue("first".to_string());
         index.add(vector1, data1).unwrap();
-        
+
         let vector2 = vec![0.0, 1.0, 0.0];
         let data2 = TestValue("second".to_string());
         index.add(vector2, data2).unwrap();
-        
+
         assert_eq!(index.vectors().len(), 2);
         assert_eq!(index.dimension(), 3);
     }
@@ -337,16 +315,16 @@ mod tests {
     #[test]
     fn test_similarity_search() {
         let mut index = VectorIndex::new(3);
-        
+
         // Add some test vectors
         index.add(vec![1.0, 0.0, 0.0], TestValue("x-axis".to_string())).unwrap();
         index.add(vec![0.0, 1.0, 0.0], TestValue("y-axis".to_string())).unwrap();
         index.add(vec![0.0, 0.0, 1.0], TestValue("z-axis".to_string())).unwrap();
-        
+
         // Search for vector similar to x-axis
         let query = vec![0.9, 0.1, 0.0];
         let results = similarity_search(&query, &index, 2).unwrap();
-        
+
         assert_eq!(results.len(), 2);
         // First result should be most similar (x-axis)
         assert!(results[0].similarity > results[1].similarity);
@@ -355,17 +333,17 @@ mod tests {
     #[test]
     fn test_bulk_similarity_search() {
         let mut index = VectorIndex::new(2);
-        
+
         // Add test vectors
         index.add(vec![1.0, 0.0], TestValue("x".to_string())).unwrap();
         index.add(vec![0.0, 1.0], TestValue("y".to_string())).unwrap();
-        
+
         // Multiple queries
         let queries = vec![
-            vec![1.0, 0.1],  // Similar to x
-            vec![0.1, 1.0],  // Similar to y
+            vec![1.0, 0.1], // Similar to x
+            vec![0.1, 1.0], // Similar to y
         ];
-        
+
         let results = bulk_similarity_search(&queries, &index, 1).unwrap();
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].len(), 1); // Each query returns 1 result
@@ -374,16 +352,13 @@ mod tests {
 
     #[test]
     fn test_slice_based_search() {
-        let vectors = vec![
-            vec![1.0, 0.0],
-            vec![0.0, 1.0],
-        ];
+        let vectors = vec![vec![1.0, 0.0], vec![0.0, 1.0]];
         let vector_slices: Vec<&[f32]> = vectors.iter().map(|v| v.as_slice()).collect();
         let data = vec![TestValue("x".to_string()), TestValue("y".to_string())];
-        
+
         let query = vec![1.0, 0.1];
         let results = slice_based_search(&query, &vector_slices, &data, 1).unwrap();
-        
+
         assert_eq!(results.len(), 1);
         assert!(results[0].similarity > 0.9); // Should find x-axis vector
     }
@@ -391,12 +366,12 @@ mod tests {
     #[test]
     fn test_bulk_load() {
         let mut index = VectorIndex::new(2);
-        
+
         let items = vec![
             (vec![1.0, 0.0], TestValue("first".to_string())),
             (vec![0.0, 1.0], TestValue("second".to_string())),
         ];
-        
+
         let count = index.bulk_load(items.into_iter()).unwrap();
         assert_eq!(count, 2);
         assert_eq!(index.vectors().len(), 2);
@@ -406,7 +381,7 @@ mod tests {
     fn test_dimension_mismatch() {
         let a = vec![1.0, 2.0];
         let b = vec![1.0, 2.0, 3.0];
-        
+
         let result = cosine_similarity_vectorized(&a, &b);
         assert!(matches!(result, Err(VectorError::DimensionMismatch)));
     }
@@ -424,13 +399,10 @@ mod tests {
         // Test that our iterator patterns work correctly
         let data: Vec<f32> = (0..1000).map(|i| i as f32).collect();
         let chunks: Vec<&[f32]> = data.chunks(100).collect();
-        
+
         // This pattern should be auto-vectorized by LLVM
-        let sum: f32 = chunks
-            .iter()
-            .map(|chunk| chunk.iter().sum::<f32>())
-            .sum();
-        
+        let sum: f32 = chunks.iter().map(|chunk| chunk.iter().sum::<f32>()).sum();
+
         let expected: f32 = (0..1000).map(|i| i as f32).sum();
         assert!((sum - expected).abs() < 0.001);
     }

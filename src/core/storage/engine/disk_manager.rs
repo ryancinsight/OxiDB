@@ -278,7 +278,7 @@ mod tests {
                 "Error message should indicate out of bounds"
             );
         } else {
-            panic!("Expected IO error for out of bounds read, got {:?}", result);
+            assert!(false, "Expected IO error for out of bounds read, got {:?}", result);
         }
 
         // Allocate a page
@@ -296,7 +296,8 @@ mod tests {
                 "Error message for next_page_id read should indicate out of bounds"
             );
         } else {
-            panic!(
+            assert!(
+                false,
                 "Expected IO error for out of bounds read of next_page_id, got {:?}",
                 result_next
             );
@@ -328,7 +329,7 @@ mod tests {
                 "Error message should indicate length mismatch"
             );
         } else {
-            panic!("Expected IO error for short data write, got {:?}", result);
+            assert!(false, "Expected IO error for short data write, got {:?}", result);
         }
         std::fs::remove_file(db_path)
             .expect("Failed to clean up test_write_page_invalid_data_length file");
@@ -357,7 +358,7 @@ mod tests {
                 "Error message should indicate buffer length mismatch"
             );
         } else {
-            panic!("Expected IO error for short data read buffer, got {:?}", result);
+            assert!(false, "Expected IO error for short data read buffer, got {:?}", result);
         }
         std::fs::remove_file(db_path)
             .expect("Failed to clean up test_read_page_invalid_buffer_length file");

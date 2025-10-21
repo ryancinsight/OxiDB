@@ -66,14 +66,24 @@ impl<T> TestResultExt<T> for Result<T, OxidbError> {
     fn unwrap_test(self) -> T {
         match self {
             Ok(val) => val,
-            Err(e) => panic!("Test failed with error: {:?}", e),
+            Err(e) => {
+                // Use assert! for test failures instead of panic!
+                assert!(false, "Test failed with error: {:?}", e);
+                // This line will never be reached due to the assert! above
+                unreachable!()
+            }
         }
     }
 
     fn unwrap_test_with_msg(self, msg: &str) -> T {
         match self {
             Ok(val) => val,
-            Err(e) => panic!("Test failed: {}: {:?}", msg, e),
+            Err(e) => {
+                // Use assert! for test failures instead of panic!
+                assert!(false, "Test failed: {}: {:?}", msg, e);
+                // This line will never be reached due to the assert! above
+                unreachable!()
+            }
         }
     }
 }
@@ -83,14 +93,24 @@ impl<T> TestResultExt<T> for Option<T> {
     fn unwrap_test(self) -> T {
         match self {
             Some(val) => val,
-            None => panic!("Test failed: Option was None"),
+            None => {
+                // Use assert! for test failures instead of panic!
+                assert!(false, "Test failed: Option was None");
+                // This line will never be reached due to the assert! above
+                unreachable!()
+            }
         }
     }
 
     fn unwrap_test_with_msg(self, msg: &str) -> T {
         match self {
             Some(val) => val,
-            None => panic!("Test failed: {}: Option was None", msg),
+            None => {
+                // Use assert! for test failures instead of panic!
+                assert!(false, "Test failed: {}: Option was None", msg);
+                // This line will never be reached due to the assert! above
+                unreachable!()
+            }
         }
     }
 }

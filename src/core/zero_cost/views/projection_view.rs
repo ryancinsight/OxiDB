@@ -6,7 +6,7 @@
 use crate::core::common::types::{Row, Value};
 
 /// Projection view that provides access to specific columns
-/// 
+///
 /// Allows efficient access to a subset of columns from a row without
 /// copying data. Useful for SELECT clause processing and column filtering.
 #[derive(Debug)]
@@ -17,16 +17,16 @@ pub struct ProjectionView<'a> {
 
 impl<'a> ProjectionView<'a> {
     /// Create a new projection view
-    /// 
+    ///
     /// # Arguments
     /// * `row` - Row to create projection for
     /// * `indices` - Column indices to include in projection
-    /// 
+    ///
     /// # Examples
     /// ```
     /// use oxidb::core::zero_cost::views::ProjectionView;
     /// use oxidb::core::common::types::{Row, Value};
-    /// 
+    ///
     /// let row = Row::new(vec![
     ///     Value::Integer(1),
     ///     Value::Text("Alice".to_string()),
@@ -42,10 +42,10 @@ impl<'a> ProjectionView<'a> {
     }
 
     /// Get projected value by index
-    /// 
+    ///
     /// # Arguments
     /// * `index` - Index in the projection (not the original row)
-    /// 
+    ///
     /// # Returns
     /// * `Some(&Value)` - If projection index is valid and points to valid column
     /// * `None` - If projection index is invalid or points to invalid column
@@ -55,7 +55,7 @@ impl<'a> ProjectionView<'a> {
     }
 
     /// Get the number of projected columns
-    /// 
+    ///
     /// # Returns
     /// Number of columns in this projection
     #[inline]
@@ -64,7 +64,7 @@ impl<'a> ProjectionView<'a> {
     }
 
     /// Check if projection is empty
-    /// 
+    ///
     /// # Returns
     /// `true` if no columns are projected, `false` otherwise
     #[inline]
@@ -73,10 +73,10 @@ impl<'a> ProjectionView<'a> {
     }
 
     /// Iterate over projected values
-    /// 
+    ///
     /// Returns an iterator that yields `Option<&Value>` for each projected column.
     /// `None` is returned for invalid column indices.
-    /// 
+    ///
     /// # Returns
     /// Iterator over projected values (may contain None for invalid indices)
     pub fn iter(&self) -> impl Iterator<Item = Option<&'a Value>> + '_ {
@@ -84,7 +84,7 @@ impl<'a> ProjectionView<'a> {
     }
 
     /// Get the projection indices
-    /// 
+    ///
     /// # Returns
     /// Slice of column indices being projected
     #[inline]
@@ -93,10 +93,10 @@ impl<'a> ProjectionView<'a> {
     }
 
     /// Collect all valid projected values
-    /// 
+    ///
     /// Creates a vector containing all valid projected values, filtering out
     /// any invalid column indices.
-    /// 
+    ///
     /// # Returns
     /// Vector of references to valid projected values
     pub fn collect_values(&self) -> Vec<&'a Value> {
@@ -104,7 +104,7 @@ impl<'a> ProjectionView<'a> {
     }
 
     /// Check if all projected columns are valid
-    /// 
+    ///
     /// # Returns
     /// `true` if all projection indices are valid for the row, `false` otherwise
     pub fn all_valid(&self) -> bool {
@@ -112,7 +112,7 @@ impl<'a> ProjectionView<'a> {
     }
 
     /// Count valid projected columns
-    /// 
+    ///
     /// # Returns
     /// Number of projection indices that are valid for the row
     pub fn count_valid(&self) -> usize {
@@ -120,10 +120,10 @@ impl<'a> ProjectionView<'a> {
     }
 
     /// Create a new projection with additional columns
-    /// 
+    ///
     /// # Arguments
     /// * `additional_indices` - Additional column indices to include
-    /// 
+    ///
     /// # Returns
     /// Vector containing current indices plus additional indices
     pub fn extend_indices(&self, additional_indices: &[usize]) -> Vec<usize> {
@@ -140,14 +140,11 @@ mod tests {
 
     #[test]
     fn test_projection_view_creation() {
-        let row = Row::new(vec![
-            Value::Integer(1),
-            Value::Text("Alice".to_string()),
-            Value::Integer(25),
-        ]);
+        let row =
+            Row::new(vec![Value::Integer(1), Value::Text("Alice".to_string()), Value::Integer(25)]);
         let indices = [0, 2]; // Select id and age
         let projection = ProjectionView::new(&row, &indices);
-        
+
         assert_eq!(projection.len(), 2);
         assert!(!projection.is_empty());
         assert_eq!(projection.indices(), &[0, 2]);
@@ -155,14 +152,11 @@ mod tests {
 
     #[test]
     fn test_projection_view_access() {
-        let row = Row::new(vec![
-            Value::Integer(1),
-            Value::Text("Alice".to_string()),
-            Value::Integer(25),
-        ]);
+        let row =
+            Row::new(vec![Value::Integer(1), Value::Text("Alice".to_string()), Value::Integer(25)]);
         let indices = [0, 2]; // Select id and age
         let projection = ProjectionView::new(&row, &indices);
-        
+
         assert_eq!(projection.get(0), Some(&Value::Integer(1))); // First projected column (id)
         assert_eq!(projection.get(1), Some(&Value::Integer(25))); // Second projected column (age)
         assert_eq!(projection.get(2), None); // Out of projection bounds
@@ -170,13 +164,10 @@ mod tests {
 
     #[test]
     fn test_projection_view_invalid_indices() {
-        let row = Row::new(vec![
-            Value::Integer(1),
-            Value::Text("Alice".to_string()),
-        ]);
+        let row = Row::new(vec![Value::Integer(1), Value::Text("Alice".to_string())]);
         let indices = [0, 5]; // Second index is invalid
         let projection = ProjectionView::new(&row, &indices);
-        
+
         assert_eq!(projection.get(0), Some(&Value::Integer(1)));
         assert_eq!(projection.get(1), None); // Invalid column index
         assert!(!projection.all_valid());
@@ -185,30 +176,24 @@ mod tests {
 
     #[test]
     fn test_projection_view_iteration() {
-        let row = Row::new(vec![
-            Value::Integer(1),
-            Value::Text("Alice".to_string()),
-            Value::Integer(25),
-        ]);
+        let row =
+            Row::new(vec![Value::Integer(1), Value::Text("Alice".to_string()), Value::Integer(25)]);
         let indices = [2, 0]; // Age, then id (reversed order)
         let projection = ProjectionView::new(&row, &indices);
-        
+
         let values: Vec<Option<&Value>> = projection.iter().collect();
         assert_eq!(values.len(), 2);
         assert_eq!(values[0], Some(&Value::Integer(25))); // Age
-        assert_eq!(values[1], Some(&Value::Integer(1)));  // ID
+        assert_eq!(values[1], Some(&Value::Integer(1))); // ID
     }
 
     #[test]
     fn test_projection_view_collect_values() {
-        let row = Row::new(vec![
-            Value::Integer(1),
-            Value::Text("Alice".to_string()),
-            Value::Integer(25),
-        ]);
+        let row =
+            Row::new(vec![Value::Integer(1), Value::Text("Alice".to_string()), Value::Integer(25)]);
         let indices = [0, 2, 5]; // Include invalid index
         let projection = ProjectionView::new(&row, &indices);
-        
+
         let values = projection.collect_values();
         assert_eq!(values.len(), 2); // Only valid values
         assert_eq!(values[0], &Value::Integer(1));
@@ -220,7 +205,7 @@ mod tests {
         let row = Row::new(vec![Value::Integer(1)]);
         let indices: [usize; 0] = [];
         let projection = ProjectionView::new(&row, &indices);
-        
+
         assert_eq!(projection.len(), 0);
         assert!(projection.is_empty());
         assert!(projection.all_valid()); // Vacuously true
@@ -229,31 +214,25 @@ mod tests {
 
     #[test]
     fn test_projection_extend_indices() {
-        let row = Row::new(vec![
-            Value::Integer(1),
-            Value::Text("Alice".to_string()),
-            Value::Integer(25),
-        ]);
+        let row =
+            Row::new(vec![Value::Integer(1), Value::Text("Alice".to_string()), Value::Integer(25)]);
         let indices = [0]; // Just id
         let projection = ProjectionView::new(&row, &indices);
-        
+
         let extended = projection.extend_indices(&[1, 2]);
         assert_eq!(extended, vec![0, 1, 2]);
     }
 
     #[test]
     fn test_projection_view_all_valid() {
-        let row = Row::new(vec![
-            Value::Integer(1),
-            Value::Text("Alice".to_string()),
-        ]);
-        
+        let row = Row::new(vec![Value::Integer(1), Value::Text("Alice".to_string())]);
+
         // All valid indices
         let valid_indices = [0, 1];
         let valid_projection = ProjectionView::new(&row, &valid_indices);
         assert!(valid_projection.all_valid());
         assert_eq!(valid_projection.count_valid(), 2);
-        
+
         // Some invalid indices
         let invalid_indices = [0, 5];
         let invalid_projection = ProjectionView::new(&row, &invalid_indices);
@@ -263,13 +242,10 @@ mod tests {
 
     #[test]
     fn test_projection_view_duplicate_indices() {
-        let row = Row::new(vec![
-            Value::Integer(1),
-            Value::Text("Alice".to_string()),
-        ]);
+        let row = Row::new(vec![Value::Integer(1), Value::Text("Alice".to_string())]);
         let indices = [0, 0, 1]; // Duplicate index
         let projection = ProjectionView::new(&row, &indices);
-        
+
         assert_eq!(projection.len(), 3);
         assert_eq!(projection.get(0), Some(&Value::Integer(1)));
         assert_eq!(projection.get(1), Some(&Value::Integer(1))); // Same value again
