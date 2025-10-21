@@ -320,7 +320,7 @@ fn test_delete_leaf_borrow_from_right_sibling() -> Result<(), OxidbError> {
         _ => {
             assert!(false, "Root should be internal");
             (0, 0) // This will never be reached
-        },
+        }
     };
 
     let deleted = tree.delete(&k("apple"), None)?;
@@ -335,7 +335,7 @@ fn test_delete_leaf_borrow_from_right_sibling() -> Result<(), OxidbError> {
         _ => {
             assert!(false, "Root should remain internal");
             (0, 0) // This will never be reached
-        },
+        }
     };
 
     assert_eq!(final_l1_pid, initial_l1_pid);
@@ -503,9 +503,9 @@ fn test_delete_internal_borrow_from_right_sibling() -> Result<(), OxidbError> {
                 &[page_internal_left, page_internal_right],
                 "Root children incorrect"
             );
+        }
+        _ => assert!(false, "Root not internal"),
     }
-    _ => assert!(false, "Root not internal"),
-}
 
     let il0_node_after = tree.read_node(page_internal_left)?;
     match &il0_node_after {
@@ -644,7 +644,7 @@ fn test_delete_internal_merge_with_left_sibling() -> Result<(), OxidbError> {
         _ => {
             assert!(false, "New root is not internal as expected after merge cascade");
             unreachable!()
-        },
+        }
     }
     Ok(())
 }
@@ -756,7 +756,7 @@ fn test_delete_internal_merge_with_right_sibling() -> Result<(), OxidbError> {
         _ => {
             assert!(false, "Root not internal");
             unreachable!()
-        },
+        }
     }
 
     let il0_node_after = tree.read_node(IL0_PID)?;
@@ -785,7 +785,7 @@ fn test_delete_recursive_จน_root_is_leaf() -> Result<(), OxidbError> {
         _ => {
             assert!(false, "Root should be leaf at the end");
             unreachable!()
-        },
+        }
     }
     Ok(())
 }

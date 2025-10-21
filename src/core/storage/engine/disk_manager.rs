@@ -296,7 +296,8 @@ mod tests {
                 "Error message for next_page_id read should indicate out of bounds"
             );
         } else {
-            assert!(false, 
+            assert!(
+                false,
                 "Expected IO error for out of bounds read of next_page_id, got {:?}",
                 result_next
             );

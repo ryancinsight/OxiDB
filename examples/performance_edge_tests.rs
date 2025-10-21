@@ -204,7 +204,10 @@ impl PerformanceTestSuite {
         // Bulk insert test
         let insert_start = Instant::now();
         for i in 0..self.config.dataset_size {
-            let data = format!("Large data string for record {} with additional padding to test memory usage", i);
+            let data = format!(
+                "Large data string for record {} with additional padding to test memory usage",
+                i
+            );
             let category = format!("category_{}", i % 10);
             let query = format!(
                 "INSERT INTO large_data_test (id, data, value, timestamp, category) VALUES ({}, '{}', {}, '{}', '{}')",
@@ -459,7 +462,7 @@ impl PerformanceTestSuite {
         }
 
         // Test multiple simultaneous large queries (memory pressure)
-          let queries = [
+        let queries = [
             "SELECT COUNT(*) FROM large_data_test",
             "SELECT AVG(value) FROM large_data_test",
             "SELECT category, COUNT(*) FROM large_data_test GROUP BY category",

@@ -39,7 +39,11 @@ fn test_update_empty_set_clause() {
         // also possible, if input is just "UPDATE table SET"
         assert!(false, "UnexpectedEOF, expected UnexpectedToken for 'UPDATE table SET;'");
     } else {
-        assert!(false, "Wrong error type for empty SET clause: {:?}, expected UnexpectedToken", result);
+        assert!(
+            false,
+            "Wrong error type for empty SET clause: {:?}, expected UnexpectedToken",
+            result
+        );
     }
 }
 

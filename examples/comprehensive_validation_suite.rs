@@ -64,12 +64,10 @@ fn execute_validation_suite() -> Result<Vec<TestResult>, Box<dyn std::error::Err
         test_basic_crud_operations()?,
         test_data_type_support()?,
         test_error_handling_robustness()?,
-
         // Edge case tests (Interface Segregation Principle)
         test_boundary_conditions()?,
         test_constraint_enforcement()?,
         test_concurrent_access_patterns()?,
-
         // Performance tests (Dependency Inversion Principle)
         test_performance_characteristics()?,
         test_scalability_limits()?,
@@ -222,7 +220,10 @@ fn perform_constraint_test() -> Result<(), OxidbError> {
     conn.execute("INSERT INTO constraint_test (id, email) VALUES (1, 'test@example.com')")?;
 
     // Test unique constraint
-    if conn.execute("INSERT INTO constraint_test (id, email) VALUES (2, 'test@example.com')").is_ok() {
+    if conn
+        .execute("INSERT INTO constraint_test (id, email) VALUES (2, 'test@example.com')")
+        .is_ok()
+    {
         // May succeed if unique constraint not enforced
     }
 

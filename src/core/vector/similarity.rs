@@ -209,7 +209,10 @@ mod tests {
         let v2: [f32; 0] = [];
         match cosine_similarity(&v1, &v2) {
             Err(OxidbError::VectorMagnitudeZero) => {} // Or handle as 1.0 or error, depending on definition for empty vectors
-            _ => assert!(false, "Expected VectorMagnitudeZero for empty vectors or specific handling"),
+            _ => assert!(
+                false,
+                "Expected VectorMagnitudeZero for empty vectors or specific handling"
+            ),
         }
     }
 }

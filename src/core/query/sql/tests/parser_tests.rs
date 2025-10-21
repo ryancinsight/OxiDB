@@ -54,7 +54,11 @@ fn test_update_empty_set_clause() {
         // also possible, if input is just "UPDATE table SET"
         assert!(false, "UnexpectedEOF, expected UnexpectedToken for 'UPDATE table SET;'");
     } else {
-        assert!(false, "Wrong error type for empty SET clause: {:?}, expected UnexpectedToken", result);
+        assert!(
+            false,
+            "Wrong error type for empty SET clause: {:?}, expected UnexpectedToken",
+            result
+        );
     }
 }
 
@@ -117,9 +121,13 @@ fn test_update_trailing_comma_in_assignment_list() {
         assert_eq!(found.to_lowercase(), "semicolon");
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // also possible
-        assert!(false, "UnexpectedEOF, expected UnexpectedToken for 'UPDATE table SET field = 'val', ;'");
+        assert!(
+            false,
+            "UnexpectedEOF, expected UnexpectedToken for 'UPDATE table SET field = 'val', ;'"
+        );
     } else {
-        assert!(false, 
+        assert!(
+            false,
             "Wrong error type for trailing comma in assignment: {:?}, expected UnexpectedToken",
             result
         );
@@ -146,7 +154,8 @@ fn test_update_empty_where_clause() {
         // also possible if input is "UPDATE table SET field = 'val' WHERE"
         assert!(false, "UnexpectedEOF, expected UnexpectedToken for 'WHERE;'");
     } else {
-        assert!(false, 
+        assert!(
+            false,
             "Wrong error type for empty WHERE clause (UPDATE): {:?}, expected UnexpectedToken",
             result
         );
@@ -494,7 +503,11 @@ fn test_parse_create_table_invalid_vector_dimension() {
         assert!(expected.contains("numeric dimension"));
         assert!(found.to_lowercase().contains("identifier(\"abc\")"));
     } else {
-        assert!(false, "Wrong error type for non-numeric vector dimension: {:?}", result_non_numeric);
+        assert!(
+            false,
+            "Wrong error type for non-numeric vector dimension: {:?}",
+            result_non_numeric
+        );
     }
 }
 
@@ -1049,7 +1062,11 @@ fn test_select_missing_table_name() {
         // This case is also possible if input is "SELECT col FROM"
         assert!(false, "UnexpectedEOF, expected UnexpectedToken for 'FROM;'");
     } else {
-        assert!(false, "Wrong error type for missing table name: {:?}, expected UnexpectedToken", result);
+        assert!(
+            false,
+            "Wrong error type for missing table name: {:?}, expected UnexpectedToken",
+            result
+        );
     }
 }
 
@@ -1612,7 +1629,8 @@ fn test_parse_vector_literal_unclosed_error() {
         } else {
             // If it's not UnexpectedToken, then the original UnexpectedEOF might be relevant for other reasons
             // but for this specific case, we expect an EOF to be an "unexpected token".
-            assert!(false, 
+            assert!(
+                false,
                 "Expected UnexpectedToken indicating EOF, but got different error or Ok: {:?}",
                 result
             );

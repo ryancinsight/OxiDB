@@ -11,13 +11,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use oxidb::core::common::types::Value;
 use oxidb::core::rag::document::Document;
 use oxidb::core::rag::embedder::{EmbeddingModel, SemanticEmbedder, TfIdfEmbedder};
 use oxidb::core::rag::graphrag::{
     GraphRAGContext, GraphRAGEngineImpl, KnowledgeEdge, KnowledgeNode,
 };
 use oxidb::core::rag::retriever::{InMemoryRetriever, SimilarityMetric};
-use oxidb::core::common::types::Value;
 use oxidb::core::rag::Retriever;
 use regex::Regex;
 use std::fs;
@@ -127,7 +127,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Step 4: Setup enhanced GraphRAG system
     println!("🕸️  Setting up enhanced GraphRAG system...");
     let _graphrag_retriever = Box::new(InMemoryRetriever::new(graphrag_documents.clone()));
-    let graph_store = Arc::new(Mutex::new(Box::new(oxidb::core::graph::InMemoryGraphStore::new()) as Box<dyn oxidb::core::graph::GraphStore>));
+    let graph_store = Arc::new(Mutex::new(Box::new(oxidb::core::graph::InMemoryGraphStore::new())
+        as Box<dyn oxidb::core::graph::GraphStore>));
     let embedder = Arc::new(SemanticEmbedder::new(384)); // Standard embedding dimension
     let config = oxidb::core::rag::GraphRAGConfig::default();
     let mut graphrag_engine = GraphRAGEngineImpl::new(graph_store, embedder, config);
@@ -477,7 +478,7 @@ async fn benchmark_enhanced_graphrag_retrieval(
     parameters.insert("max_hops".to_string(), Value::Integer(2));
     parameters.insert("min_confidence".to_string(), Value::Float(0.3));
     parameters.insert("entity_types".to_string(), Value::Text("CHARACTER,THEME".to_string()));
-    
+
     let _context = GraphRAGContext {
         query: query.to_string(),
         max_results: 10,
@@ -810,9 +811,12 @@ async fn enhance_shakespeare_knowledge_graph(
         let mut metadata1 = HashMap::new();
         metadata1.insert("entity_type".to_string(), Value::Text("CHARACTER".to_string()));
         metadata1.insert("name".to_string(), Value::Text(char1.to_string()));
-        metadata1.insert("description".to_string(), Value::Text(format!("Shakespeare character: {}", char1)));
+        metadata1.insert(
+            "description".to_string(),
+            Value::Text(format!("Shakespeare character: {}", char1)),
+        );
         metadata1.insert("confidence_score".to_string(), Value::Float(0.95));
-        
+
         let _entity1 = KnowledgeNode {
             id: 0, // Will be assigned
             node_type: "CHARACTER".to_string(),
@@ -824,9 +828,12 @@ async fn enhance_shakespeare_knowledge_graph(
         let mut metadata2 = HashMap::new();
         metadata2.insert("entity_type".to_string(), Value::Text("CHARACTER".to_string()));
         metadata2.insert("name".to_string(), Value::Text(char2.to_string()));
-        metadata2.insert("description".to_string(), Value::Text(format!("Shakespeare character: {}", char2)));
+        metadata2.insert(
+            "description".to_string(),
+            Value::Text(format!("Shakespeare character: {}", char2)),
+        );
         metadata2.insert("confidence_score".to_string(), Value::Float(0.95));
-        
+
         let _entity2 = KnowledgeNode {
             id: 0, // Will be assigned
             node_type: "CHARACTER".to_string(),
@@ -842,9 +849,12 @@ async fn enhance_shakespeare_knowledge_graph(
         let id2 = 2u64;
 
         let mut edge_metadata = HashMap::new();
-        edge_metadata.insert("description".to_string(), Value::Text(format!("{} {} {}", char1, relationship.to_lowercase(), char2)));
+        edge_metadata.insert(
+            "description".to_string(),
+            Value::Text(format!("{} {} {}", char1, relationship.to_lowercase(), char2)),
+        );
         edge_metadata.insert("confidence_score".to_string(), Value::Float(confidence));
-        
+
         let _edge = KnowledgeEdge {
             id: 0, // Will be assigned
             source: id1,
