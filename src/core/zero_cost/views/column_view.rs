@@ -6,7 +6,7 @@
 use crate::core::common::types::{Row, Value};
 
 /// Zero-copy view over a column's values across rows
-/// 
+///
 /// Provides efficient access to column data for analytical operations.
 /// Designed for high-performance database operations where column-oriented
 /// access patterns are needed.
@@ -18,16 +18,16 @@ pub struct ColumnView<'a> {
 
 impl<'a> ColumnView<'a> {
     /// Create a new column view
-    /// 
+    ///
     /// # Arguments
     /// * `rows` - Slice of rows to access
     /// * `column_index` - Index of the column to view
-    /// 
+    ///
     /// # Examples
     /// ```
     /// use oxidb::core::zero_cost::views::ColumnView;
     /// use oxidb::core::common::types::{Row, Value};
-    /// 
+    ///
     /// let rows = vec![
     ///     Row::new(vec![Value::Integer(1), Value::Text("Alice".to_string())]),
     ///     Row::new(vec![Value::Integer(2), Value::Text("Bob".to_string())]),
@@ -41,10 +41,10 @@ impl<'a> ColumnView<'a> {
     }
 
     /// Get value at row index
-    /// 
+    ///
     /// # Arguments
     /// * `row_index` - Index of the row to access
-    /// 
+    ///
     /// # Returns
     /// * `Some(&Value)` - If both row and column indices are valid
     /// * `None` - If either index is out of bounds
@@ -54,7 +54,7 @@ impl<'a> ColumnView<'a> {
     }
 
     /// Get the number of rows in this column view
-    /// 
+    ///
     /// # Returns
     /// Number of rows in the underlying table
     #[inline]
@@ -63,7 +63,7 @@ impl<'a> ColumnView<'a> {
     }
 
     /// Check if the column view is empty
-    /// 
+    ///
     /// # Returns
     /// `true` if there are no rows, `false` otherwise
     #[inline]
@@ -72,10 +72,10 @@ impl<'a> ColumnView<'a> {
     }
 
     /// Iterator over column values
-    /// 
+    ///
     /// Returns an iterator that yields `Option<&Value>` for each row.
     /// `None` is returned for rows that don't have this column index.
-    /// 
+    ///
     /// # Returns
     /// Iterator over column values (may contain None for missing values)
     pub fn iter(&self) -> impl Iterator<Item = Option<&'a Value>> + '_ {
@@ -83,9 +83,9 @@ impl<'a> ColumnView<'a> {
     }
 
     /// Count non-null values
-    /// 
+    ///
     /// Counts the number of rows that have a value for this column.
-    /// 
+    ///
     /// # Returns
     /// Number of non-null values in this column
     pub fn count_non_null(&self) -> usize {
@@ -93,13 +93,13 @@ impl<'a> ColumnView<'a> {
     }
 
     /// Check if all values match a predicate
-    /// 
+    ///
     /// Tests whether all non-null values in the column satisfy the predicate.
     /// Returns `true` for empty columns.
-    /// 
+    ///
     /// # Arguments
     /// * `predicate` - Function to test each value
-    /// 
+    ///
     /// # Returns
     /// `true` if all non-null values satisfy the predicate
     pub fn all<F>(&self, predicate: F) -> bool
@@ -110,13 +110,13 @@ impl<'a> ColumnView<'a> {
     }
 
     /// Check if any value matches a predicate
-    /// 
+    ///
     /// Tests whether any non-null value in the column satisfies the predicate.
     /// Returns `false` for empty columns.
-    /// 
+    ///
     /// # Arguments
     /// * `predicate` - Function to test each value
-    /// 
+    ///
     /// # Returns
     /// `true` if any non-null value satisfies the predicate
     pub fn any<F>(&self, predicate: F) -> bool
@@ -127,7 +127,7 @@ impl<'a> ColumnView<'a> {
     }
 
     /// Get the column index
-    /// 
+    ///
     /// # Returns
     /// The column index this view represents
     #[inline]
@@ -136,9 +136,9 @@ impl<'a> ColumnView<'a> {
     }
 
     /// Collect all non-null values
-    /// 
+    ///
     /// Creates a vector containing all non-null values in this column.
-    /// 
+    ///
     /// # Returns
     /// Vector of references to non-null values
     pub fn collect_values(&self) -> Vec<&'a Value> {
@@ -158,7 +158,7 @@ mod tests {
             Row::new(vec![Value::Integer(2), Value::Text("Bob".to_string())]),
         ];
         let column_view = ColumnView::new(&rows, 1);
-        
+
         assert_eq!(column_view.len(), 2);
         assert!(!column_view.is_empty());
         assert_eq!(column_view.column_index(), 1);
@@ -171,7 +171,7 @@ mod tests {
             Row::new(vec![Value::Integer(2), Value::Text("Bob".to_string())]),
         ];
         let column_view = ColumnView::new(&rows, 1);
-        
+
         assert_eq!(column_view.get(0), Some(&Value::Text("Alice".to_string())));
         assert_eq!(column_view.get(1), Some(&Value::Text("Bob".to_string())));
         assert_eq!(column_view.get(2), None);
@@ -179,12 +179,9 @@ mod tests {
 
     #[test]
     fn test_column_view_invalid_column() {
-        let rows = vec![
-            Row::new(vec![Value::Integer(1)]),
-            Row::new(vec![Value::Integer(2)]),
-        ];
+        let rows = vec![Row::new(vec![Value::Integer(1)]), Row::new(vec![Value::Integer(2)])];
         let column_view = ColumnView::new(&rows, 5); // Invalid column
-        
+
         assert_eq!(column_view.get(0), None);
         assert_eq!(column_view.get(1), None);
         assert_eq!(column_view.count_non_null(), 0);
@@ -198,7 +195,7 @@ mod tests {
             Row::new(vec![Value::Integer(3), Value::Text("Charlie".to_string())]),
         ];
         let column_view = ColumnView::new(&rows, 1);
-        
+
         assert_eq!(column_view.count_non_null(), 2);
     }
 
@@ -210,11 +207,11 @@ mod tests {
             Row::new(vec![Value::Integer(30)]),
         ];
         let column_view = ColumnView::new(&rows, 0);
-        
+
         // Test all
         assert!(column_view.all(|v| matches!(v, Value::Integer(i) if *i > 0)));
         assert!(!column_view.all(|v| matches!(v, Value::Integer(i) if *i > 25)));
-        
+
         // Test any
         assert!(column_view.any(|v| matches!(v, Value::Integer(i) if *i > 25)));
         assert!(!column_view.any(|v| matches!(v, Value::Integer(i) if *i > 50)));
@@ -222,12 +219,9 @@ mod tests {
 
     #[test]
     fn test_column_view_collect_values() {
-        let rows = vec![
-            Row::new(vec![Value::Integer(1)]),
-            Row::new(vec![Value::Integer(2)]),
-        ];
+        let rows = vec![Row::new(vec![Value::Integer(1)]), Row::new(vec![Value::Integer(2)])];
         let column_view = ColumnView::new(&rows, 0);
-        
+
         let values = column_view.collect_values();
         assert_eq!(values.len(), 2);
         assert_eq!(values[0], &Value::Integer(1));
@@ -238,7 +232,7 @@ mod tests {
     fn test_empty_column_view() {
         let rows: Vec<Row> = vec![];
         let column_view = ColumnView::new(&rows, 0);
-        
+
         assert_eq!(column_view.len(), 0);
         assert!(column_view.is_empty());
         assert_eq!(column_view.count_non_null(), 0);

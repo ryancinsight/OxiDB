@@ -117,7 +117,7 @@ fn hash_password(password: &str) -> String {
     for byte in password.bytes() {
         hash = hash.wrapping_mul(31).wrapping_add(u64::from(byte));
     }
-    oxidb::core::common::hex::encode(&hash.to_le_bytes())
+    oxidb::core::common::hex::encode(hash.to_le_bytes())
 }
 
 // --- User Management Functions ---

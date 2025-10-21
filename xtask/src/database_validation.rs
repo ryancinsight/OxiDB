@@ -52,7 +52,7 @@ pub fn check_database_patterns() -> Result<DatabaseViolations> {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) == Some("rs") {
             let content = fs::read_to_string(path)?;
-            
+
             check_acid_compliance(&content, path.display().to_string(), &mut violations)?;
             check_transaction_safety(&content, path.display().to_string(), &mut violations)?;
             check_sql_injection_prevention(&content, path.display().to_string(), &mut violations)?;
@@ -66,13 +66,20 @@ pub fn check_database_patterns() -> Result<DatabaseViolations> {
 }
 
 /// Check ACID compliance patterns
-fn check_acid_compliance(content: &str, file_path: String, violations: &mut DatabaseViolations) -> Result<()> {
+fn check_acid_compliance(
+    content: &str,
+    file_path: String,
+    violations: &mut DatabaseViolations,
+) -> Result<()> {
     // Check for transaction boundary violations
-    let transaction_regex = Regex::new(r"(?i)(begin|start)\s+(?:transaction)?.*?(?:commit|rollback)")?;
-    let begin_count = content.matches("begin").count() + content.matches("start_transaction").count();
+    let transaction_regex =
+        Regex::new(r"(?i)(begin|start)\s+(?:transaction)?.*?(?:commit|rollback)")?;
+    let begin_count =
+        content.matches("begin").count() + content.matches("start_transaction").count();
     let commit_count = content.matches("commit").count() + content.matches("rollback").count();
-    
-    if begin_count > commit_count + 2 { // Allow some tolerance
+
+    if begin_count > commit_count + 2 {
+        // Allow some tolerance
         violations.acid_violations.push(format!(
             "{}: Potential transaction leak - {} begin statements but only {} commit/rollback",
             file_path, begin_count, commit_count
@@ -101,7 +108,11 @@ fn check_acid_compliance(content: &str, file_path: String, violations: &mut Data
 }
 
 /// Check transaction safety patterns
-fn check_transaction_safety(content: &str, file_path: String, violations: &mut DatabaseViolations) -> Result<()> {
+fn check_transaction_safety(
+    content: &str,
+    file_path: String,
+    violations: &mut DatabaseViolations,
+) -> Result<()> {
     // Check for deadlock prevention patterns
     if content.contains("lock") && content.contains("transaction") {
         if !content.contains("timeout") && !content.contains("deadlock") {
@@ -138,7 +149,11 @@ fn check_transaction_safety(content: &str, file_path: String, violations: &mut D
 }
 
 /// Check for SQL injection prevention
-fn check_sql_injection_prevention(content: &str, file_path: String, violations: &mut DatabaseViolations) -> Result<()> {
+fn check_sql_injection_prevention(
+    content: &str,
+    file_path: String,
+    violations: &mut DatabaseViolations,
+) -> Result<()> {
     // Check for string concatenation in SQL
     let sql_concat_regex = Regex::new(r#"(SELECT|INSERT|UPDATE|DELETE).*\+.*["']"#)?;
     if sql_concat_regex.is_match(content) {
@@ -171,7 +186,11 @@ fn check_sql_injection_prevention(content: &str, file_path: String, violations: 
 }
 
 /// Check indexing patterns
-fn check_index_patterns(content: &str, file_path: String, violations: &mut DatabaseViolations) -> Result<()> {
+fn check_index_patterns(
+    content: &str,
+    file_path: String,
+    violations: &mut DatabaseViolations,
+) -> Result<()> {
     // Check for sequential scan warnings
     if content.contains("scan") && content.contains("table") && !content.contains("index") {
         violations.index_violations.push(format!(
@@ -200,7 +219,11 @@ fn check_index_patterns(content: &str, file_path: String, violations: &mut Datab
 }
 
 /// Check performance patterns
-fn check_performance_patterns(content: &str, file_path: String, violations: &mut DatabaseViolations) -> Result<()> {
+fn check_performance_patterns(
+    content: &str,
+    file_path: String,
+    violations: &mut DatabaseViolations,
+) -> Result<()> {
     // Check for N+1 query problems
     if content.contains("for") && content.contains("query") && content.contains("select") {
         violations.performance_issues.push(format!(
@@ -227,7 +250,8 @@ fn check_performance_patterns(content: &str, file_path: String, violations: &mut
     }
 
     // Check for buffer pool size considerations
-    if content.contains("buffer_pool") && !content.contains("size") && !content.contains("capacity") {
+    if content.contains("buffer_pool") && !content.contains("size") && !content.contains("capacity")
+    {
         violations.performance_issues.push(format!(
             "{}: Buffer pool code should consider size limits and capacity management",
             file_path
@@ -238,7 +262,11 @@ fn check_performance_patterns(content: &str, file_path: String, violations: &mut
 }
 
 /// Check memory safety patterns specific to databases
-fn check_memory_safety(content: &str, file_path: String, violations: &mut DatabaseViolations) -> Result<()> {
+fn check_memory_safety(
+    content: &str,
+    file_path: String,
+    violations: &mut DatabaseViolations,
+) -> Result<()> {
     // Check for excessive cloning in hot paths
     let clone_count = content.matches(".clone()").count();
     let lines = content.lines().count();
@@ -284,18 +312,17 @@ fn check_memory_safety(content: &str, file_path: String, violations: &mut Databa
 /// Generate database engineering report
 pub fn generate_database_report(violations: &DatabaseViolations) -> String {
     let mut report = String::new();
-    
+
     report.push_str("# Database Engineering Analysis Report\n\n");
-    
+
     if violations.total_violations() == 0 {
-        report.push_str("✅ **All database engineering patterns are following best practices!**\n\n");
+        report
+            .push_str("✅ **All database engineering patterns are following best practices!**\n\n");
         return report;
     }
 
-    report.push_str(&format!(
-        "📊 **Total Violations Found:** {}\n\n",
-        violations.total_violations()
-    ));
+    report
+        .push_str(&format!("📊 **Total Violations Found:** {}\n\n", violations.total_violations()));
 
     if !violations.acid_violations.is_empty() {
         report.push_str("## 🔒 ACID Compliance Violations\n\n");
@@ -347,8 +374,12 @@ pub fn generate_database_report(violations: &DatabaseViolations) -> String {
 
     report.push_str("## 💡 Recommendations\n\n");
     report.push_str("1. **ACID Compliance**: Ensure all database operations are properly wrapped in transactions\n");
-    report.push_str("2. **Transaction Safety**: Implement deadlock prevention and proper lock ordering\n");
-    report.push_str("3. **SQL Injection Prevention**: Use prepared statements and parameter binding\n");
+    report.push_str(
+        "2. **Transaction Safety**: Implement deadlock prevention and proper lock ordering\n",
+    );
+    report.push_str(
+        "3. **SQL Injection Prevention**: Use prepared statements and parameter binding\n",
+    );
     report.push_str("4. **Index Optimization**: Add appropriate indexes for query patterns\n");
     report.push_str("5. **Performance**: Implement batching, lazy evaluation, and proper limits\n");
     report.push_str("6. **Memory Safety**: Use RAII patterns, avoid excessive cloning, consider string interning\n\n");

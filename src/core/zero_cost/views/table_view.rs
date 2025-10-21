@@ -9,7 +9,7 @@ use std::borrow::Cow;
 use std::slice;
 
 /// Zero-copy view over a table's rows and schema
-/// 
+///
 /// Provides efficient access to table data including rows and column metadata.
 /// Designed for high-performance database operations where memory allocation
 /// should be minimized.
@@ -21,17 +21,17 @@ pub struct TableView<'a> {
 
 impl<'a> TableView<'a> {
     /// Create a new table view
-    /// 
+    ///
     /// # Arguments
     /// * `rows` - Slice of rows representing the table data
     /// * `column_names` - Column names (borrowed or owned)
-    /// 
+    ///
     /// # Examples
     /// ```
     /// use oxidb::core::zero_cost::views::TableView;
     /// use oxidb::core::common::types::Row;
     /// use std::borrow::Cow;
-    /// 
+    ///
     /// let rows = vec![Row::new(vec![])];
     /// let column_names = vec!["id".to_string(), "name".to_string()];
     /// let table_view = TableView::new(&rows, Cow::Borrowed(&column_names));
@@ -44,7 +44,7 @@ impl<'a> TableView<'a> {
     }
 
     /// Get the number of rows
-    /// 
+    ///
     /// # Returns
     /// Number of rows in this table view
     #[inline]
@@ -53,7 +53,7 @@ impl<'a> TableView<'a> {
     }
 
     /// Get the number of columns
-    /// 
+    ///
     /// # Returns
     /// Number of columns based on the column names
     #[inline]
@@ -62,10 +62,10 @@ impl<'a> TableView<'a> {
     }
 
     /// Get a row by index
-    /// 
+    ///
     /// # Arguments
     /// * `index` - Row index to access
-    /// 
+    ///
     /// # Returns
     /// * `Some(&Row)` - If index is valid
     /// * `None` - If index is out of bounds
@@ -75,10 +75,10 @@ impl<'a> TableView<'a> {
     }
 
     /// Get column index by name
-    /// 
+    ///
     /// # Arguments
     /// * `name` - Column name to find
-    /// 
+    ///
     /// # Returns
     /// * `Some(usize)` - Column index if found
     /// * `None` - If column name not found
@@ -88,7 +88,7 @@ impl<'a> TableView<'a> {
     }
 
     /// Create an iterator over rows
-    /// 
+    ///
     /// # Returns
     /// Iterator over the rows in this table
     #[inline]
@@ -97,26 +97,26 @@ impl<'a> TableView<'a> {
     }
 
     /// Create a column view
-    /// 
+    ///
     /// # Arguments
     /// * `column_index` - Index of the column to create a view for
-    /// 
+    ///
     /// # Returns
     /// ColumnView for accessing values in the specified column
-    /// 
+    ///
     /// # Examples
     /// ```
     /// use oxidb::core::zero_cost::views::TableView;
     /// use oxidb::core::common::types::{Row, Value};
     /// use std::borrow::Cow;
-    /// 
+    ///
     /// let rows = vec![
     ///     Row::new(vec![Value::Integer(1), Value::Text("Alice".to_string())]),
     ///     Row::new(vec![Value::Integer(2), Value::Text("Bob".to_string())]),
     /// ];
     /// let column_names = vec!["id".to_string(), "name".to_string()];
     /// let table_view = TableView::new(&rows, Cow::Borrowed(&column_names));
-    /// 
+    ///
     /// let name_column = table_view.column(1);
     /// assert_eq!(name_column.len(), 2);
     /// ```
@@ -125,7 +125,7 @@ impl<'a> TableView<'a> {
     }
 
     /// Get column names
-    /// 
+    ///
     /// # Returns
     /// Reference to the column names
     #[inline]
@@ -134,7 +134,7 @@ impl<'a> TableView<'a> {
     }
 
     /// Check if the table is empty
-    /// 
+    ///
     /// # Returns
     /// `true` if the table has no rows, `false` otherwise
     #[inline]
@@ -150,13 +150,10 @@ mod tests {
 
     #[test]
     fn test_table_view_creation() {
-        let rows = vec![
-            Row::new(vec![Value::Integer(1)]),
-            Row::new(vec![Value::Integer(2)]),
-        ];
+        let rows = vec![Row::new(vec![Value::Integer(1)]), Row::new(vec![Value::Integer(2)])];
         let column_names = vec!["id".to_string()];
         let table_view = TableView::new(&rows, Cow::Borrowed(&column_names));
-        
+
         assert_eq!(table_view.row_count(), 2);
         assert_eq!(table_view.column_count(), 1);
         assert!(!table_view.is_empty());
@@ -164,13 +161,10 @@ mod tests {
 
     #[test]
     fn test_table_view_row_access() {
-        let rows = vec![
-            Row::new(vec![Value::Integer(1)]),
-            Row::new(vec![Value::Integer(2)]),
-        ];
+        let rows = vec![Row::new(vec![Value::Integer(1)]), Row::new(vec![Value::Integer(2)])];
         let column_names = vec!["id".to_string()];
         let table_view = TableView::new(&rows, Cow::Borrowed(&column_names));
-        
+
         assert!(table_view.get_row(0).is_some());
         assert!(table_view.get_row(1).is_some());
         assert!(table_view.get_row(2).is_none());
@@ -181,7 +175,7 @@ mod tests {
         let rows = vec![Row::new(vec![Value::Integer(1), Value::Text("test".to_string())])];
         let column_names = vec!["id".to_string(), "name".to_string()];
         let table_view = TableView::new(&rows, Cow::Borrowed(&column_names));
-        
+
         assert_eq!(table_view.get_column_index("id"), Some(0));
         assert_eq!(table_view.get_column_index("name"), Some(1));
         assert_eq!(table_view.get_column_index("nonexistent"), None);
@@ -189,13 +183,10 @@ mod tests {
 
     #[test]
     fn test_table_view_iteration() {
-        let rows = vec![
-            Row::new(vec![Value::Integer(1)]),
-            Row::new(vec![Value::Integer(2)]),
-        ];
+        let rows = vec![Row::new(vec![Value::Integer(1)]), Row::new(vec![Value::Integer(2)])];
         let column_names = vec!["id".to_string()];
         let table_view = TableView::new(&rows, Cow::Borrowed(&column_names));
-        
+
         let collected: Vec<&Row> = table_view.rows().collect();
         assert_eq!(collected.len(), 2);
     }
@@ -205,7 +196,7 @@ mod tests {
         let rows: Vec<Row> = vec![];
         let column_names: Vec<String> = vec![];
         let table_view = TableView::new(&rows, Cow::Borrowed(&column_names));
-        
+
         assert_eq!(table_view.row_count(), 0);
         assert_eq!(table_view.column_count(), 0);
         assert!(table_view.is_empty());

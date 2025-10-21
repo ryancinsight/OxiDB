@@ -72,11 +72,10 @@ struct GraphPath {
 
 struct KnowledgeGraphDB {
     conn: Connection,
-    embedding_dimension: usize,
 }
 
 impl KnowledgeGraphDB {
-    fn new(db_path: &str, embedding_dimension: usize) -> Result<Self, OxidbError> {
+    fn new(db_path: &str, _embedding_dimension: usize) -> Result<Self, OxidbError> {
         let mut conn = Connection::open(db_path)?;
 
         // Create tables for entities and relationships

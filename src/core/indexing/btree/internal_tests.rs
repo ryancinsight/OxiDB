@@ -139,7 +139,7 @@ fn test_internal_borrow_from_right_sibling() -> Result<(), OxidbError> {
         BPlusTreeNode::Internal { children, .. } => {
             assert_eq!(children.as_slice(), &[IL0_PID, IL1_PID], "Root children incorrect");
         }
-        _ => panic!("Root should be internal"),
+        _ => assert!(false, "Root should be internal"),
     }
     let il0_node_after = tree.read_node(IL0_PID)?;
     assert_eq!(il0_node_after.get_keys(), &vec![k("03")], "IL0 keys incorrect after borrow");
@@ -152,7 +152,7 @@ fn test_internal_borrow_from_right_sibling() -> Result<(), OxidbError> {
                 "IL0 children incorrect after borrow"
             );
         }
-        _ => panic!("IL0 should be internal"),
+        _ => assert!(false, "IL0 should be internal"),
     }
     let il1_node_after = tree.read_node(IL1_PID)?;
     assert_eq!(il1_node_after.get_keys(), &vec![k("07")], "IL1 keys incorrect after borrow");
@@ -165,7 +165,7 @@ fn test_internal_borrow_from_right_sibling() -> Result<(), OxidbError> {
                 "IL1 children incorrect after borrow"
             );
         }
-        _ => panic!("IL1 should be internal"),
+        _ => assert!(false, "IL1 should be internal"),
     }
     let ml01_node_after = tree.read_node(ML01_PID)?;
     assert_eq!(ml01_node_after.get_keys(), &vec![k("01")], "Merged leaf ML01 keys incorrect");
@@ -178,7 +178,7 @@ fn test_internal_borrow_from_right_sibling() -> Result<(), OxidbError> {
         BPlusTreeNode::Leaf { next_leaf, .. } => {
             assert_eq!(next_leaf, &Some(L2_PID), "Merged leaf ML01 next_leaf incorrect");
         }
-        _ => panic!("ML01 should be a leaf node"),
+        _ => assert!(false, "ML01 should be a leaf node"),
     }
     let l2_node_after = tree.read_node(L2_PID)?;
     assert_eq!(l2_node_after.get_parent_page_id(), Some(IL0_PID), "L2 parent incorrect");
@@ -186,7 +186,7 @@ fn test_internal_borrow_from_right_sibling() -> Result<(), OxidbError> {
         BPlusTreeNode::Leaf { next_leaf, .. } => {
             assert_eq!(next_leaf, &Some(L3_PID), "L2 next_leaf incorrect");
         }
-        _ => panic!("L2 should be a leaf node"),
+        _ => assert!(false, "L2 should be a leaf node"),
     }
     let l3_node_after = tree.read_node(L3_PID)?;
     assert_eq!(l3_node_after.get_parent_page_id(), Some(IL1_PID), "L3 parent incorrect");
@@ -194,7 +194,7 @@ fn test_internal_borrow_from_right_sibling() -> Result<(), OxidbError> {
         BPlusTreeNode::Leaf { next_leaf, .. } => {
             assert_eq!(next_leaf, &Some(L4_PID), "L3 next_leaf incorrect");
         }
-        _ => panic!("L3 should be a leaf node"),
+        _ => assert!(false, "L3 should be a leaf node"),
     }
     let reallocated_page_id = tree.allocate_new_page_id()?;
     assert_eq!(
@@ -287,7 +287,7 @@ fn test_internal_borrow_from_left_sibling() -> Result<(), OxidbError> {
         BPlusTreeNode::Internal { children, .. } => {
             assert_eq!(children.as_slice(), &[IL0_PID, IL1_PID], "Root children incorrect");
         }
-        _ => panic!("Root should be internal"),
+        _ => assert!(false, "Root should be internal"),
     }
     let il0_node_after = tree.read_node(IL0_PID)?;
     assert_eq!(il0_node_after.get_keys(), &vec![k("01")], "IL0 keys incorrect after lending");
@@ -299,7 +299,7 @@ fn test_internal_borrow_from_left_sibling() -> Result<(), OxidbError> {
                 "IL0 children incorrect after lending"
             );
         }
-        _ => panic!("IL0 should be internal"),
+        _ => assert!(false, "IL0 should be internal"),
     }
     let il1_node_after = tree.read_node(IL1_PID)?;
     assert_eq!(il1_node_after.get_keys(), &vec![k("05")], "IL1 keys incorrect after borrowing");
@@ -311,7 +311,7 @@ fn test_internal_borrow_from_left_sibling() -> Result<(), OxidbError> {
                 "IL1 children incorrect after borrowing"
             );
         }
-        _ => panic!("IL1 should be internal"),
+        _ => assert!(false, "IL1 should be internal"),
     }
     let l2_node_after_move = tree.read_node(L2_PID)?;
     assert_eq!(l2_node_after_move.get_parent_page_id(), Some(IL1_PID));
@@ -319,7 +319,7 @@ fn test_internal_borrow_from_left_sibling() -> Result<(), OxidbError> {
         BPlusTreeNode::Leaf { next_leaf, .. } => {
             assert_eq!(next_leaf, &Some(ML34_PID));
         }
-        _ => panic!("L2 should be a leaf node"),
+        _ => assert!(false, "L2 should be a leaf node"),
     }
     let ml34_node_after = tree.read_node(ML34_PID)?;
     assert_eq!(ml34_node_after.get_keys(), &vec![k("07")]);
@@ -327,7 +327,7 @@ fn test_internal_borrow_from_left_sibling() -> Result<(), OxidbError> {
         BPlusTreeNode::Leaf { next_leaf, .. } => {
             assert_eq!(next_leaf, &None); // Corrected: remove &
         }
-        _ => panic!("ML34 should be a leaf node"),
+        _ => assert!(false, "ML34 should be a leaf node"),
     }
     let reallocated_page_id = tree.allocate_new_page_id()?;
     assert_eq!(reallocated_page_id, L4_PID);
@@ -429,7 +429,7 @@ fn test_internal_merge_with_left_sibling() -> Result<(), OxidbError> {
     assert_eq!(root_node_after.get_keys(), &vec![k("07")]);
     match &root_node_after {
         Internal { children, .. } => assert_eq!(children.as_slice(), &[IL0_PID, IL2_PID]),
-        _ => panic!("Root not internal"),
+        _ => assert!(false, "Root not internal"),
     }
 
     let il0_node_after = tree.read_node(IL0_PID)?;
@@ -439,14 +439,14 @@ fn test_internal_merge_with_left_sibling() -> Result<(), OxidbError> {
     assert_eq!(il0_node_after.get_keys(), &vec![k("01"), k("03")]);
     match &il0_node_after {
         Internal { children, .. } => assert_eq!(children.as_slice(), &[L0_PID, L1_PID, ML23_PID]),
-        _ => panic!("IL0 not internal"),
+        _ => assert!(false, "IL0 not internal"),
     }
 
     let ml23_node = tree.read_node(ML23_PID)?;
     assert_eq!(ml23_node.get_keys(), &vec![k("06")]);
     match ml23_node {
         Leaf { next_leaf, .. } => assert_eq!(next_leaf, Some(L4_PID)),
-        _ => panic!(),
+        _ => assert!(false, "Unexpected node type"),
     }; // Removed &
        // Verify that the deallocated page (IL1_PID) is reused when allocating new pages
        // Only IL1_PID gets deallocated during the merge operation

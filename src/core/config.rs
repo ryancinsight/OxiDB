@@ -564,7 +564,8 @@ mod tests {
             // Changed
             assert!(msg.contains("Failed to parse config file"));
         } else {
-            panic!("Expected OxidbError::Configuration, got {:?}", result); // Changed
+            assert!(false, "Expected OxidbError::Configuration, got {:?}", result);
+            // Changed
         }
     }
 

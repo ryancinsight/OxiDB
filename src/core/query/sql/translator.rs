@@ -1,6 +1,6 @@
 use super::ast;
-use crate::core::common::OxidbError; // Changed
 use crate::core::common::types::ColumnType;
+use crate::core::common::OxidbError; // Changed
 use crate::core::query::commands::{self, Command};
 use crate::core::types::{DataType, VectorData}; // Added VectorData
 

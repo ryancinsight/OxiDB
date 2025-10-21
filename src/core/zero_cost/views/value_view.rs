@@ -13,7 +13,7 @@ pub type StringView<'a> = Cow<'a, str>;
 pub type BytesView<'a> = Cow<'a, [u8]>;
 
 /// Value view that provides zero-copy access to Value contents
-/// 
+///
 /// Provides efficient access to value data without copying for scalar types
 /// and with minimal copying for complex types using Cow.
 #[derive(Debug, Clone)]
@@ -29,18 +29,18 @@ pub enum ValueView<'a> {
 
 impl<'a> ValueView<'a> {
     /// Create a value view from a Value reference
-    /// 
+    ///
     /// # Arguments
     /// * `value` - Reference to the value to create a view for
-    /// 
+    ///
     /// # Returns
     /// ValueView that provides zero-copy access to the value contents
-    /// 
+    ///
     /// # Examples
     /// ```
     /// use oxidb::core::zero_cost::views::ValueView;
     /// use oxidb::core::common::types::Value;
-    /// 
+    ///
     /// let value = Value::Integer(42);
     /// let view = ValueView::from_value(&value);
     /// assert_eq!(view.as_integer(), Some(42));
@@ -58,7 +58,7 @@ impl<'a> ValueView<'a> {
     }
 
     /// Check if the value is null
-    /// 
+    ///
     /// # Returns
     /// `true` if the value is null, `false` otherwise
     #[inline]
@@ -67,7 +67,7 @@ impl<'a> ValueView<'a> {
     }
 
     /// Try to get as integer
-    /// 
+    ///
     /// # Returns
     /// * `Some(i64)` - If the value is an integer
     /// * `None` - If the value is not an integer
@@ -80,7 +80,7 @@ impl<'a> ValueView<'a> {
     }
 
     /// Try to get as float
-    /// 
+    ///
     /// # Returns
     /// * `Some(f64)` - If the value is a float
     /// * `None` - If the value is not a float
@@ -93,7 +93,7 @@ impl<'a> ValueView<'a> {
     }
 
     /// Try to get as string
-    /// 
+    ///
     /// # Returns
     /// * `Some(&str)` - If the value is text
     /// * `None` - If the value is not text
@@ -106,7 +106,7 @@ impl<'a> ValueView<'a> {
     }
 
     /// Try to get as boolean
-    /// 
+    ///
     /// # Returns
     /// * `Some(bool)` - If the value is a boolean
     /// * `None` - If the value is not a boolean
@@ -119,7 +119,7 @@ impl<'a> ValueView<'a> {
     }
 
     /// Try to get as bytes
-    /// 
+    ///
     /// # Returns
     /// * `Some(&[u8])` - If the value is a blob
     /// * `None` - If the value is not a blob
@@ -132,7 +132,7 @@ impl<'a> ValueView<'a> {
     }
 
     /// Try to get as vector
-    /// 
+    ///
     /// # Returns
     /// * `Some(&[f32])` - If the value is a vector
     /// * `None` - If the value is not a vector
@@ -145,7 +145,7 @@ impl<'a> ValueView<'a> {
     }
 
     /// Get the type name of the value
-    /// 
+    ///
     /// # Returns
     /// String representation of the value type
     pub fn type_name(&self) -> &'static str {
@@ -161,7 +161,7 @@ impl<'a> ValueView<'a> {
     }
 
     /// Check if the value is numeric (integer or float)
-    /// 
+    ///
     /// # Returns
     /// `true` if the value is numeric, `false` otherwise
     #[inline]
@@ -170,7 +170,7 @@ impl<'a> ValueView<'a> {
     }
 
     /// Check if the value is textual
-    /// 
+    ///
     /// # Returns
     /// `true` if the value is text, `false` otherwise
     #[inline]
@@ -203,7 +203,7 @@ mod tests {
     fn test_value_view_from_integer() {
         let value = Value::Integer(42);
         let view = ValueView::from_value(&value);
-        
+
         assert_eq!(view.as_integer(), Some(42));
         assert!(!view.is_null());
         assert!(view.is_numeric());
@@ -214,7 +214,7 @@ mod tests {
     fn test_value_view_from_text() {
         let value = Value::Text("hello".to_string());
         let view = ValueView::from_value(&value);
-        
+
         assert_eq!(view.as_str(), Some("hello"));
         assert!(!view.is_null());
         assert!(view.is_text());
@@ -225,7 +225,7 @@ mod tests {
     fn test_value_view_from_float() {
         let value = Value::Float(3.14);
         let view = ValueView::from_value(&value);
-        
+
         assert_eq!(view.as_float(), Some(3.14));
         assert!(!view.is_null());
         assert!(view.is_numeric());
@@ -236,7 +236,7 @@ mod tests {
     fn test_value_view_from_boolean() {
         let value = Value::Boolean(true);
         let view = ValueView::from_value(&value);
-        
+
         assert_eq!(view.as_bool(), Some(true));
         assert!(!view.is_null());
         assert!(!view.is_numeric());
@@ -247,7 +247,7 @@ mod tests {
     fn test_value_view_from_blob() {
         let value = Value::Blob(vec![1, 2, 3, 4]);
         let view = ValueView::from_value(&value);
-        
+
         assert_eq!(view.as_bytes(), Some(&[1, 2, 3, 4][..]));
         assert!(!view.is_null());
         assert_eq!(view.type_name(), "Blob");
@@ -257,7 +257,7 @@ mod tests {
     fn test_value_view_from_vector() {
         let value = Value::Vector(vec![1.0, 2.0, 3.0]);
         let view = ValueView::from_value(&value);
-        
+
         assert_eq!(view.as_vector(), Some(&[1.0, 2.0, 3.0][..]));
         assert!(!view.is_null());
         assert_eq!(view.type_name(), "Vector");
@@ -267,7 +267,7 @@ mod tests {
     fn test_value_view_from_null() {
         let value = Value::Null;
         let view = ValueView::from_value(&value);
-        
+
         assert!(view.is_null());
         assert_eq!(view.as_integer(), None);
         assert_eq!(view.as_str(), None);
@@ -278,7 +278,7 @@ mod tests {
     fn test_value_view_type_checking() {
         let int_value = Value::Integer(42);
         let int_view = ValueView::from_value(&int_value);
-        
+
         // Should only match integer accessor
         assert!(int_view.as_integer().is_some());
         assert!(int_view.as_float().is_none());
@@ -293,11 +293,11 @@ mod tests {
         let value1 = Value::Integer(42);
         let value2 = Value::Integer(42);
         let value3 = Value::Integer(43);
-        
+
         let view1 = ValueView::from_value(&value1);
         let view2 = ValueView::from_value(&value2);
         let view3 = ValueView::from_value(&value3);
-        
+
         assert_eq!(view1, view2);
         assert_ne!(view1, view3);
     }
@@ -307,7 +307,7 @@ mod tests {
         let borrowed_str = "hello";
         let string_view: StringView = Cow::Borrowed(borrowed_str);
         assert_eq!(&*string_view, "hello");
-        
+
         let owned_string = "world".to_string();
         let string_view: StringView = Cow::Owned(owned_string);
         assert_eq!(&*string_view, "world");
@@ -318,7 +318,7 @@ mod tests {
         let borrowed_bytes = &[1, 2, 3, 4][..];
         let bytes_view: BytesView = Cow::Borrowed(borrowed_bytes);
         assert_eq!(&*bytes_view, &[1, 2, 3, 4]);
-        
+
         let owned_bytes = vec![5, 6, 7, 8];
         let bytes_view: BytesView = Cow::Owned(owned_bytes);
         assert_eq!(&*bytes_view, &[5, 6, 7, 8]);

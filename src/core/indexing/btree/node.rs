@@ -580,7 +580,7 @@ mod tests {
         if let BPlusTreeNode::Internal { children, .. } = &node {
             assert_eq!(children, &vec![0, 1]);
         } else {
-            panic!("Expected Internal node");
+            assert!(false, "Expected Internal node");
         }
 
         node.insert_key_value(k("apple"), InsertValue::Page(2), TEST_ORDER).unwrap();
@@ -588,7 +588,7 @@ mod tests {
         if let BPlusTreeNode::Internal { children, .. } = &node {
             assert_eq!(children, &vec![0, 2, 1]); // apple child | mango child
         } else {
-            panic!("Expected Internal node");
+            assert!(false, "Expected Internal node");
         }
 
         node.insert_key_value(k("banana"), InsertValue::Page(3), TEST_ORDER).unwrap();
@@ -596,7 +596,7 @@ mod tests {
         if let BPlusTreeNode::Internal { children, .. } = &node {
             assert_eq!(children, &vec![0, 2, 3, 1]); // apple child | banana child | mango child
         } else {
-            panic!("Expected Internal node");
+            assert!(false, "Expected Internal node");
         }
 
         assert!(node.is_full(TEST_ORDER));
@@ -623,7 +623,7 @@ mod tests {
         if let BPlusTreeNode::Leaf { values, .. } = &node {
             assert_eq!(values, &vec![vec![pk("pk_mango")]]);
         } else {
-            panic!("Expected Leaf node");
+            assert!(false, "Expected Leaf node");
         }
 
         node.insert_key_value(
@@ -636,7 +636,7 @@ mod tests {
         if let BPlusTreeNode::Leaf { values, .. } = &node {
             assert_eq!(values, &vec![vec![pk("pk_apple")], vec![pk("pk_mango")]]);
         } else {
-            panic!("Expected Leaf node");
+            assert!(false, "Expected Leaf node");
         }
 
         node.insert_key_value(
@@ -652,7 +652,7 @@ mod tests {
                 &vec![vec![pk("pk_apple")], vec![pk("pk_banana")], vec![pk("pk_mango")]]
             );
         } else {
-            panic!("Expected Leaf node");
+            assert!(false, "Expected Leaf node");
         }
 
         assert!(node.is_full(TEST_ORDER));
@@ -702,7 +702,7 @@ mod tests {
         if let BPlusTreeNode::Internal { children, .. } = &node {
             assert_eq!(children, &vec![10, 20]); // c0, c1
         } else {
-            panic!("Node should be Internal");
+            assert!(false, "Node should be Internal");
         }
 
         // Check new (right) node
@@ -712,7 +712,7 @@ mod tests {
         if let BPlusTreeNode::Internal { children, .. } = &new_node {
             assert_eq!(children, &vec![30, 40, 50]); // c2, c3, c4
         } else {
-            panic!("New node should be Internal");
+            assert!(false, "New node should be Internal");
         }
     }
 
@@ -759,7 +759,7 @@ mod tests {
             assert_eq!(values, &vec![vec![pk("v_apple")]]); // v0
             assert_eq!(*next_leaf, Some(TEST_NEW_PAGE_ID)); // Points to new right sibling
         } else {
-            panic!("Node should be Leaf");
+            assert!(false, "Node should be Leaf");
         }
 
         // Check new (right) node
@@ -774,7 +774,7 @@ mod tests {
             ); // v1, v2, v3
             assert_eq!(*next_leaf, original_next_leaf_id); // New node inherits original next_leaf
         } else {
-            panic!("New node should be Leaf");
+            assert!(false, "New node should be Leaf");
         }
     }
 
@@ -804,7 +804,7 @@ mod tests {
         if let BPlusTreeNode::Internal { children, .. } = &node {
             assert_eq!(children, &vec![1, 2, 3]); // c0, c1, c2
         } else {
-            panic!("Node should be Internal");
+            assert!(false, "Node should be Internal");
         }
 
         // Right node
@@ -812,7 +812,7 @@ mod tests {
         if let BPlusTreeNode::Internal { children, .. } = &new_node {
             assert_eq!(children, &vec![4, 5, 6]); // c3, c4, c5
         } else {
-            panic!("New node should be Internal");
+            assert!(false, "New node should be Internal");
         }
     }
 
@@ -849,7 +849,7 @@ mod tests {
             assert_eq!(values, &vec![vec![pk("v_a")], vec![pk("v_b")]]); // v0, v1
             assert_eq!(*next_leaf, Some(TEST_NEW_PAGE_ID));
         } else {
-            panic!("Node should be Leaf");
+            assert!(false, "Node should be Leaf");
         }
 
         // Right node
@@ -858,7 +858,7 @@ mod tests {
             assert_eq!(values, &vec![vec![pk("v_c")], vec![pk("v_d")], vec![pk("v_e")]]); // v2, v3, v4
             assert_eq!(*next_leaf, None);
         } else {
-            panic!("New node should be Leaf");
+            assert!(false, "New node should be Leaf");
         }
     }
 

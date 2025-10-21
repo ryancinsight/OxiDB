@@ -134,7 +134,7 @@ impl TestSuite {
     /// Test edge cases and boundary conditions (CLEAN: Comprehensive testing)
     fn test_edge_cases(&self) -> Result<TestResult, OxidbError> {
         let start = Instant::now();
-        let mut conn = Connection::open(&format!("{}_edge", self.database_path))?;
+        let mut conn = Connection::open(format!("{}_edge", self.database_path))?;
 
         // Test various edge cases
         self.test_empty_and_special_values(&mut conn)?;
@@ -212,7 +212,7 @@ impl TestSuite {
         conn.execute("INSERT INTO concurrent_test (counter) VALUES (0)")?;
 
         // Simulate multiple "concurrent" updates
-        for i in 1..=10 {
+        for _i in 1..=10 {
             conn.execute("BEGIN TRANSACTION")?;
             conn.execute("UPDATE concurrent_test SET counter = counter + 1 WHERE id = 1")?;
             conn.execute("COMMIT")?;
@@ -226,7 +226,7 @@ impl TestSuite {
     /// Test performance characteristics (CLEAN: Efficient)
     fn test_performance(&self) -> Result<TestResult, OxidbError> {
         let start = Instant::now();
-        let mut conn = Connection::open(&format!("{}_perf", self.database_path))?;
+        let mut conn = Connection::open(format!("{}_perf", self.database_path))?;
 
         // Test bulk operations
         self.test_bulk_operations(&mut conn)?;
@@ -278,7 +278,7 @@ impl TestSuite {
     /// Test error handling and recovery (SOLID: Open/Closed Principle)
     fn test_error_handling(&self) -> Result<TestResult, OxidbError> {
         let start = Instant::now();
-        let mut conn = Connection::open(&format!("{}_error", self.database_path))?;
+        let mut conn = Connection::open(format!("{}_error", self.database_path))?;
 
         // Test graceful error handling
         self.test_sql_error_handling(&mut conn)?;

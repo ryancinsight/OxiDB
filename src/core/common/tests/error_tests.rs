@@ -37,7 +37,7 @@ fn test_from_std_io_error() {
     let oxidb_err: OxidbError = std_io_err.into();
     match oxidb_err {
         OxidbError::Io(e) => assert_eq!(e.kind(), io::ErrorKind::PermissionDenied),
-        _ => panic!("Expected OxidbError::Io variant"),
+        _ => assert!(false, "Expected OxidbError::Io variant"),
     }
 }
 
@@ -58,7 +58,7 @@ fn test_from_serde_json_error() {
             );
             assert!(original_error_msg.contains("EOF") || original_error_msg.contains("expected"));
         }
-        _ => panic!("Expected OxidbError::Json variant"),
+        _ => assert!(false, "Expected OxidbError::Json variant"),
     }
 }
 

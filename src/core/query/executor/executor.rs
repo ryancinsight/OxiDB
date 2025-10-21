@@ -228,7 +228,11 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     }
 
     /// Store row data in the key-value store
-    pub fn store_row_data(&mut self, key: Vec<u8>, data: &crate::core::types::DataType) -> Result<(), OxidbError> {
+    pub fn store_row_data(
+        &mut self,
+        key: Vec<u8>,
+        data: &crate::core::types::DataType,
+    ) -> Result<(), OxidbError> {
         use crate::core::common::serialization::serialize_data_type;
         let serialized_data = serialize_data_type(data)?;
         self.set(key, serialized_data)
@@ -236,9 +240,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 
     /// Handle SQL DELETE operations
     pub fn handle_sql_delete(
-        &mut self, 
-        _table_name: String, 
-        _condition: Option<crate::core::query::commands::SqlConditionTree>
+        &mut self,
+        _table_name: String,
+        _condition: Option<crate::core::query::commands::SqlConditionTree>,
     ) -> Result<crate::core::query::executor::types::ExecutionResult, OxidbError> {
         // Implementation placeholder - would involve:
         // 1. Find matching rows based on condition
@@ -246,7 +250,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         // 3. Remove from storage
         // 4. Return count of deleted rows
         use crate::core::query::executor::types::ExecutionResult;
-        
+
         // For now, return a placeholder result
         // In a full implementation, this would scan and filter based on condition
         Ok(ExecutionResult::Updated { count: 0 })
@@ -256,7 +260,7 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     pub fn execute_parameterized_statement(
         &mut self,
         _statement: &str,
-        _parameters: &[crate::core::types::DataType]
+        _parameters: &[crate::core::types::DataType],
     ) -> Result<crate::core::query::executor::types::ExecutionResult, OxidbError> {
         // Implementation placeholder for parameterized queries
         // Would involve parsing statement, binding parameters, and executing
@@ -268,9 +272,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     pub fn check_uniqueness(
         &mut self,
         _table_name: &str,
-        _column_name: &str, 
+        _column_name: &str,
         _value: &crate::core::types::DataType,
-        _exclude_key: Option<&Vec<u8>>
+        _exclude_key: Option<&Vec<u8>>,
     ) -> Result<bool, OxidbError> {
         // Implementation placeholder for uniqueness checking
         // Would scan existing data to verify no duplicates exist

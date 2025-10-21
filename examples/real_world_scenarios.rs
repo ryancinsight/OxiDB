@@ -40,6 +40,7 @@ struct Order {
 trait UserRepository {
     fn create_user(&self, user: &User) -> Result<(), OxidbError>;
     fn find_user_by_email(&self, email: &str) -> Result<Option<User>, OxidbError>;
+    #[allow(dead_code)]
     fn update_user_status(&self, user_id: u64, is_active: bool) -> Result<(), OxidbError>;
 }
 
@@ -52,6 +53,7 @@ trait ProductRepository {
 trait OrderRepository {
     fn create_order(&self, order: &Order) -> Result<(), OxidbError>;
     fn find_orders_by_user(&self, user_id: u64) -> Result<Vec<Order>, OxidbError>;
+    #[allow(dead_code)]
     fn update_order_status(&self, order_id: u64, status: &str) -> Result<(), OxidbError>;
 }
 
@@ -316,7 +318,7 @@ impl ECommerceService {
 
         // Calculate total amount and validate stock
         let mut total_amount = 0.0;
-        for &product_id in &product_ids {
+        for &_product_id in &product_ids {
             // In a real scenario, we'd fetch each product and check stock
             total_amount += 29.99; // Simplified for demo
         }
@@ -573,6 +575,7 @@ fn run_analytics_scenario() -> Result<(), OxidbError> {
 }
 
 // Helper trait for generating test data (YAGNI - only what we need)
+#[allow(dead_code)]
 trait TestDataGenerator {
     fn generate_test_email(id: u64) -> String {
         format!("test_user_{}@oxidb.test", id)
@@ -586,5 +589,4 @@ trait TestDataGenerator {
 impl TestDataGenerator for DatabaseRepository {}
 
 // Add chrono dependency for timestamps
-use chrono;
-use rand;
+// Removed unused imports

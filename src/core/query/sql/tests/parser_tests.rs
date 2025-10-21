@@ -1,4 +1,5 @@
 // Imports needed for the tests
+use crate::core::common::types::ColumnType;
 use crate::core::query::commands::Command;
 use crate::core::query::sql::ast::{
     self, AggregateFunction, AstColumnConstraint, AstDataType, AstLiteralValue, ConditionTree,
@@ -8,7 +9,6 @@ use crate::core::query::sql::errors::SqlParseError;
 use crate::core::query::sql::parser::SqlParser; // The struct being tested
 use crate::core::query::sql::tokenizer::{Token, Tokenizer}; // For tokenizing test strings // Error type for assertions
 use crate::core::query::sql::translator::translate_ast_to_command;
-use crate::core::common::types::ColumnType;
 
 // Helper function to tokenize a string for tests
 fn tokenize_str(input: &str) -> Vec<Token> {

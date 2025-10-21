@@ -9,11 +9,8 @@
 //! - Indexing and performance optimization
 //! - Common e-commerce business logic patterns
 
-use chrono::{DateTime, Utc};
 use oxidb::core::common::OxidbError;
-use oxidb::core::sql::ExecutionResult;
 use oxidb::Oxidb;
-use std::collections::HashMap;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🛒 MySQL-Style E-commerce Database Demo");
@@ -58,7 +55,7 @@ fn cleanup_tables(db: &mut Oxidb) -> Result<(), OxidbError> {
     ];
 
     for table in tables {
-        let drop_sql = format!("DROP TABLE IF EXISTS {}", table);
+        let _drop_sql = format!("DROP TABLE IF EXISTS {}", table);
         let _ = db.execute_query_str(&drop_sql);
     }
 
@@ -413,19 +410,19 @@ fn demonstrate_customer_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
 
     // Customer registration (similar to MySQL stored procedure pattern)
     println!("\n📝 Customer Registration:");
-    let register_sql = r#"
+    let _register_sql = r#"
         INSERT INTO users (username, email, password_hash, role) 
         VALUES ('alice_cooper', 'alice@example.com', 'hashed_password_123', 'customer')
     "#;
     db.execute_query_str(register_sql)?;
 
     // Get the last inserted user ID (MySQL LAST_INSERT_ID() equivalent)
-    let user_result =
+    let __user_result =
         db.execute_query_str("SELECT id FROM users WHERE username = 'alice_cooper'")?;
     println!("✓ User registered successfully");
 
     // Create customer profile
-    let customer_sql = r#"
+    let _customer_sql = r#"
         INSERT INTO customers (user_id, first_name, last_name, phone, gender, loyalty_points) 
         VALUES (5, 'Alice', 'Cooper', '+1-555-0199', 'F', 0)
     "#;
@@ -434,19 +431,19 @@ fn demonstrate_customer_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
 
     // Customer login simulation (checking credentials)
     println!("\n🔐 Customer Authentication:");
-    let auth_sql = r#"
+    let _auth_sql = r#"
         SELECT u.id, u.username, u.email, u.role, u.is_active,
                c.first_name, c.last_name, c.loyalty_points
         FROM users u
         LEFT JOIN customers c ON u.id = c.user_id
         WHERE u.email = 'alice@example.com' AND u.is_active = TRUE
     "#;
-    let auth_result = db.execute_query_str(auth_sql)?;
+    let __auth_result = db.execute_query_str(auth_sql)?;
     println!("✓ Customer authentication query executed");
 
     // Update customer profile (MySQL UPDATE with JOIN pattern)
     println!("\n✏️  Profile Update:");
-    let update_sql = r#"
+    let _update_sql = r#"
         UPDATE customers 
         SET phone = '+1-555-0200', loyalty_points = loyalty_points + 100
         WHERE user_id = 5
@@ -456,7 +453,7 @@ fn demonstrate_customer_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
 
     // Customer search (MySQL LIKE pattern matching)
     println!("\n🔍 Customer Search:");
-    let search_sql = r#"
+    let _search_sql = r#"
         SELECT c.id, c.first_name, c.last_name, c.phone, c.loyalty_points,
                u.email, u.created_at
         FROM customers c
@@ -464,7 +461,7 @@ fn demonstrate_customer_operations(db: &mut Oxidb) -> Result<(), OxidbError> {
         WHERE c.first_name LIKE 'A%' OR c.last_name LIKE 'A%'
         ORDER BY c.loyalty_points DESC
     "#;
-    let search_result = db.execute_query_str(search_sql)?;
+    let __search_result = db.execute_query_str(search_sql)?;
     println!("✓ Customer search completed");
 
     Ok(())
@@ -484,7 +481,7 @@ fn demonstrate_product_catalog(db: &mut Oxidb) -> Result<(), OxidbError> {
         WHERE c.slug = 'smartphones' AND p.is_active = TRUE
         ORDER BY p.price DESC
     "#;
-    let result = db.execute_query_str(category_search)?;
+    let __result = db.execute_query_str(category_search)?;
     println!("✓ Found products in smartphones category");
 
     // Full-text search simulation (MySQL MATCH AGAINST equivalent)
@@ -498,7 +495,7 @@ fn demonstrate_product_catalog(db: &mut Oxidb) -> Result<(), OxidbError> {
            OR p.short_description LIKE '%iPhone%'
         ORDER BY p.price DESC
     "#;
-    let search_result = db.execute_query_str(text_search)?;
+    let __search_result = db.execute_query_str(text_search)?;
     println!("✓ Full-text search completed");
 
     // Price range filtering (MySQL BETWEEN)
@@ -514,12 +511,12 @@ fn demonstrate_product_catalog(db: &mut Oxidb) -> Result<(), OxidbError> {
         WHERE p.price BETWEEN 100 AND 1000 AND p.is_active = TRUE
         ORDER BY p.price ASC
     "#;
-    let price_result = db.execute_query_str(price_filter)?;
+    let _price_result = db.execute_query_str(price_filter)?;
     println!("✓ Price filtering completed");
 
     // Product variants/options (MySQL GROUP BY with aggregation)
     println!("\n📊 Product Analytics:");
-    let analytics_sql = r#"
+    let _analytics_sql = r#"
         SELECT c.name as category,
                COUNT(p.id) as product_count,
                AVG(p.price) as avg_price,
@@ -532,19 +529,19 @@ fn demonstrate_product_catalog(db: &mut Oxidb) -> Result<(), OxidbError> {
         HAVING product_count > 0
         ORDER BY avg_price DESC
     "#;
-    let analytics_result = db.execute_query_str(analytics_sql)?;
+    let _analytics_result = db.execute_query_str(analytics_sql)?;
     println!("✓ Product analytics generated");
 
     // Low stock alert (MySQL WHERE with threshold)
     println!("\n⚠️  Low Stock Alert:");
-    let low_stock_sql = r#"
+    let _low_stock_sql = r#"
         SELECT p.sku, p.name, p.stock_quantity, p.min_stock_level,
                (p.min_stock_level - p.stock_quantity) as shortage
         FROM products p
         WHERE p.stock_quantity <= p.min_stock_level AND p.is_active = TRUE
         ORDER BY shortage DESC
     "#;
-    let stock_result = db.execute_query_str(low_stock_sql)?;
+    let _stock_result = db.execute_query_str(low_stock_sql)?;
     println!("✓ Low stock analysis completed");
 
     Ok(())
@@ -574,7 +571,7 @@ fn demonstrate_order_management(db: &mut Oxidb) -> Result<(), OxidbError> {
         WHERE ci.customer_id = 1
         ORDER BY ci.added_at DESC
     "#;
-    let cart_result = db.execute_query_str(view_cart)?;
+    let _cart_result = db.execute_query_str(view_cart)?;
     println!("✓ Cart contents retrieved");
 
     // Create order from cart (MySQL transaction pattern)
@@ -588,14 +585,14 @@ fn demonstrate_order_management(db: &mut Oxidb) -> Result<(), OxidbError> {
         format!("ORD-{}-{}", chrono::Utc::now().format("%Y%m%d"), rand::random::<u32>() % 10000);
 
     // Calculate totals from cart
-    let totals_sql = r#"
+    let _totals_sql = r#"
         SELECT SUM(p.price * ci.quantity) as subtotal,
                COUNT(ci.id) as item_count
         FROM cart_items ci
         JOIN products p ON ci.product_id = p.id
         WHERE ci.customer_id = 1
     "#;
-    let totals_result = db.execute_query_str(totals_sql)?;
+    let _totals_result = db.execute_query_str(totals_sql)?;
 
     // Create order record
     let create_order = format!(
@@ -613,8 +610,8 @@ fn demonstrate_order_management(db: &mut Oxidb) -> Result<(), OxidbError> {
     db.execute_query_str(&create_order)?;
 
     // Get order ID (simulate LAST_INSERT_ID())
-    let order_id_sql = format!("SELECT id FROM orders WHERE order_number = '{}'", order_number);
-    let order_id_result = db.execute_query_str(&order_id_sql)?;
+    let _order_id_sql = format!("SELECT id FROM orders WHERE order_number = '{}'", order_number);
+    let _order_id_result = db.execute_query_str(&order_id_sql)?;
 
     // Create order items from cart
     let create_order_items = r#"
@@ -687,12 +684,12 @@ fn demonstrate_inventory_tracking(db: &mut Oxidb) -> Result<(), OxidbError> {
         WHERE p.is_active = TRUE
         ORDER BY p.stock_quantity ASC, p.sku
     "#;
-    let stock_result = db.execute_query_str(stock_report)?;
+    let _stock_result = db.execute_query_str(stock_report)?;
     println!("✓ Stock level report generated");
 
     // Inventory value calculation
     println!("\n💰 Inventory Valuation:");
-    let valuation_sql = r#"
+    let _valuation_sql = r#"
         SELECT c.name as category,
                COUNT(p.id) as products,
                SUM(p.stock_quantity) as total_units,
@@ -705,12 +702,12 @@ fn demonstrate_inventory_tracking(db: &mut Oxidb) -> Result<(), OxidbError> {
         GROUP BY c.id, c.name
         ORDER BY cost_value DESC
     "#;
-    let valuation_result = db.execute_query_str(valuation_sql)?;
+    let _valuation_result = db.execute_query_str(valuation_sql)?;
     println!("✓ Inventory valuation completed");
 
     // Restock recommendations
     println!("\n🔄 Restock Recommendations:");
-    let restock_sql = r#"
+    let _restock_sql = r#"
         SELECT p.sku, p.name, p.stock_quantity, p.min_stock_level,
                (p.min_stock_level * 3 - p.stock_quantity) as suggested_reorder,
                p.cost_price,
@@ -720,7 +717,7 @@ fn demonstrate_inventory_tracking(db: &mut Oxidb) -> Result<(), OxidbError> {
           AND p.is_active = TRUE
         ORDER BY reorder_cost DESC
     "#;
-    let restock_result = db.execute_query_str(restock_sql)?;
+    let _restock_result = db.execute_query_str(restock_sql)?;
     println!("✓ Restock recommendations generated");
 
     Ok(())
@@ -743,7 +740,7 @@ fn demonstrate_reporting_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
         FROM orders o
         WHERE o.status != 'cancelled'
     "#;
-    let sales_result = db.execute_query_str(sales_summary)?;
+    let _sales_result = db.execute_query_str(sales_summary)?;
     println!("✓ Sales summary generated");
 
     // Top selling products
@@ -762,12 +759,12 @@ fn demonstrate_reporting_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
         ORDER BY units_sold DESC, revenue DESC
         LIMIT 10
     "#;
-    let top_products_result = db.execute_query_str(top_products)?;
+    let _top_products_result = db.execute_query_str(top_products)?;
     println!("✓ Top products analysis completed");
 
     // Customer lifetime value
     println!("\n👑 Customer Lifetime Value:");
-    let clv_sql = r#"
+    let _clv_sql = r#"
         SELECT c.id, c.first_name, c.last_name, c.loyalty_points,
                COUNT(o.id) as total_orders,
                SUM(o.total_amount) as lifetime_value,
@@ -781,7 +778,7 @@ fn demonstrate_reporting_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
         ORDER BY lifetime_value DESC
         LIMIT 10
     "#;
-    let clv_result = db.execute_query_str(clv_sql)?;
+    let _clv_result = db.execute_query_str(clv_sql)?;
     println!("✓ Customer lifetime value analysis completed");
 
     // Category performance
@@ -801,7 +798,7 @@ fn demonstrate_reporting_queries(db: &mut Oxidb) -> Result<(), OxidbError> {
         HAVING category_revenue > 0
         ORDER BY category_revenue DESC
     "#;
-    let category_result = db.execute_query_str(category_perf)?;
+    let _category_result = db.execute_query_str(category_perf)?;
     println!("✓ Category performance analysis completed");
 
     Ok(())
@@ -813,7 +810,7 @@ fn demonstrate_advanced_features(db: &mut Oxidb) -> Result<(), OxidbError> {
 
     // Complex JOIN with subquery (MySQL advanced pattern)
     println!("\n🔗 Complex Query with Subqueries:");
-    let complex_query = r#"
+    let _complex_query = r#"
         SELECT p.sku, p.name, p.price, p.stock_quantity,
                c.name as category,
                COALESCE(sales_data.units_sold, 0) as units_sold,
@@ -832,12 +829,12 @@ fn demonstrate_advanced_features(db: &mut Oxidb) -> Result<(), OxidbError> {
         WHERE p.is_active = TRUE
         ORDER BY COALESCE(sales_data.revenue, 0) DESC, p.name
     "#;
-    let complex_result = db.execute_query_str(complex_query)?;
+    let _complex_result = db.execute_query_str(complex_query)?;
     println!("✓ Complex query with subqueries executed");
 
     // Window functions simulation (MySQL 8.0+ pattern)
     println!("\n🪟 Analytics with Ranking:");
-    let ranking_query = r#"
+    let _ranking_query = r#"
         SELECT o.id, o.order_number, o.customer_id, o.total_amount,
                c.first_name, c.last_name,
                RANK() OVER (ORDER BY o.total_amount DESC) as revenue_rank,
@@ -853,7 +850,7 @@ fn demonstrate_advanced_features(db: &mut Oxidb) -> Result<(), OxidbError> {
 
     // JSON operations (MySQL 5.7+ JSON functions)
     println!("\n📄 JSON Data Operations:");
-    let json_ops = r#"
+    let _json_ops = r#"
         SELECT oi.id, oi.order_id, oi.product_id,
                JSON_EXTRACT(oi.product_snapshot, '$.name') as product_name,
                JSON_EXTRACT(oi.product_snapshot, '$.original_price') as original_price
@@ -866,7 +863,7 @@ fn demonstrate_advanced_features(db: &mut Oxidb) -> Result<(), OxidbError> {
 
     // Full-text search with relevance scoring
     println!("\n🔍 Advanced Search Features:");
-    let search_query = r#"
+    let _search_query = r#"
         SELECT p.id, p.sku, p.name, p.description, p.price,
                MATCH(p.name, p.description) AGAINST ('smartphone camera') as relevance_score
         FROM products p
@@ -881,7 +878,7 @@ fn demonstrate_advanced_features(db: &mut Oxidb) -> Result<(), OxidbError> {
     println!("\n🔧 Database Maintenance:");
 
     // Analyze table statistics (MySQL ANALYZE TABLE equivalent)
-    let analyze_sql = "ANALYZE TABLE products, orders, customers";
+    let _analyze_sql = "ANALYZE TABLE products, orders, customers";
     println!("✓ Table analysis pattern shown");
 
     // Index optimization suggestions

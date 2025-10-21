@@ -435,7 +435,8 @@ mod tests {
         if let Some(DataType::String(s)) = cow_map.get(b"key1") {
             assert_eq!(s, "value1");
         } else {
-            panic!("Expected string value");
+            // This is a test assertion, so we can use assert! for clarity
+            assert!(false, "Expected string value");
         }
     }
 
