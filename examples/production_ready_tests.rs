@@ -162,7 +162,7 @@ impl TestSuite {
     /// Test edge cases and boundary conditions (CLEAN: Comprehensive testing)
     fn test_edge_cases(&self) -> Result<TestResult, OxidbError> {
         let start = Instant::now();
-        let mut conn = Connection::open(&format!("{}_edge", self.database_path))?;
+        let mut conn = Connection::open(format!("{}_edge", self.database_path))?;
 
         // Test empty values
         self.test_empty_and_null_values(&mut conn)?;
@@ -215,7 +215,7 @@ impl TestSuite {
         conn.execute("CREATE TABLE special_char_test (id INTEGER, text TEXT)")?;
 
         // Test various special characters
-        let test_cases = vec![
+        let test_cases = [
             "Unicode: 你好世界",
             "Emoji: 🚀🌟💻",
             "Special chars: !@#$%^&*()",
@@ -241,7 +241,7 @@ impl TestSuite {
         conn.execute("CREATE TABLE numeric_test (id INTEGER, value INTEGER)")?;
 
         // Test various numeric values
-        let test_values = vec![0, 1, -1, 999999, -999999];
+        let test_values = [0, 1, -1, 999999, -999999];
 
         for (i, value) in test_values.iter().enumerate() {
             conn.execute(&format!("INSERT INTO numeric_test VALUES ({}, {})", i + 1, value))?;
@@ -255,7 +255,7 @@ impl TestSuite {
     /// Test performance characteristics (CLEAN: Efficient)
     fn test_performance(&self) -> Result<TestResult, OxidbError> {
         let start = Instant::now();
-        let mut conn = Connection::open(&format!("{}_perf", self.database_path))?;
+        let mut conn = Connection::open(format!("{}_perf", self.database_path))?;
 
         // Test bulk insert performance
         self.test_bulk_operations(&mut conn)?;
@@ -403,7 +403,7 @@ fn cleanup_test_databases() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     for file in test_files {
-        if let Err(_) = fs::remove_file(file) {
+        if fs::remove_file(file).is_err() {
             // File doesn't exist or can't be removed - that's okay
         }
     }

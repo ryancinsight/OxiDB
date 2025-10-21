@@ -144,8 +144,8 @@ mod tests {
             Err(OxidbError::Io(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                 // This is the expected outcome
             }
-            Ok(entry) => panic!("Expected EOF error, but got an entry: {:?}", entry),
-            Err(e) => panic!("Expected EOF error, but got a different error: {:?}", e),
+            Ok(entry) => assert!(false, "Expected EOF error, but got an entry: {:?}", entry),
+            Err(e) => assert!(false, "Expected EOF error, but got a different error: {:?}", e),
         }
     }
 }

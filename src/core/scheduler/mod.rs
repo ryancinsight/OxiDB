@@ -355,7 +355,7 @@ mod tests {
         if let TaskStatus::Failed(error) = task.status {
             assert_eq!(error, "Test error");
         } else {
-            panic!("Task should be in failed state");
+            assert!(false, "Task should be in failed state");
         }
     }
 

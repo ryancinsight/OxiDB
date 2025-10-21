@@ -300,7 +300,7 @@ mod tests {
         if let Some(val) = rule.try_evaluate_to_boolean(&result).unwrap() {
             assert!(!val);
         } else {
-            panic!("Expected boolean result");
+            assert!(false, "Expected boolean result");
         }
     }
 
@@ -319,7 +319,7 @@ mod tests {
         if let Some(val) = rule.try_evaluate_to_boolean(&result).unwrap() {
             assert!(val);
         } else {
-            panic!("Expected boolean result");
+            assert!(false, "Expected boolean result");
         }
     }
 
@@ -335,7 +335,7 @@ mod tests {
         if let Some(val) = rule.try_evaluate_to_boolean(&result).unwrap() {
             assert!(!val);
         } else {
-            panic!("Expected boolean result");
+            assert!(false, "Expected boolean result");
         }
     }
 
@@ -373,7 +373,7 @@ mod tests {
         if let Some(val) = rule.try_evaluate_to_boolean(&result).unwrap() {
             assert!(!val);
         } else {
-            panic!("Expected boolean result");
+            assert!(false, "Expected boolean result");
         }
     }
 
@@ -397,7 +397,7 @@ mod tests {
         if let Some(val) = rule.try_evaluate_to_boolean(&result).unwrap() {
             assert!(val);
         } else {
-            panic!("Expected boolean result");
+            assert!(false, "Expected boolean result");
         }
     }
 
@@ -418,7 +418,7 @@ mod tests {
         if let Some(val) = rule.try_evaluate_to_boolean(&result).unwrap() {
             assert!(val);
         } else {
-            panic!("Expected boolean result");
+            assert!(false, "Expected boolean result");
         }
     }
 
@@ -439,7 +439,7 @@ mod tests {
         if let Some(val) = rule.try_evaluate_to_boolean(&result).unwrap() {
             assert!(!val);
         } else {
-            panic!("Expected boolean result");
+            assert!(false, "Expected boolean result");
         }
     }
 

@@ -384,7 +384,7 @@ mod tests {
                 assert_eq!(*lsn, 0, "LSN of BeginTransaction should be 0");
                 assert_eq!(*tx_id, tx_id_val, "Transaction ID should match"); // tx_id_val is TransactionId
             }
-            other => panic!("Expected BeginTransaction, got {:?}", other),
+            other => assert!(false, "Expected BeginTransaction, got {:?}", other),
         }
         cleanup_dir(&test_dir_path);
     }
@@ -408,7 +408,7 @@ mod tests {
                 assert_eq!(*lsn, begin_lsn);
                 assert_eq!(*tx_id, tx_id_val); // Compare TransactionId with TransactionId
             }
-            other => panic!("Expected BeginTransaction at index 0, got {:?}", other),
+            other => assert!(false, "Expected BeginTransaction at index 0, got {:?}", other),
         }
 
         match records.get(1) {
@@ -417,7 +417,7 @@ mod tests {
                 assert_eq!(*tx_id, tx_id_val); // Compare TransactionId
                 assert_eq!(*prev_lsn, begin_lsn, "Commit's prev_lsn should be Begin's LSN");
             }
-            other => panic!("Expected CommitTransaction at index 1, got {:?}", other),
+            other => assert!(false, "Expected CommitTransaction at index 1, got {:?}", other),
         }
 
         assert!(manager.is_committed(tx_id_val)); // Pass TransactionId
@@ -444,7 +444,7 @@ mod tests {
                 assert_eq!(*tx_id, tx_id_val); // Compare TransactionId
                 assert_eq!(*prev_lsn, begin_lsn, "Abort's prev_lsn should be Begin's LSN");
             }
-            other => panic!("Expected AbortTransaction at index 1, got {:?}", other),
+            other => assert!(false, "Expected AbortTransaction at index 1, got {:?}", other),
         }
         assert!(!manager.is_committed(tx_id_val)); // Pass TransactionId
         assert!(manager.active_transactions.get(&tx_id_val).is_none()); // Use TransactionId for get

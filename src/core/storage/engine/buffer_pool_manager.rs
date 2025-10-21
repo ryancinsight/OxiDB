@@ -486,7 +486,7 @@ mod tests {
         if let Err(OxidbError::BufferPool(msg)) = result {
             assert!(msg.contains("No free or unpinned frames available"));
         } else {
-            panic!("Expected BufferPool error");
+            assert!(false, "Expected BufferPool error");
         }
     }
 
@@ -507,7 +507,7 @@ mod tests {
         if let Err(OxidbError::BufferPool(msg)) = result {
             assert!(msg.contains("pin count is already zero"));
         } else {
-            panic!("Expected BufferPool error");
+            assert!(false, "Expected BufferPool error");
         }
     }
 }

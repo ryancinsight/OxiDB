@@ -126,7 +126,7 @@ fn test_page_full_on_insert_slot_metadata() {
             }
         }
     }
-    panic!(
+    assert!(false, 
         "Page did not fill up after {} successful inserts. Loop limit was {}.",
         successful_inserts,
         TablePage::PAGE_DATA_AREA_SIZE
@@ -343,7 +343,7 @@ fn test_insert_and_get_row_with_vector() {
             (Value::Boolean(o), Value::Boolean(r)) => assert_eq!(o, r),
             (Value::Blob(o), Value::Blob(r)) => assert_eq!(o, r),
             (Value::Null, Value::Null) => { /* Both null, good */ }
-            _ => panic!(
+            _ => assert!(false, 
                 "Mismatched or unexpected Value types: {:?} vs {:?}",
                 original_val, retrieved_val
             ),

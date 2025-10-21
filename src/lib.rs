@@ -193,7 +193,7 @@ mod tests {
                 assert!(!ds.rows.is_empty());
                 assert_eq!(ds.rows.len(), 1);
             }
-            other => panic!("Unexpected result: {:?}", other),
+            other => assert!(false, "Unexpected result: {:?}", other),
         }
     }
 
@@ -224,7 +224,7 @@ mod tests {
                 assert!(ds.rows.is_empty());
                 assert_eq!(ds.rows.len(), 0);
             }
-            other => panic!("Unexpected result: {:?}", other),
+            other => assert!(false, "Unexpected result: {:?}", other),
         }
     }
 }

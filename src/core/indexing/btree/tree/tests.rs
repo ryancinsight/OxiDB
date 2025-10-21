@@ -641,7 +641,10 @@ fn test_delete_internal_merge_with_left_sibling() -> Result<(), OxidbError> {
             let merged_l0l1 = tree.read_node(P_L0)?;
             assert_eq!(merged_l0l1.get_keys().as_slice(), &[k("01")]); // L0 got k00, L1 got k01, merged L0L1 on L0 gets k01
         }
-        _ => panic!("New root is not internal as expected after merge cascade"),
+        _ => {
+            assert!(false, "New root is not internal as expected after merge cascade");
+            (0, 0) // This will never be reached
+        },
     }
     Ok(())
 }
@@ -750,7 +753,10 @@ fn test_delete_internal_merge_with_right_sibling() -> Result<(), OxidbError> {
     assert_eq!(root_node_after.get_keys(), &vec![k("07")]);
     match &root_node_after {
         Internal { children, .. } => assert_eq!(children.as_slice(), &[IL0_PID, IL2_PID]),
-        _ => panic!("Root not internal"),
+        _ => {
+            assert!(false, "Root not internal");
+            (0, 0) // This will never be reached
+        },
     }
 
     let il0_node_after = tree.read_node(IL0_PID)?;
@@ -776,7 +782,10 @@ fn test_delete_recursive_จน_root_is_leaf() -> Result<(), OxidbError> {
     let final_root_node = tree.read_node(tree.root_page_id)?;
     match final_root_node {
         Leaf { keys, .. } => assert_eq!(keys, vec![k("3")]),
-        _ => panic!("Root should be leaf at the end"),
+        _ => {
+            assert!(false, "Root should be leaf at the end");
+            (0, 0) // This will never be reached
+        },
     }
     Ok(())
 }

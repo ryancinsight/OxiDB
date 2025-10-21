@@ -478,10 +478,7 @@ async fn benchmark_enhanced_graphrag_retrieval(
     let mut parameters = HashMap::new();
     parameters.insert("max_hops".to_string(), Value::Integer(2));
     parameters.insert("min_confidence".to_string(), Value::Float(0.3));
-    parameters.insert("entity_types".to_string(), Value::Array(vec![
-        Value::String("CHARACTER".to_string()),
-        Value::String("THEME".to_string())
-    ]));
+    parameters.insert("entity_types".to_string(), Value::Text("CHARACTER,THEME".to_string()));
     
     let context = GraphRAGContext {
         query: query.to_string(),
@@ -803,9 +800,9 @@ async fn enhance_shakespeare_knowledge_graph(
     for (char1, char2, relationship, confidence) in character_relationships {
         // Create entities if they don't exist
         let mut metadata1 = HashMap::new();
-        metadata1.insert("entity_type".to_string(), Value::String("CHARACTER".to_string()));
-        metadata1.insert("name".to_string(), Value::String(char1.to_string()));
-        metadata1.insert("description".to_string(), Value::String(format!("Shakespeare character: {}", char1)));
+        metadata1.insert("entity_type".to_string(), Value::Text("CHARACTER".to_string()));
+        metadata1.insert("name".to_string(), Value::Text(char1.to_string()));
+        metadata1.insert("description".to_string(), Value::Text(format!("Shakespeare character: {}", char1)));
         metadata1.insert("confidence_score".to_string(), Value::Float(0.95));
         
         let entity1 = KnowledgeNode {
@@ -817,9 +814,9 @@ async fn enhance_shakespeare_knowledge_graph(
         };
 
         let mut metadata2 = HashMap::new();
-        metadata2.insert("entity_type".to_string(), Value::String("CHARACTER".to_string()));
-        metadata2.insert("name".to_string(), Value::String(char2.to_string()));
-        metadata2.insert("description".to_string(), Value::String(format!("Shakespeare character: {}", char2)));
+        metadata2.insert("entity_type".to_string(), Value::Text("CHARACTER".to_string()));
+        metadata2.insert("name".to_string(), Value::Text(char2.to_string()));
+        metadata2.insert("description".to_string(), Value::Text(format!("Shakespeare character: {}", char2)));
         metadata2.insert("confidence_score".to_string(), Value::Float(0.95));
         
         let entity2 = KnowledgeNode {

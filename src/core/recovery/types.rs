@@ -239,7 +239,7 @@ mod tests {
 
         match recovery_error {
             RecoveryError::IoError(msg) => assert!(msg.contains("File not found")),
-            _ => panic!("Expected IoError"),
+            _ => assert!(false, "Expected IoError"),
         }
     }
 }

@@ -18,7 +18,7 @@ fn test_update_missing_set_keyword() {
         assert!(expected.to_lowercase().contains("set"));
         assert!(found.to_lowercase().contains("identifier(\"field\")"));
     } else {
-        panic!("Wrong error type: {:?}", result);
+        assert!(false, "Wrong error type: {:?}", result);
     }
 }
 
@@ -37,9 +37,9 @@ fn test_update_empty_set_clause() {
         assert_eq!(found.to_lowercase(), "semicolon");
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // also possible, if input is just "UPDATE table SET"
-        panic!("UnexpectedEOF, expected UnexpectedToken for 'UPDATE table SET;'");
+        assert!(false, "UnexpectedEOF, expected UnexpectedToken for 'UPDATE table SET;'");
     } else {
-        panic!("Wrong error type for empty SET clause: {:?}, expected UnexpectedToken", result);
+        assert!(false, "Wrong error type for empty SET clause: {:?}, expected UnexpectedToken", result);
     }
 }
 
@@ -62,7 +62,7 @@ fn test_update_missing_value_in_assignment() {
     } else if let Err(SqlParseError::UnexpectedEOF) = result {
         // also possible
     } else {
-        panic!("Wrong error type for missing value in assignment: {:?}", result);
+        assert!(false, "Wrong error type for missing value in assignment: {:?}", result);
     }
 }
 
@@ -83,7 +83,7 @@ fn test_update_missing_equals_in_assignment() {
         );
         assert!(found.to_lowercase().contains("stringliteral(\"value\")"));
     } else {
-        panic!("Wrong error type for missing equals in assignment: {:?}", result);
+        assert!(false, "Wrong error type for missing equals in assignment: {:?}", result);
     }
 }
 

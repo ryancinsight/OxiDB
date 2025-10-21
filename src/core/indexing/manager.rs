@@ -335,7 +335,7 @@ mod tests {
         if let Err(OxidbError::Io(io_err)) = result {
             assert_eq!(io_err.kind(), std::io::ErrorKind::InvalidInput);
         } else {
-            panic!("Expected OxidbError::Io for base_path being a file, got {:?}", result);
+            assert!(false, "Expected OxidbError::Io for base_path being a file, got {:?}", result);
         }
         Ok(())
     }
