@@ -347,7 +347,10 @@ fn test_parse_create_table_primary_key_not_null_variants() {
         let sql = format!("CREATE TABLE test_pk ( {} );", col_sql);
         let tokens = tokenize_str(&sql);
         let mut parser = SqlParser::new(tokens);
-        let ast = parser.parse().unwrap_or_else(|e| assert!(false, "Failed to parse '{}': {:?}", sql, e));
+        let ast = parser.parse().unwrap_or_else(|e| {
+            assert!(false, "Failed to parse '{}': {:?}", sql, e);
+            unreachable!()
+        });
 
         match ast {
             Statement::CreateTable(create_stmt) => {

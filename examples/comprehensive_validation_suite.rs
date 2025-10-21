@@ -59,21 +59,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 /// Execute all validation tests following SOLID and GRASP principles
 fn execute_validation_suite() -> Result<Vec<TestResult>, Box<dyn std::error::Error>> {
-    let mut results = Vec::new();
+    let results = vec![
+        // Core functionality tests (Single Responsibility Principle)
+        test_basic_crud_operations()?,
+        test_data_type_support()?,
+        test_error_handling_robustness()?,
 
-    // Core functionality tests (Single Responsibility Principle)
-    results.push(test_basic_crud_operations()?);
-    results.push(test_data_type_support()?);
-    results.push(test_error_handling_robustness()?);
+        // Edge case tests (Interface Segregation Principle)
+        test_boundary_conditions()?,
+        test_constraint_enforcement()?,
+        test_concurrent_access_patterns()?,
 
-    // Edge case tests (Interface Segregation Principle)
-    results.push(test_boundary_conditions()?);
-    results.push(test_constraint_enforcement()?);
-    results.push(test_concurrent_access_patterns()?);
-
-    // Performance tests (Dependency Inversion Principle)
-    results.push(test_performance_characteristics()?);
-    results.push(test_scalability_limits()?);
+        // Performance tests (Dependency Inversion Principle)
+        test_performance_characteristics()?,
+        test_scalability_limits()?,
+    ];
 
     Ok(results)
 }
@@ -163,15 +163,13 @@ fn perform_error_handling_test() -> Result<(), OxidbError> {
     conn.execute("INSERT INTO error_test (id, name) VALUES (1, 'Test')")?;
 
     // Test duplicate key handling
-    match conn.execute("INSERT INTO error_test (id, name) VALUES (1, 'Duplicate')") {
-        Ok(_) => {}  // Unexpected success
-        Err(_) => {} // Expected error - this is good
+    if conn.execute("INSERT INTO error_test (id, name) VALUES (1, 'Duplicate')").is_ok() {
+        // Unexpected success
     }
 
     // Test invalid SQL handling
-    match conn.execute("INVALID SQL SYNTAX") {
-        Ok(_) => {}  // Unexpected success
-        Err(_) => {} // Expected error - this is good
+    if conn.execute("INVALID SQL SYNTAX").is_ok() {
+        // Unexpected success
     }
 
     Ok(())
@@ -224,9 +222,8 @@ fn perform_constraint_test() -> Result<(), OxidbError> {
     conn.execute("INSERT INTO constraint_test (id, email) VALUES (1, 'test@example.com')")?;
 
     // Test unique constraint
-    match conn.execute("INSERT INTO constraint_test (id, email) VALUES (2, 'test@example.com')") {
-        Ok(_) => {}  // May succeed if unique constraint not enforced
-        Err(_) => {} // Expected if unique constraint is enforced
+    if conn.execute("INSERT INTO constraint_test (id, email) VALUES (2, 'test@example.com')").is_ok() {
+        // May succeed if unique constraint not enforced
     }
 
     Ok(())

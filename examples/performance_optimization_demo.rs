@@ -331,7 +331,7 @@ fn demonstrate_advanced_optimizations(conn: &mut Connection) -> Result<(), Oxidb
     println!("\n2. Query Plan Analysis");
 
     // Get query plan for complex query
-    let plan = conn.execute(
+    let _plan = conn.execute(
         "EXPLAIN SELECT u.username, COUNT(p.id) 
                             FROM users u 
                             JOIN posts p ON u.id = p.user_id 

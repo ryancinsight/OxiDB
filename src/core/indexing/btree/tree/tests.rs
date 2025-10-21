@@ -643,7 +643,7 @@ fn test_delete_internal_merge_with_left_sibling() -> Result<(), OxidbError> {
         }
         _ => {
             assert!(false, "New root is not internal as expected after merge cascade");
-            (0, 0) // This will never be reached
+            unreachable!()
         },
     }
     Ok(())
@@ -755,7 +755,7 @@ fn test_delete_internal_merge_with_right_sibling() -> Result<(), OxidbError> {
         Internal { children, .. } => assert_eq!(children.as_slice(), &[IL0_PID, IL2_PID]),
         _ => {
             assert!(false, "Root not internal");
-            (0, 0) // This will never be reached
+            unreachable!()
         },
     }
 
@@ -784,7 +784,7 @@ fn test_delete_recursive_จน_root_is_leaf() -> Result<(), OxidbError> {
         Leaf { keys, .. } => assert_eq!(keys, vec![k("3")]),
         _ => {
             assert!(false, "Root should be leaf at the end");
-            (0, 0) // This will never be reached
+            unreachable!()
         },
     }
     Ok(())

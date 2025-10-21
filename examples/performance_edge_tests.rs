@@ -204,13 +204,15 @@ impl PerformanceTestSuite {
         // Bulk insert test
         let insert_start = Instant::now();
         for i in 0..self.config.dataset_size {
+            let data = format!("Large data string for record {} with additional padding to test memory usage", i);
+            let category = format!("category_{}", i % 10);
             let query = format!(
                 "INSERT INTO large_data_test (id, data, value, timestamp, category) VALUES ({}, '{}', {}, '{}', '{}')",
                 i,
-                format!("Large data string for record {} with additional padding to test memory usage", i),
+                data,
                 i % 1000,
                 chrono::Utc::now().to_rfc3339(),
-                format!("category_{}", i % 10)
+                category
             );
 
             match conn.execute(&query) {
@@ -288,14 +290,15 @@ impl PerformanceTestSuite {
                         match i % 4 {
                             0 => {
                                 // Insert operation
-                                let query = format!(
-                                    "INSERT INTO concurrent_test (id, thread_id, operation_count, data, created_at) VALUES ({}, {}, {}, '{}', '{}')",
-                                    thread_id * iterations + i,
-                                    thread_id,
-                                    i,
-                                    format!("Thread {} operation {}", thread_id, i),
-                                    chrono::Utc::now().to_rfc3339()
-                                );
+                  let data = format!("Thread {} operation {}", thread_id, i);
+                  let query = format!(
+                      "INSERT INTO concurrent_test (id, thread_id, operation_count, data, created_at) VALUES ({}, {}, {}, '{}', '{}')",
+                      thread_id * iterations + i,
+                      thread_id,
+                      i,
+                      data,
+                      chrono::Utc::now().to_rfc3339()
+                  );
                                 match conn_guard.execute(&query) {
                                     Ok(_) => metrics.record_success(),
                                     Err(_) => metrics.record_failure(),
@@ -456,7 +459,7 @@ impl PerformanceTestSuite {
         }
 
         // Test multiple simultaneous large queries (memory pressure)
-        let queries = vec![
+          let queries = [
             "SELECT COUNT(*) FROM large_data_test",
             "SELECT AVG(value) FROM large_data_test",
             "SELECT category, COUNT(*) FROM large_data_test GROUP BY category",
@@ -527,4 +530,4 @@ fn main() -> Result<(), OxidbError> {
 }
 
 // Add required dependencies
-use chrono;
+// Removed unused import
