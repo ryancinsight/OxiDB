@@ -1,9 +1,10 @@
 use oxidb::core::graph::{GraphData, GraphFactory, Relationship};
-use oxidb::core::rag::graphrag::GraphRAGEngineImpl;
-use oxidb::core::rag::retriever::InMemoryRetriever;
-use oxidb::core::rag::{Document, GraphRAGContext, GraphRAGEngine, KnowledgeEdge, KnowledgeNode};
+use oxidb::core::rag::embedder::TfIdfEmbedder;
+use oxidb::core::rag::graphrag::{GraphRAGConfig, GraphRAGContext, GraphRAGEngine, GraphRAGEngineImpl};
+use oxidb::core::rag::{Document, KnowledgeNode};
 use oxidb::Value;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,81 +17,63 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Step 2: Set up GraphRAG engine
     println!("\n🧠 Setting up GraphRAG engine...");
-    let retriever = Box::new(InMemoryRetriever::new(documents.clone()));
-    let mut graphrag_engine = GraphRAGEngineImpl::new(retriever);
+    let embedder = Arc::new(TfIdfEmbedder::new(&documents));
+    let graph_store = Arc::new(Mutex::new(GraphFactory::create_memory_graph()?));
+    let config = GraphRAGConfig::default();
+    let mut graphrag_engine = GraphRAGEngineImpl::new(graph_store, embedder, config);
 
-    // Step 3: Build knowledge graph from documents
-    println!("\n🕸️  Building knowledge graph...");
-    graphrag_engine.build_knowledge_graph(&documents).await?;
+    // Step 3: Add documents to the knowledge graph
+    println!("\n🕸️  Building knowledge graph from documents...");
+    let mut doc_ids = Vec::new();
+    for document in &documents {
+        let node_id = graphrag_engine.add_document(document).await?;
+        doc_ids.push(node_id);
+        println!("  Added document: {} (node id: {})", document.id, node_id);
+    }
 
-    // Step 4: Add custom entities and relationships
-    println!("\n➕ Adding custom entities and relationships...");
-    let alice_entity = create_person_entity("Alice", "Software Engineer", vec![0.1, 0.2, 0.3]);
-    let bob_entity = create_person_entity("Bob", "Data Scientist", vec![0.2, 0.3, 0.4]);
-    let company_entity =
-        create_organization_entity("TechCorp", "Technology Company", vec![0.15, 0.25, 0.35]);
-
-    let alice_id = graphrag_engine.add_entity(alice_entity).await?;
-    let bob_id = graphrag_engine.add_entity(bob_entity).await?;
-    let company_id = graphrag_engine.add_entity(company_entity).await?;
-
-    // Add relationships
-    let works_at_rel = create_relationship(alice_id, company_id, "WORKS_AT", 0.9);
-    let colleague_rel = create_relationship(alice_id, bob_id, "COLLEAGUE", 0.8);
-
-    graphrag_engine.add_relationship(works_at_rel).await?;
-    graphrag_engine.add_relationship(colleague_rel).await?;
+    // Step 4: Add relationships between documents
+    println!("\n➕ Adding relationships between documents...");
+    if doc_ids.len() >= 2 {
+        graphrag_engine.add_relationship(doc_ids[0], doc_ids[1], "RELATED_TO", 0.8).await?;
+        println!("  Added RELATED_TO relationship between doc {} and doc {}", doc_ids[0], doc_ids[1]);
+    }
+    if doc_ids.len() >= 3 {
+        graphrag_engine.add_relationship(doc_ids[1], doc_ids[2], "MENTIONS", 0.7).await?;
+        println!("  Added MENTIONS relationship between doc {} and doc {}", doc_ids[1], doc_ids[2]);
+    }
 
     // Step 5: Demonstrate GraphRAG queries
     println!("\n🔍 Performing GraphRAG queries...");
 
-    // Query 1: Find related entities
-    let related_entities = graphrag_engine.find_related_entities(alice_id, 2).await?;
-    println!("Entities related to Alice (within 2 hops): {}", related_entities.len());
-    for entity in &related_entities {
-        println!("  - {} ({})", entity.name, entity.entity_type);
-    }
-
-    // Query 2: Get reasoning paths
-    let reasoning_paths = graphrag_engine.get_reasoning_paths(alice_id, bob_id, 3).await?;
-    println!("\nReasoning paths from Alice to Bob:");
-    for (i, path) in reasoning_paths.iter().enumerate() {
-        println!("  Path {}: {} (score: {:.2})", i + 1, path.explanation, path.reasoning_score);
-    }
-
-    // Query 3: Enhanced retrieval with graph context
-    let query_embedding = vec![0.12, 0.22, 0.32].into(); // Similar to Alice's embedding
-    let graph_context = GraphRAGContext {
-        query_embedding,
-        max_hops: 2,
-        min_confidence: 0.5,
-        include_relationships: vec!["WORKS_AT".to_string(), "COLLEAGUE".to_string()],
-        exclude_relationships: vec![],
-        entity_types: vec!["PERSON".to_string(), "ORGANIZATION".to_string()],
+    // Query 1: Query the knowledge graph
+    let query_context = GraphRAGContext {
+        query: "software engineer database".to_string(),
+        max_results: 5,
+        similarity_threshold: 0.0,
+        max_depth: 2,
+        parameters: HashMap::new(),
     };
-
-    let graphrag_result = graphrag_engine.retrieve_with_graph(graph_context).await?;
-
-    println!("\n📊 GraphRAG Query Results:");
-    println!("Documents found: {}", graphrag_result.documents.len());
-    println!("Relevant entities: {}", graphrag_result.relevant_entities.len());
-    println!(
-        "Entity relationships: {} (now properly populated!)",
-        graphrag_result.entity_relationships.len()
-    );
-    println!("Reasoning paths: {}", graphrag_result.reasoning_paths.len());
-
-    // Show actual relationship names in reasoning paths
-    for (i, path) in graphrag_result.reasoning_paths.iter().enumerate() {
-        println!(
-            "  Path {}: {} -> relationships: {:?}",
-            i + 1,
-            path.explanation,
-            path.path_relationships
-        );
+    
+    let query_result = graphrag_engine.query(&query_context).await?;
+    println!("\n📊 Query Results for 'software engineer database':");
+    println!("  Documents found: {}", query_result.documents.len());
+    println!("  Reasoning paths: {}", query_result.reasoning_paths.len());
+    for (i, doc) in query_result.documents.iter().enumerate() {
+        let score = query_result.scores.get(i).copied().unwrap_or(0.0);
+        println!("  - Document {} (score: {:.3}): {}", doc.id, score, &doc.content[..60.min(doc.content.len())]);
     }
 
-    println!("Overall confidence: {:.2}", graphrag_result.confidence_score);
+    // Query 2: Get reasoning paths between documents
+    if doc_ids.len() >= 2 {
+        println!("\n🔗 Finding reasoning paths between documents...");
+        let reasoning_paths = graphrag_engine.get_reasoning_paths(doc_ids[0], doc_ids[1], 3).await?;
+        println!("Reasoning paths from document {} to {}:", doc_ids[0], doc_ids[1]);
+        for (i, path) in reasoning_paths.iter().enumerate() {
+            println!("  Path {}: {} (score: {:.2})", i + 1, path.description, path.score);
+            println!("    Nodes: {:?}", path.nodes);
+            println!("    Edges: {:?}", path.edges);
+        }
+    }
 
     // Step 6: Demonstrate comprehensive graph store capabilities
     println!("\n🔗 Demonstrating comprehensive graph store capabilities...");
@@ -210,53 +193,49 @@ fn create_sample_documents() -> Vec<Document> {
     ]
 }
 
+#[allow(dead_code)]
 fn create_person_entity(name: &str, role: &str, embedding: Vec<f32>) -> KnowledgeNode {
-    let mut properties = HashMap::new();
-    properties.insert("role".to_string(), Value::Text(role.to_string()));
-    properties.insert("type".to_string(), Value::Text("person".to_string()));
+    let mut metadata = HashMap::new();
+    metadata.insert("role".to_string(), Value::Text(role.to_string()));
+    metadata.insert("entity_type".to_string(), Value::Text("PERSON".to_string()));
+    metadata.insert("name".to_string(), Value::Text(name.to_string()));
+    metadata.insert("confidence_score".to_string(), Value::Float(0.9));
 
     KnowledgeNode {
         id: 0, // Will be assigned by the engine
-        entity_type: "PERSON".to_string(),
-        name: name.to_string(),
-        description: Some(format!("{} - {}", name, role)),
+        node_type: "entity".to_string(),
+        content: format!("{} - {}", name, role),
         embedding: Some(embedding.into()),
-        properties,
-        confidence_score: 0.9,
+        metadata,
     }
 }
 
+#[allow(dead_code)]
 fn create_organization_entity(name: &str, description: &str, embedding: Vec<f32>) -> KnowledgeNode {
-    let mut properties = HashMap::new();
-    properties.insert("industry".to_string(), Value::Text("technology".to_string()));
-    properties.insert("type".to_string(), Value::Text("organization".to_string()));
+    let mut metadata = HashMap::new();
+    metadata.insert("industry".to_string(), Value::Text("technology".to_string()));
+    metadata.insert("entity_type".to_string(), Value::Text("ORGANIZATION".to_string()));
+    metadata.insert("name".to_string(), Value::Text(name.to_string()));
+    metadata.insert("confidence_score".to_string(), Value::Float(0.95));
 
     KnowledgeNode {
         id: 0, // Will be assigned by the engine
-        entity_type: "ORGANIZATION".to_string(),
-        name: name.to_string(),
-        description: Some(description.to_string()),
+        node_type: "entity".to_string(),
+        content: description.to_string(),
         embedding: Some(embedding.into()),
-        properties,
-        confidence_score: 0.95,
+        metadata,
     }
 }
 
+#[allow(dead_code)]
 fn create_relationship(
     from: u64,
     to: u64,
     relationship_type: &str,
     confidence: f64,
-) -> KnowledgeEdge {
-    KnowledgeEdge {
-        id: 0, // Will be assigned by the engine
-        from_entity: from,
-        to_entity: to,
-        relationship_type: relationship_type.to_string(),
-        description: Some(format!("{} relationship", relationship_type)),
-        confidence_score: confidence,
-        weight: Some(1.0),
-    }
+) -> (u64, u64, String, f64) {
+    // Return tuple instead of KnowledgeEdge since the API has changed
+    (from, to, relationship_type.to_string(), confidence)
 }
 
 async fn demonstrate_clustering_coefficient() -> Result<(), Box<dyn std::error::Error>> {
