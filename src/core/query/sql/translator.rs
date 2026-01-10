@@ -332,6 +332,12 @@ fn translate_select_columns(ast_columns: Vec<ast::SelectColumn>) -> commands::Se
                 // TODO: Implement aggregate function translation
                 None
             }
+            ast::SelectColumn::QualifiedAsterisk(_) => {
+                // This case should be handled earlier or filtered out here as we are collecting specific columns.
+                // If we reach here with QualifiedAsterisk in a mixed list (which we don't fully support yet as per optimizer),
+                // we treat it as not a specific column name.
+                None
+            }
         })
         .collect();
 

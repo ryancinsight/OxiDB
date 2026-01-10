@@ -109,6 +109,11 @@ impl Optimizer {
                                             "Cannot use * with aggregate functions".to_string(),
                                         ));
                                     }
+                                    SelectColumn::QualifiedAsterisk(_) => {
+                                        return Err(OxidbError::SqlParsing(
+                                            "Cannot use table.* with aggregate functions".to_string(),
+                                        ));
+                                    }
                                 }
                             }
 
@@ -142,6 +147,7 @@ impl Optimizer {
                                 .filter_map(|col| match col {
                                     SelectColumn::ColumnName(name) => Some(name.clone()),
                                     SelectColumn::Asterisk => None, // Mixed * and columns not supported yet
+                                    SelectColumn::QualifiedAsterisk(_) => None, // Mixed table.* and columns not supported yet
                                     SelectColumn::AggregateFunction { .. } => None, // Aggregates handled separately
                                 })
                                 .collect();

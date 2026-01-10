@@ -2337,3 +2337,25 @@ fn test_parse_count_star() {
         _ => assert!(false, "Expected SELECT statement"),
     }
 }
+
+// Added test case for qualified asterisk
+#[test]
+fn test_parse_qualified_asterisk() {
+    let sql = "SELECT my_table.* FROM my_table;";
+    let tokens = tokenize_str(sql);
+    let mut parser = SqlParser::new(tokens);
+    let ast = parser.parse().unwrap();
+    match ast {
+        Statement::Select(select_stmt) => {
+            assert_eq!(select_stmt.from_clause.name, "my_table");
+            assert_eq!(select_stmt.columns.len(), 1);
+            match &select_stmt.columns[0] {
+                SelectColumn::QualifiedAsterisk(table_name) => {
+                    assert_eq!(table_name, "my_table");
+                }
+                _ => assert!(false, "Expected QualifiedAsterisk"),
+            }
+        }
+        _ => assert!(false, "Expected SelectStatement"),
+    }
+}
