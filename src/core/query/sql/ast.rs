@@ -163,6 +163,9 @@ pub enum Statement {
     Insert(InsertStatement),
     Delete(DeleteStatement),
     DropTable(DropTableStatement),
+    TransactionBegin,
+    TransactionCommit,
+    TransactionRollback,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

@@ -43,6 +43,9 @@ impl Binder {
             AstStatement::Insert(_) => "Insert",
             AstStatement::Delete(_) => "Delete", // Added Delete arm
             AstStatement::DropTable(_) => "DropTable",
+            AstStatement::TransactionBegin => "TransactionBegin",
+            AstStatement::TransactionCommit => "TransactionCommit",
+            AstStatement::TransactionRollback => "TransactionRollback",
             // The _ arm is unreachable if all AstStatement variants are covered.
             // If AstStatement is non_exhaustive or has other variants, _ might be needed.
             // Assuming for now all variants are covered or it's okay for this to be exhaustive.
