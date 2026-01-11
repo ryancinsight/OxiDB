@@ -170,7 +170,7 @@ impl SqlParser {
 
     fn parse_create_table_statement(&mut self) -> Result<Statement, SqlParseError> {
         self.consume(Token::Create)?;
-        self.consume(Token::Table)?;
+        self.consume_table_keyword()?;
         let table_name = self.expect_identifier("Expected table name after CREATE TABLE")?;
 
         self.consume(Token::LParen)?;
@@ -628,7 +628,7 @@ impl SqlParser {
 
     fn parse_drop_table_statement(&mut self) -> Result<Statement, SqlParseError> {
         self.consume(Token::Drop)?;
-        self.consume(Token::Table)?;
+        self.consume_table_keyword()?;
 
         let mut if_exists = false;
         if self.peek_is_identifier_str("IF") {
