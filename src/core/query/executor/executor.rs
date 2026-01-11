@@ -241,19 +241,12 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
     /// Handle SQL DELETE operations
     pub fn handle_sql_delete(
         &mut self,
-        _table_name: String,
-        _condition: Option<crate::core::query::commands::SqlConditionTree>,
+        table_name: String,
+        condition: Option<crate::core::query::commands::SqlConditionTree>,
     ) -> Result<crate::core::query::executor::types::ExecutionResult, OxidbError> {
-        // Implementation placeholder - would involve:
-        // 1. Find matching rows based on condition
-        // 2. Delete from indexes
-        // 3. Remove from storage
-        // 4. Return count of deleted rows
-        use crate::core::query::executor::types::ExecutionResult;
-
-        // For now, return a placeholder result
-        // In a full implementation, this would scan and filter based on condition
-        Ok(ExecutionResult::Updated { count: 0 })
+        // Delegate to the specific DELETE handler in delete_execution.rs
+        // This keeps executor.rs clean and follows separation of concerns
+        self.handle_delete(table_name, condition)
     }
 
     /// Execute parameterized SQL statement

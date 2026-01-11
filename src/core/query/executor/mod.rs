@@ -12,6 +12,7 @@
 // Module declarations
 pub mod command_handlers;
 pub mod ddl_handlers;
+pub mod delete_execution; // Added delete_execution
 pub mod executor;
 pub mod planner;
 pub mod processors;

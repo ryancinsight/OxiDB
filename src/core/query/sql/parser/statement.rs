@@ -142,6 +142,9 @@ impl SqlParser {
             Some(Token::Insert) => self.parse_insert_statement(),
             Some(Token::Delete) => self.parse_delete_statement(), // Added
             Some(Token::Drop) => self.parse_drop_table_statement(), // Added
+            Some(Token::Begin) => self.parse_transaction_begin(),
+            Some(Token::Commit) => self.parse_transaction_commit(),
+            Some(Token::Rollback) => self.parse_transaction_rollback(),
             Some(_other_token) => {
                 return Err(SqlParseError::UnknownStatementType(self.current_token_pos()))
             }
@@ -638,5 +641,39 @@ impl SqlParser {
 
         // Semicolon handled by main parse()
         Ok(Statement::DropTable(DropTableStatement { table_name, if_exists }))
+    }
+
+    // Added transaction parsing methods
+    fn parse_transaction_begin(&mut self) -> Result<Statement, SqlParseError> {
+        self.consume(Token::Begin)?;
+        // Optional TRANSACTION keyword
+        if let Some(Token::Identifier(s)) = self.peek() {
+            if s.eq_ignore_ascii_case("TRANSACTION") {
+                self.consume_any();
+            }
+        }
+        Ok(Statement::TransactionBegin)
+    }
+
+    fn parse_transaction_commit(&mut self) -> Result<Statement, SqlParseError> {
+        self.consume(Token::Commit)?;
+        // Optional TRANSACTION keyword
+        if let Some(Token::Identifier(s)) = self.peek() {
+            if s.eq_ignore_ascii_case("TRANSACTION") {
+                self.consume_any();
+            }
+        }
+        Ok(Statement::TransactionCommit)
+    }
+
+    fn parse_transaction_rollback(&mut self) -> Result<Statement, SqlParseError> {
+        self.consume(Token::Rollback)?;
+        // Optional TRANSACTION keyword
+        if let Some(Token::Identifier(s)) = self.peek() {
+            if s.eq_ignore_ascii_case("TRANSACTION") {
+                self.consume_any();
+            }
+        }
+        Ok(Statement::TransactionRollback)
     }
 }

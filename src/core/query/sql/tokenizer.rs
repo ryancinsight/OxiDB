@@ -27,6 +27,9 @@ pub enum Token {
     Desc,          // Added Desc Token
     Limit,         // Added Limit Token
     Autoincrement, // Added Autoincrement Token
+    Begin,         // Added Begin Token
+    Commit,        // Added Commit Token
+    Rollback,      // Added Rollback Token
 
     // Join-related keywords
     Join,
@@ -85,6 +88,9 @@ impl fmt::Debug for Token {
             Self::Asc => write!(f, "Asc"),       // Added for Asc Token
             Self::Desc => write!(f, "Desc"),     // Added for Desc Token
             Self::Limit => write!(f, "Limit"),   // Added for Limit Token
+            Self::Begin => write!(f, "Begin"),   // Added for Begin Token
+            Self::Commit => write!(f, "Commit"), // Added for Commit Token
+            Self::Rollback => write!(f, "Rollback"), // Added for Rollback Token
             Self::Join => write!(f, "Join"),
             Self::On => write!(f, "On"),
             Self::Inner => write!(f, "Inner"),
@@ -180,6 +186,22 @@ impl<'a> Tokenizer<'a> {
             "DESC" => Token::Desc,     // Added for Desc Token
             "LIMIT" => Token::Limit,   // Added for Limit Token
             "AUTOINCREMENT" => Token::Autoincrement, // Added for Autoincrement Token
+            "BEGIN" => Token::Begin,   // Added for Begin Token
+            "COMMIT" => Token::Commit, // Added for Commit Token
+            "ROLLBACK" => Token::Rollback, // Added for Rollback Token
+            "TRANSACTION" => {
+                // Ignore TRANSACTION keyword for BEGIN/COMMIT/ROLLBACK TRANSACTION
+                // This is a simplification. Ideally, we should handle it in the parser.
+                // But since we just want to tokenize keywords properly, treating it as an Identifier
+                // which might be skipped or consumed by the parser is safer if we don't want to change Token enum too much.
+                // However, if we want to support "BEGIN TRANSACTION", the parser expects BEGIN.
+                // If we tokenize TRANSACTION as Identifier, the parser needs to handle "BEGIN <Identifier(TRANSACTION)>".
+                // Let's add Transaction token if needed, or just let it be Identifier.
+                // For now, let's treat it as an identifier, but in the parser we might need to be flexible.
+                // Actually, let's just not add a specific token for TRANSACTION yet unless we modify the parser to consume it.
+                // So I will leave it as Identifier.
+                Token::Identifier(ident.to_string())
+            },
             "JOIN" => Token::Join,
             "ON" => Token::On,
             "INNER" => Token::Inner,

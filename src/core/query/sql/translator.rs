@@ -153,6 +153,9 @@ pub fn translate_ast_to_command(ast_statement: ast::Statement) -> Result<Command
             table_name: drop_stmt.table_name,
             if_exists: drop_stmt.if_exists,
         }),
+        ast::Statement::TransactionBegin => Ok(Command::BeginTransaction),
+        ast::Statement::TransactionCommit => Ok(Command::CommitTransaction),
+        ast::Statement::TransactionRollback => Ok(Command::RollbackTransaction),
     }
 }
 
