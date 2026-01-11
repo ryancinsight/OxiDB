@@ -9,12 +9,18 @@ pub type Key = Vec<u8>;
 /// Represents a value for operations.
 pub type Value = Vec<u8>;
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum ConditionValue {
+    Literal(DataType),
+    Column(String),
+}
+
 // Renamed from SqlCondition to be part of the new SqlConditionTree enum
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct SqlSimpleCondition {
     pub column: String,
     pub operator: String, // e.g., "=", "!=", "<", ">", "<=", ">="
-    pub value: DataType,  // Use DataType here
+    pub value: ConditionValue,  // Use ConditionValue here
 }
 
 #[derive(Debug, PartialEq, Clone)]
