@@ -1,120 +1,13 @@
 use super::{ExecutionResult, QueryExecutor};
 use crate::core::common::OxidbError;
-use crate::core::transaction::Transaction; // Added this import
-                                           // use crate::core::common::serialization::{deserialize_data_type}; // No longer needed here
+use crate::core::transaction::Transaction;
 use crate::core::common::types::TransactionId;
-// Key removed
 use crate::core::storage::engine::traits::KeyValueStore;
-// LockType removed
-// Transaction, TransactionState, UndoOperation removed
-// DataType removed
-// HashMap removed
 
 impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
-    // handle_insert, handle_delete, and handle_get were removed.
-    // handle_find_by_index is also commented out to enforce SQL-only API
 
     /* Legacy method - commented out to enforce SQL-only API
-    /// Handles finding rows by an index lookup.
-    /// It retrieves primary keys from the specified index for the given value,
-    /// then fetches the actual row data from the store for those primary keys,
-    /// considering transaction visibility.
-    pub(crate) fn handle_find_by_index(
-        &mut self,
-        index_name: String,
-        value: Vec<u8>, // This is the serialized form of the value being searched
-    ) -> Result<ExecutionResult, OxidbError> {
-        // Changed
-        let option_keys = self
-            .index_manager
-            .read()
-            .map_err(|e| {
-                OxidbError::LockTimeout(format!(
-                    "Failed to acquire read lock on index manager for find: {e}"
-                ))
-            })?
-            .find_by_index(&index_name, &value)?; // Propagate error from find_by_index
-
-        let candidate_keys: std::vec::Vec<std::vec::Vec<u8>> = option_keys.unwrap_or_default();
-
-        if candidate_keys.is_empty() {
-            return Ok(ExecutionResult::Values(Vec::new()));
-        }
-
-        let snapshot_id: TransactionId; // Explicitly TransactionId
-        let committed_ids_vec: Vec<TransactionId>;
-
-        if let Some(active_tx) = self.transaction_manager.get_active_transaction() {
-            snapshot_id = active_tx.id;
-            committed_ids_vec = self.transaction_manager.get_committed_tx_ids_snapshot();
-        } else {
-            // If no active transaction, generate_tx_id might not be what we want for a read snapshot.
-            // Using 0 for auto-commit context often means "read latest committed".
-            // However, the original logic used generate_tx_id. Let's stick to TransactionId(0) for unwrap_or consistency.
-            // If this is for a read operation without a transaction, it should see all committed data.
-            // A "snapshot_id" of 0 and an empty committed_ids (or all committed_ids if available) might be more appropriate
-            // if TransactionId(0) is special. For now, let's assume it aligns with unwrap_or(TransactionId(0)).
-            snapshot_id = self
-                .transaction_manager
-                .current_active_transaction_id()
-                .unwrap_or(TransactionId(0));
-            committed_ids_vec = self.transaction_manager.get_committed_tx_ids_snapshot();
-        }
-
-        // Filter committed_ids based on snapshot_id (both are TransactionId)
-        // Then map to u64 for HashSet<u64> and for store.get()
-        let committed_ids_for_store: HashSet<u64> = committed_ids_vec
-            .into_iter()
-            .filter(|id| *id <= snapshot_id) // Compare TransactionId with TransactionId
-            .map(|id| id.0) // Convert TransactionId to u64
-            .collect();
-
-        let mut results_vec = Vec::new();
-        for primary_key in candidate_keys {
-            match self
-                .store
-                .read()
-                .map_err(|e| {
-                    OxidbError::LockTimeout(format!(
-                        "Failed to acquire read lock on store for find by index: {e}"
-                    ))
-                })?
-                .get(&primary_key, snapshot_id.0, &committed_ids_for_store)
-            {
-                // Corrected: removed extra parenthesis, this is the match block opening
-                // Use snapshot_id.0 (u64)
-                Ok(Some(serialized_data_from_store)) => {
-                    // The `value` parameter to this function is the serialized indexed field's value.
-                    // If the index ("default_value_index") stores the entire serialized DataType,
-                    // then `serialized_data_from_store` should indeed be compared with `value`.
-                    // However, this relies on the specific indexing strategy.
-                    // For "default_value_index", it's assumed it indexes the serialized DataType.
-                    if serialized_data_from_store == value {
-                        // This comparison logic might need adjustment based on what the index actually stores
-                        match crate::core::common::serialization::deserialize_data_type(
-                            &serialized_data_from_store,
-                        ) {
-                            Ok(data_type) => results_vec.push(data_type),
-                            Err(deserialize_err) => {
-                                // deserialize_data_type already returns OxidbError.
-                                // Log the original error context if needed, then propagate.
-                                eprintln!(
-                                    "Error deserializing data (via deserialize_data_type) for key {primary_key:?}: {deserialize_err}"
-                                );
-                                return Err(deserialize_err);
-                            }
-                        }
-                    }
-                    // Else: Key from index points to data that doesn't match the indexed value anymore (e.g. updated).
-                    // This can happen if the index is not perfectly in sync or if the query logic needs refinement.
-                }
-                Ok(None) => { /* Key from index not visible or gone under current snapshot, skip */
-                }
-                Err(e) => return Err(e), // This e is already OxidbError
-            }
-        }
-        Ok(ExecutionResult::Values(results_vec))
-    }
+    pub(crate) fn handle_find_by_index(...) -> ...
     */
 
     /// Handles the creation of a new table.
@@ -223,6 +116,94 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         // No need for explicit commit logging to store's WAL here.
         // The wrapper will call handle_commit_transaction, which calls transaction_manager.commit_transaction(),
         // which logs LogRecord::CommitTransaction to TM's WAL.
+
+        Ok(ExecutionResult::Success)
+    }
+
+    /// Handles dropping a table.
+    /// This removes the table's schema, drops associated indexes, and deletes table data.
+    pub(crate) fn handle_drop_table(
+        &mut self,
+        table_name: String,
+        if_exists: bool,
+    ) -> Result<ExecutionResult, OxidbError> {
+        // 1. Check if table exists (get schema)
+        let schema_arc_opt = self.get_table_schema(&table_name)?;
+
+        let schema_arc = match schema_arc_opt {
+            Some(s) => s,
+            None => {
+                if if_exists {
+                    return Ok(ExecutionResult::Success);
+                } else {
+                    return Err(OxidbError::TableNotFound(table_name));
+                }
+            }
+        };
+
+        let schema = schema_arc.as_ref();
+
+        // 2. Drop associated indexes
+        {
+            let mut index_manager = self.index_manager.write().map_err(|e| {
+                OxidbError::LockTimeout(format!("Failed to acquire write lock on index manager for drop table: {e}"))
+            })?;
+
+            // Iterate over columns to find indexes created for PKs or Unique constraints
+            for col_def in &schema.columns {
+                if col_def.is_primary_key || col_def.is_unique {
+                    let index_name = format!("idx_{}_{}", table_name, col_def.name);
+
+                    if let Err(e) = index_manager.drop_index(&index_name) {
+                         // Log warning but continue? Or fail?
+                         // If index file deletion fails, it might be an issue.
+                         // But if index is just not found in map, it's fine.
+                         eprintln!("Warning: Failed to drop index '{index_name}': {e}");
+                    }
+                }
+            }
+        }
+
+        // 3. Delete all data rows associated with the table
+        let prefix = format!("{}_", table_name).into_bytes();
+
+        {
+            let mut store = self.store.write().map_err(|e| {
+                OxidbError::LockTimeout(format!("Failed to acquire write lock on store for drop table: {e}"))
+            })?;
+
+            // Scan all keys and identify those matching the table prefix
+            // Note: This is inefficient for large stores but required given current KeyValueStore trait limitations
+            let keys_to_delete: Vec<Vec<u8>> = store.scan()?
+                .into_iter()
+                .filter(|(k, _)| k.starts_with(&prefix))
+                .map(|(k, _)| k)
+                .collect();
+
+            // Use a system transaction (ID 0) for these deletions
+            let tx = Transaction::new(TransactionId(0));
+            let lsn = self.log_manager.next_lsn();
+            let committed_ids = self.transaction_manager.get_committed_tx_ids_snapshot().into_iter().map(|id| id.0).collect();
+
+            for key in keys_to_delete {
+                 store.delete(&key, &tx, lsn, &committed_ids)?;
+            }
+
+            // Delete the schema key
+            let schema_key = Self::schema_key(&table_name);
+            store.delete(&schema_key, &tx, lsn, &committed_ids)?;
+        }
+
+        // 4. Clean up auto-increment state
+        // Need to find and remove keys in `auto_increment_state` that start with "{table_name}."
+        let keys_to_remove: Vec<String> = self.auto_increment_state.keys()
+            .filter(|k| k.starts_with(&format!("{}.", table_name)))
+            .cloned()
+            .collect();
+
+        for k in keys_to_remove {
+            self.auto_increment_state.remove(&k);
+        }
 
         Ok(ExecutionResult::Success)
     }

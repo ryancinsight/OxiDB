@@ -100,6 +100,34 @@ impl IndexManager {
         Ok(())
     }
 
+    /// Drops an index by name.
+    /// Removes it from memory and deletes its file from disk.
+    pub fn drop_index(&mut self, index_name: &str) -> Result<(), OxidbError> {
+        // Remove from memory
+        if let Some(_index_arc) = self.indexes.remove(index_name) {
+            // Attempt to delete files.
+            // We need to know the extension/type to delete the file accurately.
+            // Since we don't store the type explicitly in the map value (it's a trait object),
+            // we have to check for possible extensions.
+
+            // Try deleting .idx (hash)
+            let hash_path = self.base_path.join(format!("{index_name}.idx"));
+            if hash_path.exists() {
+                std::fs::remove_file(&hash_path).map_err(OxidbError::Io)?;
+            }
+
+            // Try deleting .btree (btree)
+            let btree_path = self.base_path.join(format!("{index_name}.btree"));
+             if btree_path.exists() {
+                std::fs::remove_file(&btree_path).map_err(OxidbError::Io)?;
+            }
+
+            Ok(())
+        } else {
+            Err(OxidbError::Index(format!("Index '{index_name}' not found.")))
+        }
+    }
+
     #[must_use]
     pub fn get_index(&self, index_name: &str) -> Option<SharedIndex> {
         self.indexes.get(index_name).cloned()
