@@ -249,12 +249,8 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>> + Send + Sync + 'static> CommandProcesso
                     feature: "SimilaritySearch command processing".to_string(),
                 })
             }
-            Self::DropTable { table_name: _table_name, if_exists: _if_exists } => {
-                // TODO: Implement actual call to an executor method for drop table
-                // executor.handle_drop_table(table_name.clone(), *if_exists)
-                Err(OxidbError::NotImplemented {
-                    feature: "DropTable command processing".to_string(),
-                })
+            Self::DropTable { table_name, if_exists } => {
+                executor.handle_drop_table(table_name.clone(), *if_exists)
             }
             Self::ParameterizedSql { statement, parameters } => {
                 // Handle parameterized SQL execution
