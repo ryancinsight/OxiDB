@@ -273,7 +273,9 @@ fn translate_condition_tree_to_sql_condition_tree(
     match ast_tree {
         ast::ConditionTree::Comparison(ast_cond) => {
             let value = match &ast_cond.value {
-                ast::AstExpressionValue::Literal(literal_val) => translate_literal(literal_val)?,
+                ast::AstExpressionValue::Literal(literal_val) => {
+                    commands::ConditionValue::Literal(translate_literal(literal_val)?)
+                }
                 ast::AstExpressionValue::Parameter(_) => {
                     // Parameters should be resolved at execution time, not translation time
                     return Err(OxidbError::InvalidInput {
@@ -281,13 +283,7 @@ fn translate_condition_tree_to_sql_condition_tree(
                     });
                 }
                 ast::AstExpressionValue::ColumnIdentifier(col_name) => {
-                    // TODO: This would be a column-to-column comparison.
-                    // For now, SqlSimpleCondition only supports column-to-literal.
-                    // This could be an error or a different command variant if supported.
-                    return Err(OxidbError::SqlParsing(format!(
-                        "Column-to-column comparison ('{} {} {}') is not yet supported in conditions.",
-                        ast_cond.column, ast_cond.operator, col_name
-                    )));
+                    commands::ConditionValue::Column(col_name.clone())
                 }
             };
             Ok(commands::SqlConditionTree::Comparison(commands::SqlSimpleCondition {
@@ -453,7 +449,7 @@ mod tests {
             commands::SqlConditionTree::Comparison(commands::SqlSimpleCondition {
                 column: "name".to_string(),
                 operator: "=".to_string(),
-                value: DataType::String("test_user".to_string()),
+                value: commands::ConditionValue::Literal(DataType::String("test_user".to_string())),
             });
         match translate_condition_tree_to_sql_condition_tree(&ast_cond_tree) {
             Ok(res_cond_tree) => assert_eq!(res_cond_tree, expected_sql_cond_tree),
@@ -472,7 +468,26 @@ mod tests {
             commands::SqlConditionTree::Comparison(commands::SqlSimpleCondition {
                 column: "age".to_string(),
                 operator: ">".to_string(),
-                value: DataType::Integer(30),
+                value: commands::ConditionValue::Literal(DataType::Integer(30)),
+            });
+        match translate_condition_tree_to_sql_condition_tree(&ast_cond_tree) {
+            Ok(res_cond_tree) => assert_eq!(res_cond_tree, expected_sql_cond_tree),
+            Err(e) => assert!(false, "Translation failed: {:?}", e),
+        }
+    }
+
+    #[test]
+    fn test_translate_condition_column_comparison() {
+        let ast_cond_tree = ast::ConditionTree::Comparison(TestCondition {
+            column: "salary".to_string(),
+            operator: ">".to_string(),
+            value: ast::AstExpressionValue::ColumnIdentifier("avg_salary".to_string()),
+        });
+        let expected_sql_cond_tree =
+            commands::SqlConditionTree::Comparison(commands::SqlSimpleCondition {
+                column: "salary".to_string(),
+                operator: ">".to_string(),
+                value: commands::ConditionValue::Column("avg_salary".to_string()),
             });
         match translate_condition_tree_to_sql_condition_tree(&ast_cond_tree) {
             Ok(res_cond_tree) => assert_eq!(res_cond_tree, expected_sql_cond_tree),
@@ -609,7 +624,7 @@ mod tests {
                 if let Some(commands::SqlConditionTree::Comparison(simple_cond)) = condition {
                     assert_eq!(simple_cond.column, "id");
                     assert_eq!(simple_cond.operator, "=");
-                    assert_eq!(simple_cond.value, DataType::Integer(101));
+                    assert_eq!(simple_cond.value, commands::ConditionValue::Literal(DataType::Integer(101)));
                 } else {
                     assert!(false, "Expected Comparison condition tree variant");
                 }
@@ -651,7 +666,7 @@ mod tests {
                 assert!(condition.is_some());
                 if let Some(commands::SqlConditionTree::Comparison(simple_cond)) = condition {
                     assert_eq!(simple_cond.column, "product_id");
-                    assert_eq!(simple_cond.value, DataType::String("XYZ123".to_string()));
+                    assert_eq!(simple_cond.value, commands::ConditionValue::Literal(DataType::String("XYZ123".to_string())));
                 } else {
                     assert!(false, "Expected Comparison condition tree variant for Update");
                 }

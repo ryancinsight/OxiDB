@@ -106,13 +106,23 @@ pub(super) fn command_condition_tree_to_ast_condition_tree<
 ) -> Result<crate::core::query::sql::ast::ConditionTree, OxidbError> {
     match sql_tree {
         crate::core::query::commands::SqlConditionTree::Comparison(sql_simple_cond) => {
+            let value = match &sql_simple_cond.value {
+                crate::core::query::commands::ConditionValue::Literal(lit) => {
+                    crate::core::query::sql::ast::AstExpressionValue::Literal(
+                        datatype_to_ast_literal(lit)?,
+                    )
+                }
+                crate::core::query::commands::ConditionValue::Column(col_name) => {
+                    crate::core::query::sql::ast::AstExpressionValue::ColumnIdentifier(
+                        col_name.clone(),
+                    )
+                }
+            };
             Ok(crate::core::query::sql::ast::ConditionTree::Comparison(
                 crate::core::query::sql::ast::Condition {
                     column: sql_simple_cond.column.clone(),
                     operator: sql_simple_cond.operator.clone(),
-                    value: crate::core::query::sql::ast::AstExpressionValue::Literal(
-                        datatype_to_ast_literal(&sql_simple_cond.value)?,
-                    ),
+                    value,
                 },
             ))
         }

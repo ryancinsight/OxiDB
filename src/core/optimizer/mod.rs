@@ -271,12 +271,11 @@ impl Optimizer {
                             right: Box::new(Expression::Literal(data_type)),
                         })
                     }
-                    AstExpressionValue::ColumnIdentifier(_) => {
-                        // Column-to-column comparisons are not yet supported
-                        // Returning a placeholder that evaluates to true (1=1) would be dangerous
-                        // as it could cause DELETE/UPDATE to affect all rows unintentionally
-                        Err(OxidbError::NotImplemented {
-                            feature: "Column-to-column comparisons in WHERE clauses".to_string(),
+                    AstExpressionValue::ColumnIdentifier(col_name) => {
+                        Ok(Expression::CompareOp {
+                            left: Box::new(Expression::Column(cond.column.clone())),
+                            op: cond.operator.clone(),
+                            right: Box::new(Expression::Column(col_name.clone())),
                         })
                     }
                     AstExpressionValue::Parameter(_param_index) => {
