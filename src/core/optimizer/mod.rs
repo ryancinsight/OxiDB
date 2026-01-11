@@ -412,7 +412,9 @@ impl Optimizer {
         // Extract simple equality predicates that can use indexes
         if let Some(simple_pred) = self.extract_indexable_predicate(predicate) {
             // Check if we have an index that can satisfy this predicate
-            if let Some(index_name) = self.find_suitable_index(&simple_pred, index_manager)? {
+            if let Some(index_name) =
+                self.find_suitable_index(table_name, &simple_pred, index_manager)?
+            {
                 return Ok(Some(QueryPlanNode::IndexScan {
                     index_name,
                     table_name: table_name.to_string(),
@@ -460,12 +462,13 @@ impl Optimizer {
     /// Find a suitable index for the given predicate
     fn find_suitable_index(
         &self,
+        table_name: &str,
         predicate: &SimplePredicate,
         index_manager: &std::sync::Arc<
             std::sync::RwLock<crate::core::indexing::manager::IndexManager>,
         >,
     ) -> Result<Option<String>, crate::core::common::error::OxidbError> {
-        let _index_manager_guard = index_manager.read().map_err(|e| {
+        let index_manager_guard = index_manager.read().map_err(|e| {
             crate::core::common::error::OxidbError::LockTimeout(format!(
                 "Failed to acquire read lock on index manager: {e}"
             ))
@@ -474,12 +477,11 @@ impl Optimizer {
         if predicate.operator == "=" {
             // Look for a column-specific index first
             // Index names follow the pattern: idx_{table}_{column}
-            // We need to extract the table name from context, but for now we'll skip this optimization
-            // and return None to force table scan with filtering
+            let index_name = format!("idx_{}_{}", table_name, predicate.column);
 
-            // TODO: Implement proper column-specific index lookup
-            // For now, don't use default_value_index for column-specific queries
-            // as it's designed for full-row indexing, not individual column values
+            if index_manager_guard.get_index(&index_name).is_some() {
+                return Ok(Some(index_name));
+            }
         }
 
         Ok(None)
@@ -578,4 +580,61 @@ pub enum Expression {
 pub struct JoinPredicate {
     pub left_column: String,
     pub right_column: String,
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::indexing::manager::IndexManager;
+    use crate::core::types::DataType;
+    use std::sync::{Arc, RwLock};
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_find_suitable_index_column_specific() {
+        let temp_dir = tempdir().expect("Failed to create temp dir");
+        let mut index_manager = IndexManager::new(temp_dir.path().to_path_buf()).expect("Failed to create index manager");
+
+        // Create an index for table 'users', column 'id' -> 'idx_users_id'
+        index_manager.create_index("idx_users_id".to_string(), "hash").expect("Failed to create index");
+
+        let index_manager = Arc::new(RwLock::new(index_manager));
+        let optimizer = Optimizer::new();
+
+        let _predicate = SimplePredicate {
+            column: "id".to_string(),
+            operator: "=".to_string(),
+            value: DataType::Integer(1),
+        };
+
+        // This requires modifying find_suitable_index to be public or testing via try_convert_to_index_scan
+        // Since find_suitable_index is private, we'll test via try_convert_to_index_scan which is also private...
+        // Wait, try_convert_to_index_scan is private. optimize_with_indexes is public.
+
+        // Let's use optimize_with_indexes.
+        // We need a QueryPlanNode::Filter over TableScan.
+
+        let plan = QueryPlanNode::Filter {
+            input: Box::new(QueryPlanNode::TableScan {
+                table_name: "users".to_string(),
+                alias: None,
+            }),
+            predicate: Expression::CompareOp {
+                left: Box::new(Expression::Column("id".to_string())),
+                op: "=".to_string(),
+                right: Box::new(Expression::Literal(DataType::Integer(1))),
+            },
+        };
+
+        let optimized_plan = optimizer.optimize_with_indexes(plan, &index_manager).expect("Optimization failed");
+
+        match optimized_plan {
+            QueryPlanNode::IndexScan { index_name, table_name, .. } => {
+                assert_eq!(index_name, "idx_users_id");
+                assert_eq!(table_name, "users");
+            }
+            _ => {
+                panic!("Expected IndexScan, got {:?}", optimized_plan);
+            }
+        }
+    }
 }
