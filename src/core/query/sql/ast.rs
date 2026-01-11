@@ -42,6 +42,7 @@ pub struct Assignment {
 pub enum SelectColumn {
     ColumnName(String),
     Asterisk, // For SELECT *
+    QualifiedAsterisk(String), // For SELECT table.*
     AggregateFunction {
         function: AggregateFunction,
         column: Box<SelectColumn>,

@@ -25,7 +25,6 @@ impl SqlParser {
         let mut columns = Vec::new();
         if self.match_token(Token::Asterisk) {
             self.consume(Token::Asterisk)?;
-            // TODO: Handle qualified asterisk like table.* if needed in SelectColumn AST
             columns.push(SelectColumn::Asterisk);
             // If only an asterisk, no more columns expected unless there's a comma,
             // but standard SQL usually doesn't mix '*' with specific columns in the main list this way
@@ -59,9 +58,32 @@ impl SqlParser {
                     if matches!(upper_name.as_str(), "COUNT" | "SUM" | "AVG" | "MIN" | "MAX") {
                         self.parse_aggregate_function()?
                     } else {
-                        let qualified_col_name =
-                            self.parse_qualified_identifier("Expected column name or '*'")?;
-                        SelectColumn::ColumnName(qualified_col_name)
+                        // Custom logic to handle qualified asterisk (table.*)
+                        // Look ahead to check for dot and asterisk
+                        // Since we don't have infinite lookahead easily, we'll parse parts manually.
+
+                        // We expect an identifier (checked by peek)
+                        let mut parts = Vec::new();
+                        parts.push(self.expect_identifier("Expected identifier")?);
+
+                        let mut is_qualified_asterisk = false;
+
+                        while self.match_token(Token::Dot) {
+                            self.consume(Token::Dot)?;
+                            if self.match_token(Token::Asterisk) {
+                                self.consume(Token::Asterisk)?;
+                                is_qualified_asterisk = true;
+                                break;
+                            } else {
+                                parts.push(self.expect_identifier("Expected identifier after dot")?);
+                            }
+                        }
+
+                        if is_qualified_asterisk {
+                            SelectColumn::QualifiedAsterisk(parts.join("."))
+                        } else {
+                            SelectColumn::ColumnName(parts.join("."))
+                        }
                     }
                 } else {
                     let qualified_col_name =
