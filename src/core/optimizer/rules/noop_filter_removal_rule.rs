@@ -58,7 +58,40 @@ fn is_always_true(expr: &Expression) -> bool {
             (Expression::Literal(l), Expression::Literal(r)) => l == r,
             _ => false,
         },
-        // TODO: Add more patterns like "x OR true", "NOT false", etc.
+        // Check for "OR" expressions where at least one side is always true
+        Expression::BinaryOp { left, op, right } if op == "OR" => {
+            is_always_true(left) || is_always_true(right)
+        },
+        // Check for "NOT" expressions where the inner expression is always false
+        Expression::UnaryOp { op, expr } if op == "NOT" => {
+            is_always_false(expr)
+        },
+        _ => false,
+    }
+}
+
+/// Checks if an expression always evaluates to false
+fn is_always_false(expr: &Expression) -> bool {
+    match expr {
+        // Check for literal false
+        Expression::Literal(DataType::Boolean(false)) => true,
+        // Check for expressions like "1 = 2"
+        Expression::BinaryOp { left, op, right } if op == "=" => match (&**left, &**right) {
+            (Expression::Literal(l), Expression::Literal(r)) => l != r,
+            _ => false,
+        },
+        // Check for "AND" expressions where at least one side is always false
+        Expression::BinaryOp { left, op, right } if op == "AND" => {
+            is_always_false(left) || is_always_false(right)
+        },
+        // Check for "OR" expressions where both sides are always false
+        Expression::BinaryOp { left, op, right } if op == "OR" => {
+            is_always_false(left) && is_always_false(right)
+        },
+        // Check for "NOT" expressions where the inner expression is always true
+        Expression::UnaryOp { op, expr } if op == "NOT" => {
+            is_always_true(expr)
+        },
         _ => false,
     }
 }
