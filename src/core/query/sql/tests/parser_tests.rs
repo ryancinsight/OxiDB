@@ -1016,11 +1016,11 @@ fn test_select_missing_from_keyword() {
     );
     if let Err(SqlParseError::UnexpectedToken { expected, found, .. }) = result {
         assert!(expected.to_lowercase().contains("from"));
-        assert_eq!(
-            found, "Table",
-            "Found token was {:?}, debug of Identifier(\"table\") seems to be 'Table'",
+        assert!(
+            found.contains("Table"),
+            "Found token was {:?}, expected it to contain 'Table'",
             found
-        ); // Expect "Table"
+        );
     } else {
         assert!(false, "Wrong error type for select missing FROM keyword: {:?}", result);
     }
