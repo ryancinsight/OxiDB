@@ -108,9 +108,9 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
             }
         }
 
-        // TODO: Persist schema changes and new index metadata immediately or rely on normal WAL/persist cycle?
-        // For simplicity now, rely on normal cycle. Critical DDL might force persist.
-        // IndexManager::create_index typically handles its own persistence for index metadata.
+        // Persist schema changes and new index metadata immediately to ensure safety.
+        // This acts as a checkpoint for DDL operations.
+        self.persist()?;
 
         // Auto-commit logic is now handled by QueryExecutor::execute_command wrapper.
         // No need for explicit commit logging to store's WAL here.
@@ -204,6 +204,10 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
         for k in keys_to_remove {
             self.auto_increment_state.remove(&k);
         }
+
+        // Persist changes immediately to ensure safety.
+        // This acts as a checkpoint for DDL operations.
+        self.persist()?;
 
         Ok(ExecutionResult::Success)
     }

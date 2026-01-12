@@ -222,9 +222,12 @@ impl<S: KeyValueStore<Vec<u8>, Vec<u8>>> QueryExecutor<S> {
 
     /// Persist data to disk - wrapper for store persistence
     pub fn persist_store(&self) -> Result<(), OxidbError> {
-        // For file-based stores, persistence might be automatic
-        // This is a placeholder for explicit persistence if needed
-        Ok(())
+        self.store
+            .write()
+            .map_err(|e| {
+                OxidbError::LockTimeout(format!("Failed to acquire write lock on store: {e}"))
+            })?
+            .persist()
     }
 
     /// Store row data in the key-value store

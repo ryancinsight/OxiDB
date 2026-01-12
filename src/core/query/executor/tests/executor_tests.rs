@@ -83,6 +83,13 @@ mod tests {
                 assert_eq!(columns.len(), 2);
                 assert_eq!(rows.len(), 1);
             }
+            ExecutionResult::RankedResults(results) => {
+                 // RankedResults is currently used for Select by default in select_execution.rs
+                 assert_eq!(results.len(), 1);
+                 let (score, row) = &results[0];
+                 assert_eq!(*score, 0.0);
+                 assert_eq!(row.len(), 2);
+            }
             other => assert!(false, "Unexpected result: {:?}", other),
         }
         Ok(())

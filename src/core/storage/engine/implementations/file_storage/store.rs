@@ -395,6 +395,11 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for SimpleFileKvStore {
             None => Ok(None),
         }
     }
+
+    fn persist(&self) -> Result<(), OxidbError> {
+        // Reuse the struct's persist method which calls persistence::save_data_to_disk
+        persistence::save_data_to_disk(&self.file_path, &self.cache)
+    }
 }
 
 impl Drop for SimpleFileKvStore {
