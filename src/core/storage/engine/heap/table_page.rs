@@ -415,18 +415,45 @@ impl TablePage {
             Self::set_slot_info(page_data, slot_id, updated_slot_info)?;
             // Free space pointer does not change as we are using existing allocated space.
         } else {
-            // New data is larger. Current simple model: return error.
-            // A more complex version might try to "deallocate" the old record (like delete)
-            // and then "insert" the new record if space allows.
-            return Err(OxidbError::Storage(
-                "Update failed: new data is larger than old data and in-place update is not supported for larger data.".to_string()
-            ));
-            // TODO: Advanced update: try to use free space if new_data > old_data.
-            // This would involve:
-            // 1. Checking if free_space_pointer + (new_data_len - current_slot_info.length) is within page_data.len()
-            //    This is not quite right if data is not at the end of free_space_pointer.
-            //    This requires actual free space management / compaction, which is not implemented.
-            // For now, strictly no growing updates.
+            // New data is larger than current slot allocation.
+            // Try to allocate new space at the end of the page (fragmentation).
+            let current_free_space_ptr = Self::get_free_space_pointer(page_data)?;
+
+            // Calculate where we can write the new data.
+            // It must be after the slot array and after any existing data.
+            // Since we are updating, num_records stays the same.
+            let end_of_slot_array =
+                SLOTS_ARRAY_DATA_OFFSET + (num_records as usize * Slot::SERIALIZED_SIZE);
+            let record_data_write_offset = (end_of_slot_array as u16).max(current_free_space_ptr);
+
+            let record_data_write_end =
+                record_data_write_offset
+                    .checked_add(new_data_len)
+                    .ok_or_else(|| {
+                        OxidbError::Storage(
+                            "Record data offset calculation overflow during update".to_string(),
+                        )
+                    })?;
+
+            if record_data_write_end as usize > page_data.len() {
+                return Err(OxidbError::Storage(
+                    "Update failed: new data is larger than old data and page is full.".to_string(),
+                ));
+            }
+
+            // Write new data at the new location
+            page_data[record_data_write_offset as usize..record_data_write_end as usize]
+                .copy_from_slice(new_data);
+
+            // Update slot to point to new location
+            let updated_slot_info = Slot {
+                offset: record_data_write_offset,
+                length: new_data_len,
+            };
+            Self::set_slot_info(page_data, slot_id, updated_slot_info)?;
+
+            // Update free space pointer
+            Self::set_free_space_pointer(page_data, record_data_write_end)?;
         }
         Ok(())
     }

@@ -236,18 +236,19 @@ fn test_update_record_smaller_size() {
 }
 
 #[test]
-fn test_update_record_larger_size_error() {
+fn test_update_record_larger_size_success() {
     let mut page_data = create_test_page_data();
     let old_data = b"short";
     let new_data = b"much_longer_updated_data";
 
     let slot_id = TablePage::insert_record(&mut page_data, old_data).unwrap();
-    let result = TablePage::update_record(&mut page_data, slot_id, new_data);
-
-    assert!(matches!(result, Err(OxidbError::Storage(msg)) if msg.contains("new data is larger")));
+    TablePage::update_record(&mut page_data, slot_id, new_data).expect("Update larger size failed");
 
     let retrieved = TablePage::get_record(&page_data, slot_id).unwrap().unwrap();
-    assert_eq!(retrieved, old_data);
+    assert_eq!(retrieved, new_data);
+
+    let updated_slot_info = TablePage::get_slot_info(&page_data, slot_id).unwrap().unwrap();
+    assert_eq!(updated_slot_info.length, new_data.len() as u16);
 }
 
 #[test]
