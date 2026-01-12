@@ -220,4 +220,8 @@ impl KeyValueStore<Vec<u8>, Vec<u8>> for InMemoryKvStore {
             None => Ok(None),
         }
     }
+
+    fn persist(&self) -> Result<(), OxidbError> {
+        Ok(())
+    }
 }

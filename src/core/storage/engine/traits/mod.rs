@@ -92,4 +92,7 @@ pub trait KeyValueStore<K, V>: Send + Sync + 'static {
         snapshot_id: u64,
         committed_ids: &HashSet<u64>,
     ) -> Result<Option<crate::core::types::schema::Schema>, OxidbError>;
+
+    /// Persists the current state of the store to disk.
+    fn persist(&self) -> Result<(), OxidbError>;
 }
