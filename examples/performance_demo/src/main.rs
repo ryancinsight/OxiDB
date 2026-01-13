@@ -77,50 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("===================================");
 
     let report = conn.get_performance_report()?;
-
-    // Display query performance metrics
-    println!("\n🔍 Query Performance Analysis:");
-    println!("  • Total Queries Executed: {}", report.query_analysis.total_queries);
-    println!("  • Average Execution Time: {:?}", report.query_analysis.average_execution_time);
-    println!("  • Fastest Query: {:?}", report.query_analysis.fastest_query_time);
-    println!("  • Slowest Query: {:?}", report.query_analysis.slowest_query_time);
-    println!("  • Queries Per Second: {:.2}", report.query_analysis.queries_per_second);
-    println!(
-        "  • Slow Queries Detected: {}",
-        if report.query_analysis.slow_queries_detected { "Yes" } else { "No" }
-    );
-
-    // Display transaction performance metrics
-    println!("\n💼 Transaction Performance Analysis:");
-    println!("  • Total Transactions: {}", report.transaction_analysis.total_transactions);
-    println!("  • Average Duration: {:?}", report.transaction_analysis.average_duration);
-    println!("  • Commit Rate: {:.1}%", report.transaction_analysis.commit_rate * 100.0);
-    println!("  • Abort Rate: {:.1}%", report.transaction_analysis.abort_rate * 100.0);
-
-    // Display storage performance metrics
-    println!("\n💾 Storage Performance Analysis:");
-    println!("  • Total Bytes Read: {} bytes", report.storage_analysis.total_bytes_read);
-    println!("  • Total Bytes Written: {} bytes", report.storage_analysis.total_bytes_written);
-    println!("  • Total I/O Operations: {}", report.storage_analysis.total_io_operations);
-    println!("  • Average I/O Duration: {:?}", report.storage_analysis.average_io_duration);
-    println!("  • Read/Write Ratio: {:.2}", report.storage_analysis.read_write_ratio);
-
-    // Display bottleneck analysis
-    println!("\n⚠️  Bottleneck Analysis:");
-    println!("  • Severity Level: {:?}", report.bottlenecks.severity);
-    if report.bottlenecks.bottlenecks.is_empty() {
-        println!("  • No significant bottlenecks detected! 🎉");
-    } else {
-        for bottleneck in &report.bottlenecks.bottlenecks {
-            println!("  • {}", bottleneck);
-        }
-    }
-
-    // Display optimization recommendations
-    println!("\n💡 Optimization Recommendations:");
-    for (i, recommendation) in report.recommendations.iter().enumerate() {
-        println!("  {}. {}", i + 1, recommendation);
-    }
+    println!("{}", report);
 
     // Demonstrate performance tracking over time
     println!("\n⏱️  Performance Tracking Example:");
@@ -155,8 +112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Final performance report
     println!("\n📊 Final Performance Summary:");
     let final_report = conn.get_performance_report()?;
-    println!("  • Total Queries: {}", final_report.query_analysis.total_queries);
-    println!("  • Average Performance: {:?}", final_report.query_analysis.average_execution_time);
+    println!("{}", final_report);
 
     println!("\n✅ Performance monitoring demonstration completed!");
     println!("   This shows how Oxidb provides comprehensive performance insights");
